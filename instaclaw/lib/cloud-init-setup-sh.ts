@@ -45,7 +45,7 @@
  *   - [ ] BE-8: agent-status + clawlancer SKILL.md
  *   - [ ] BE-9: mcporter clawlancer config
  *   - [ ] BE-10: pip install §17b.2 packages
- *   - [ ] BE-11: npm install §17b.2 packages
+ *   - [✓] BE-11: npm install §17b.2 packages
  *   - [ ] BE-12: xvfb/x11vnc/websockify systemd units
  *   - [ ] BE-13: daemon-reload (lands with BE-12 — no-op without it)
  *
@@ -334,6 +334,86 @@ echo "[\$(date -u +%FT%TZ)] setup.sh starting (user=\$USER_ID vm=\$VM_NAME)"
 } || echo "[\$(date -u +%FT%TZ)] WARN: BE-7 (browser-relay-server.js + check-skill-updates.sh + cron) partial failure — browser-relay NOT reconciler-healed (Chrome extension feature degraded; operator fleet-push to recover); check-skill-updates cron skipped (pip-package drift accumulates over time)"
 
 # ════════════════════════════════════════════════════════════════════════
+# §1.18 BEST_EFFORT [BE-11]: install npm-global packages
+#       @worldcoin/agentkit-cli@0.1.3 + mcporter + usecomputer
+# ════════════════════════════════════════════════════════════════════════
+# These three npm globals are SUPPOSED to be on the snapshot per
+# CLAUDE.md "Snapshot Creation Process" §9 + snapshot-bake-requirements
+# doc §9, but the 2026-05-14 probe found them MISSING on BOTH the pure
+# snapshot (vm-944, cv=0) AND a fully-reconciled paying customer's VM
+# (vm-050, cv=95). configureOpenClaw's existing install commands at
+# lib/ssh.ts:7047 (agentkit-cli, parallel block) and lib/ssh.ts:7109
+# (usecomputer) use \`|| true\` which silently swallowed every install
+# failure for the lifetime of the fleet. mcporter has NO explicit
+# install at all — line 5583 just says "mcporter is pre-installed
+# globally" which is empirically false.
+#
+# BE-11 closes the gap: verify-after-install, no \`|| true\` masking,
+# WARN visibility into partial failures. The reconciler does NOT cover
+# these (stepNpmPinDrift only handles @bankr/cli + openclaw per
+# lib/vm-reconcile.ts:2643) so cloud-init is the only deploy path
+# besides manual fleet-push.
+#
+# What breaks if BE-11 fails:
+#   - mcporter: agent can't call ANY MCP server. The clawlancer
+#     SKILL.md (committed in BE-8) instructs the agent to use
+#     \`mcporter call clawlancer.<tool>\` everywhere — without mcporter
+#     installed, every Clawlancer-marketplace interaction fails.
+#   - @worldcoin/agentkit-cli@0.1.3: AgentBook registration impossible.
+#   - usecomputer: dispatch mode (browser automation) broken.
+#
+# CHAIN DISCIPLINE: rc-accumulator pattern inside the openclaw user's
+# bash -lc. Each install (a) checks idempotency via \`npm ls -g\`, (b)
+# wraps the install in \`timeout 180\` to bound the worst-case duration,
+# (c) verifies the package is installed after the install command
+# completes. Failures accumulate to rc; terminal \`[ "\$rc" = "0" ]\`
+# gates the inner bash exit. With \`set -e\` suspended inside the
+# enclosing \`{ } || handler\` (per Bug #1 audit), this is the only
+# pattern that correctly fires the WARN on any single-package failure.
+#
+# Runs as openclaw user (sudo -u + bash -lc): -l sources .bashrc which
+# loads NVM; the inner explicit NVM_DIR + nvm.sh source is belt-and-
+# suspenders defense against stale .bashrc that doesn't auto-load NVM.
+{ sudo -u openclaw bash -lc '
+    export NVM_DIR="\$HOME/.nvm"
+    [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
+
+    rc=0
+
+    # @worldcoin/agentkit-cli@0.1.3 — version-pinned (matches
+    # lib/ssh.ts:7047). Pinning matters: a future-version tarball
+    # might be unpublished from the npm registry; the pin makes the
+    # install reproducible across re-runs.
+    if ! npm ls -g @worldcoin/agentkit-cli --depth=0 2>/dev/null | grep -q "@worldcoin/agentkit-cli@0.1.3"; then
+      timeout 180 npm install -g @worldcoin/agentkit-cli@0.1.3 >/dev/null 2>&1 || rc=1
+      npm ls -g @worldcoin/agentkit-cli --depth=0 2>/dev/null | grep -q "@worldcoin/agentkit-cli@" || rc=1
+    fi
+
+    # mcporter — unpinned (matches the lib/ssh.ts implicit-install
+    # assumption; the SSH path has no explicit install, just the
+    # incorrect "pre-installed globally" comment).
+    if ! npm ls -g mcporter --depth=0 2>/dev/null | grep -q "mcporter@"; then
+      timeout 180 npm install -g mcporter >/dev/null 2>&1 || rc=1
+      npm ls -g mcporter --depth=0 2>/dev/null | grep -q "mcporter@" || rc=1
+    fi
+
+    # usecomputer — unpinned (matches lib/ssh.ts:7109). Post-install
+    # we chmod +x the prebuilt linux-x64 binary because npm does NOT
+    # set the executable bit on prebuilt binaries (matches lib/ssh.ts:
+    # 7110-7113).
+    if ! npm ls -g usecomputer --depth=0 2>/dev/null | grep -q "usecomputer@"; then
+      timeout 180 npm install -g usecomputer >/dev/null 2>&1 || rc=1
+      npm ls -g usecomputer --depth=0 2>/dev/null | grep -q "usecomputer@" || rc=1
+      NODE_VER=\$(node --version)
+      UC_BIN="\$HOME/.nvm/versions/node/\${NODE_VER}/lib/node_modules/usecomputer/dist/linux-x64/usecomputer"
+      [ -f "\$UC_BIN" ] && chmod +x "\$UC_BIN" || true
+    fi
+
+    [ "\$rc" = "0" ]
+  '
+} || echo "[\$(date -u +%FT%TZ)] WARN: BE-11 (npm install @worldcoin/agentkit-cli + mcporter + usecomputer) partial failure — NOT reconciler-healed (stepNpmPinDrift only covers @bankr/cli + openclaw). Without mcporter: ALL MCP server calls (Clawlancer marketplace, custom MCPs) fail. Without agentkit-cli: AgentBook registration impossible. Without usecomputer: dispatch/browser mode broken. Manual fleet-push to recover."
+
+# ════════════════════════════════════════════════════════════════════════
 # §1.32 CRITICAL: RESTART gateway + verify /health 200 within 60s
 # ════════════════════════════════════════════════════════════════════════
 # CRITICAL: \`systemctl --user RESTART\` (not start). The snapshot's linger
@@ -415,17 +495,19 @@ echo "OPENCLAW_CONFIGURE_DONE"
 
 # ── Day 8b BEST_EFFORT steps land incrementally — see docstring ───────
 # Done: BE-1 (linger + sshd OOM-protect), BE-7 (browser-relay-server.js
-# + check-skill-updates.sh + cron).
+# + check-skill-updates.sh + cron), BE-8 (agent-status + clawlancer
+# SKILL.md via repo check-in), BE-11 (npm install agentkit-cli +
+# mcporter + usecomputer).
 # Pending: BE-2 (mkdir defenses), BE-3 (privacy wipe), BE-4 (stop pre-
 # existing gateway — under review, likely redundant), BE-5 (skill
-# clones), BE-6 (@bankr/cli), BE-8 (agent-status + clawlancer SKILL.md),
-# BE-9 (mcporter clawlancer config), BE-10 (pip), BE-11 (npm),
-# BE-12 (xvfb/x11vnc/websockify systemd units), BE-13 (daemon-reload —
-# lands with BE-12 since it's a no-op without unit-file changes).
+# clones), BE-6 (@bankr/cli — reconciler heals via stepNpmPinDrift),
+# BE-9 (mcporter clawlancer config), BE-10 (pip), BE-12 (xvfb/x11vnc/
+# websockify systemd units), BE-13 (daemon-reload — lands with BE-12
+# since it's a no-op without unit-file changes).
 # All follow the BEST_EFFORT pattern:
 #   { ... } || echo "[\$(date -u +%FT%TZ)] WARN: BE-N (label) — recovery"
 
-echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 + BE-7)"
+echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 + BE-7 + BE-11)"
 exit 0
 `;
 }
@@ -460,4 +542,12 @@ export const SETUP_SH_SENTINELS = {
   BE7_CHECK_SKILL_UPDATES_PATH: "/home/openclaw/scripts/check-skill-updates.sh",
   /** BE-7: cron-line fragment for the daily 3am UTC skill-updates check. */
   BE7_CRON_FRAGMENT: "0 3 * * * /bin/bash $HOME/scripts/check-skill-updates.sh",
+  /** BE-11: pinned agentkit-cli version (must match lib/ssh.ts:7047). */
+  BE11_AGENTKIT_PIN: "@worldcoin/agentkit-cli@0.1.3",
+  /** BE-11: mcporter install sentinel — the literal install argument. */
+  BE11_MCPORTER: "npm install -g mcporter",
+  /** BE-11: usecomputer install sentinel. */
+  BE11_USECOMPUTER: "npm install -g usecomputer",
+  /** BE-11: usecomputer binary chmod for prebuilt linux-x64 binary. */
+  BE11_USECOMPUTER_CHMOD: "chmod +x \"$UC_BIN\"",
 } as const;

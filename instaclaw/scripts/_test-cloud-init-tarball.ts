@@ -2225,6 +2225,137 @@ async function test16_BuildSetupSh() {
     be7Block.includes("install -o openclaw -g openclaw -m 755 \\\n         /tmp/instaclaw-config/home/openclaw/scripts/check-skill-updates.sh"),
     "BE-7 mode: check-skill-updates.sh uses -m 755",
   );
+
+  // ── Day 8b BE-11 assertions ───────────────────────────────────────
+  // BE-11 installs three npm globals via sudo -u openclaw bash -lc.
+  // The rc-accumulator pattern is the load-bearing primitive (Bug #1
+  // audit established that `set -e` is suspended inside `{ } || handler`
+  // so naive newline-separated installs would silently swallow
+  // intermediate failures).
+
+  // 22. BE-11 ordering: between §1.10 (BE-7) and §1.32 CRITICAL.
+  const idxBE11 = sh.indexOf("§1.18 BEST_EFFORT [BE-11]");
+  const idx110b = sh.indexOf("§1.10 BEST_EFFORT [BE-7]");
+  // idx132Critical already declared above
+  assert(
+    idxBE11 > 0 && idx110b > 0 && idx132Critical > 0,
+    `BE-11, §1.10, §1.32 markers all present (BE-11=${idxBE11}, §1.10=${idx110b}, §1.32=${idx132Critical})`,
+  );
+  assert(
+    idxBE11 > idx110b && idxBE11 < idx132Critical,
+    "BE-11 block sits between §1.10 BEST_EFFORT and §1.32 CRITICAL",
+  );
+
+  // 23. BE-11 uses BEST_EFFORT pattern (no exit 1, no touch failed).
+  const be11Block = sh.slice(idxBE11, idx132Critical);
+  assert(
+    be11Block.includes('|| echo "[$(date -u +%FT%TZ)] WARN: BE-11'),
+    "BE-11 uses BEST_EFFORT `|| echo WARN` pattern",
+  );
+  assert(
+    !be11Block.includes("touch /tmp/.instaclaw-failed"),
+    "BE-11 does NOT use CRITICAL `touch /tmp/.instaclaw-failed` pattern",
+  );
+  assert(
+    !be11Block.includes("exit 1"),
+    "BE-11 does NOT contain `exit 1` (BEST_EFFORT never aborts setup)",
+  );
+
+  // 24. BE-11 runs as openclaw user via sudo -u + bash -lc (so NVM is
+  //     loaded by the login shell init).
+  assert(
+    /sudo -u openclaw bash -lc '/.test(be11Block),
+    "BE-11 wraps installs in `sudo -u openclaw bash -lc` for NVM context",
+  );
+
+  // 25. BE-11 explicitly sources NVM as belt-and-suspenders (defense
+  //     against stale .bashrc that doesn't auto-load NVM).
+  assert(
+    be11Block.includes('export NVM_DIR="$HOME/.nvm"'),
+    "BE-11 explicitly exports NVM_DIR before sourcing nvm.sh",
+  );
+  assert(
+    be11Block.includes('[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"'),
+    "BE-11 explicitly sources nvm.sh (defense against stale .bashrc)",
+  );
+
+  // 26. Bug #1 fix verification: BE-11 uses rc-accumulator pattern.
+  //     The for-loop / if-block pattern can't use && chaining cleanly,
+  //     so we use rc=0 / `|| rc=1` per command / terminal `[ "$rc" = "0" ]`.
+  assert(
+    /^\s+rc=0$/m.test(be11Block),
+    "BE-11: rc-accumulator initialized to 0 (Bug #1 fix)",
+  );
+  assert(
+    be11Block.includes('|| rc=1'),
+    "BE-11: install failures captured into rc=1 (Bug #1 fix)",
+  );
+  assert(
+    be11Block.includes('[ "$rc" = "0" ]'),
+    "BE-11: terminal rc check gates the inner-bash exit (Bug #1 fix)",
+  );
+
+  // 27. BE-11 installs all 3 packages with the correct pin status.
+  //     agentkit-cli is pinned at 0.1.3 (matches lib/ssh.ts:7047); mcporter
+  //     and usecomputer are unpinned (matches the SSH path).
+  assert(
+    be11Block.includes("@worldcoin/agentkit-cli@0.1.3"),
+    "BE-11: agentkit-cli pinned to 0.1.3 (byte-parity with lib/ssh.ts:7047)",
+  );
+  assert(
+    be11Block.includes("npm install -g mcporter"),
+    "BE-11: installs mcporter unpinned",
+  );
+  assert(
+    be11Block.includes("npm install -g usecomputer"),
+    "BE-11: installs usecomputer unpinned",
+  );
+
+  // 28. BE-11 wraps every npm install in `timeout 180` to bound
+  //     worst-case duration. Without this, a hung install would block
+  //     the entire setup.sh past Vercel's 60s function-maxDuration
+  //     ceiling on the cloud-init endpoint (which is independent of
+  //     setup.sh runtime, but operator-visible hangs are still bad).
+  const timeoutMatches = be11Block.match(/timeout 180 npm install/g);
+  assert(
+    (timeoutMatches?.length ?? 0) === 3,
+    `BE-11: each npm install wrapped in 'timeout 180' (found ${timeoutMatches?.length ?? 0} of 3)`,
+  );
+
+  // 29. BE-11 verify-after-install for each package. Without this,
+  //     a silent install failure (timeout, network blip, registry 404)
+  //     would leave rc=0 and no WARN. The verify reruns npm ls -g and
+  //     grep-q's the package name; failure pushes rc=1 via `|| rc=1`.
+  //
+  // Match the verify line by anchoring on the `|| rc=1` suffix that
+  // distinguishes the post-install verify from the idempotency check
+  // (the idempotency check sits inside `if ! ...; then`).
+  const agentkitVerify = be11Block.match(/npm ls -g @worldcoin\/agentkit-cli --depth=0 2>\/dev\/null \| grep -q "@worldcoin\/agentkit-cli@" \|\| rc=1/g);
+  const mcporterVerify = be11Block.match(/npm ls -g mcporter --depth=0 2>\/dev\/null \| grep -q "mcporter@" \|\| rc=1/g);
+  const usecomputerVerify = be11Block.match(/npm ls -g usecomputer --depth=0 2>\/dev\/null \| grep -q "usecomputer@" \|\| rc=1/g);
+  assert(
+    (agentkitVerify?.length ?? 0) === 1,
+    "BE-11: agentkit-cli has a post-install verify (grep | rc=1)",
+  );
+  assert(
+    (mcporterVerify?.length ?? 0) === 1,
+    "BE-11: mcporter has a post-install verify (grep | rc=1)",
+  );
+  assert(
+    (usecomputerVerify?.length ?? 0) === 1,
+    "BE-11: usecomputer has a post-install verify (grep | rc=1)",
+  );
+
+  // 30. BE-11 chmods +x the usecomputer binary (npm doesn't set
+  //     executable bit on prebuilt binaries — matches lib/ssh.ts:7113).
+  assert(
+    be11Block.includes('UC_BIN="$HOME/.nvm/versions/node/${NODE_VER}/lib/node_modules/usecomputer/dist/linux-x64/usecomputer"'),
+    "BE-11: derives UC_BIN path for the usecomputer prebuilt binary",
+  );
+  assert(
+    be11Block.includes('[ -f "$UC_BIN" ] && chmod +x "$UC_BIN"'),
+    "BE-11: chmods +x the usecomputer binary (npm doesn't set it on prebuilt)",
+  );
 }
 
 async function test17_BuildCloudInitTarball() {
