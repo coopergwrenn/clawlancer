@@ -21,6 +21,7 @@ import {
   buildAgentKey,
   buildAuthProfilesJsonForTarball,
   buildBootstrapMd,
+  buildCloudInitTarball,
   buildDotEnv,
   buildIdentityMdForTarball,
   buildMemoryMdForTarball,
@@ -34,6 +35,7 @@ import {
   validateTarballParams,
   type TarballParams,
 } from "../lib/cloud-init-tarball";
+import { SETUP_SH_SENTINELS, buildSetupSh } from "../lib/cloud-init-setup-sh";
 import {
   WORKSPACE_BOOTSTRAP_SHORT,
   buildAuthProfilesJson,
@@ -45,6 +47,10 @@ import {
   buildWalletMd,
   buildWorldIdMd,
 } from "../lib/ssh";
+import { execFileSync, spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 // ── helpers ──
 
@@ -1828,6 +1834,431 @@ async function test15_FullTarballByteParityIntegration() {
   }
 }
 
+async function test16_BuildSetupSh() {
+  console.log("\n─── TEST 16: buildSetupSh (Day 8a CRITICAL steps) ──");
+
+  const sh = buildSetupSh(validParams);
+
+  // 1. Output is a non-empty string starting with the shebang. The
+  //    bootstrap invokes `bash setup.sh`, but the shebang is industry
+  //    standard + tells maintainers what shell this targets.
+  assert(typeof sh === "string" && sh.length > 0, "buildSetupSh returns non-empty string");
+  assert(sh.startsWith("#!/bin/bash\n"), "starts with #!/bin/bash shebang");
+  assert(sh.length > 2_000, `buildSetupSh produces substantial bash (got ${sh.length} bytes)`);
+
+  // 2. Every sentinel exported for Rule 23 verification is present.
+  //    These are the load-bearing markers for the script — drift here
+  //    means the script is incomplete OR a refactor silently removed a
+  //    safety primitive.
+  for (const [name, marker] of Object.entries(SETUP_SH_SENTINELS)) {
+    assert(sh.includes(marker), `SETUP_SH_SENTINELS.${name} present in output`);
+  }
+
+  // 3. §17b regression guard — gateway must be `restart`'d, not
+  //    `start`'d. Snapshot's linger boots openclaw-gateway with the
+  //    placeholder config; `start` is a no-op. See snapshot-bake-
+  //    requirements §17b.9 + setup.sh §1.32.
+  assert(
+    sh.includes("systemctl --user restart openclaw-gateway"),
+    "§17b: gateway is `restart`'d (not `start`'d) to override placeholder boot",
+  );
+  assert(
+    !sh.match(/systemctl --user start openclaw-gateway\b/),
+    "§17b: no `systemctl --user start openclaw-gateway` lingering anywhere",
+  );
+
+  // 4. Params are substituted into the bash. validateTarballParams
+  //    already rejects shell-unsafe chars, but verify the splice
+  //    actually fired (i.e. the template literal wasn't left raw).
+  assert(sh.includes(`USER_ID="${validParams.userId}"`), "USER_ID env spliced");
+  assert(sh.includes(`VM_NAME="${validParams.vmName}"`), "VM_NAME env spliced");
+  assert(sh.includes(`CALLBACK_TOKEN="${validParams.callbackToken}"`), "CALLBACK_TOKEN spliced");
+  assert(sh.includes(`NEXTAUTH_URL="${validParams.nextauthUrl}"`), "NEXTAUTH_URL spliced");
+  assert(
+    sh.includes(`AGENTBOOK_ADDRESS="${validParams.agentbookAddress}"`),
+    "AGENTBOOK_ADDRESS spliced",
+  );
+
+  // 5. nextauthUrl trailing-slash stripping (§1 of buildSetupSh).
+  const trailingSlashParams: TarballParams = {
+    ...validParams,
+    nextauthUrl: "https://instaclaw.io///",
+  };
+  const shTrim = buildSetupSh(trailingSlashParams);
+  assert(
+    shTrim.includes(`NEXTAUTH_URL="https://instaclaw.io"`),
+    "nextauthUrl trailing slashes stripped before splice",
+  );
+
+  // 6. Callback URL path sentinel + concatenation shape.
+  assert(
+    sh.includes(SETUP_SH_SENTINELS.CALLBACK_PATH),
+    "callback URL path present (full URL assembled at runtime as $NEXTAUTH_URL$CALLBACK_PATH)",
+  );
+
+  // 7. Determinism — same params → byte-identical bash output.
+  const sh1 = buildSetupSh(validParams);
+  const sh2 = buildSetupSh(validParams);
+  assert(sh1 === sh2, "buildSetupSh is deterministic for same params");
+
+  // 8. bash -n syntax check — catches missing escapes (e.g. an
+  //    unescaped `$` collapsing into a TS template substitution that
+  //    produces invalid bash). Writes to a tmp file and lets bash
+  //    parse it.
+  const tmpPath = path.join(tmpdir(), `_test-setup-sh-${process.pid}.sh`);
+  writeFileSync(tmpPath, sh, "utf-8");
+  const bashCheck = spawnSync("bash", ["-n", tmpPath], { encoding: "utf-8" });
+  assert(
+    bashCheck.status === 0,
+    `bash -n syntax check passes (status=${bashCheck.status}; stderr=${bashCheck.stderr.trim().slice(0, 400)})`,
+  );
+
+  // 9. bash -n on the edge_city variant exercises the EDGEOS_BEARER
+  //    branch + worldid branch. Same syntactic shape, different
+  //    spliced values.
+  const edgeShPath = path.join(tmpdir(), `_test-setup-sh-edge-${process.pid}.sh`);
+  writeFileSync(edgeShPath, buildSetupSh(edgeCityParams), "utf-8");
+  const edgeBashCheck = spawnSync("bash", ["-n", edgeShPath], { encoding: "utf-8" });
+  assert(
+    edgeBashCheck.status === 0,
+    `bash -n passes for edge_city variant (status=${edgeBashCheck.status}; stderr=${edgeBashCheck.stderr.trim().slice(0, 400)})`,
+  );
+
+  // 10. shellcheck — if installed, run for stricter lint (informational;
+  //     bash -n is the gating check, shellcheck warnings on bash internals
+  //     like SC2086 are tolerable). We only fail on parse errors.
+  try {
+    execFileSync("which", ["shellcheck"], { stdio: "ignore" });
+    const sc = spawnSync(
+      "shellcheck",
+      ["-s", "bash", "-S", "error", tmpPath],
+      { encoding: "utf-8" },
+    );
+    assert(
+      sc.status === 0 || sc.status === null,
+      `shellcheck (errors only) passes (status=${sc.status}; output=${sc.stdout.trim().slice(0, 400)})`,
+    );
+  } catch {
+    console.log("  ◦ shellcheck not installed — skipping strict lint pass");
+  }
+}
+
+async function test17_BuildCloudInitTarball() {
+  console.log("\n─── TEST 17: buildCloudInitTarball assembler integration ──");
+
+  // ── Case A: validParams (all_inclusive, no partner, no Gmail, no
+  //    World ID, bankr-overlay only). Smallest entry set. 10 entries.
+  {
+    const buf = await streamToBuffer(buildCloudInitTarball(validParams));
+    const files = await unpackTarball(buf);
+
+    const expectedPaths = new Set([
+      // chunk-1 (collectPartialEntries)
+      "home/openclaw/.openclaw/agents/main/agent/auth-profiles.json",
+      "home/openclaw/.openclaw/.env",
+      "home/openclaw/.openclaw/workspace/IDENTITY.md",
+      "home/openclaw/.openclaw/workspace/WALLET.md",
+      "home/openclaw/.openclaw/wallet/agent.key",
+      "overlays/bankr-overlay.md",
+      // chunk-2 wrappers + setup.sh
+      "home/openclaw/.openclaw/openclaw.json",
+      "home/openclaw/.openclaw/workspace/BOOTSTRAP.md",
+      "home/openclaw/.openclaw/agents/main/agent/system-prompt.md",
+      "setup.sh",
+    ]);
+    const actualPaths = new Set(files.keys());
+
+    // Diff before equality so failures are debuggable.
+    for (const p of expectedPaths) {
+      assert(actualPaths.has(p), `[validParams] expected path present: ${p}`);
+    }
+    for (const p of actualPaths) {
+      assert(expectedPaths.has(p), `[validParams] no unexpected path: ${p}`);
+    }
+    assert(
+      actualPaths.size === expectedPaths.size,
+      `[validParams] tarball entry count: expected ${expectedPaths.size}, got ${actualPaths.size}`,
+    );
+
+    // Gmail-absent → USER.md not emitted.
+    assert(
+      !actualPaths.has("home/openclaw/.openclaw/workspace/USER.md"),
+      "[validParams] USER.md NOT emitted when gmailProfileSummary=null",
+    );
+    // Gmail-absent → MEMORY.md not emitted at either path.
+    for (const memPath of MEMORY_MD_PATHS) {
+      assert(
+        !actualPaths.has(memPath),
+        `[validParams] ${memPath} NOT emitted when gmailProfileSummary=null`,
+      );
+    }
+    // No partner → no edge_city / consensus overlays.
+    assert(
+      !actualPaths.has("overlays/soul-edge-stub.md"),
+      "[validParams] no soul-edge-stub when partner=null",
+    );
+    assert(
+      !actualPaths.has("overlays/edge-instaclaw-overlay.md"),
+      "[validParams] no edge-instaclaw-overlay when partner=null",
+    );
+    // No worldIdNullifier → no WORLD_ID.md.
+    assert(
+      !actualPaths.has("home/openclaw/.openclaw/workspace/WORLD_ID.md"),
+      "[validParams] no WORLD_ID.md when worldIdNullifier=null",
+    );
+
+    // setup.sh mode pin.
+    const setupShEntry = files.get("setup.sh")!;
+    assert(setupShEntry.mode === 0o755, `setup.sh mode === 0o755 (got ${setupShEntry.mode.toString(8)})`);
+    assert(
+      setupShEntry.body === buildSetupSh(validParams),
+      "setup.sh body in tarball === buildSetupSh(p) (byte-parity through packer)",
+    );
+
+    // Mode pins on the high-sensitivity files.
+    assert(
+      files.get("home/openclaw/.openclaw/openclaw.json")!.mode === 0o600,
+      "openclaw.json mode === 0o600",
+    );
+    assert(
+      files.get("home/openclaw/.openclaw/.env")!.mode === 0o600,
+      ".env mode === 0o600",
+    );
+    assert(
+      files.get("home/openclaw/.openclaw/agents/main/agent/auth-profiles.json")!.mode === 0o600,
+      "auth-profiles.json mode === 0o600",
+    );
+    assert(
+      files.get("home/openclaw/.openclaw/wallet/agent.key")!.mode === 0o600,
+      "agent.key mode === 0o600",
+    );
+    // Default mode (0o644) on the .md files.
+    assert(
+      files.get("home/openclaw/.openclaw/workspace/IDENTITY.md")!.mode === 0o644,
+      "IDENTITY.md mode === 0o644",
+    );
+    assert(
+      files.get("home/openclaw/.openclaw/workspace/BOOTSTRAP.md")!.mode === 0o644,
+      "BOOTSTRAP.md mode === 0o644",
+    );
+    assert(
+      files.get("home/openclaw/.openclaw/agents/main/agent/system-prompt.md")!.mode === 0o644,
+      "system-prompt.md mode === 0o644",
+    );
+
+    // openclaw.json is JSON-parseable.
+    // NOTE: We can't byte-compare against a fresh buildOpenClawJsonForTarball
+    // call here because buildOpenClawConfig captures `new Date().toISOString()`
+    // into a `lastRunAt` field (it's not pure on its inputs — this is shared
+    // SSH-path behavior; Phase 1B-2 byte-compare will need to redact that
+    // field on both sides). Structural check is the right gate.
+    const openclawJson = JSON.parse(
+      files.get("home/openclaw/.openclaw/openclaw.json")!.body,
+    ) as Record<string, unknown>;
+    assert(
+      typeof openclawJson === "object" && openclawJson !== null,
+      "openclaw.json parses to an object",
+    );
+    assert(
+      typeof (openclawJson.gateway as Record<string, unknown> | undefined)?.auth ===
+        "object",
+      "openclaw.json contains gateway.auth (sanity: not an empty object)",
+    );
+
+    // Byte-parity through the assembler for the chunk-2 wrappers that
+    // ARE pure on their inputs (test15 already covers chunk-1; this
+    // completes coverage). openclaw.json is non-pure → skipped above.
+    assert(
+      files.get("home/openclaw/.openclaw/workspace/BOOTSTRAP.md")!.body ===
+        buildBootstrapMd(validParams),
+      "BOOTSTRAP.md in tarball === buildBootstrapMd(p)",
+    );
+    assert(
+      files.get("home/openclaw/.openclaw/agents/main/agent/system-prompt.md")!.body ===
+        buildSystemPromptForTarball(validParams),
+      "system-prompt.md in tarball === buildSystemPromptForTarball(p)",
+    );
+  }
+
+  // ── Case B: edge_city + Gmail + World ID + Bankr token + OpenAI key.
+  //    Max entry set. 17 entries (5 chunk-1 universal + 1 WORLD_ID + 4
+  //    partner overlays + 6 chunk-2 incl. USER.md + double-write MEMORY.md
+  //    + 1 setup.sh).
+  {
+    const fullParams: TarballParams = {
+      ...edgeCityParams,
+      gmailProfileSummary: "User runs an Edge City community. Prefers concise updates.",
+      bankrTokenAddress: "0xtoken0123456789",
+      bankrTokenSymbol: "TEST",
+      bankrTokenName: "TestCoin",
+      openaiApiKey: "sk-proj-openai-test-mno",
+    };
+    const buf = await streamToBuffer(buildCloudInitTarball(fullParams));
+    const files = await unpackTarball(buf);
+
+    const expectedPaths = new Set([
+      // chunk-1 universal
+      "home/openclaw/.openclaw/agents/main/agent/auth-profiles.json",
+      "home/openclaw/.openclaw/.env",
+      "home/openclaw/.openclaw/workspace/IDENTITY.md",
+      "home/openclaw/.openclaw/workspace/WALLET.md",
+      "home/openclaw/.openclaw/wallet/agent.key",
+      // chunk-1 conditional
+      "home/openclaw/.openclaw/workspace/WORLD_ID.md",
+      // chunk-1 overlays (bankr universal; soul-edge + soul-consensus +
+      // edge-instaclaw conditional on partner=edge_city)
+      "overlays/bankr-overlay.md",
+      "overlays/soul-edge-stub.md",
+      "overlays/soul-consensus-stub.md",
+      "overlays/edge-instaclaw-overlay.md",
+      // chunk-2 wrappers
+      "home/openclaw/.openclaw/openclaw.json",
+      "home/openclaw/.openclaw/workspace/BOOTSTRAP.md",
+      "home/openclaw/.openclaw/workspace/USER.md", // gmail present
+      "home/openclaw/.openclaw/agents/main/agent/system-prompt.md",
+      // MEMORY.md double-write
+      ...MEMORY_MD_PATHS,
+      // setup.sh
+      "setup.sh",
+    ]);
+    const actualPaths = new Set(files.keys());
+
+    for (const p of expectedPaths) {
+      assert(actualPaths.has(p), `[fullParams] expected path present: ${p}`);
+    }
+    for (const p of actualPaths) {
+      assert(expectedPaths.has(p), `[fullParams] no unexpected path: ${p}`);
+    }
+    assert(
+      actualPaths.size === 17,
+      `[fullParams] tarball entry count === 17 (got ${actualPaths.size})`,
+    );
+
+    // Both MEMORY.md copies hold the same body (the double-write should
+    // be byte-identical — the agent-dir copy is documented dead-weight
+    // tech debt, but we preserve byte-parity with the SSH path).
+    const memWorkspace = files.get(MEMORY_MD_PATHS[0])!.body;
+    const memAgentDir = files.get(MEMORY_MD_PATHS[1])!.body;
+    assert(
+      memWorkspace === memAgentDir,
+      "MEMORY.md double-write: workspace copy === agent-dir copy",
+    );
+    assert(
+      memWorkspace === buildMemoryMdForTarball(fullParams),
+      "MEMORY.md body === buildMemoryMdForTarball(p)",
+    );
+
+    // USER.md body matches its wrapper.
+    assert(
+      files.get("home/openclaw/.openclaw/workspace/USER.md")!.body ===
+        buildUserMdForTarball(fullParams),
+      "USER.md body === buildUserMdForTarball(p)",
+    );
+
+    // WORLD_ID.md body matches its wrapper.
+    assert(
+      files.get("home/openclaw/.openclaw/workspace/WORLD_ID.md")!.body ===
+        buildWorldIdMdForTarball(fullParams),
+      "WORLD_ID.md body === buildWorldIdMdForTarball(p)",
+    );
+
+    // setup.sh body byte-parity + mode pin.
+    assert(
+      files.get("setup.sh")!.body === buildSetupSh(fullParams),
+      "[fullParams] setup.sh body === buildSetupSh(p)",
+    );
+    assert(
+      files.get("setup.sh")!.mode === 0o755,
+      "[fullParams] setup.sh mode === 0o755",
+    );
+
+    // openclaw.json contains the byok auth shape (apiMode=byok →
+    // auth-profiles points at sk-ant-byok-test, not at the proxy
+    // gateway_token). Spot-check.
+    const authProfiles = JSON.parse(
+      files.get("home/openclaw/.openclaw/agents/main/agent/auth-profiles.json")!.body,
+    );
+    assert(
+      typeof authProfiles === "object" && authProfiles !== null,
+      "auth-profiles.json parses to an object",
+    );
+  }
+
+  // ── Case C: determinism — every entry except openclaw.json must be
+  //    byte-identical across back-to-back tarball builds. openclaw.json
+  //    drifts by `lastRunAt` (buildOpenClawConfig captures wall-clock at
+  //    call time — shared SSH-path behavior); we redact that field and
+  //    compare the remainder. Critical for Phase 1B-2's byte-compare
+  //    audit (cloud-init vs SSH path producing identical VM state).
+  {
+    const buf1 = await streamToBuffer(buildCloudInitTarball(edgeCityParams));
+    const buf2 = await streamToBuffer(buildCloudInitTarball(edgeCityParams));
+    const files1 = await unpackTarball(buf1);
+    const files2 = await unpackTarball(buf2);
+
+    assert(
+      files1.size === files2.size,
+      `determinism: entry counts match (got ${files1.size} vs ${files2.size})`,
+    );
+    for (const [path, entry1] of files1) {
+      const entry2 = files2.get(path);
+      assert(entry2 !== undefined, `determinism: ${path} present in both builds`);
+      if (!entry2) continue;
+      assert(
+        entry1.mode === entry2.mode,
+        `determinism: ${path} mode stable (got ${entry1.mode} vs ${entry2.mode})`,
+      );
+      if (path === "home/openclaw/.openclaw/openclaw.json") {
+        // wizard.lastRunAt is set to `new Date().toISOString()` inside
+        // buildOpenClawConfig (shared with the SSH path; not a cloud-init
+        // bug). Redact it before comparing — Phase 1B-2's byte-compare
+        // audit will need the same redaction on both sides.
+        const j1 = JSON.parse(entry1.body) as Record<string, unknown>;
+        const j2 = JSON.parse(entry2.body) as Record<string, unknown>;
+        const w1 = j1.wizard as Record<string, unknown> | undefined;
+        const w2 = j2.wizard as Record<string, unknown> | undefined;
+        if (w1) delete w1.lastRunAt;
+        if (w2) delete w2.lastRunAt;
+        assert(
+          JSON.stringify(j1) === JSON.stringify(j2),
+          "determinism: openclaw.json structurally identical (wizard.lastRunAt redacted)",
+        );
+      } else {
+        assert(
+          entry1.body === entry2.body,
+          `determinism: ${path} body byte-identical`,
+        );
+      }
+    }
+  }
+
+  // ── Case D: validation rejection — buildCloudInitTarball MUST invoke
+  //    validateTarballParams. Stream creation should throw before any
+  //    bytes flow. Use a fixture with a vmName that fails VM_NAME_RE
+  //    (the validator-enforced regex for any field spliced into the
+  //    setup.sh template). userName has no shell-safety check because
+  //    it's JSON-encoded everywhere; vmName does because it's spliced.
+  {
+    const badParams: TarballParams = {
+      ...validParams,
+      vmName: "bad name with spaces",
+    };
+    let threw = false;
+    let errMsg = "";
+    try {
+      buildCloudInitTarball(badParams);
+    } catch (e) {
+      threw = true;
+      errMsg = e instanceof Error ? e.message : String(e);
+    }
+    assert(threw, "buildCloudInitTarball throws on validation failure");
+    assert(
+      errMsg.includes("vmName"),
+      `error message names the failing field (got: ${errMsg})`,
+    );
+  }
+}
+
 async function main() {
   console.log("════════════════════════════════════════════════════════");
   console.log("cloud-init-tarball.ts foundation smoke test");
@@ -1847,6 +2278,8 @@ async function main() {
   await test13_ChunkOneByteParity();
   await test14_AllMissingEnvVars();
   await test15_FullTarballByteParityIntegration();
+  await test16_BuildSetupSh();
+  await test17_BuildCloudInitTarball();
   await test5_PerFileBuildersDirect();
 
   console.log("\n════════════════════════════════════════════════════════");

@@ -51,6 +51,7 @@ import {
   SOUL_STUB_CONSENSUS,
   SOUL_STUB_EDGE,
 } from "./partner-content";
+import { buildSetupSh } from "./cloud-init-setup-sh";
 import {
   BANKR_SKILL_PATCH_DIRECTIVE,
   WORKSPACE_BOOTSTRAP_SHORT,
@@ -1075,30 +1076,98 @@ export function packPartialTarball(p: TarballParams): Readable {
 export { packTarGz };
 export type { TarEntry };
 
-// ── buildCloudInitTarball entry point — pending Day 8a ──────────────────
-//
-// The /api/vm/cloud-init-config endpoint will call a single function
-// that assembles every entry the tarball needs. That function is the
-// only remaining piece of Day 4-7 work. Shape:
-//
-//   export function buildCloudInitTarball(p: TarballParams): Readable {
-//     validateTarballParams(p);
-//     return packTarGz([
-//       ...collectPartialEntries(p),
-//       { path: "home/openclaw/.openclaw/openclaw.json",
-//         body: JSON.stringify(buildOpenClawJsonForTarball(p), null, 2),
-//         mode: 0o600 },
-//       { path: "home/openclaw/.openclaw/workspace/BOOTSTRAP.md",
-//         body: buildBootstrapMd(p) },
-//       ...(buildUserMdForTarball(p) ? [{ path: ".../USER.md", body: ... }] : []),
-//       { path: ".../agent/system-prompt.md", body: buildSystemPromptForTarball(p) },
-//       ...(buildMemoryMdForTarball(p)
-//             ? MEMORY_MD_PATHS.map(path => ({ path, body: buildMemoryMdForTarball(p)! }))
-//             : []),
-//       { path: "setup.sh", body: buildSetupSh(p), mode: 0o755 },
-//     ]);
-//   }
-//
-// Gated on the post-audit fixes landing (Fixes 1-5 from
-// docs/cloud-init-audit-2026-05-14.md) — Day 8a should not assemble a
-// tarball wired up with bug-laden wrappers.
+// ════════════════════════════════════════════════════════════════════════
+// §7. buildCloudInitTarball — assembled entry point
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * Build the complete cloud-init tarball as a streaming tar.gz. This is
+ * the single function `/api/vm/cloud-init-config` (Day 9-10) will call
+ * to produce the response body.
+ *
+ * Assembles entries in three groups:
+ *   - collectPartialEntries (chunk 1): auth-profiles.json, .env,
+ *     IDENTITY.md, WALLET.md, WORLD_ID.md (conditional), agent.key,
+ *     partner overlays (bankr universal; soul-edge/consensus/edge-
+ *     instaclaw conditional).
+ *   - Chunk 2 wrappers: openclaw.json, BOOTSTRAP.md, USER.md (cond),
+ *     system-prompt.md, MEMORY.md (cond, double-write per MEMORY_MD_PATHS).
+ *   - setup.sh: the bash that runs post-extraction (Day 8a CRITICAL-only).
+ *
+ * Entry counts (verified by test16):
+ *   - no-partner + no-Gmail + no-World-ID:  10 entries
+ *   - edge_city + Gmail + World-ID:         17 entries
+ *
+ * Per-entry mode pinned + tar mtime pinned (TARBALL_FIXED_MTIME) so
+ * the output is byte-deterministic for the same inputs. Phase 1B-2's
+ * byte-compare audit relies on this.
+ *
+ * The endpoint should consume this as a Readable and pipe to the HTTP
+ * response. tar-stream's streaming model means we never buffer the
+ * entire tarball in memory; entries flow through pack → gzip → response.
+ */
+export function buildCloudInitTarball(p: TarballParams): Readable {
+  validateTarballParams(p);
+
+  const entries: TarEntry[] = [];
+
+  // ── Chunk 1: auth-profiles, .env, IDENTITY/WALLET/WORLD_ID,
+  //    agent.key, partner overlays ──
+  entries.push(...collectPartialEntries(p));
+
+  // ── Chunk 2 wrappers ──
+
+  // Wrapper #5: openclaw.json (object → JSON string with 2-space indent
+  // matching configureOpenClaw at lib/ssh.ts:5062). Mode 0o600 — contains
+  // gateway.auth.token + channels.telegram.botToken.
+  entries.push({
+    path: "home/openclaw/.openclaw/openclaw.json",
+    body: JSON.stringify(buildOpenClawJsonForTarball(p), null, 2),
+    mode: 0o600,
+  });
+
+  // Wrapper #1: BOOTSTRAP.md (always emit; conditional content per Gmail)
+  entries.push({
+    path: "home/openclaw/.openclaw/workspace/BOOTSTRAP.md",
+    body: buildBootstrapMd(p),
+  });
+
+  // Wrapper #2: USER.md — null = caller omits entry (matches SSH path
+  // not writing USER.md in Gmail-absent branch).
+  const userMd = buildUserMdForTarball(p);
+  if (userMd !== null) {
+    entries.push({
+      path: "home/openclaw/.openclaw/workspace/USER.md",
+      body: userMd,
+    });
+  }
+
+  // Wrapper #3: system-prompt.md (always emit; documented dead-weight
+  // per file's own warning but ship for byte-parity with SSH path).
+  entries.push({
+    path: "home/openclaw/.openclaw/agents/main/agent/system-prompt.md",
+    body: buildSystemPromptForTarball(p),
+  });
+
+  // Wrapper #4: MEMORY.md double-write (workspace + agent-dir). Both
+  // paths receive the same content. The agent-dir copy is documented
+  // tech debt (§5b(e) in contracts) — fossilized at provision, never
+  // read at runtime; preserved for byte-parity with configureOpenClaw.
+  const memoryMd = buildMemoryMdForTarball(p);
+  if (memoryMd !== null) {
+    for (const memoryPath of MEMORY_MD_PATHS) {
+      entries.push({ path: memoryPath, body: memoryMd });
+    }
+  }
+
+  // ── setup.sh (Day 8a: CRITICAL steps 5/6/9/32/38 only) ──
+  // Mode 0o755 — must be executable. Bootstrap invokes
+  // `bash /tmp/instaclaw-config/setup.sh` after extraction.
+  entries.push({
+    path: "setup.sh",
+    body: buildSetupSh(p),
+    mode: 0o755,
+  });
+
+  return packTarGz(entries);
+}
