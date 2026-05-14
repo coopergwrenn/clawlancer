@@ -153,6 +153,42 @@ export function getTemplateContent(key: string): string {
 // has gone unanswered for >60 seconds and sends a fallback directly via
 // Telegram API, bypassing OpenClaw entirely. Catches ALL silence causes:
 // rate limits, tool failures, context overflow, frozen API, dead gateway.
+
+// ── Gateway health → node_exporter textfile metric ──────────────────────
+// Pairs with the textfile-collector drop-in installed by stepNodeExporter.
+// Writes 1/0 to /var/lib/node_exporter/textfile_collector/openclaw_gateway.prom
+// every minute via cron. Powers the Prometheus GatewayDown alert rule.
+// Originally fleet-pushed manually 2026-05-14 during the timmy outage; now
+// owned by the manifest so newly-provisioned VMs get it too.
+export const GATEWAY_HEALTH_TEXTFILE_SH = `#!/usr/bin/env bash
+# /home/openclaw/.openclaw/scripts/gateway-health-textfile.sh
+# Writes openclaw_gateway_up{} to node_exporter textfile_collector.
+# Runs every minute via openclaw user crontab.
+# Pairs with /etc/prometheus/alert_rules.yml \`GatewayDown\` rule.
+# Installed 2026-05-14 (timmy outage), promoted to manifest 2026-05-14 (v99).
+set -u
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+DIR=/var/lib/node_exporter/textfile_collector
+FILE="$DIR/openclaw_gateway.prom"
+TMP="$FILE.$$"
+
+# 1 only if systemd reports active AND /health returns 200 within 3s.
+# Either failure means the agent can't process customer messages.
+if systemctl --user is-active --quiet openclaw-gateway 2>/dev/null \\
+   && curl -sf -o /dev/null -m 3 http://localhost:18789/health 2>/dev/null; then
+  UP=1
+else
+  UP=0
+fi
+
+{
+  echo "# HELP openclaw_gateway_up 1 iff systemctl --user is-active openclaw-gateway AND curl localhost:18789/health=200"
+  echo "# TYPE openclaw_gateway_up gauge"
+  echo "openclaw_gateway_up $UP"
+} > "$TMP"
+mv "$TMP" "$FILE"
+`;
+
 export const SILENCE_WATCHDOG_SCRIPT = `#!/usr/bin/env python3
 """Silence Watchdog — universal fallback for unresponsive agents.
 
@@ -1124,6 +1160,40 @@ export const VM_MANIFEST = {
    *  L2 = streaming.mode → "off" (same lever as v68). L3 = remove cron
    *  entry from manifest, ack-watchdog.py stays inert on disk.
    *
+   * v99 (2026-05-14): Gateway-health textfile-collector promoted from
+   * fleet-pushed-by-hand to fully manifest-owned. Three coordinated pieces:
+   *
+   *  - gateway-health-textfile.sh as a managed inline file (every-minute
+   *    cron writes openclaw_gateway_up to node_exporter's textfile_collector).
+   *  - cron entry "* * * * * gateway-health-textfile.sh" in cronJobs[].
+   *  - stepNodeExporter (lib/vm-reconcile.ts) extended with
+   *    ensureTextfileCollector() that idempotently creates
+   *    /var/lib/node_exporter/textfile_collector/ (root:openclaw 775) and
+   *    writes the /etc/systemd/system/node_exporter.service.d/textfile.conf
+   *    drop-in. Restarts node_exporter only when the drop-in content drifts.
+   *
+   * Why: the textfile-collector layer was fleet-pushed manually on 2026-05-14
+   * during the timmy outage to wire up the Prometheus GatewayDown alert.
+   * Originally landed on all 242 then-existing VMs by hand-SSH; never made
+   * it into the manifest. New VMs provisioned from a fresh snapshot after
+   * 2026-05-14 would be missing all three pieces — the alert would be silent
+   * for them. v99 closes that gap and the Rule-23 sentinels on the script
+   * file guard against any future stale-module-cache regression on the
+   * reconciler.
+   *
+   * Fleet rollout: reconcile-fleet picks up v99 next cycle. For each VM at
+   * cv<99 (initially: 0 VMs since most are at cv=96 now after v96), stepFiles
+   * deploys the script with requiredSentinels guard, stepCronJobs installs
+   * the every-minute cron idempotently, and stepNodeExporter detects the
+   * missing drop-in + dir and installs them. node_exporter is restarted
+   * only when the drop-in changes (idempotent on subsequent ticks).
+   *
+   * Rollback: revert this commit. ensureTextfileCollector leaves the dir
+   * and drop-in in place (it doesn't have a delete path) — manual cleanup
+   * is required if you actually want to remove the textfile-collector
+   * functionality. The cron entry can be removed by clearing the marker
+   * from crontab.
+   *
    * v96 (2026-05-14): Recurring-task / cron creation rule shipped in SOUL.md
    * and AGENTS.md V2 templates. Prevents the duplicate-cron explosion that hit
    * vm-050 (18 dupe Daily News crons) and vm-725 (36 dupe iPad/iPhone Deal
@@ -1156,7 +1226,7 @@ export const VM_MANIFEST = {
    * the prior content via the V2 markers. cv-decrement script can re-mark
    * affected VMs as cv=95-eligible if needed.
    */
-  version: 96,
+  version: 99,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -1682,6 +1752,22 @@ export const VM_MANIFEST = {
       executable: true,
       useSFTP: true,
     },
+    // v99: gateway-health-textfile.sh — runs every minute via cron, writes
+    // openclaw_gateway_up to node_exporter's textfile_collector. Pairs with
+    // the systemd drop-in + textfile_collector directory creation in
+    // stepNodeExporter (lib/vm-reconcile.ts). The Prometheus GatewayDown
+    // alert rule (on the monitoring VM) fires from this metric.
+    {
+      remotePath: "~/.openclaw/scripts/gateway-health-textfile.sh",
+      source: "inline",
+      content: GATEWAY_HEALTH_TEXTFILE_SH,
+      mode: "overwrite",
+      executable: true,
+      requiredSentinels: [
+        "openclaw_gateway_up",   // metric name (load-bearing — Prom alert depends on it)
+        "is-active --quiet openclaw-gateway",  // health-check call (would catch a stale-cache regression)
+      ],
+    },
     {
       remotePath: "~/scripts/deliver_file.sh",
       source: "template",
@@ -1894,6 +1980,16 @@ export const VM_MANIFEST = {
       schedule: "17 * * * *",
       command: "bash ~/.openclaw/scripts/skill-integrity-check.sh > /dev/null 2>&1",
       marker: "skill-integrity-check.sh",
+    },
+    {
+      // v99: per-minute gateway health writer for node_exporter textfile_collector.
+      // Powers the Prometheus GatewayDown alert (alert_rules.yml on monitoring
+      // VM). Pairs with the textfile drop-in installed by stepNodeExporter.
+      // Originally fleet-pushed during the 2026-05-14 timmy outage; promoted
+      // to manifest so new VMs from a fresh snapshot get it automatically.
+      schedule: "* * * * *",
+      command: "/home/openclaw/.openclaw/scripts/gateway-health-textfile.sh >/dev/null 2>&1",
+      marker: "gateway-health-textfile.sh",
     },
     {
       schedule: "0 * * * *",

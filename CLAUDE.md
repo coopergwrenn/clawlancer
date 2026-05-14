@@ -1871,6 +1871,20 @@ Poll `GET /v4/images/{IMAGE_ID}` until status=available. Verify size < 6144MB.
 
 Single source of truth for what each `VM_MANIFEST.version` bump contains. Used for release notes, fleet-drift debugging, and post-mortems. Append-only — never rewrite history. Update at the same time as the version bump itself.
 
+### v99 — 2026-05-14 (Gateway-health textfile-collector promoted to manifest)
+
+- **Manifest change**: `VM_MANIFEST.version` bumped 96 → 99 (skipping 97, 98 which were code-only fixes — see entries below).
+- **Why**: the textfile-collector pipeline that powers the Prometheus `GatewayDown` alert was fleet-pushed by hand on 2026-05-14 during the timmy outage. It landed on all 242 then-existing VMs but was never added to the manifest. Newly-provisioned VMs from a fresh snapshot would silently miss it — the alert would not fire for them, so a gateway crash would go undetected until a user reported it.
+- **Three coordinated pieces:**
+  - `~/.openclaw/scripts/gateway-health-textfile.sh` — added as a managed inline file in `files[]` with `requiredSentinels: ["openclaw_gateway_up", "is-active --quiet openclaw-gateway"]` (Rule 23 guards against any future stale-module-cache regression).
+  - `* * * * * gateway-health-textfile.sh` — added to `cronJobs[]` with marker `gateway-health-textfile.sh` for idempotent install via `stepCronJobs`.
+  - `lib/vm-reconcile.ts:stepNodeExporter` extended with `ensureTextfileCollector()` — creates `/var/lib/node_exporter/textfile_collector/` (`root:openclaw 775`) and writes `/etc/systemd/system/node_exporter.service.d/textfile.conf` with the `--collector.textfile.directory=...` override. Content-diff before write; node_exporter restart only when drop-in actually changes (idempotent on subsequent ticks).
+- **Reconciler impact**: stepNodeExporter's probe now also reports `dropin=` and `tfdir=`. Healthy-but-missing-textfile VMs no longer short-circuit at `bin+listening`; they call into `ensureTextfileCollector` to fill in the missing pieces.
+- **Sudo requirement**: the drop-in install needs passwordless sudo (existing pattern in stepNodeExporter). VMs without sudo log a `recordHealWarning` but don't block the reconcile. Script + cron deploy via the openclaw user regardless.
+- **Fleet rollout**: reconcile-fleet picks up v99 next cycle. For each VM at cv<99 (most are at cv=96 now after v96), stepFiles deploys the script, stepCronJobs installs the cron, and stepNodeExporter detects the missing dir + drop-in and installs them. node_exporter is restarted only on the first install per VM.
+- **Detection note**: after rollout, sample any 10 VMs and grep `~/.openclaw/scripts/` for `gateway-health-textfile.sh` + grep `crontab -l` for the marker + check `/etc/systemd/system/node_exporter.service.d/textfile.conf` exists. If any are missing on a cv=99 VM, that's a Rule 23-class lying-DB regression.
+- **Rollback**: revert this commit. ensureTextfileCollector doesn't have a delete path — the dir and drop-in stay in place but the cron entry stops getting maintained and the script will eventually drift. Manual cleanup is required to fully unwind.
+
 ### v98 — 2026-05-14 (subscription.created webhook handler)
 
 - **Not a VM_MANIFEST.version bump.** Pure billing-webhook change in `app/api/billing/webhook/route.ts`. No fleet impact, no migration needed.

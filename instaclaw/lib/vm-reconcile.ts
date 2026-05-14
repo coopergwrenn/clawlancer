@@ -4918,17 +4918,31 @@ async function stepNodeExporter(
       `bin=$([ -x /usr/local/bin/node_exporter ] && echo 1 || echo 0); ` +
       `port=$(ss -tln 2>/dev/null | grep -q ":9100 " && echo 1 || echo 0); ` +
       `unit=$([ -f /etc/systemd/system/node_exporter.service ] && echo 1 || echo 0); ` +
-      `echo "bin=$bin port=$port unit=$unit"`
+      // v99: also probe the textfile-collector layer so a fresh-install
+      // VM gets the drop-in + dir even when node_exporter is otherwise
+      // healthy.
+      `dropin=$([ -f /etc/systemd/system/node_exporter.service.d/textfile.conf ] && echo 1 || echo 0); ` +
+      `tfdir=$([ -d /var/lib/node_exporter/textfile_collector ] && echo 1 || echo 0); ` +
+      `echo "bin=$bin port=$port unit=$unit dropin=$dropin tfdir=$tfdir"`
     );
-    const m = probe.stdout.match(/bin=(\d) port=(\d) unit=(\d)/);
+    const m = probe.stdout.match(/bin=(\d) port=(\d) unit=(\d) dropin=(\d) tfdir=(\d)/);
     if (!m) {
-      recordHealWarning(result, `node_exporter: probe parse failed: ${probe.stdout.slice(0, 120)}`);
+      recordHealWarning(result, `node_exporter: probe parse failed: ${probe.stdout.slice(0, 160)}`);
       return;
     }
-    const [hasBin, isListening, hasUnit] = [m[1] === "1", m[2] === "1", m[3] === "1"];
+    const [hasBin, isListening, hasUnit, hasDropin, hasTfDir] = [
+      m[1] === "1", m[2] === "1", m[3] === "1", m[4] === "1", m[5] === "1",
+    ];
 
+    // v99: even if node_exporter is healthy, install the textfile-collector
+    // pieces if they're missing. ensureTextfileCollector is idempotent and
+    // only restarts node_exporter when content actually changes.
     if (hasBin && isListening) {
-      result.alreadyCorrect.push("node_exporter: bin+listening");
+      if (!hasDropin || !hasTfDir) {
+        await ensureTextfileCollector(ssh, result, dryRun, isPausedState);
+      } else {
+        result.alreadyCorrect.push("node_exporter: bin+listening+textfile");
+      }
       return;
     }
 
@@ -5012,9 +5026,119 @@ ${startBlock}
         : install.stdout.includes("UNSUPPORTED_ARCH") ? "unsupported arch"
         : "port did not open";
       recordHealWarning(result, `node_exporter: ${reason} (${install.stdout.slice(-200)})`);
+      return;  // skip textfile setup if core install failed
     }
+
+    // v99: also install the textfile-collector pieces after the base
+    // install. Safe whether we just installed or just re-confirmed.
+    await ensureTextfileCollector(ssh, result, dryRun, isPausedState);
   } catch (err) {
     recordHealWarning(result, `node_exporter: ${String(err).slice(0, 200)}`);
+  }
+}
+
+/**
+ * v99: ensure node_exporter is configured to read from
+ * /var/lib/node_exporter/textfile_collector/. Creates the directory
+ * (root:openclaw 775 — openclaw user writes the .prom file via cron) and
+ * installs the systemd drop-in that adds --collector.textfile.directory
+ * to ExecStart. Idempotent: detects content drift on the drop-in and only
+ * restarts node_exporter when it actually changed.
+ *
+ * The drop-in form survives any future overwrite of the main unit file
+ * (which stepNodeExporter rewrites unconditionally). The drop-in's
+ * `ExecStart=` empty-string line resets the base unit's ExecStart, then
+ * the second `ExecStart=...` is the only one that runs — standard
+ * systemd drop-in pattern.
+ *
+ * Originally fleet-pushed manually 2026-05-14 (timmy outage). Promoted to
+ * manifest in v99 so new VMs provisioned from snapshots get it too.
+ */
+async function ensureTextfileCollector(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+  isPausedState: boolean,
+): Promise<void> {
+  if (dryRun) {
+    result.fixed.push("[dry-run] node_exporter: would install textfile-collector dir + drop-in");
+    return;
+  }
+
+  // Need sudo for both the dir creation and the drop-in write. Bail
+  // cleanly if not available — script + cron will still deploy via the
+  // openclaw user via stepFiles/stepCronJobs, but the metric won't be
+  // surfaced through node_exporter until a future tick with sudo.
+  const sudoCheck = await ssh.execCommand("sudo -n true 2>/dev/null && echo SUDO_OK || echo NO_SUDO");
+  if (!sudoCheck.stdout.includes("SUDO_OK")) {
+    recordHealWarning(result, "node_exporter textfile: passwordless sudo not available");
+    return;
+  }
+
+  // Desired drop-in content. Heredoc via tee — quoted UEOF prevents
+  // shell expansion of the path-with-dashes.
+  const setup = await ssh.execCommand(`bash -c '
+set +e
+CHANGED=0
+
+# Directory: create if missing, ensure root:openclaw 775 so the openclaw
+# user (running the per-minute cron) can write .prom files into it.
+if [ ! -d /var/lib/node_exporter/textfile_collector ]; then
+  sudo mkdir -p /var/lib/node_exporter/textfile_collector || { echo MKDIR_FAIL; exit 1; }
+  CHANGED=1
+fi
+sudo chown root:openclaw /var/lib/node_exporter/textfile_collector
+sudo chmod 775 /var/lib/node_exporter/textfile_collector
+
+# Drop-in directory + file. tee with -p creates the directory. Compare
+# before-write to avoid spurious restarts when content is already current.
+sudo mkdir -p /etc/systemd/system/node_exporter.service.d
+DROPIN=/etc/systemd/system/node_exporter.service.d/textfile.conf
+DESIRED=$(cat <<UEOF
+# /etc/systemd/system/node_exporter.service.d/textfile.conf
+# Adds textfile_collector to expose openclaw_gateway_up metric.
+# Drop-in form survives any future overwrite of the main unit file.
+# Managed by lib/vm-reconcile.ts:ensureTextfileCollector (v99+).
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/node_exporter --collector.systemd --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
+UEOF
+)
+if [ ! -f "$DROPIN" ] || [ "$(cat "$DROPIN")" != "$DESIRED" ]; then
+  echo "$DESIRED" | sudo tee "$DROPIN" >/dev/null
+  CHANGED=1
+fi
+
+if [ "$CHANGED" = "1" ]; then
+  sudo systemctl daemon-reload
+  if ${isPausedState ? "false" : "true"}; then
+    sudo systemctl restart node_exporter && sleep 5
+    if ss -tln 2>/dev/null | grep -q ":9100 "; then
+      echo "TEXTFILE_OK_RESTARTED"
+    else
+      echo "TEXTFILE_RESTART_NOPORT"
+    fi
+  else
+    echo "TEXTFILE_OK_NORESTART_PAUSED"
+  fi
+else
+  echo "TEXTFILE_ALREADY_CORRECT"
+fi
+'`);
+
+  const out = setup.stdout;
+  if (out.includes("TEXTFILE_OK_RESTARTED")) {
+    result.fixed.push("node_exporter textfile-collector: dir + drop-in installed; node_exporter restarted");
+  } else if (out.includes("TEXTFILE_OK_NORESTART_PAUSED")) {
+    result.fixed.push("node_exporter textfile-collector: dir + drop-in installed (restart skipped — VM paused)");
+  } else if (out.includes("TEXTFILE_ALREADY_CORRECT")) {
+    result.alreadyCorrect.push("node_exporter textfile-collector: dir + drop-in already correct");
+  } else if (out.includes("TEXTFILE_RESTART_NOPORT")) {
+    recordHealWarning(result, `node_exporter textfile: restart did not re-bind :9100 (${out.slice(-200)})`);
+  } else if (out.includes("MKDIR_FAIL")) {
+    recordHealWarning(result, "node_exporter textfile: mkdir /var/lib/node_exporter/textfile_collector failed");
+  } else {
+    recordHealWarning(result, `node_exporter textfile: unexpected output (${out.slice(-200)})`);
   }
 }
 
