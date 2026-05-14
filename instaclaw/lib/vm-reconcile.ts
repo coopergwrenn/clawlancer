@@ -120,6 +120,14 @@ export interface ReconcileResult {
   fixed: string[];
   alreadyCorrect: string[];
   errors: string[];
+  /**
+   * Non-critical-step failures that do NOT block cv bump (Rule 39).
+   * Reserved for optional monitoring sidecars and gracefully-degradable
+   * features (node_exporter, gateway-watchdog, private-repo skill installs).
+   * Surfaced separately in logs/dashboards so operators can still see them,
+   * but the cron route's pushFailed gate ignores this array.
+   */
+  warnings: string[];
   gatewayRestartNeeded: boolean;
   gatewayRestarted: boolean;
   gatewayHealthy: boolean;
@@ -204,6 +212,7 @@ export async function reconcileVM(
     fixed: [],
     alreadyCorrect: [],
     errors: [],
+    warnings: [],
     gatewayRestartNeeded: false,
     gatewayRestarted: false,
     gatewayHealthy: true,
@@ -3922,6 +3931,21 @@ function recordHealError(result: ReconcileResult, strict: boolean, msg: string):
 }
 
 /**
+ * Push a non-critical heal failure to result.warnings (Rule 39).
+ * Unlike recordHealError, warnings do NOT block cv bump in the cron route's
+ * pushFailed gate. Reserved for optional monitoring sidecars and gracefully-
+ * degradable features that have zero customer impact when broken (node_exporter,
+ * gateway-watchdog, private-repo skill installs missing auth).
+ *
+ * If you're tempted to use this for anything customer-facing (gateway,
+ * stepConfigSettings, stepFiles, auth-profiles, ExecStart), DON'T — use
+ * recordHealError instead so cv stays put until the issue is fixed.
+ */
+function recordHealWarning(result: ReconcileResult, msg: string): void {
+  result.warnings.push(msg);
+}
+
+/**
  * Step 8g: Bootstrap state.
  *
  * Pairs with stepBootstrapConsumed (Step 2b): that step deletes BOOTSTRAP.md
@@ -4150,7 +4174,7 @@ async function stepGatewayWatchdogTimer(
     );
     const m = probe.stdout.match(/unit=(\d) enabled=(\d) active=(\d)/);
     if (!m) {
-      recordHealError(result, strict, `gw-watchdog: probe parse failed: ${probe.stdout.slice(0, 120)}`);
+      recordHealWarning(result, `gw-watchdog: probe parse failed: ${probe.stdout.slice(0, 120)}`);
       return;
     }
     const [hasUnit, isEnabled, isActive] = [m[1] === "1", m[2] === "1", m[3] === "1"];
@@ -4178,7 +4202,7 @@ async function stepGatewayWatchdogTimer(
     );
     result.fixed.push(`gw-watchdog: stopped + disabled (was enabled=${isEnabled} active=${isActive})`);
   } catch (err) {
-    recordHealError(result, strict, `gw-watchdog: ${String(err).slice(0, 200)}`);
+    recordHealWarning(result, `gw-watchdog: ${String(err).slice(0, 200)}`);
   }
 }
 
@@ -4489,7 +4513,7 @@ async function stepNodeExporter(
     );
     const m = probe.stdout.match(/bin=(\d) port=(\d) unit=(\d)/);
     if (!m) {
-      recordHealError(result, strict, `node_exporter: probe parse failed: ${probe.stdout.slice(0, 120)}`);
+      recordHealWarning(result, `node_exporter: probe parse failed: ${probe.stdout.slice(0, 120)}`);
       return;
     }
     const [hasBin, isListening, hasUnit] = [m[1] === "1", m[2] === "1", m[3] === "1"];
@@ -4517,7 +4541,7 @@ async function stepNodeExporter(
     // Probe sudo access — heal requires root. Skip cleanly if unavailable.
     const sudoCheck = await ssh.execCommand("sudo -n true 2>/dev/null && echo SUDO_OK || echo NO_SUDO");
     if (!sudoCheck.stdout.includes("SUDO_OK")) {
-      recordHealError(result, strict, "node_exporter: passwordless sudo not available");
+      recordHealWarning(result, "node_exporter: passwordless sudo not available");
       return;
     }
 
@@ -4578,10 +4602,10 @@ ${startBlock}
         : install.stdout.includes("EXTRACT_FAIL") ? "tar extract failed"
         : install.stdout.includes("UNSUPPORTED_ARCH") ? "unsupported arch"
         : "port did not open";
-      recordHealError(result, strict, `node_exporter: ${reason} (${install.stdout.slice(-200)})`);
+      recordHealWarning(result, `node_exporter: ${reason} (${install.stdout.slice(-200)})`);
     }
   } catch (err) {
-    recordHealError(result, strict, `node_exporter: ${String(err).slice(0, 200)}`);
+    recordHealWarning(result, `node_exporter: ${String(err).slice(0, 200)}`);
   }
 }
 
@@ -5524,8 +5548,13 @@ async function stepDeployEdgeOverlay(
     `[ -d /home/openclaw/.openclaw/skills/edge-esmeralda ] && echo OK || echo MISSING`,
   );
   if ((dirCheck.stdout || "").trim() !== "OK") {
-    result.errors.push(
-      "edge-overlay-deploy: ~/.openclaw/skills/edge-esmeralda/ does not exist — skill clone may have failed",
+    // Rule 39: skill-clone-missing is a partner-specific feature gap, not a
+    // critical fault. The gateway works fine without the overlay; the user
+    // just doesn't get the Edge onboarding interview prompts. Reclassify
+    // from errors to warnings so cv bump isn't held for an upstream
+    // skill-clone-auth failure (Rule 42 covers the long-term fix).
+    result.warnings.push(
+      "edge-overlay-deploy: ~/.openclaw/skills/edge-esmeralda/ does not exist — skill clone may have failed (private repo auth?)",
     );
     return;
   }
