@@ -4414,20 +4414,29 @@ async function stepInstaclawXmtp(
   isPausedState: boolean,
 ): Promise<void> {
   try {
+    // Probe — five flags. `deps` is the Rule 48 addition: catches the
+    // crash-loop case where unit/mjs/key are all present but node_modules
+    // is missing or corrupt. vm-912 (2026-05-14) had ~/scripts/node_modules/
+    // viem/ as a directory but viem/package.json was 0 bytes, so the Node
+    // ESM resolver threw ERR_MODULE_NOT_FOUND. `[ -s file ]` (non-empty)
+    // catches that case in addition to "file exists".
     const probe = await ssh.execCommand(
       `${HEAL_DBUS_PREFIX} && ` +
       `unit=$([ -f $HOME/.config/systemd/user/instaclaw-xmtp.service ] && echo 1 || echo 0); ` +
       `active=$(systemctl --user is-active instaclaw-xmtp 2>&1 | grep -q "^active$" && echo 1 || echo 0); ` +
       `mjs=$([ -f $HOME/scripts/xmtp-agent.mjs ] && echo 1 || echo 0); ` +
       `key=$(grep -q "^XMTP_WALLET_KEY=" $HOME/.openclaw/xmtp/.env 2>/dev/null && echo 1 || echo 0); ` +
-      `echo "unit=$unit active=$active mjs=$mjs key=$key"`
+      `deps=$([ -d $HOME/scripts/node_modules/@xmtp/agent-sdk ] && [ -s $HOME/scripts/node_modules/viem/package.json ] && echo 1 || echo 0); ` +
+      `echo "unit=$unit active=$active mjs=$mjs key=$key deps=$deps"`
     );
-    const m = probe.stdout.match(/unit=(\d) active=(\d) mjs=(\d) key=(\d)/);
+    const m = probe.stdout.match(/unit=(\d) active=(\d) mjs=(\d) key=(\d) deps=(\d)/);
     if (!m) {
       recordHealError(result, strict, `instaclaw-xmtp: probe parse failed: ${probe.stdout.slice(0, 120)}`);
       return;
     }
-    const [hasUnit, isActive, hasMjs, hasKey] = [m[1] === "1", m[2] === "1", m[3] === "1", m[4] === "1"];
+    const [hasUnit, isActive, hasMjs, hasKey, hasDeps] = [
+      m[1] === "1", m[2] === "1", m[3] === "1", m[4] === "1", m[5] === "1",
+    ];
 
     if (hasUnit && isActive) {
       result.alreadyCorrect.push("instaclaw-xmtp: unit+active");
@@ -4450,15 +4459,60 @@ async function stepInstaclawXmtp(
       return;
     }
 
+    // Routing per Rule 48:
+    //   - key=0 OR mjs=0  → full setupXMTP (always; wallet/script missing)
+    //   - key=1 mjs=1 deps=0 → dep-repair (npm install, then surgical)
+    //   - key=1 mjs=1 deps=1 → surgical (write unit + restart + poll)
+    let path: "surgical" | "dep-repair" | "full setupXMTP";
+    if (!hasKey || !hasMjs) path = "full setupXMTP";
+    else if (!hasDeps) path = "dep-repair";
+    else path = "surgical";
+
     if (dryRun) {
-      const path = hasKey && hasMjs ? "surgical" : "full setupXMTP";
-      result.fixed.push(`[dry-run] instaclaw-xmtp: would ${path} (unit=${hasUnit} active=${isActive} mjs=${hasMjs} key=${hasKey})`);
+      result.fixed.push(`[dry-run] instaclaw-xmtp: would ${path} (unit=${hasUnit} active=${isActive} mjs=${hasMjs} key=${hasKey} deps=${hasDeps})`);
       return;
     }
 
-    if (hasKey && hasMjs) {
+    if (path === "dep-repair") {
+      // Rule 48 / REC-5 (2026-05-14): node_modules broken (missing
+      // @xmtp/agent-sdk or empty viem/package.json). The surgical path
+      // CANNOT recover this — restarting only retries the failing
+      // ERR_MODULE_NOT_FOUND import. Run npm install first to restore
+      // the deps, then fall through to the surgical path to write the
+      // unit + restart.
+      //
+      // Scope of rm -rf: only ~/scripts/node_modules/. The wallet key
+      // (~/.openclaw/xmtp/.env), the agent script (~/scripts/xmtp-agent.mjs),
+      // and the systemd unit (~/.config/systemd/user/instaclaw-xmtp.service)
+      // are all untouched. Wallet identity preserved.
+      const npmRes = await ssh.execCommand(
+        `${HEAL_DBUS_PREFIX} && source ~/.nvm/nvm.sh 2>/dev/null && ` +
+          `systemctl --user stop instaclaw-xmtp 2>/dev/null; ` +
+          `cd ~/scripts && rm -rf node_modules && ` +
+          `npm install @xmtp/agent-sdk@latest 2>&1 | tail -3`,
+      );
+      if (npmRes.code !== 0) {
+        recordHealError(result, strict, `instaclaw-xmtp: dep-repair (npm install) failed: ${(npmRes.stdout || npmRes.stderr).slice(-200)}`);
+        return;
+      }
+      const verify = await ssh.execCommand(
+        `[ -d $HOME/scripts/node_modules/@xmtp/agent-sdk ] && ` +
+          `[ -s $HOME/scripts/node_modules/viem/package.json ] && echo OK || echo FAIL`,
+      );
+      if (!verify.stdout.includes("OK")) {
+        recordHealError(result, strict, "instaclaw-xmtp: dep-repair completed but verify failed");
+        return;
+      }
+      result.fixed.push("instaclaw-xmtp: dep-repair (npm install completed)");
+      // Fall through into the surgical block below — same write+restart+poll
+      // logic that the surgical path uses.
+    }
+
+    if (path === "surgical" || path === "dep-repair") {
       // Surgical in-place fix — preserves wallet identity.
-      const r = await ssh.execCommand(`bash -c '
+      // reset-failed before restart so previous crash-loop counter doesn't
+      // pin the service into 'failed' state (Rule 48 / REC-5 pattern).
+      const writeRestart = await ssh.execCommand(`bash -c '
 ${HEAL_DBUS_PREFIX}
 NPATH=$(ls -d $HOME/.nvm/versions/node/*/bin/node 2>/dev/null | head -1)
 [ -z "$NPATH" ] && { echo NO_NODE; exit 1; }
@@ -4481,16 +4535,54 @@ WantedBy=default.target
 SVCEOF
 systemctl --user daemon-reload
 systemctl --user enable instaclaw-xmtp 2>/dev/null
+systemctl --user reset-failed instaclaw-xmtp 2>/dev/null
 systemctl --user restart instaclaw-xmtp
-sleep 4
-systemctl --user is-active instaclaw-xmtp
+echo RESTART_ISSUED
 '`);
-      if (r.stdout.includes("active")) {
-        result.fixed.push("instaclaw-xmtp: surgical fix (wallet preserved)");
-      } else if (r.stdout.includes("NO_NODE")) {
+      if (writeRestart.stdout.includes("NO_NODE")) {
         recordHealError(result, strict, "instaclaw-xmtp: NVM node binary not found");
+        return;
+      }
+      if (!writeRestart.stdout.includes("RESTART_ISSUED")) {
+        recordHealError(
+          result,
+          strict,
+          `instaclaw-xmtp: surgical fix failed (no restart issued): ${writeRestart.stdout.slice(-200)}`,
+        );
+        return;
+      }
+
+      // Rule 48: poll is-active for up to 60s with 2s interval. Cold-start
+      // of xmtp-agent.mjs (load wallet, connect to XMTP network, register)
+      // can take 20-30s; the previous `sleep 4` was too short and produced
+      // false-negative `activating` reports during the auto-restart window.
+      // Exact-string compare so `activating` isn't ambiguous with `active`.
+      let xmtpActive = false;
+      let lastState = "";
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const pr = await ssh.execCommand(`${HEAL_DBUS_PREFIX} && systemctl --user is-active instaclaw-xmtp`);
+        lastState = pr.stdout.trim();
+        if (lastState === "active") {
+          xmtpActive = true;
+          break;
+        }
+      }
+      if (xmtpActive) {
+        const tag = path === "dep-repair" ? "surgical fix after dep-repair" : "surgical fix (wallet preserved)";
+        result.fixed.push(`instaclaw-xmtp: ${tag}`);
       } else {
-        recordHealError(result, strict, `instaclaw-xmtp: surgical fix failed: ${r.stdout.slice(-200)}`);
+        // Surface NRestarts for diagnosis — high count signals crash-loop
+        // (likely Rule 48 — broken deps) rather than slow cold-start.
+        const counterProbe = await ssh.execCommand(
+          `${HEAL_DBUS_PREFIX} && systemctl --user show instaclaw-xmtp --property=NRestarts --no-pager 2>/dev/null`,
+        );
+        const nr = parseInt(counterProbe.stdout.match(/NRestarts=(\d+)/)?.[1] || "0", 10);
+        recordHealError(
+          result,
+          strict,
+          `instaclaw-xmtp: surgical fix failed: state=${lastState} NRestarts=${nr}`,
+        );
       }
       return;
     }
