@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-14
 
-Window: `402b11089a8a0c8a32a08eca308f8e05330b6ae2` → `HEAD` (HEAD = `5a2d3cb3`)
+Window: `5a2d3cb3f487a135929432f7640ad86b242e41c9` → `HEAD` (HEAD = `718c0747`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 5a2d3cb3f487a135929432f7640ad86b242e41c9 -->
+<!-- LAST_GENERATED_SHA: 718c0747e57d1d01ea74c6dd1f55469b7bfb0b7f -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `5a2d3cb3` 2026-05-14 — docs(rules)+ops: Rule 47/48 — fleet-push strip-thinking + fix xmtp crash loop [5 files] _(multi: [infrastructure, docs]; ai-assisted)_
-- `2a87721a` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `8d148533` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `718c0747` 2026-05-14 — docs+ops(monitoring): restore GatewayDown via openclaw_gateway_up textfile-collector metric [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `5a2d3cb3` 2026-05-14 — docs(rules)+ops: Rule 47/48 — fleet-push strip-thinking + fix xmtp crash loop [5 files] _(multi: [infrastructure, docs]; ai-assisted)_
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -43,23 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `2a87721a` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `5a2d3cb3` 2026-05-14 — [infrastructure, docs] — docs(rules)+ops: Rule 47/48 — fleet-push strip-thinking + fix xmtp crash loop
+- `8d148533` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `718c0747` 2026-05-14 — docs+ops(monitoring): restore GatewayDown via openclaw_gateway_up textfile-collector metric [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `5a2d3cb3` 2026-05-14 — docs(rules)+ops: Rule 47/48 — fleet-push strip-thinking + fix xmtp crash loop
+- `718c0747` 2026-05-14 — docs+ops(monitoring): restore GatewayDown via openclaw_gateway_up textfile-collector metric
 
 ## Appendix — every commit (chronological)
 
-- `2a87721a` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `5a2d3cb3` 2026-05-14 — docs(rules)+ops: Rule 47/48 — fleet-push strip-thinking + fix xmtp crash loop [5 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `8d148533` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `718c0747` 2026-05-14 — docs+ops(monitoring): restore GatewayDown via openclaw_gateway_up textfile-collector metric [1 files] _(ai-assisted)_
