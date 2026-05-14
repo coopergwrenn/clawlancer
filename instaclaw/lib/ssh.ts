@@ -107,6 +107,14 @@ export const NODE_PINNED_VERSION = "22.22.2";
 // Mirror of the OPENCLAW_PINNED_VERSION discipline above.
 export const BANKR_CLI_PINNED_VERSION = "0.3.1";
 
+// Pinned @worldcoin/agentkit-cli version. Extracted from the inline string
+// at the parallel-install block (line 7047 below) per snapshot-bake-
+// requirements §17 Q5 (2026-05-14). Used by both configureOpenClaw's
+// parallel-install AND vm-reconcile's stepNpmPinDrift, so a future bump
+// updates both sites atomically. Drift between sites would have been a
+// silent footgun.
+export const AGENTKIT_CLI_PINNED_VERSION = "0.1.3";
+
 // prctl-subreaper — n-api addon that calls prctl(PR_SET_CHILD_SUBREAPER, 1)
 // on the openclaw-gateway Node process and runs a /proc-walking polling
 // reaper for zombies whose ppid matches us. Loaded into the gateway via
@@ -7044,7 +7052,7 @@ export async function configureOpenClaw(
       'PID_SOLANA=$!',
       '',
       '# 5. AgentBook agentkit-cli npm install',
-      `(${NVM_PREAMBLE} && npm install -g @worldcoin/agentkit-cli@0.1.3 2>/dev/null || true) &`,
+      `(${NVM_PREAMBLE} && npm install -g @worldcoin/agentkit-cli@${AGENTKIT_CLI_PINNED_VERSION} 2>/dev/null || true) &`,
       'PID_AGENTKIT=$!',
       '',
       '# Wait for all parallel installs to complete',

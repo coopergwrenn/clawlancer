@@ -13,7 +13,7 @@
  */
 
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
-import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, PRCTL_SUBREAPER_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
+import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, AGENTKIT_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, PRCTL_SUBREAPER_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
 import { INSTALL_GBRAIN_SH, VERIFY_GBRAIN_MCP_PY } from "./gbrain-scripts-content";
 import {
   DISPATCH_SCRIPTS,
@@ -2624,18 +2624,37 @@ async function stepRemotionDeps(
 }
 
 /**
- * Step 3c: Detect & fix drift on globally-pinned npm packages — @bankr/cli and
- * openclaw. Both pins live in lib/ssh.ts (BANKR_CLI_PINNED_VERSION,
- * OPENCLAW_PINNED_VERSION) and were previously only enforced inside
- * configureOpenClaw(), which doesn't run on existing assigned VMs. Without this
- * step, bumping a pin requires a manual fleet patch.
+ * Step 3c: Detect & fix drift on globally-pinned npm packages — @bankr/cli,
+ * openclaw, @worldcoin/agentkit-cli — plus install/heal the unpinned globals
+ * mcporter and usecomputer that the snapshot bake should produce but
+ * empirically doesn't (verified 2026-05-14 against vm-944).
  *
- * Two independent inline checks (no generic abstraction):
- *   - bankr: version comparison + reinstall, no service restart needed
+ * Pins live in lib/ssh.ts (BANKR_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION,
+ * AGENTKIT_CLI_PINNED_VERSION). Without this step, bumping a pin requires a
+ * manual fleet patch.
+ *
+ * Five independent inline checks (no generic abstraction):
+ *   - bankr: pinned-version compare + reinstall, no service restart needed
  *   - openclaw: same pattern, but ALSO updates ~/.openclaw/.openclaw-pinned-version
  *     before the install (so vm-watchdog doesn't revert the upgrade as
  *     "unauthorized") and marks gatewayRestartNeeded so the new binary loads
  *     into the running gateway via the existing Step 9 restart path.
+ *   - @worldcoin/agentkit-cli: pinned-version compare + reinstall. Closes
+ *     fleet-wide gap (2026-05-14 audit): the package has been MISSING on
+ *     every existing VM because configureOpenClaw's parallel-install at
+ *     ssh.ts:7055 used `|| true` which silently swallowed every install
+ *     failure. AgentBook registration impossible without it.
+ *   - mcporter: presence check (no version pin — match BE-11 + ssh.ts
+ *     unpinned behavior). Closes fleet-wide gap: ssh.ts:5583 says
+ *     "mcporter is pre-installed globally" which is empirically false.
+ *     The clawlancer SKILL.md (shipped 2026-05-14 via BE-8 to every VM
+ *     via stepSkills) instructs the agent to call `mcporter call
+ *     clawlancer.<tool>` — without mcporter installed, every Clawlancer
+ *     marketplace interaction silently fails.
+ *   - usecomputer: presence check + post-install chmod +x on the prebuilt
+ *     linux-x64 binary (npm doesn't set the executable bit on prebuilt
+ *     binaries; matches ssh.ts:7110-7113). Required for dispatch mode
+ *     (browser automation).
  *
  * Fail-soft: a transient npm registry hiccup logs to result.errors and lets
  * reconcile continue. Next cycle re-evaluates and retries — idempotent.
@@ -2776,6 +2795,145 @@ async function stepNpmPinDrift(
       // pkg never moved to OPENCLAW_PINNED_VERSION (the 4 v64-suspended VMs on
       // 2026-04-28 hit exactly this hole).
       result.strictErrors.push(`openclaw-pin: ${msg}`);
+    }
+  }
+
+  // ── @worldcoin/agentkit-cli pin ──
+  //
+  // 2026-05-14 (BE-11 follow-up): existing fleet is missing agentkit-cli
+  // because configureOpenClaw's parallel-install at lib/ssh.ts:7055 used
+  // `|| true` which silently swallowed every install failure. Without
+  // agentkit-cli, AgentBook registration is impossible (the
+  // `mcporter call clawlancer.register_agent` flow depends on it).
+  //
+  // Match the @bankr/cli pattern: version compare via npm ls (the
+  // package doesn't reliably install a binary called `agentkit` or
+  // `agentkit-cli` on PATH, so `npm ls -g` is the canonical probe).
+  // Manually verified 2026-05-14 on vm-944: install completes in ~11s,
+  // verify-grep succeeds, no service restart needed.
+  const agentkitCurr = (await ssh.execCommand(
+    `${NVM_PREAMBLE} && npm ls -g @worldcoin/agentkit-cli --depth=0 2>/dev/null | grep -oE "@worldcoin/agentkit-cli@[0-9.]+" | head -1 | sed "s|^@worldcoin/agentkit-cli@||" || true`,
+  )).stdout.trim();
+
+  if (agentkitCurr === AGENTKIT_CLI_PINNED_VERSION) {
+    result.alreadyCorrect.push(`@worldcoin/agentkit-cli (${AGENTKIT_CLI_PINNED_VERSION})`);
+  } else if (dryRun) {
+    result.fixed.push(`[dry-run] @worldcoin/agentkit-cli ${agentkitCurr || "missing"} → ${AGENTKIT_CLI_PINNED_VERSION}`);
+  } else {
+    const install = await ssh.execCommand(
+      `${NVM_PREAMBLE} && npm install -g @worldcoin/agentkit-cli@${AGENTKIT_CLI_PINNED_VERSION} 2>&1 | tail -5`,
+      { execOptions: { timeout: 180_000 } },
+    );
+    const verify = (await ssh.execCommand(
+      `${NVM_PREAMBLE} && npm ls -g @worldcoin/agentkit-cli --depth=0 2>/dev/null | grep -oE "@worldcoin/agentkit-cli@[0-9.]+" | head -1 | sed "s|^@worldcoin/agentkit-cli@||"`,
+    )).stdout.trim();
+    if (verify === AGENTKIT_CLI_PINNED_VERSION) {
+      result.fixed.push(`@worldcoin/agentkit-cli ${agentkitCurr || "missing"} → ${AGENTKIT_CLI_PINNED_VERSION}`);
+    } else {
+      result.errors.push(
+        `@worldcoin/agentkit-cli install failed: was=${agentkitCurr || "missing"} got=${verify || "(empty)"} npm-tail=${(install.stdout + install.stderr).slice(-200)}`,
+      );
+    }
+  }
+
+  // ── mcporter presence ──
+  //
+  // 2026-05-14 (BE-11 follow-up): existing fleet is missing mcporter.
+  // configureOpenClaw has no explicit install — lib/ssh.ts:5583 says
+  // "mcporter is pre-installed globally on all VMs" which is empirically
+  // false (verified on vm-944 cv=0 AND vm-050 cv=95 — neither has the
+  // package). The clawlancer SKILL.md committed in BE-8 instructs the
+  // agent to call `mcporter call clawlancer.<tool>` everywhere; without
+  // mcporter installed, EVERY Clawlancer marketplace interaction fails
+  // silently with "command not found" — that's the load-bearing fix
+  // this block ships fleet-wide.
+  //
+  // Unpinned (matches BE-11 setup.sh + lib/ssh.ts's implicit-install
+  // assumption). Idempotency check is presence-via-`npm ls -g`, not
+  // version compare. Install completes in ~9s on vm-944.
+  const mcporterPresent = (await ssh.execCommand(
+    `${NVM_PREAMBLE} && npm ls -g mcporter --depth=0 2>/dev/null | grep -q "mcporter@" && echo YES || echo NO`,
+  )).stdout.trim();
+
+  if (mcporterPresent === "YES") {
+    result.alreadyCorrect.push("mcporter (present)");
+  } else if (dryRun) {
+    result.fixed.push("[dry-run] mcporter missing → install");
+  } else {
+    const install = await ssh.execCommand(
+      `${NVM_PREAMBLE} && npm install -g mcporter 2>&1 | tail -5`,
+      { execOptions: { timeout: 180_000 } },
+    );
+    const verify = (await ssh.execCommand(
+      `${NVM_PREAMBLE} && npm ls -g mcporter --depth=0 2>/dev/null | grep -q "mcporter@" && echo YES || echo NO`,
+    )).stdout.trim();
+    if (verify === "YES") {
+      result.fixed.push("mcporter installed");
+    } else {
+      result.errors.push(
+        `mcporter install failed: npm-tail=${(install.stdout + install.stderr).slice(-200)}`,
+      );
+    }
+  }
+
+  // ── usecomputer presence (+ post-install chmod) ──
+  //
+  // 2026-05-14 (BE-11 follow-up): same masked-failure pattern as the
+  // other two — lib/ssh.ts:7109 uses `|| true`. Required for dispatch
+  // mode (browser automation).
+  //
+  // Post-install: chmod +x the prebuilt linux-x64 binary at
+  //   $HOME/.nvm/versions/node/<v>/lib/node_modules/usecomputer/dist/linux-x64/usecomputer
+  // because npm does NOT set the executable bit on prebuilt binaries.
+  // Manually verified 2026-05-14 on vm-944: install lands binary with
+  // mode 0664, chmod +x changes it to 0775. Matches ssh.ts:7110-7113.
+  //
+  // We do NOT chmod on the alreadyCorrect path. If usecomputer was
+  // previously installed and the binary's +x bit somehow got reset
+  // (rare), the agent's dispatch calls will fail and the operator
+  // intervenes. Idempotent chmod on every cycle adds noise to the
+  // reconcile log for negligible defense.
+  const usecomputerPresent = (await ssh.execCommand(
+    `${NVM_PREAMBLE} && npm ls -g usecomputer --depth=0 2>/dev/null | grep -q "usecomputer@" && echo YES || echo NO`,
+  )).stdout.trim();
+
+  if (usecomputerPresent === "YES") {
+    result.alreadyCorrect.push("usecomputer (present)");
+  } else if (dryRun) {
+    result.fixed.push("[dry-run] usecomputer missing → install + chmod prebuilt binary");
+  } else {
+    const install = await ssh.execCommand(
+      `${NVM_PREAMBLE} && npm install -g usecomputer 2>&1 | tail -5`,
+      { execOptions: { timeout: 180_000 } },
+    );
+    const verify = (await ssh.execCommand(
+      `${NVM_PREAMBLE} && npm ls -g usecomputer --depth=0 2>/dev/null | grep -q "usecomputer@" && echo YES || echo NO`,
+    )).stdout.trim();
+    if (verify === "YES") {
+      // chmod +x the prebuilt linux-x64 binary. Best-effort: log warning
+      // on failure but don't fail the install (the missing chmod only
+      // affects dispatch-mode invocations, not the gateway itself).
+      const chmod = await ssh.execCommand(
+        `${NVM_PREAMBLE} && NODE_VER=$(node --version) && UC_BIN="$HOME/.nvm/versions/node/$NODE_VER/lib/node_modules/usecomputer/dist/linux-x64/usecomputer" && [ -f "$UC_BIN" ] && chmod +x "$UC_BIN" && echo CHMOD_OK || echo CHMOD_MISS`,
+      );
+      if (chmod.stdout.includes("CHMOD_OK")) {
+        result.fixed.push("usecomputer installed (+ chmod +x prebuilt binary)");
+      } else {
+        // Install succeeded but the prebuilt binary path didn't exist.
+        // The usecomputer package's directory layout may have changed
+        // upstream; the package itself is functional but dispatch may
+        // need a different binary entry point. Worth logging but not
+        // failing the step.
+        result.fixed.push("usecomputer installed (chmod skipped — prebuilt binary path missing)");
+        logger.warn("usecomputer chmod path miss — package layout may have changed upstream", {
+          route: "lib/vm-reconcile.stepNpmPinDrift",
+          chmodStdout: chmod.stdout.slice(0, 200),
+        });
+      }
+    } else {
+      result.errors.push(
+        `usecomputer install failed: npm-tail=${(install.stdout + install.stderr).slice(-200)}`,
+      );
     }
   }
 }
