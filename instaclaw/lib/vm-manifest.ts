@@ -1160,6 +1160,49 @@ export const VM_MANIFEST = {
    *  L2 = streaming.mode → "off" (same lever as v68). L3 = remove cron
    *  entry from manifest, ack-watchdog.py stays inert on disk.
    *
+   * v100 (2026-05-14): PATH fix for gateway-spawned subprocesses.
+   *
+   * Root cause: openclaw-gateway.service runs under systemd-user with a
+   * minimal default PATH (/usr/local/bin:/usr/bin:/bin) that does NOT
+   * include ~/.bun/bin or ~/.nvm/versions/node/v22.22.2/bin. Any
+   * subprocess the gateway spawns (e.g., the gbrain MCP server) inherits
+   * this restricted PATH. When the spawned binary has a `#!/usr/bin/env
+   * bun` shebang (which gbrain does — its CLI is a TypeScript file at
+   * `~/.bun/install/global/node_modules/gbrain/src/cli.ts`), `env`
+   * iterates PATH looking for `bun`, fails to find it, exits 127, and
+   * the MCP server never starts. Same failure class as the
+   * acp-serve.service NVM/PATH bug documented in CLAUDE.md P1-9 (the
+   * acp-serve unit is sibling, not child; fixed separately by adding
+   * Environment=PATH to ACP_SERVE_SERVICE in lib/ssh.ts).
+   *
+   * Fix: extend the existing "Environment=PARTNER_ID=INSTACLAW" line with
+   * a second "Environment=PATH=..." line via the embedded-newline pattern
+   * the renderer at vm-reconcile.ts:3681-3693 produces from a value
+   * containing "\nEnvironment=". systemd allows multiple Environment=
+   * directives and merges them — the result is two separate lines in the
+   * override.conf:
+   *   Environment=PARTNER_ID=INSTACLAW
+   *   Environment=PATH=/home/openclaw/.bun/bin:/home/openclaw/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin
+   *
+   * Hot-reload taxonomy: NOT hot-reloadable. systemd Environment= takes
+   * effect on the next service start, not via daemon-reload. stepSystemdUnit
+   * already sets result.gatewayRestartNeeded = true after override.conf
+   * writes, which the orchestrator's Step 9 picks up.
+   *
+   * Canary: applied manually to vm-050 2026-05-14 ~15:30 UTC. Gateway
+   * restarted cleanly in 38s. systemd Environment property confirmed
+   * PATH=/home/openclaw/.bun/bin:... in the unit. End-to-end probe:
+   *   env -i PATH=<gateway-equivalent-PATH> gbrain --version → "gbrain 0.28.1" (pre-fix: "env: 'bun': No such file or directory")
+   *
+   * Fleet rollout: reconcile-fleet picks up v100 next cycle. For each VM
+   * at cv<100, stepSystemdUnit rewrites override.conf (md5 differs from
+   * v99-rendered content), daemon-reloads, and gatewayRestartNeeded
+   * triggers a verified restart per Rule 5. ~144 VMs to roll over at
+   * cron concurrency=3 → ~1-2h wall clock.
+   *
+   * Rollback: revert this commit. stepSystemdUnit on next cycle re-writes
+   * override.conf back to the v99 single-Environment form. No data loss.
+   *
    * v99 (2026-05-14): Gateway-health textfile-collector promoted from
    * fleet-pushed-by-hand to fully manifest-owned. Three coordinated pieces:
    *
@@ -1226,7 +1269,7 @@ export const VM_MANIFEST = {
    * the prior content via the V2 markers. cv-decrement script can re-mark
    * affected VMs as cv=95-eligible if needed.
    */
-  version: 99,
+  version: 100,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -2128,7 +2171,13 @@ export const VM_MANIFEST = {
     // Virtuals Protocol partner attribution — ensures ALL child processes (agent tools,
     // npx acp, dgclaw.sh) inherit PARTNER_ID regardless of working directory or dotenv.
     // Confirmed by Mira @ Virtuals 2026-03-30: "inject PARTNER_ID=INSTACLAW to process.env"
-    "Environment": "PARTNER_ID=INSTACLAW",
+    // v100 (2026-05-14): added second Environment line for PATH so subprocess
+    // shebangs `#!/usr/bin/env bun` and `#!/usr/bin/env npx` resolve when the
+    // gateway spawns them. See v100 changelog entry above for the full root
+    // cause + canary trace. The embedded "\nEnvironment=" produces two
+    // separate Environment= lines in the rendered override.conf — systemd
+    // merges them. Sibling fix in lib/ssh.ts:ACP_SERVE_SERVICE for acp-serve.
+    "Environment": "PARTNER_ID=INSTACLAW\nEnvironment=PATH=/home/openclaw/.bun/bin:/home/openclaw/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin",
   } as Record<string, string>,
 
   // ── Session thresholds ──
