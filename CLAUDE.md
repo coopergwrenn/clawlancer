@@ -2152,6 +2152,43 @@ None of these check **whether the npm dependencies are actually installed and re
 
 **Detection rule**: any new `step*` in `lib/vm-reconcile.ts` that calls `systemctl --user restart` on a service MUST include an upstream probe for that service's runtime deps. If the service imports any npm package, the probe checks `~/scripts/node_modules/<top-level-dep>/` exists. If the probe fails, route to the install/re-provision path, not the restart path. The reviewer should ask: "If `node_modules/` is empty, does this step recover, or does it loop forever reporting `activating`?"
 
+### Root Cause 0.7: Partner secrets fail silently for weeks; need active verification
+
+**The 2026-05-14 EDGEOS_BEARER_TOKEN incident.** A 64-char hex string was duplicated into Vercel's `EDGEOS_BEARER_TOKEN` slot at variable-creation time (likely a copy from `EDGEOS_API_KEY`'s slot). The real value should have been a JWT (`eyJ…`). Every edge_city VM carried the wrong token for **34 days**. Every authenticated EdgeOS call from every edge attendee's agent silently returned 401, and no internal alert fired because partner-API 401s aren't a category we monitored. Discovered only when Cooper independently tested attendee-directory queries and noticed they were empty.
+
+**RULE 49 (Partner secrets must be actively verified, not assumed)**: every partner secret in Vercel env that controls authenticated calls to an external partner API MUST be verified end-to-end (a) when first set, (b) on every rotation, and (c) continuously via a periodic probe. The shape check (e.g., JWTs start with `eyJ`) alone would have caught the original 34-day incident on day one.
+
+**Implementation** (shipped 2026-05-14, P1-9):
+
+- **`lib/partner-secrets.ts`** registers a verifier per secret. Each verifier issues an idempotent smoke-test call to the partner API and maps the response to a uniform `VerifierStatus` (`ok`, `not_configured`, `shape_invalid`, `auth_failed`, `unreachable`, `endpoint_5xx`, `endpoint_other`). Shape check runs locally before any network call so a typo in Vercel is caught in milliseconds without leaking the value to the partner.
+- **`scripts/_verify-partner-secrets.ts`** — operator runs after rotating a value in Vercel. Iterates all verifiers, prints pass/fail, exits 1 on hard failure. **This is mandatory** in the partner-secret rotation runbook (below).
+- **`cron/probe-partner-secrets`** (`0 * * * *`) — hourly continuous monitoring. Per-secret 6-hour alert dedup via `instaclaw_admin_alert_log` so an EDGEOS outage doesn't suppress alerting on BANKR.
+
+**Partner-secret rotation runbook**:
+
+1. Partner sends new/rotated secret.
+2. Update Vercel env via `printf 'new_value' | npx vercel env add VAR_NAME production` — **always `printf`, never `<<<` or `echo`** (CLAUDE.md Rule 6 — both append a trailing newline that breaks JWTs).
+3. Pull to local: `npx vercel env pull --environment=production`.
+4. Run `npx tsx scripts/_verify-partner-secrets.ts`.
+5. Confirm the rotated secret reports `ok`. If `shape_invalid` or `auth_failed`, the value in Vercel is wrong — STOP and re-check before deploying.
+6. Trigger a Vercel redeploy (commit + push, or manual rebuild) so the new value reaches production.
+
+**When adding a new partner secret** (Eclipse, Devcon, Bankr production, etc.):
+
+1. Add the env var to Vercel.
+2. Add an entry to `SECRET_ENV_VAR_SOURCES` in `lib/vm-reconcile.ts` (controls distribution to VMs via stepEnvVarPush).
+3. Add a verifier function to `lib/partner-secrets.ts:SECRET_VERIFIERS`. The verifier MUST include both a shape check AND a live-API smoke test.
+4. Run `_verify-partner-secrets.ts` and confirm the new entry reports `ok`.
+5. Bump `SECRET_VERSION` in `lib/vm-reconcile.ts` so existing VMs receive the new env var on the next reconcile tick.
+
+**Banned patterns**:
+
+- "Set the secret and assume it works." That's what gave us 34 days of silent failure.
+- Verifier without a shape check. The shape check is the fastest signal and catches the most common error class (typo, wrong slot, copy-paste).
+- Hardcoded `anthropic-version` strings in verifiers without verifying against the canonical Anthropic-supported list. (Hit during P1-9 implementation — used `2026-01-01` which the API rejected with 400; correct value is the long-stable `2023-06-01`.)
+
+**Detection rule**: any new `process.env.X_API_KEY` / `X_TOKEN` / `X_SECRET` reference added to the codebase must be matched by an entry in `SECRET_VERIFIERS`. If a verifier endpoint isn't available (e.g., partner hasn't shipped their auth-check API), use a shape check + a `TODO when partner ships smoke-test endpoint` comment — but never ship the secret without at least the shape check.
+
 ### Root cause 1: ENOSPC swallowed as "config-set silent failure"
 
 **Evidence**: vm-788, vm-842, vm-043 (paying customers including ellingsonjoel@gmail.com, shelpinc@gmail.com). Disk at 100%. `openclaw config set agents.defaults.bootstrapMaxChars 40000` returns exit 1 with `ENOSPC: no space left on device`. The reconciler reports "config-set silent failure: bootstrapMaxChars expected=\"40000\" actual=\"35000\"" — losing the actual ENOSPC error entirely.
