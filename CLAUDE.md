@@ -1955,6 +1955,19 @@ Single source of truth for what each `VM_MANIFEST.version` bump contains. Used f
 
 Bugs and audit items deferred from active work. Each entry must include: discovery date, symptom, hypothesis, why we can't fix tonight, and an investigation plan. Resolve in-place; never silently delete.
 
+### P1-9: `installAgdpSkill` produces acp-serve.service that fails with exit 127 under systemd
+
+- **Discovered**: 2026-05-14 (Doug Rathell vm-725, but failure mode is generic to all `agdp_enabled=true` VMs).
+- **Symptom**: `acp-serve.service` (user systemd) hits exit-code 127 ("command not found") on every restart attempt. After 5 retries within StartLimitInterval=300s, systemd gives up and marks the unit `failed`. On Doug's VM the failures cascade was visible May 6 21:04 and again May 13 13:18 (cv-catch-up gateway restart triggers a fresh acp-serve start which immediately hits the cascade).
+- **Root cause (confirmed by `systemd-run --user --pipe bash -x acp-serve.sh`)**: `~/virtuals-protocol-acp/acp-serve.sh` sources NVM but never calls `nvm use`. NVM's auto-mode (`NVM_AUTO_MODE=use`) checks `command which node` which resolves to `/usr/bin/node` (system node, not an NVM-managed version). Since system node isn't a tree NVM controls, NVM does nothing further. PATH is unchanged. `exec npx acp serve start` falls through to system PATH where `npx` doesn't exist → 127.
+- **Why we can't fix tonight without broader changes**: the script comes from the upstream `virtuals-protocol-acp` repo + the unit file is written by `lib/ssh.ts:installAgdpSkill`. Patching only Doug's on-disk copy is fragile (gets overwritten next time installAgdpSkill runs). The proper fix updates `installAgdpSkill` to either (a) write a unit with `Environment=PATH=$HOME/.nvm/versions/node/<pinned>/bin:/usr/local/bin:/usr/bin:/bin`, or (b) write a wrapper script that does `nvm use --silent default` after sourcing. Either way it's a manifest-level change affecting all agdp_enabled VMs.
+- **Mitigation tonight**: stale `failed` state on Doug's VM cleared (no fix to acp-serve itself). Doug's primary issue (credit burn from duplicate crons) is unrelated to acp-serve and was fixed today. acp-serve continuing to fail does not block message processing — it only means the dgclaw / Virtuals ACP integration is offline on his VM.
+- **Investigation plan (next bandwidth)**:
+  1. Survey: count `agdp_enabled=true` VMs where acp-serve.service is `failed`. Hypothesis: most/all of them.
+  2. Patch `installAgdpSkill` in `lib/ssh.ts`: choose option (a) Environment=PATH in the unit file with NVM bin pinned to manifest's `NODE_VERSION` constant. Option (b) is fragile if NVM's "default" alias points at the wrong version.
+  3. One-VM canary (Doug's vm-725 since he's already broken — nothing to regress). Verify systemd reaches "active" and `npx acp serve start` makes it past PATH resolution.
+  4. Fleet rollout via reconcile-fleet — but `installAgdpSkill` is gated on `agdp_enabled` so only the relevant cohort is touched.
+
 ### P1-1 [ELEVATED PRIORITY]: Reconciler bumps `config_version` on lying-DB VMs — fleet integrity problem, ~20% of post-v88 VMs affected, 3 distinct shapes
 
 - **Discovered**: 2026-05-05 (vm-893/vm-895 freshly-provisioned cohort)
