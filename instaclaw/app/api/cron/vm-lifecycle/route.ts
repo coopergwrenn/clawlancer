@@ -20,6 +20,7 @@ import {
 } from "@/lib/vm-lifecycle-helpers";
 import {
   freezeVM,
+  imageExists,
   MAX_FREEZE_PER_RUN,
   FREEZE_GRACE_SUSPENDED_DAYS,
   FREEZE_GRACE_HIBERNATING_DAYS,
@@ -93,6 +94,9 @@ export async function GET(req: NextRequest) {
     pass1_wipe_failed: 0,
     pass1_delete_failed: 0,
     pass2_pool_trimmed: 0,
+    // Pass 0.5 (stale frozen_image_id sweep) — populated only when vmLifecycleV2Enabled
+    pass05_stale_image_cleared: 0,
+    pass05_image_probe_failed: 0,
     // Pass 1 v2 (freeze) — populated only when vmLifecycleV2Enabled
     pass1_v2_frozen: 0,
     pass1_v2_skipped_grace: 0,
@@ -493,13 +497,96 @@ export async function GET(req: NextRequest) {
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // PASS 0.5: Stale frozen_image_id sweep
+  //
+  // Find rows where frozen_image_id references a Linode image that has been
+  // deleted out of band (manual cleanup in dashboard, partial-failure during
+  // a previous freeze, race recovery, etc.). Probe each image via Linode
+  // API; if 404, clear frozen_image_id so the operator can investigate.
+  //
+  // Only sweep status='frozen' rows. status='assigned' + non-null
+  // frozen_image_id is the legitimate thaw-pending state (post-thaw,
+  // pre-SSH-verify in lib/vm-freeze-thaw.ts:638); clearing there would
+  // remove the rollback path if SSH never comes up.
+  //
+  // Limit 50/tick keeps the Linode GET cost bounded. Each image probe is a
+  // single API call; rate limit is 1500/hr per account so we're nowhere
+  // near it. Non-404 errors (rate-limit, 5xx, network) leave the row alone
+  // and we retry next tick.
+  // ═══════════════════════════════════════════════════════════════════
+  if (settings.vmLifecycleV2Enabled) {
+    try {
+      const { data: frozenWithImage } = await supabase
+        .from("instaclaw_vms")
+        .select("id, name, frozen_image_id, frozen_at, assigned_to")
+        .eq("status", "frozen")
+        .not("frozen_image_id", "is", null)
+        .limit(50);
+
+      for (const vm of frozenWithImage ?? []) {
+        if (!vm.frozen_image_id) continue;
+        let exists: boolean;
+        try {
+          exists = await imageExists(vm.frozen_image_id);
+        } catch (err) {
+          // Non-404 probe failure (rate limit, 5xx, network). Leave the row
+          // untouched and retry on the next tick. Log so we can spot a
+          // sustained probe-fail pattern.
+          report.pass05_image_probe_failed++;
+          logger.warn("vm-lifecycle: stale-image probe failed (will retry)", {
+            route: "cron/vm-lifecycle", runId, vmId: vm.id, vmName: vm.name,
+            imageId: vm.frozen_image_id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          continue;
+        }
+        if (exists) continue;
+
+        // Image is gone. Clear the reference so the operator can decide what
+        // to do (thaw is no longer possible — the user's data is lost). We
+        // do NOT flip status to 'destroyed' automatically; that's a one-way
+        // door and deserves human review.
+        logger.warn("vm-lifecycle: stale frozen_image_id (Linode 404) — clearing reference", {
+          route: "cron/vm-lifecycle", runId,
+          vmId: vm.id, vmName: vm.name,
+          staleImageId: vm.frozen_image_id,
+          frozenAt: vm.frozen_at,
+        });
+        report.pass05_stale_image_cleared++;
+        if (!dryRun) {
+          await supabase
+            .from("instaclaw_vms")
+            .update({ frozen_image_id: null })
+            .eq("id", vm.id)
+            .eq("status", "frozen");  // race-guard against concurrent thaw
+          await logLifecycleEvent(
+            supabase, vm, vm.assigned_to ?? null, "(unknown)", null,
+            "frozen_image_cleared_stale",
+            `Linode image ${vm.frozen_image_id} returned 404 — reference cleared (user data is lost)`,
+          );
+        }
+      }
+    } catch (err) {
+      report.errors.push(`Pass 0.5 (stale image sweep) failed: ${String(err)}`);
+      logger.error("vm-lifecycle: Pass 0.5 fatal error", {
+        route: "cron/vm-lifecycle", runId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // PASS 1 v2: FREEZE suspended/hibernating VMs past grace period
   //
   // Active only when vmLifecycleV2Enabled=true. Replaces legacy Pass 1's
   // hard-delete with snapshot-then-delete. Different grace per status:
   //   - suspended:    FREEZE_GRACE_SUSPENDED_DAYS days post-suspended_at
   //   - hibernating:  FREEZE_GRACE_HIBERNATING_DAYS days post-suspended_at
-  // Cap MAX_FREEZE_PER_RUN per cycle (Linode image rate limit).
+  // Cap MAX_FREEZE_PER_RUN per cycle (Linode image rate limit). v97
+  // (2026-05-14): the cap now counts ONLY Linode-touching attempts, so
+  // safety skips (SSH unreachable, lock held, etc.) no longer burn budget.
+  // Candidates are ordered by (freeze_consecutive_failures ASC,
+  // suspended_at ASC) so persistent failers move to the back of the queue.
   //
   // All safety checks live in lib/vm-freeze-thaw.ts:freezeVM(). The route
   // just gathers candidates and counts results.
@@ -516,7 +603,7 @@ export async function GET(req: NextRequest) {
       const { data: candidates } = await supabase
         .from("instaclaw_vms")
         .select(
-          "id, name, ip_address, ssh_port, ssh_user, provider_server_id, assigned_to, credit_balance, bankr_token_address, suspended_at, status, health_status, region, lifecycle_locked_at, last_proxy_call_at, frozen_image_id"
+          "id, name, ip_address, ssh_port, ssh_user, provider_server_id, assigned_to, credit_balance, bankr_token_address, suspended_at, status, health_status, region, lifecycle_locked_at, last_proxy_call_at, frozen_image_id, freeze_consecutive_failures"
         )
         .in("health_status", ["suspended", "hibernating"])
         .eq("provider", "linode")
@@ -530,7 +617,19 @@ export async function GET(req: NextRequest) {
         // Skip VMs with proxy activity in the last 7 days. PostgREST .or
         // syntax: column.op.value comma column.op.value — combined with
         // existing .eq filters via implicit AND.
-        .or(`last_proxy_call_at.is.null,last_proxy_call_at.lt.${proxyActivityCutoff}`);
+        .or(`last_proxy_call_at.is.null,last_proxy_call_at.lt.${proxyActivityCutoff}`)
+        // v97 (2026-05-14): order by (failures ASC, suspended_at ASC) so
+        // persistent failers move to the back of the queue. vm-866 + vm-873
+        // sat at the head of the result set for 5+ days each because they
+        // are SSH-unreachable — freezeVM's "verify silence" probe times out
+        // and returns "failing closed", consuming the MAX_FREEZE_PER_RUN
+        // budget every tick without making queue progress. The
+        // freeze_consecutive_failures bump (see post-call update below)
+        // moves them to the tail; the suspended_at tiebreaker keeps the
+        // remaining queue FIFO so older suspensions free up Linode cost
+        // first.
+        .order("freeze_consecutive_failures", { ascending: true })
+        .order("suspended_at", { ascending: true });
 
       logger.info("vm-lifecycle: Pass 1 v2 (freeze) — candidates queried", {
         route: "cron/vm-lifecycle", runId, count: candidates?.length ?? 0, dryRun,
@@ -538,10 +637,11 @@ export async function GET(req: NextRequest) {
 
       let freezeAttempts = 0;
       for (const vm of candidates ?? []) {
-        // Cap on ATTEMPTS not just successes — Linode's image-create rate
-        // limit (~50/hr) counts attempts including failures, so a bad day
-        // hitting rate limits could otherwise burn through the candidate
-        // list trying every VM.
+        // v97: cap counts ONLY Linode-touching attempts. Safety skips (SSH
+        // unreachable, lock held, etc.) bail before any Linode API call, so
+        // they don't burn the budget. See the post-call increment below.
+        // Linode's image-create rate limit (~50/hr) counts real API hits,
+        // not freezeVM invocations.
         if (freezeAttempts >= MAX_FREEZE_PER_RUN) {
           logger.info("vm-lifecycle: Pass 1 v2 attempt cap reached", {
             route: "cron/vm-lifecycle", runId, cap: MAX_FREEZE_PER_RUN,
@@ -604,17 +704,54 @@ export async function GET(req: NextRequest) {
         // Per-VM try/catch — a single Linode API throw must NOT kill the rest
         // of the pass. Convert thrown errors into a freeze_failed result and
         // continue to the next candidate.
-        freezeAttempts++;
+        //
+        // v97 (2026-05-14): freezeAttempts++ moved to AFTER the call so we
+        // can classify whether Linode was actually touched. See below.
         let result: Awaited<ReturnType<typeof freezeVM>>;
+        let threwFromFreezeVM = false;
         try {
           result = await freezeVM(supabase, candidate, dryRun, runId);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          threwFromFreezeVM = true;
           logger.error("vm-lifecycle: freezeVM threw — caught and continuing", {
             route: "cron/vm-lifecycle", runId,
             vmId: vm.id, vmName: vm.name, error: msg,
           });
           result = { success: false, reason: `freezeVM threw: ${msg.slice(0, 200)}` };
+        }
+
+        // v97: classify result and decide budget consumption.
+        // - success → counts toward budget (real Linode op)
+        // - threw from freezeVM → counts (assume Linode-side ops issued)
+        // - safety-skip (SSH unreachable, lock held, credit balance, active sub,
+        //   bankr token, wrong status, wrong health, no provider) → does NOT count;
+        //   freezeVM bails before any Linode API call
+        // - real failure (non-skip, e.g., "no ext4 disk", "image status=...")
+        //   → counts (freezeVM reached Linode and got back an error)
+        const isSafetySkip =
+          !result.success &&
+          !threwFromFreezeVM &&
+          /refuse|paid credits|active|activity|failing closed|lock|wrong status|wrong health|no provider|unexpected activity-check/i.test(result.reason);
+        const touchedLinode = result.success || threwFromFreezeVM || !isSafetySkip;
+        if (touchedLinode) freezeAttempts++;
+
+        // v97: freeze_consecutive_failures tracking for queue fairness.
+        // - Success resets to 0 (well-behaved VM goes back to neutral)
+        // - Any non-success (skip OR real failure) increments by 1 so the
+        //   ORDER BY (failures ASC, suspended_at ASC) on the next tick puts
+        //   persistent failers behind newer / better-behaved candidates.
+        // SSH-unreachable VMs eventually exceed the queue's natural turnover
+        // and get attempted last — still attempted, just deprioritized.
+        if (!dryRun) {
+          const currentFailures = vm.freeze_consecutive_failures ?? 0;
+          const nextFailures = result.success ? 0 : currentFailures + 1;
+          if (nextFailures !== currentFailures) {
+            await supabase
+              .from("instaclaw_vms")
+              .update({ freeze_consecutive_failures: nextFailures })
+              .eq("id", vm.id);
+          }
         }
 
         if (result.success) {
@@ -637,11 +774,11 @@ export async function GET(req: NextRequest) {
             );
           }
         } else {
-          // Distinguish "expected skip" (safety check fired) from "operation
-          // failure" (snapshot/API error). Both increment a counter, but we
-          // keep them separate so the email tells us which.
-          const isSkip = /refuse|paid credits|active|activity|failing closed|lock|wrong status|wrong health|no provider|unexpected activity-check/i.test(result.reason);
-          if (isSkip) {
+          // Reuse isSafetySkip from above so reporting and budget accounting
+          // stay consistent. isSafetySkip is already false when threwFromFreezeVM
+          // is true, so genuine Linode-API exceptions correctly land in the
+          // freeze_failed bucket (not freeze_skipped_safety).
+          if (isSafetySkip) {
             report.pass1_v2_skipped_safety++;
           } else {
             report.pass1_v2_freeze_failed++;
@@ -654,13 +791,13 @@ export async function GET(req: NextRequest) {
             health_status: vm.health_status ?? "?",
             days_since_pause: Math.floor(daysSincePause),
             reason: result.reason,
-            action: isSkip ? "SKIP" : "FAILED",
+            action: isSafetySkip ? "SKIP" : "FAILED",
             image_id: null,
           });
           if (!dryRun) {
             await logLifecycleEvent(
               supabase, vm, vm.assigned_to ?? null, userEmail, null,
-              isSkip ? "freeze_skipped_safety" : "freeze_failed",
+              isSafetySkip ? "freeze_skipped_safety" : "freeze_failed",
               result.reason,
             );
           }
@@ -673,6 +810,14 @@ export async function GET(req: NextRequest) {
         skippedGrace: report.pass1_v2_skipped_grace,
         skippedSafety: report.pass1_v2_skipped_safety,
         failed: report.pass1_v2_freeze_failed,
+        // v97: budget consumption summary — should equal frozen + failed,
+        // NOT include skippedSafety. If freezeAttempts equals MAX_FREEZE_PER_RUN
+        // but skippedSafety > 0 and frozen+failed=0 there's a regression.
+        budgetAttemptsUsed: freezeAttempts,
+        budgetCap: MAX_FREEZE_PER_RUN,
+        // v97: stale-image sweep counters (run before Pass 1 v2)
+        pass05StaleImageCleared: report.pass05_stale_image_cleared,
+        pass05ImageProbeFailed: report.pass05_image_probe_failed,
       });
     } catch (err) {
       report.errors.push(`Pass 1 v2 (freeze) failed: ${String(err)}`);

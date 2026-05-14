@@ -199,6 +199,26 @@ async function getImage(imageId: string): Promise<LinodeImage> {
   return (await linodeFetch(`/images/${imageId}`)) as LinodeImage;
 }
 
+/**
+ * Returns true if the Linode image exists, false if Linode returned 404,
+ * or throws for any other error (rate-limit, network, 5xx). Used by the
+ * vm-lifecycle stale-image sweep (Pass 0.5) to detect rows where
+ * frozen_image_id points at an image that has been deleted out of band.
+ *
+ * Caller must distinguish "image is gone" (false → clear frozen_image_id)
+ * from "couldn't probe" (throw → leave row untouched, retry next tick).
+ */
+export async function imageExists(imageId: string): Promise<boolean> {
+  try {
+    await getImage(imageId);
+    return true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("HTTP 404")) return false;
+    throw err;
+  }
+}
+
 async function deleteImage(imageId: string): Promise<void> {
   await linodeFetch(`/images/${imageId}`, { method: "DELETE" });
 }
