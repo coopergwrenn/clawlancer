@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-14
 
-Window: `ee46a5a86f3f335f319fa266f79fd11e83a8db90` → `HEAD` (HEAD = `1b03ae2d`)
+Window: `1b03ae2d829c1bc3fcfb949cff6e32deb70bbe14` → `HEAD` (HEAD = `acb4c79b`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 1b03ae2d829c1bc3fcfb949cff6e32deb70bbe14 -->
+<!-- LAST_GENERATED_SHA: acb4c79bab4edcb9f05d293440a3e7a3a7d23327 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `1b03ae2d` 2026-05-14 — fix(edgeos): P0 patches — name_conflict status + X-Tenant-Id plumbing [4 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `fbf2ddd0` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `acb4c79b` 2026-05-14 — feat(manifest-integrity): P1-4 — synthetic test + admin alert + expanded hash coverage [7 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `2fe73ee7` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `acb4c79b` 2026-05-14 — feat(manifest-integrity): P1-4 — synthetic test + admin alert + expanded hash coverage [7 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `1b03ae2d` 2026-05-14 — fix(edgeos): P0 patches — name_conflict status + X-Tenant-Id plumbing [4 files] _(multi: [infrastructure, edge]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `fbf2ddd0` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `2fe73ee7` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `1b03ae2d` 2026-05-14 — [infrastructure, edge] — fix(edgeos): P0 patches — name_conflict status + X-Tenant-Id plumbing
+- `acb4c79b` 2026-05-14 — [reconciler, infrastructure, edge, docs] — feat(manifest-integrity): P1-4 — synthetic test + admin alert + expanded hash coverage
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `1b03ae2d` 2026-05-14 — fix(edgeos): P0 patches — name_conflict status + X-Tenant-Id plumbing
+- `acb4c79b` 2026-05-14 — feat(manifest-integrity): P1-4 — synthetic test + admin alert + expanded hash coverage
 
 ## Appendix — every commit (chronological)
 
-- `fbf2ddd0` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `1b03ae2d` 2026-05-14 — fix(edgeos): P0 patches — name_conflict status + X-Tenant-Id plumbing [4 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `2fe73ee7` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `acb4c79b` 2026-05-14 — feat(manifest-integrity): P1-4 — synthetic test + admin alert + expanded hash coverage [7 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
