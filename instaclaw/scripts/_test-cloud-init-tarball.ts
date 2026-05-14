@@ -1994,6 +1994,92 @@ async function test16_BuildSetupSh() {
     reloadIdx > 0 && !be1Block.slice(reloadIdx - 30, reloadIdx).includes("--user"),
     "BE-1 daemon-reload is the system instance (no --user flag in the line)",
   );
+
+  // ── Day 8b BE-7 assertions ────────────────────────────────────────
+  // BE-7 deploys browser-relay-server.js + check-skill-updates.sh +
+  // installs the daily 3am UTC cron. Verify ordering (between §1.9 and
+  // §1.32), BEST_EFFORT pattern, the sudo -u openclaw bash -c block,
+  // the idempotent grep -v cron pattern, and that the cron line's
+  // \$HOME is unexpanded in the source (bash inside sudo expands at
+  // install time, matching SSH-path behavior).
+
+  // 15. BE-7 ordering: AFTER §1.9 CRITICAL, BEFORE §1.32 CRITICAL.
+  const idxBE7 = sh.indexOf("§1.10 BEST_EFFORT [BE-7]");
+  const idx19 = sh.indexOf("§1.9 CRITICAL");
+  const idx132 = sh.indexOf("§1.32 CRITICAL");
+  assert(
+    idxBE7 > 0 && idx19 > 0 && idx132 > 0,
+    `BE-7, §1.9, and §1.32 markers all present (BE-7=${idxBE7}, §1.9=${idx19}, §1.32=${idx132})`,
+  );
+  assert(
+    idxBE7 > idx19 && idxBE7 < idx132,
+    "BE-7 block sits between §1.9 CRITICAL and §1.32 CRITICAL",
+  );
+
+  // 16. BE-7 uses BEST_EFFORT (`|| echo WARN`) pattern, not CRITICAL.
+  const be7Block = sh.slice(idxBE7, idx132);
+  assert(
+    be7Block.includes('|| echo "[$(date -u +%FT%TZ)] WARN: BE-7'),
+    "BE-7 uses BEST_EFFORT `|| echo WARN` pattern",
+  );
+  assert(
+    !be7Block.includes("touch /tmp/.instaclaw-failed"),
+    "BE-7 does NOT use CRITICAL `touch /tmp/.instaclaw-failed` pattern",
+  );
+
+  // 17. BE-7 install commands target both files at the canonical paths.
+  assert(
+    be7Block.includes(
+      "/tmp/instaclaw-config/home/openclaw/scripts/browser-relay-server.js \\\n    /home/openclaw/scripts/browser-relay-server.js",
+    ),
+    "BE-7 installs browser-relay-server.js from tarball to /home/openclaw/scripts/",
+  );
+  assert(
+    be7Block.includes(
+      "/tmp/instaclaw-config/home/openclaw/scripts/check-skill-updates.sh \\\n    /home/openclaw/scripts/check-skill-updates.sh",
+    ),
+    "BE-7 installs check-skill-updates.sh from tarball to /home/openclaw/scripts/",
+  );
+
+  // 18. BE-7 cron line uses the unescaped `$HOME` (bash inside sudo
+  //     expands at install time → stored crontab entry has the literal
+  //     /home/openclaw path, matching the SSH-path behavior).
+  assert(
+    be7Block.includes(
+      '"0 3 * * * /bin/bash $HOME/scripts/check-skill-updates.sh >> $HOME/.openclaw/logs/skill-updates.log 2>&1"',
+    ),
+    "BE-7 cron line preserves $HOME for bash-time expansion (matches SSH-path byte-parity)",
+  );
+
+  // 19. BE-7 cron install uses the idempotent `crontab -l | grep -v ... |
+  //     crontab -` pattern from lib/ssh.ts:6516 so re-running setup.sh
+  //     doesn't duplicate the entry.
+  assert(
+    be7Block.includes(
+      '(crontab -l 2>/dev/null | grep -v "check-skill-updates"; echo "$CRON_LINE") | crontab -',
+    ),
+    "BE-7 cron install uses idempotent grep-v + re-add pattern",
+  );
+
+  // 20. BE-7 runs the cron install as the openclaw user via sudo -u
+  //     (the cron belongs to that user; root's crontab is the wrong
+  //     place — root has no $HOME pointing at /home/openclaw).
+  assert(
+    /sudo -u openclaw bash -c '/.test(be7Block),
+    "BE-7 wraps cron install in `sudo -u openclaw bash -c`",
+  );
+
+  // 21. BE-7 creates the destination directories (~/scripts and
+  //     ~/.openclaw/logs) before installing — the snapshot doesn't
+  //     guarantee they exist.
+  assert(
+    be7Block.includes("install -d -o openclaw -g openclaw -m 755 /home/openclaw/scripts"),
+    "BE-7 creates /home/openclaw/scripts (mode 755, openclaw-owned) before install",
+  );
+  assert(
+    be7Block.includes("install -d -o openclaw -g openclaw -m 755 /home/openclaw/.openclaw/logs"),
+    "BE-7 creates /home/openclaw/.openclaw/logs (for cron log target) before install",
+  );
 }
 
 async function test17_BuildCloudInitTarball() {
@@ -2013,10 +2099,14 @@ async function test17_BuildCloudInitTarball() {
       "home/openclaw/.openclaw/workspace/WALLET.md",
       "home/openclaw/.openclaw/wallet/agent.key",
       "overlays/bankr-overlay.md",
-      // chunk-2 wrappers + setup.sh
+      // chunk-2 wrappers
       "home/openclaw/.openclaw/openclaw.json",
       "home/openclaw/.openclaw/workspace/BOOTSTRAP.md",
       "home/openclaw/.openclaw/agents/main/agent/system-prompt.md",
+      // BE-7 outer scripts (Day 8b)
+      "home/openclaw/scripts/browser-relay-server.js",
+      "home/openclaw/scripts/check-skill-updates.sh",
+      // setup.sh
       "setup.sh",
     ]);
     const actualPaths = new Set(files.keys());
@@ -2171,6 +2261,9 @@ async function test17_BuildCloudInitTarball() {
       "home/openclaw/.openclaw/agents/main/agent/system-prompt.md",
       // MEMORY.md double-write
       ...MEMORY_MD_PATHS,
+      // BE-7 outer scripts (Day 8b)
+      "home/openclaw/scripts/browser-relay-server.js",
+      "home/openclaw/scripts/check-skill-updates.sh",
       // setup.sh
       "setup.sh",
     ]);
@@ -2183,8 +2276,41 @@ async function test17_BuildCloudInitTarball() {
       assert(expectedPaths.has(p), `[fullParams] no unexpected path: ${p}`);
     }
     assert(
-      actualPaths.size === 17,
-      `[fullParams] tarball entry count === 17 (got ${actualPaths.size})`,
+      actualPaths.size === 19,
+      `[fullParams] tarball entry count === 19 (got ${actualPaths.size})`,
+    );
+
+    // BE-7 byte-parity + mode pin verification (the two new entries
+    // from Day 8b BE-7). Source files are read at module load via
+    // fs.readFileSync; tarball-extracted bytes must equal the on-disk
+    // source bytes byte-for-byte.
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const browserRelaySrc = fs.readFileSync(
+      path.resolve(__dirname, "../scripts/browser-relay-server/browser-relay-server.js"),
+      "utf-8",
+    );
+    const checkSkillUpdatesSrc = fs.readFileSync(
+      path.resolve(__dirname, "../scripts/check-skill-updates.sh"),
+      "utf-8",
+    );
+    const brEntry = files.get("home/openclaw/scripts/browser-relay-server.js")!;
+    const csuEntry = files.get("home/openclaw/scripts/check-skill-updates.sh")!;
+    assert(
+      brEntry.body === browserRelaySrc,
+      "BE-7 browser-relay-server.js body byte-identical to source on disk",
+    );
+    assert(
+      csuEntry.body === checkSkillUpdatesSrc,
+      "BE-7 check-skill-updates.sh body byte-identical to source on disk",
+    );
+    assert(
+      brEntry.mode === 0o755,
+      `BE-7 browser-relay-server.js mode === 0o755 (got ${brEntry.mode.toString(8)})`,
+    );
+    assert(
+      csuEntry.mode === 0o755,
+      `BE-7 check-skill-updates.sh mode === 0o755 (got ${csuEntry.mode.toString(8)})`,
     );
 
     // Both MEMORY.md copies hold the same body (the double-write should

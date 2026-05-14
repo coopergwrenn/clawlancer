@@ -41,7 +41,7 @@
  *   - [ ] BE-4: stop pre-existing gateway (likely redundant — under review)
  *   - [ ] BE-5: skill clones + overlays (bankr, consensus, edge_city)
  *   - [ ] BE-6: @bankr/cli pinned install
- *   - [ ] BE-7: browser-relay-server.js + check-skill-updates.sh + cron
+ *   - [✓] BE-7: browser-relay-server.js + check-skill-updates.sh + cron
  *   - [ ] BE-8: agent-status + clawlancer SKILL.md
  *   - [ ] BE-9: mcporter clawlancer config
  *   - [ ] BE-10: pip install §17b.2 packages
@@ -257,6 +257,49 @@ OOMEOF
 }
 
 # ════════════════════════════════════════════════════════════════════════
+# §1.10 BEST_EFFORT [BE-7]: deploy browser-relay-server.js +
+#       check-skill-updates.sh + daily 3am UTC cron
+# ════════════════════════════════════════════════════════════════════════
+# Two scripts the snapshot does NOT have (per §17b.2) AND that the
+# reconciler does NOT manage via vm-manifest.ts:files[]. If we skip
+# this step, only a manual fleet-push can heal these files.
+#
+# browser-relay-server.js: VM-side WebSocket server bound to localhost:18792.
+# Caddy's /relay/* proxy targets it. Without this file, the Chrome
+# extension shows "Cannot reach relay" — degraded feature for users who
+# installed the extension. The systemd unit that runs this script
+# (browser-relay-server.service) lands later via a future BE-N; until
+# then the file sits on disk but doesn't auto-start. Rule 33 in the SSH
+# path classifies browser_relay_deploy as critical=true (lib/ssh.ts:5926);
+# cloud-init relaxes to BEST_EFFORT because failure here is recoverable
+# (fleet-push or manual SSH-deploy) — the gateway still serves Telegram.
+#
+# check-skill-updates.sh: daily 3am UTC cron diff-checks the
+# manifest.json from GitHub against installed pip versions and upgrades
+# drifted packages. Cron install pattern mirrors lib/ssh.ts:6515-6516
+# — \`grep -v\` strips any prior entry first, then \`echo | crontab -\`
+# re-adds. Idempotent on re-run.
+#
+# Idempotency: \`install -m 755\` overwrites canonical bytes. The cron
+# line's \$HOME expands at install time (inside the sudo'd bash) so the
+# stored crontab entry has the literal /home/openclaw path — matches
+# what configureOpenClaw emits today (byte-parity).
+{
+  install -d -o openclaw -g openclaw -m 755 /home/openclaw/scripts
+  install -d -o openclaw -g openclaw -m 755 /home/openclaw/.openclaw/logs
+  install -o openclaw -g openclaw -m 755 \\
+    /tmp/instaclaw-config/home/openclaw/scripts/browser-relay-server.js \\
+    /home/openclaw/scripts/browser-relay-server.js
+  install -o openclaw -g openclaw -m 755 \\
+    /tmp/instaclaw-config/home/openclaw/scripts/check-skill-updates.sh \\
+    /home/openclaw/scripts/check-skill-updates.sh
+  sudo -u openclaw bash -c '
+    CRON_LINE="0 3 * * * /bin/bash \$HOME/scripts/check-skill-updates.sh >> \$HOME/.openclaw/logs/skill-updates.log 2>&1"
+    (crontab -l 2>/dev/null | grep -v "check-skill-updates"; echo "\$CRON_LINE") | crontab -
+  '
+} || echo "[\$(date -u +%FT%TZ)] WARN: BE-7 (browser-relay-server.js + check-skill-updates.sh + cron) partial failure — browser-relay NOT reconciler-healed (Chrome extension feature degraded; operator fleet-push to recover); check-skill-updates cron skipped (pip-package drift accumulates over time)"
+
+# ════════════════════════════════════════════════════════════════════════
 # §1.32 CRITICAL: RESTART gateway + verify /health 200 within 60s
 # ════════════════════════════════════════════════════════════════════════
 # CRITICAL: \`systemctl --user RESTART\` (not start). The snapshot's linger
@@ -337,18 +380,18 @@ echo "OPENCLAW_CONFIGURE_DONE"
 }
 
 # ── Day 8b BEST_EFFORT steps land incrementally — see docstring ───────
-# Done: BE-1 (linger + sshd OOM-protect).
+# Done: BE-1 (linger + sshd OOM-protect), BE-7 (browser-relay-server.js
+# + check-skill-updates.sh + cron).
 # Pending: BE-2 (mkdir defenses), BE-3 (privacy wipe), BE-4 (stop pre-
-# existing gateway — likely redundant with §1.32 restart, under review),
-# BE-5 (skill clones), BE-6 (@bankr/cli), BE-7 (browser-relay-server.js
-# + check-skill-updates.sh), BE-8 (agent-status + clawlancer SKILL.md),
+# existing gateway — under review, likely redundant), BE-5 (skill
+# clones), BE-6 (@bankr/cli), BE-8 (agent-status + clawlancer SKILL.md),
 # BE-9 (mcporter clawlancer config), BE-10 (pip), BE-11 (npm),
 # BE-12 (xvfb/x11vnc/websockify systemd units), BE-13 (daemon-reload —
 # lands with BE-12 since it's a no-op without unit-file changes).
 # All follow the BEST_EFFORT pattern:
 #   { ... } || echo "[\$(date -u +%FT%TZ)] WARN: BE-N (label) — recovery"
 
-echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 — Day 8a + Day 8b BE-1)"
+echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 + BE-7)"
 exit 0
 `;
 }
@@ -377,4 +420,10 @@ export const SETUP_SH_SENTINELS = {
   BE1_OOM_DROP_IN_PATH: "/etc/systemd/system/ssh.service.d/oom-protect.conf",
   /** BE-1: canonical OOM score for sshd protection. */
   BE1_OOM_SCORE: "OOMScoreAdjust=-900",
+  /** BE-7: on-disk install path for browser-relay-server.js. */
+  BE7_BROWSER_RELAY_PATH: "/home/openclaw/scripts/browser-relay-server.js",
+  /** BE-7: on-disk install path for check-skill-updates.sh. */
+  BE7_CHECK_SKILL_UPDATES_PATH: "/home/openclaw/scripts/check-skill-updates.sh",
+  /** BE-7: cron-line fragment for the daily 3am UTC skill-updates check. */
+  BE7_CRON_FRAGMENT: "0 3 * * * /bin/bash $HOME/scripts/check-skill-updates.sh",
 } as const;

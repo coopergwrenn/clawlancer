@@ -44,6 +44,8 @@
  */
 import { pack as tarPack } from "tar-stream";
 import { createGzip } from "node:zlib";
+import { readFileSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
 import { Readable } from "node:stream";
 
 import {
@@ -1077,6 +1079,49 @@ export { packTarGz };
 export type { TarEntry };
 
 // ════════════════════════════════════════════════════════════════════════
+// §6.5 BE-7 file content (read at module load — fail-fast on missing)
+// ════════════════════════════════════════════════════════════════════════
+//
+// Day 8b BE-7 deploys two scripts the snapshot does NOT have (per §17b.2)
+// AND that the reconciler's stepFiles does NOT manage (not in
+// vm-manifest.ts:files[]). Both are read once at module load — a missing
+// source file fails the import (caught in tests) before reaching prod.
+//
+// Vercel @vercel/nft tracing already includes both via next.config.ts:
+//   - "./scripts/browser-relay-server/**/*" (line 14)
+//   - "./scripts/**/*" (line 38)
+// so the files are bundled into the API route's serverless package.
+//
+// Byte-parity references in the SSH path:
+//   - browser-relay-server.js: lib/ssh.ts:5908-5917 (path.resolve(__dirname,
+//     '../scripts/...'), base64-decode + chmod +x). Same source file, same
+//     bytes on disk. Setup.sh uses `install -m 755` instead of base64+chmod
+//     but lands identical content.
+//   - check-skill-updates.sh: lib/ssh.ts:6502-6517 (same pattern).
+
+/**
+ * Content of ~/scripts/browser-relay-server.js — VM-side WebSocket server
+ * the Browser Relay Chrome extension dials into. SSH path classifies its
+ * deploy as `recordFailure(critical=true)` per Rule 33; Day 8b relaxes
+ * to BEST_EFFORT because a single missed deploy is operator-recoverable
+ * (fleet-push), not a broken VM (gateway still serves Telegram).
+ */
+const BROWSER_RELAY_SERVER_JS = readFileSync(
+  resolvePath(__dirname, "../scripts/browser-relay-server/browser-relay-server.js"),
+  "utf-8",
+);
+
+/**
+ * Content of ~/scripts/check-skill-updates.sh — daily 3am UTC cron that
+ * diffs the manifest.json from GitHub against installed pip versions and
+ * upgrades drifted packages.
+ */
+const CHECK_SKILL_UPDATES_SH = readFileSync(
+  resolvePath(__dirname, "../scripts/check-skill-updates.sh"),
+  "utf-8",
+);
+
+// ════════════════════════════════════════════════════════════════════════
 // §7. buildCloudInitTarball — assembled entry point
 // ════════════════════════════════════════════════════════════════════════
 
@@ -1160,7 +1205,23 @@ export function buildCloudInitTarball(p: TarballParams): Readable {
     }
   }
 
-  // ── setup.sh (Day 8a: CRITICAL steps 5/6/9/32/38 only) ──
+  // ── BE-7: outer-scripts (~/scripts/*) ────────────────────────────
+  // Two scripts the snapshot does NOT have (per §17b.2) AND that the
+  // reconciler's stepFiles does NOT manage (not in vm-manifest.ts:
+  // files[]). setup.sh §1.10 (BE-7) installs both from these entries
+  // with mode 0o755 and chown openclaw:openclaw.
+  entries.push({
+    path: "home/openclaw/scripts/browser-relay-server.js",
+    body: BROWSER_RELAY_SERVER_JS,
+    mode: 0o755,
+  });
+  entries.push({
+    path: "home/openclaw/scripts/check-skill-updates.sh",
+    body: CHECK_SKILL_UPDATES_SH,
+    mode: 0o755,
+  });
+
+  // ── setup.sh (Day 8a + Day 8b: CRITICAL steps + landed BEST_EFFORT) ─
   // Mode 0o755 — must be executable. Bootstrap invokes
   // `bash /tmp/instaclaw-config/setup.sh` after extraction.
   entries.push({
