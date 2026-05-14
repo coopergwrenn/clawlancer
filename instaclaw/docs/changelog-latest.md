@@ -1,72 +1,89 @@
 # Changelog — generated 2026-05-14
 
-Window: `f2d9242aac9a55af90186a45ec5f863c5327d643` → `HEAD` (HEAD = `e0c41fe7`)
-Total commits: 4
+Window: `e0c41fe778ff9dfc971f40ec90ac640349955c60` → `HEAD` (HEAD = `57295900`)
+Total commits: 5
 
-<!-- LAST_GENERATED_SHA: e0c41fe778ff9dfc971f40ec90ac640349955c60 -->
+<!-- LAST_GENERATED_SHA: 572959003185be51c161854bc59892d7492b607e -->
 
 ## Summary
 
-- **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 2
+- **Manifest version bumps:** 1
+  - Range: v100 → v100
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
-- **Edge City partner:** 1
-- **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 3
+- **Edge City partner:** 0
+- **Docs / PRD only:** 3
+- AI-assisted commits (co-authored): 4
 - Merge commits: 0
+
+## Manifest version timeline
+
+### v100 — 2026-05-14 — `57295900`
+
+fix(systemd): v100 PATH for gateway-spawned subprocesses + acp-serve unit
+
+> Root cause: openclaw-gateway.service runs under systemd-user with a
+> minimal default PATH (/usr/local/bin:/usr/bin:/bin). Subprocess shebangs
+> like `#!/usr/bin/env bun` (gbrain MCP) fail with exit 127 because `env`
+> can't find `bun` in that PATH. Same failure class as the acp-serve.service
+> NVM/PATH bug documented in CLAUDE.md P1-9.
 
 ## What changed for users
 
-- `e0c41fe7` 2026-05-14 — docs(prd): open P1 sweep — master tracking PRD for 2026-05-14 → Edge Esmeralda [1 files] _(multi: [edge, docs]; ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `72947673` 2026-05-14 — chore(cloud-init): SSH probe for snapshot inventory reconciliation [1 files] _(ai-assisted)_
-- `fc26ee2b` 2026-05-14 — feat(cloud-init): Day 8a — buildCloudInitTarball assembler + CRITICAL setup.sh [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `aff8a4a4` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `57295900` 2026-05-14 — fix(systemd): v100 PATH for gateway-spawned subprocesses + acp-serve unit [3 files] _(**MANIFEST v100**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `5a0d6e33` 2026-05-14 — feat(cloud-init): Day 8b BE-1 — linger + sshd OOM-protect drop-in [2 files] _(ai-assisted)_
+- `93a7e5f5` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `058c4b70` 2026-05-14 — chore(skills): check in frontier SKILL.md from vm-050 [1 files] _(ai-assisted)_
+- `4bf3cd13` 2026-05-14 — docs(P1-1): close lying-DB sweep — 0/144 by census, per-step audit clean [4 files] _(ai-assisted)_
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
 
-_(none)_
+- `57295900` 2026-05-14 — fix(systemd): v100 PATH for gateway-spawned subprocesses + acp-serve unit [3 files] _(**MANIFEST v100**; multi: [reconciler, infrastructure]; ai-assisted)_
 
-### Infrastructure (2)
+### Infrastructure (1)
 
-- `72947673` 2026-05-14 — chore(cloud-init): SSH probe for snapshot inventory reconciliation [1 files] _(ai-assisted)_
-- `fc26ee2b` 2026-05-14 — feat(cloud-init): Day 8a — buildCloudInitTarball assembler + CRITICAL setup.sh [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `5a0d6e33` 2026-05-14 — feat(cloud-init): Day 8b BE-1 — linger + sshd OOM-protect drop-in [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
 _(none)_
 
-### Edge City partner (1)
+### Edge City partner (0)
 
-- `e0c41fe7` 2026-05-14 — docs(prd): open P1 sweep — master tracking PRD for 2026-05-14 → Edge Esmeralda [1 files] _(multi: [edge, docs]; ai-assisted)_
+_(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (3)
 
-- `aff8a4a4` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `93a7e5f5` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `058c4b70` 2026-05-14 — chore(skills): check in frontier SKILL.md from vm-050 [1 files] _(ai-assisted)_
+- `4bf3cd13` 2026-05-14 — docs(P1-1): close lying-DB sweep — 0/144 by census, per-step audit clean [4 files] _(ai-assisted)_
 
-## Multi-category commits (2)
+## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `fc26ee2b` 2026-05-14 — [infrastructure, edge] — feat(cloud-init): Day 8a — buildCloudInitTarball assembler + CRITICAL setup.sh
-- `e0c41fe7` 2026-05-14 — [edge, docs] — docs(prd): open P1 sweep — master tracking PRD for 2026-05-14 → Edge Esmeralda
+- `57295900` 2026-05-14 — [reconciler, infrastructure] — fix(systemd): v100 PATH for gateway-spawned subprocesses + acp-serve unit
 
-## AI-assisted commits (3)
+## AI-assisted commits (4)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `72947673` 2026-05-14 — chore(cloud-init): SSH probe for snapshot inventory reconciliation
-- `fc26ee2b` 2026-05-14 — feat(cloud-init): Day 8a — buildCloudInitTarball assembler + CRITICAL setup.sh
-- `e0c41fe7` 2026-05-14 — docs(prd): open P1 sweep — master tracking PRD for 2026-05-14 → Edge Esmeralda
+- `058c4b70` 2026-05-14 — chore(skills): check in frontier SKILL.md from vm-050
+- `5a0d6e33` 2026-05-14 — feat(cloud-init): Day 8b BE-1 — linger + sshd OOM-protect drop-in
+- `4bf3cd13` 2026-05-14 — docs(P1-1): close lying-DB sweep — 0/144 by census, per-step audit clean
+- `57295900` 2026-05-14 — fix(systemd): v100 PATH for gateway-spawned subprocesses + acp-serve unit
 
 ## Appendix — every commit (chronological)
 
-- `aff8a4a4` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `72947673` 2026-05-14 — chore(cloud-init): SSH probe for snapshot inventory reconciliation [1 files] _(ai-assisted)_
-- `fc26ee2b` 2026-05-14 — feat(cloud-init): Day 8a — buildCloudInitTarball assembler + CRITICAL setup.sh [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `e0c41fe7` 2026-05-14 — docs(prd): open P1 sweep — master tracking PRD for 2026-05-14 → Edge Esmeralda [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `93a7e5f5` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `058c4b70` 2026-05-14 — chore(skills): check in frontier SKILL.md from vm-050 [1 files] _(ai-assisted)_
+- `5a0d6e33` 2026-05-14 — feat(cloud-init): Day 8b BE-1 — linger + sshd OOM-protect drop-in [2 files] _(ai-assisted)_
+- `4bf3cd13` 2026-05-14 — docs(P1-1): close lying-DB sweep — 0/144 by census, per-step audit clean [4 files] _(ai-assisted)_
+- `57295900` 2026-05-14 — fix(systemd): v100 PATH for gateway-spawned subprocesses + acp-serve unit [3 files] _(**MANIFEST v100**; multi: [reconciler, infrastructure]; ai-assisted)_
