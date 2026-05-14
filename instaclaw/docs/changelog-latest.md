@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-14
 
-Window: `fdfcc1c0870becc9b20d13a03b25b89f926d80fe` → `HEAD` (HEAD = `2511bb12`)
+Window: `2511bb12ade1de588185e6128cef22e423427663` → `HEAD` (HEAD = `febf96c5`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 2511bb12ade1de588185e6128cef22e423427663 -->
+<!-- LAST_GENERATED_SHA: febf96c53cdea5599c3e78c29ddba648f6964321 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `2511bb12` 2026-05-14 — feat(admin+cron): P1-6 — lock-status endpoint + clear-stale-configure-locks cron [4 files] _(ai-assisted)_
-- `15e3931c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `febf96c5` 2026-05-14 — feat(reconcile): secret_version — decouple secret distribution from cv (Candidate B) [5 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `9a2f7a5c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `febf96c5` 2026-05-14 — feat(reconcile): secret_version — decouple secret distribution from cv (Candidate B) [5 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `2511bb12` 2026-05-14 — feat(admin+cron): P1-6 — lock-status endpoint + clear-stale-configure-locks cron [4 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `15e3931c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `9a2f7a5c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `febf96c5` 2026-05-14 — [reconciler, infrastructure, edge, docs] — feat(reconcile): secret_version — decouple secret distribution from cv (Candidate B)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `2511bb12` 2026-05-14 — feat(admin+cron): P1-6 — lock-status endpoint + clear-stale-configure-locks cron
+- `febf96c5` 2026-05-14 — feat(reconcile): secret_version — decouple secret distribution from cv (Candidate B)
 
 ## Appendix — every commit (chronological)
 
-- `15e3931c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `2511bb12` 2026-05-14 — feat(admin+cron): P1-6 — lock-status endpoint + clear-stale-configure-locks cron [4 files] _(ai-assisted)_
+- `9a2f7a5c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `febf96c5` 2026-05-14 — feat(reconcile): secret_version — decouple secret distribution from cv (Candidate B) [5 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
