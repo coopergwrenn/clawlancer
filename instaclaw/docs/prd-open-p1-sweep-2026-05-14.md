@@ -16,12 +16,12 @@ This PRD is the **operational tracker** for the next ~10 days. Every open item i
 
 ## 1. Executive Summary
 
-Today's session (2026-05-14) closed **9 of the open items** from my CLAUDE.md audit. **10 items remain open** (8 genuinely + 2 partial). The remaining set falls into three tiers:
+Today's session (2026-05-14) closed **9 of the open items** from my CLAUDE.md audit. **10 items remain open** (8 genuinely + 2 partial). Update 2026-05-14 (in-progress sweep): **P1-1 closed via shipped fixes + natural reconcile (0/144 lying-DB by census).** Remaining 9 items fall into three tiers:
 
-- **Tier 0 — Critical path blocker (1 item)**: P1-1 lying-DB. Gates gbrain Phase 4 fleet rollout and the snapshot bake. Affects ~20% of post-v88 fleet (~30–40 VMs running degraded with silent state lies). All three documented in-code fixes for the root causes are SHIPPED; what remains is operational sweep + comprehensive Rule 10 audit + verification.
+- **Tier 0 — Critical path blocker**: ~~P1-1 lying-DB~~ **SHIPPED 2026-05-14**. 0 items remaining at Tier 0.
 - **Tier 1 — Hardening before snapshot bake (3 items)**: P1-4 Vercel-nft, Rule 37 ENOSPC, Rule 38 atomic-write self-clean. Must land before 2026-05-23 so the new snapshot baseline is correct.
 - **Tier 2 — Partner-readiness before Edge Esmeralda (3 items)**: Rule 42 private-repo skill auth, Rule 43 plugin-aware cold-boot, P1-9 acp-serve.service. Edge Esmeralda starts 2026-05-30. These items don't block the bake but DO block reliable partner onboarding.
-- **Tier 3 — Cross-PRD or post-launch (3 items)**: Rule 44 strict-deadline (owned by reconcile-deadline PRD), P1-2 node_exporter PORT_FAIL surfacing (partial — diagnostic enhancement only), P1-3 vm-726 SSH-degraded auto-detect (partial — generic detection cron).
+- **Tier 3 — Cross-PRD or post-launch (3 items)**: Rule 44 strict-deadline (owned by reconcile-deadline PRD), P1-2 node_exporter PORT_FAIL surfacing (partial — diagnostic enhancement only), P1-3 vm-726 SSH-degraded auto-detect (partial — generic detection cron). Plus 3 lying-DB semantic-misclassification followups noted in §6.1.
 
 ---
 
@@ -149,7 +149,7 @@ Both migrations applied via Supabase SQL Editor; safe + idempotent (`IF NOT EXIS
 
 ### Tier 0 — Critical path blocker (must resolve before gbrain Phase 4 / snapshot bake)
 
-**1. P1-1 [ELEVATED] Lying-DB sweep** — see §6.1 for full spec.
+**1. P1-1 [SHIPPED 2026-05-14] Lying-DB sweep** — see §6.1 for full spec. Closed via shipped fixes + natural reconcile; 0/144 by census today.
 
 ### Tier 1 — Hardening before snapshot bake (2026-05-23 → 25)
 
@@ -173,7 +173,33 @@ Both migrations applied via Supabase SQL Editor; safe + idempotent (`IF NOT EXIS
 
 ## 6. Per-Item Specifications
 
-### 6.1 — P1-1 [ELEVATED] Lying-DB sweep
+### 6.1 — P1-1 [SHIPPED 2026-05-14] Lying-DB sweep
+
+**Status**: **SHIPPED 2026-05-14.** Fleet-wide lying-DB rate fell from ~20% (2026-05-09 sample) to 0.8% (2026-05-13 full census) to **0.0% (2026-05-14 full census, 0/144)** entirely via the shipped code fixes + natural reconcile cycle, with no mass cv-reset needed. Comprehensive per-step Rule 10 audit covering all 63 `result.alreadyCorrect.push(...)` paths in `lib/vm-reconcile.ts` found zero new covering-for-failure pathways (full report: `docs/p1-1-rule-10-audit-2026-05-14.md`). vm-043 transitioned PARTIAL_LIE_DROPIN→HONEST in 24 hours, empirically proving the gate-coupling fix in `stepPrctlSubreaper` heals lying-DB on the next natural reconcile pass.
+
+**Commit refs (shipped earlier, plus today's audit + closeout):**
+- `stepSystemdUnit` errors.push on missing unit (lib/vm-reconcile.ts:3667-3676) — closes TOTAL_LIE
+- `stepPrctlSubreaper` `rollbackDropInIfPresent` gate-coupling (lib/vm-reconcile.ts:2937-2946) — closes PARTIAL_LIE_DROPIN
+- `configureOpenClaw` `config_version: 0` at provision (lib/ssh.ts:7629) — closes SCHEMA_ZERO_LIE
+- Audit doc: `docs/p1-1-rule-10-audit-2026-05-14.md` (this session)
+- This PRD entry + CLAUDE.md P1-1 → SHIPPED (this session)
+
+**Acceptance criteria status** (all met or documented as deferred):
+1. ✓ Census output: 0/144 by current taxonomy (docs/lying-db-census-2026-05-14.md)
+2. ✓ One-VM canary: vm-043 healed organically — proof
+3. ✓ Per-step audit: 63 paths classified, 0 silent-failure pathways
+4. ✓ Fleet sweep <2%: 0.0%
+5. Deferred-as-Tier-3: 7-day no-regression monitoring cron. Current procedure: `npx tsx scripts/_lying-db-census.ts` weekly + after any manifest rollout.
+6. ✓ CLAUDE.md + PRD updated this commit
+
+**Followups filed (Tier 3, non-blocking):**
+- Rename `alreadyCorrect.push(...)` → `warnings.push(...)` for 5 semantic-misclassification cases (stepExecStartAlignment skip cases lines 1262/1271/1302, stepCaddyUIBlock 3931, stepMigrateSoulV2 5526). Doesn't cause lying-DB; just improves audit-log clarity.
+- Recurring census cron — sample-based daily probe, alert if rate >2%.
+- `stepSystemPackages` meta-package check (use `dpkg -l | grep` instead of `which` for `build-essential`).
+
+---
+
+**Original entry kept below for forensic reference:**
 
 **CLAUDE.md reference**: §1971–§2019 (Open P1 Follow-Ups). The 3-shape taxonomy at §1989–§1991.
 

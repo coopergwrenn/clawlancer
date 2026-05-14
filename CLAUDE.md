@@ -1968,7 +1968,24 @@ Bugs and audit items deferred from active work. Each entry must include: discove
   3. One-VM canary (Doug's vm-725 since he's already broken — nothing to regress). Verify systemd reaches "active" and `npx acp serve start` makes it past PATH resolution.
   4. Fleet rollout via reconcile-fleet — but `installAgdpSkill` is gated on `agdp_enabled` so only the relevant cohort is touched.
 
-### P1-1 [ELEVATED PRIORITY]: Reconciler bumps `config_version` on lying-DB VMs — fleet integrity problem, ~20% of post-v88 VMs affected, 3 distinct shapes
+### P1-1 [SHIPPED 2026-05-14]: Reconciler bumps `config_version` on lying-DB VMs — fleet integrity problem, ~20% of post-v88 VMs affected, 3 distinct shapes
+
+- **Status**: **SHIPPED 2026-05-14.** Lying-DB rate reduced from ~20% (2026-05-09 sample) → 0.8% (2026-05-13) → **0.0% (2026-05-14 full census, 0/144)**. All 3 originally-documented shapes are closed in code via the stepSystemdUnit / stepPrctlSubreaper / configureOpenClaw fixes shipped 2026-05-11. The 2026-05-13 PARTIAL_LIE_DROPIN VM (vm-043) self-healed via natural reconcile cycle in 24 hours — empirical proof the gate-coupling fix works. A comprehensive per-step Rule 10 audit covering all 63 `result.alreadyCorrect.push(...)` paths in `lib/vm-reconcile.ts` found zero new silent-failure pathways (full report: `instaclaw/docs/p1-1-rule-10-audit-2026-05-14.md`).
+
+- **Acceptance criteria** (from PRD §6.1):
+  1. ✓ Census output by class — 0/144 lying-DB (docs/lying-db-census-2026-05-14.md)
+  2. ✓ One-VM canary: vm-043 PARTIAL_LIE→HONEST via natural reconcile
+  3. ✓ Per-step audit: 63 paths classified, 0 covering-for-failure (docs/p1-1-rule-10-audit-2026-05-14.md)
+  4. ✓ Fleet sweep <2%: empirically 0.0% (no mass cv-reset needed; natural healing sufficed)
+  5. Open: 7-day no-regression monitoring — recurring census cron deferred as a Tier 3 followup; current procedure is to run `npx tsx scripts/_lying-db-census.ts` manually after any new manifest version rollout or as part of patrol mode.
+  6. ✓ CLAUDE.md update + PRD update — this entry; PRD §6.1 marked SHIPPED.
+
+- **Followups filed (low priority):**
+  - Rename `alreadyCorrect.push(...)` → `warnings.push(...)` for 5 semantic-misclassification cases (stepExecStartAlignment skips, stepCaddyUIBlock "no Caddyfile", stepMigrateSoulV2 "no SOUL.md"). Doesn't cause lying-DB; just improves audit-log clarity.
+  - Recurring census cron — sample 10 random VMs daily, alert if rate >2%.
+  - `stepSystemPackages`: change meta-package check from `which build-essential` (always MISSING) to `dpkg -l | grep build-essential`. Already documented as working-as-intended; just wasteful.
+
+#### Historical context (kept for forensic reference)
 
 - **Discovered**: 2026-05-05 (vm-893/vm-895 freshly-provisioned cohort)
 - **Re-scoped 2026-05-09**: Phase 1 gbrain canary pre-flight checks revealed lying-DB is FAR more pervasive than the original cohort. Of 16 randomly-sampled VMs at `config_version >= 88`, **3 (~19%) are lying-DB** in production — and they fall into 3 distinct shapes that point to 3+ different silent-failure paths in the reconciler. This is a fleet-integrity problem, not a corner case. **Elevated from "investigate post-Consensus" to "must fix before any fleet-wide gbrain rollout (Phase 4)" — gbrain via the reconciler will land badly on hundreds of VMs if this isn't resolved first.**
