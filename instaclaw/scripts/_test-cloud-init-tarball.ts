@@ -22,6 +22,7 @@ import {
   buildBootstrapMd,
   buildDotEnv,
   buildIdentityMd,
+  buildUserMdForTarball,
   buildWalletMd,
   buildWorldIdMd,
   collectPartialEntries,
@@ -29,7 +30,11 @@ import {
   validateTarballParams,
   type TarballParams,
 } from "../lib/cloud-init-tarball";
-import { WORKSPACE_BOOTSTRAP_SHORT, buildPersonalizedBootstrap } from "../lib/ssh";
+import {
+  WORKSPACE_BOOTSTRAP_SHORT,
+  buildPersonalizedBootstrap,
+  buildUserMd,
+} from "../lib/ssh";
 
 // ── helpers ──
 
@@ -91,6 +96,7 @@ const validParams: TarballParams = {
   apiKey: null,
   defaultModel: "anthropic/claude-sonnet-4-6",
   tier: "starter",
+  agentRegion: "us-east",
   agentbookKey: "-----BEGIN EC PRIVATE KEY-----\nFAKEKEY\n-----END EC PRIVATE KEY-----",
   agentbookAddress: "0x5Bc5C4072a68Dd2a1e8595d863e114f54DFf04af",
   bankrEvmAddress: "0x25763b224e0e1cb57d6cf2530a0478290a27af09",
@@ -173,6 +179,20 @@ async function test1_AllInclusiveNoPartner() {
     ".env has canonical publicnode POLYGON_RPC_URL",
   );
   assert(env.startsWith("# INSTACLAW_ENV_V1"), ".env carries the sentinel marker");
+  // VM_MANIFEST.requiredEnvVars (vm-manifest.ts:1938) declares 5 env vars
+  // that MUST exist for the gateway + Polymarket trade-execution + reconciler
+  // to work. Cooper 2026-05-14: "no reliance on the reconciler" → all 5
+  // emit at first boot. Pin presence + manifest-defaults values.
+  assert(env.includes(`CLOB_PROXY_URL=`), ".env has CLOB_PROXY_URL");
+  assert(env.includes(`CLOB_PROXY_URL_BACKUP=`), ".env has CLOB_PROXY_URL_BACKUP");
+  assert(env.includes(`AGENT_REGION=${validParams.agentRegion}`), ".env has AGENT_REGION = p.agentRegion");
+  // All 5 manifest-required env vars must be present (the gate Cooper called out)
+  for (const requiredKey of ["GATEWAY_TOKEN", "POLYGON_RPC_URL", "CLOB_PROXY_URL", "CLOB_PROXY_URL_BACKUP", "AGENT_REGION"]) {
+    assert(
+      new RegExp(`^${requiredKey}=`, "m").test(env),
+      `.env emits manifest-required env var ${requiredKey} (vm-manifest.ts:1938)`,
+    );
+  }
 
   // IDENTITY.md content
   const id = files.get("home/openclaw/.openclaw/workspace/IDENTITY.md")!.body;
@@ -525,6 +545,88 @@ async function test7_EdgeosBearerToken() {
   );
 }
 
+async function test8_BuildUserMdForTarball() {
+  console.log("\n─── TEST 8: buildUserMdForTarball (wrapper #2) ─────");
+
+  // ── Happy path: Gmail present, ASCII first name ──────────────────────
+  // configureOpenClaw at lib/ssh.ts:5796 calls buildUserMd(config.gmailProfileSummary)
+  // directly. Wrapper output MUST be byte-identical for byte-parity audit.
+  const asciiProfile =
+    "Andrew Smith works at Acme Corp on the pricing model rollout. " +
+    "Recent threads with Sarah Chen about Q3 deadlines.";
+  const withGmail: TarballParams = { ...validParams, gmailProfileSummary: asciiProfile };
+
+  const wrapped = buildUserMdForTarball(withGmail);
+  assert(wrapped !== null, "Gmail present: wrapper returns non-null");
+  assert(wrapped === buildUserMd(asciiProfile), "Gmail present: byte-identical to buildUserMd(profileContent)");
+
+  // Name regex pin — ASCII name MUST extract correctly. If buildUserMd
+  // ever loses the regex (or someone narrows it), this fails loudly.
+  assert(wrapped!.includes("**Name:** Andrew Smith"), "Gmail present: ASCII name extracted via regex");
+  assert(wrapped!.includes("**What to call them:** Andrew"), "Gmail present: firstName = Andrew");
+  assert(wrapped!.includes(asciiProfile), "Gmail present: full profileContent embedded in Context section");
+
+  // ── Pre-existing Cyrillic-name bug PINNED ────────────────────────────
+  // The regex /^([A-Z][a-z]+...)\s(?:is|works|lives)/m is ASCII-only.
+  // Cyrillic "Андрей" (vm-918's user) does NOT match → fullName='User'.
+  // Cloud-init path PRESERVES this bug verbatim so Phase 1B-2 byte compare
+  // succeeds. Fixing the regex requires touching lib/ssh.ts:9087 — both
+  // paths would pick it up automatically at that point.
+  const cyrillicProfile = "Андрей is a developer at a Kiev startup, working on social platforms.";
+  const cyrillicGmail: TarballParams = { ...validParams, gmailProfileSummary: cyrillicProfile };
+  const cyrillicOutput = buildUserMdForTarball(cyrillicGmail);
+  assert(cyrillicOutput !== null, "Cyrillic profile: wrapper returns non-null (skip-gate is just truthy)");
+  assert(
+    cyrillicOutput!.includes("**Name:** User"),
+    "Cyrillic profile: ASCII-only regex falls back to 'User' (pre-existing bug pinned)",
+  );
+  assert(
+    cyrillicOutput!.includes("Андрей"),
+    "Cyrillic profile: full content (including non-ASCII) embedded in Context",
+  );
+
+  // ── Gmail-absent → null (caller omits the entry) ─────────────────────
+  // CRITICAL: null is load-bearing. SSH-configure path at lib/ssh.ts:5812-5826
+  // does NOT write USER.md at all. Wrapper MUST return null, NOT an empty
+  // string or placeholder. Caller's omit-on-null logic is what produces
+  // byte-parity with the SSH path's "file doesn't exist" outcome.
+  const noGmail: TarballParams = { ...validParams, gmailProfileSummary: null };
+  assert(buildUserMdForTarball(noGmail) === null, "Gmail null → returns null (caller omits entry)");
+
+  const undefGmail: TarballParams = { ...validParams, gmailProfileSummary: undefined };
+  assert(buildUserMdForTarball(undefGmail) === null, "Gmail undefined → returns null");
+
+  const emptyGmail: TarballParams = { ...validParams, gmailProfileSummary: "" };
+  assert(buildUserMdForTarball(emptyGmail) === null, "Gmail empty string → returns null (empty is falsy)");
+
+  // ── Whitespace-only Gmail: SSH path's truthy check fires personalized ─
+  // configureOpenClaw uses `if (config.gmailProfileSummary)` which treats
+  // "   " as truthy. Wrapper matches — even though the regex won't extract
+  // a name from whitespace and the Context will be whitespace, the file
+  // EXISTS in the SSH path's output. Cloud-init must match.
+  const wsGmail: TarballParams = { ...validParams, gmailProfileSummary: "   " };
+  const wsOutput = buildUserMdForTarball(wsGmail);
+  assert(wsOutput !== null, "Whitespace Gmail → non-null (truthy → emit)");
+  assert(wsOutput === buildUserMd("   "), "Whitespace Gmail: byte-identical to buildUserMd('   ')");
+
+  // ── Sentinel/template markers ────────────────────────────────────────
+  assert(wrapped!.startsWith("# USER.md - About Your Human"), "USER.md header preserved");
+  assert(
+    wrapped!.includes("## Context"),
+    "USER.md has Context section (where Gmail summary lives)",
+  );
+
+  // ── Determinism ──────────────────────────────────────────────────────
+  assert(
+    buildUserMdForTarball(withGmail) === buildUserMdForTarball(withGmail),
+    "deterministic on Gmail present",
+  );
+  assert(
+    buildUserMdForTarball(noGmail) === buildUserMdForTarball(noGmail),
+    "deterministic on Gmail null (both calls return null)",
+  );
+}
+
 async function main() {
   console.log("════════════════════════════════════════════════════════");
   console.log("cloud-init-tarball.ts foundation smoke test");
@@ -536,6 +638,7 @@ async function main() {
   await test4_DeterministicOutput();
   await test6_BuildBootstrapMd();
   await test7_EdgeosBearerToken();
+  await test8_BuildUserMdForTarball();
   await test5_PerFileBuildersDirect();
 
   console.log("\n════════════════════════════════════════════════════════");

@@ -62,7 +62,9 @@ import {
   BANKR_SKILL_PATCH_DIRECTIVE,
   WORKSPACE_BOOTSTRAP_SHORT,
   buildPersonalizedBootstrap,
+  buildUserMd,
 } from "./ssh";
+import { VM_MANIFEST } from "./vm-manifest";
 
 // ════════════════════════════════════════════════════════════════════════
 // §1. Public types
@@ -136,6 +138,13 @@ export interface TarballParams {
    *  so the cloud-init path can't make the same silent-bad-value mistake.
    *  See validateTarballParams below. */
   edgeosBearerToken?: string | null;
+
+  /** Linode region slug (e.g., "us-east", "ca-central", "jp-osa"). Emitted
+   *  as AGENT_REGION in .env per VM_MANIFEST.requiredEnvVars. REQUIRED —
+   *  every VM has a region set at create-Linode time (createUserVM passes
+   *  region: "us-east" or per-event-buffer override). A NULL region at
+   *  provisioning means the upstream Linode create call malformed. */
+  agentRegion: string;
 
   // ── Wallets (per-VM) ──
   /** AgentBook agent.key file body — text of the private key (mode 0o600).
@@ -254,6 +263,18 @@ export function validateTarballParams(p: TarballParams): void {
       `cloud-init-tarball: tier required (got ${JSON.stringify(p.tier)}). ` +
         "A signup flow that reaches cloud-init without a tier set is broken — " +
         "fix the upstream caller; do not relax this check.",
+    );
+  }
+  // agentRegion: AGENT_REGION is one of the 5 required env vars per
+  // VM_MANIFEST.requiredEnvVars. A NULL region at provisioning time means
+  // the upstream createUserVM call didn't pass a region — broken upstream.
+  // Throw rather than emit AGENT_REGION= (with empty value), which would
+  // confuse the reconciler's stepEnvVarPush (it'd treat empty as "needs
+  // backfill" and constantly overwrite from defaults).
+  if (typeof p.agentRegion !== "string" || p.agentRegion.trim() === "") {
+    throw new Error(
+      `cloud-init-tarball: agentRegion required (got ${JSON.stringify(p.agentRegion)}). ` +
+        "A NULL region at provisioning means createUserVM didn't set vm.region — broken upstream.",
     );
   }
 
@@ -479,11 +500,27 @@ export function buildDotEnv(p: TarballParams): string {
   if (p.bankrApiKey) lines.push(`BANKR_API_KEY=${p.bankrApiKey}`);
   if (p.userTimezone) lines.push(`USER_TIMEZONE=${p.userTimezone}`);
 
-  // POLYGON_RPC_URL — canonical publicnode.com (Cooper decision 2026-05-13).
-  // Reconciler also writes this via stepEnvVarPush; duplicating it here
-  // means cloud-init-provisioned VMs are immediately complete without
-  // waiting for the first reconciler tick.
-  lines.push("POLYGON_RPC_URL=https://polygon-bor-rpc.publicnode.com");
+  // ── Manifest-required env vars (per VM_MANIFEST.requiredEnvVars) ──
+  //
+  // Five env vars MUST exist in ~/.openclaw/.env per the manifest at
+  // vm-manifest.ts:1938. Three of them are universal fleet-wide defaults
+  // sourced from VM_MANIFEST.envVarDefaults; AGENT_REGION is per-VM (from
+  // vm.region). GATEWAY_TOKEN was already emitted above with the other
+  // per-user tokens.
+  //
+  // Reading directly from VM_MANIFEST avoids drift: when Cooper bumps the
+  // CLOB proxy IPs (e.g., Osaka → Toronto rotation), this wrapper picks
+  // up the new value on the next deploy. The SSH-configure path doesn't
+  // emit these uniformly (POLYGON only at lib/ssh.ts:5155-5157, CLOB +
+  // AGENT_REGION come from reconciler) — cloud-init delivers all five at
+  // first boot so new VMs are immediately first-boot-complete per Cooper
+  // directive 2026-05-14: "every agent ships ... no exceptions. do not
+  // rely on the reconciler."
+  const envDefaults = VM_MANIFEST.envVarDefaults;
+  lines.push(`POLYGON_RPC_URL=${envDefaults.POLYGON_RPC_URL}`);
+  lines.push(`CLOB_PROXY_URL=${envDefaults.CLOB_PROXY_URL}`);
+  lines.push(`CLOB_PROXY_URL_BACKUP=${envDefaults.CLOB_PROXY_URL_BACKUP}`);
+  lines.push(`AGENT_REGION=${p.agentRegion}`);
 
   // EDGEOS_BEARER_TOKEN — partner-gated to edge_city. JWT-shape validated
   // in validateTarballParams (boundary check, see the 2026-05-14 incident
@@ -554,6 +591,46 @@ export function buildBootstrapMd(p: TarballParams): string {
     return buildPersonalizedBootstrap(p.gmailProfileSummary);
   }
   return WORKSPACE_BOOTSTRAP_SHORT;
+}
+
+/**
+ * USER.md — the agent's profile dossier of the human.
+ *
+ * Returns `string | null`. **null is load-bearing**: the caller (Day 8's
+ * collectCoreEntries assembler) must omit the tarball entry entirely
+ * when this returns null. configureOpenClaw at lib/ssh.ts:5812-5826
+ * (Gmail-absent branch) does NOT write USER.md at all — for byte-parity,
+ * the cloud-init path must skip the file under the same condition.
+ *
+ * Writing a default-placeholder USER.md would diverge from the SSH path
+ * (the file would EXIST with placeholder content vs not exist at all)
+ * and Phase 1B-2's byte compare would fail. **DO NOT add a placeholder
+ * default branch here.** The "file absent" state is the SSH-configure-
+ * matching behavior for Gmail-absent users.
+ *
+ * Truthy-check mirrors lib/ssh.ts:5791:
+ *   - non-empty string → buildUserMd(content)
+ *   - empty string ""  → null (configure path skips this file)
+ *   - null / undefined → null
+ *   - whitespace "   " → buildUserMd("   ") (truthy in JS; matches SSH path)
+ *
+ * Known pre-existing bug PRESERVED for byte-parity (see contract doc
+ * §1.2 + commit c893f76e references): buildUserMd's name regex is
+ * ASCII-only —
+ *   /^([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s(?:is|works|lives)/m
+ * which fails for Cyrillic ("Андрей" — vm-918's user) / CJK / non-ASCII
+ * first letters → fullName silently falls back to "User". Cloud-init
+ * path matches this verbatim. Fixing the regex requires touching
+ * buildUserMd itself in lib/ssh.ts, which both paths would then pick
+ * up automatically — out of scope for this wrapper.
+ *
+ * Mode 0o644.
+ */
+export function buildUserMdForTarball(p: TarballParams): string | null {
+  if (!p.gmailProfileSummary) {
+    return null;
+  }
+  return buildUserMd(p.gmailProfileSummary);
 }
 
 // ════════════════════════════════════════════════════════════════════════
