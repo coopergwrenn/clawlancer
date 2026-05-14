@@ -190,6 +190,56 @@ export interface ReconcileOptions {
 
 // ── Reconciliation engine ──
 
+/**
+ * Rule 47 — Continuous file reconciliation.
+ *
+ * Runs ONLY `stepFiles` against a VM, regardless of its `config_version`.
+ * Used by the `cron/file-drift` route (15-min cadence) to close the
+ * architectural gap where reconcile-fleet's `cv < VM_MANIFEST.version`
+ * filter excludes caught-up VMs from receiving template-only updates.
+ *
+ * Does NOT bump config_version. Does NOT touch any other step (no
+ * config-set, no service restart, no auth-profiles, no skill installs).
+ * Safe to call on any VM in any state — stepFiles is idempotent and
+ * cheap when there's no drift.
+ *
+ * The caller owns:
+ *   - Cron lock (kept separate from reconcile-fleet's lock so they
+ *     can run concurrently without conflicting).
+ *   - SSH connection lifecycle.
+ *   - DB writes for last_file_drift_check / metrics.
+ */
+export async function runFileDriftPass(
+  vm: VMRecord & { api_mode?: string },
+  ssh: SSHConnection,
+  dryRun: boolean = false,
+): Promise<{
+  fixed: string[];
+  alreadyCorrect: string[];
+  errors: string[];
+  warnings: string[];
+}> {
+  const result: ReconcileResult = {
+    fixed: [],
+    alreadyCorrect: [],
+    errors: [],
+    warnings: [],
+    gatewayRestartNeeded: false,
+    gatewayRestarted: false,
+    gatewayHealthy: true,
+    strictErrors: [],
+    canaryHealthy: null,
+    canarySkippedBudget: false,
+  };
+  await stepFiles(ssh, vm, VM_MANIFEST, result, dryRun);
+  return {
+    fixed: result.fixed,
+    alreadyCorrect: result.alreadyCorrect,
+    errors: result.errors,
+    warnings: result.warnings,
+  };
+}
+
 export async function reconcileVM(
   vm: VMRecord & { gateway_token?: string; api_mode?: string },
   manifest: typeof VM_MANIFEST,

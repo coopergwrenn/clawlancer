@@ -26,6 +26,10 @@
       "schedule": "*/3 * * * *"
     },
     {
+      "path": "/api/cron/file-drift",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/cloud-init-poll",
       "schedule": "*/5 * * * *"
     },
