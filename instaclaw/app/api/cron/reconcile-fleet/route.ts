@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { auditVMConfig } from "@/lib/ssh";
 import { VM_MANIFEST } from "@/lib/vm-manifest";
+import { SECRET_VERSION } from "@/lib/vm-reconcile";
 import { verifyManifestFreshness } from "@/lib/manifest-integrity";
 import { sendAdminAlertEmail } from "@/lib/email";
 import * as crypto from "crypto";
@@ -286,7 +287,7 @@ export async function GET(req: NextRequest) {
     //   suspended VMs, which is the only remaining caller of that path).
     const { data: staleVms, error: queryErr } = await supabase
       .from("instaclaw_vms")
-      .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, tier, api_mode, user_timezone, strict_hold_streak, partner, reconcile_consecutive_failures")
+      .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, secret_version, tier, api_mode, user_timezone, strict_hold_streak, partner, reconcile_consecutive_failures")
       .eq("status", "assigned")
       .eq("provider", "linode")
       .eq("health_status", "healthy")
@@ -297,7 +298,15 @@ export async function GET(req: NextRequest) {
       // but this explicit clause documents the protection and survives any
       // future refactor that widens the status filter.
       .not("status", "in", '("terminated","destroyed","failed")')
-      .lt("config_version", VM_MANIFEST.version)
+      // Eligibility is the UNION of two independent staleness signals:
+      //   1. config_version < manifest version (existing — manifest drift)
+      //   2. secret_version  < SECRET_VERSION  (2026-05-14 — secret rotation)
+      // OR-ing them means a caught-up VM (cv = MANIFEST.version) still
+      // re-enters the queue when SECRET_VERSION bumps. Without this, secret
+      // rotations silently fail to propagate to caught-up VMs (Rule 45 /
+      // 2026-05-14 EDGEOS_BEARER_TOKEN incident). See lib/vm-reconcile.ts:
+      // SECRET_VERSION for the bump procedure.
+      .or(`config_version.lt.${VM_MANIFEST.version},secret_version.lt.${SECRET_VERSION}`)
       .not("gateway_url", "is", null)
       // Auto-quarantined VMs (K=10 consecutive reconcile failures) are
       // excluded so they stop wasting cron cycles. Operator clears the
@@ -407,6 +416,39 @@ export async function GET(req: NextRequest) {
         if (strict) {
           strictProbes++;
           if (auditResult.canarySkippedBudget) canariesSkippedBudget++;
+        }
+
+        // ── secret_version bump (decoupled from config_version) ──
+        // Bump independently of strict/push gating so a successful
+        // stepEnvVarPush propagates immediately even when a later step
+        // fails. The whole point of `secret_version` is that secret
+        // distribution is NOT held hostage to the rest of the reconciler.
+        // See lib/vm-reconcile.ts:SECRET_VERSION + CLAUDE.md "Operational
+        // runbook: rotating secrets" in the Incident Response Runbook.
+        const vmSecretVersion = (vm as { secret_version?: number | null }).secret_version ?? 0;
+        if (auditResult.envPushSucceeded && vmSecretVersion < SECRET_VERSION) {
+          const { error: secretBumpErr } = await supabase
+            .from("instaclaw_vms")
+            .update({ secret_version: SECRET_VERSION })
+            .eq("id", vm.id);
+          if (secretBumpErr) {
+            logger.error("reconcile-fleet: secret_version bump failed", {
+              route: "cron/reconcile-fleet",
+              vmId: vm.id,
+              vmName: vm.name,
+              fromVersion: vmSecretVersion,
+              toVersion: SECRET_VERSION,
+              error: secretBumpErr.message,
+            });
+          } else {
+            logger.info("reconcile-fleet: secret_version bumped", {
+              route: "cron/reconcile-fleet",
+              vmId: vm.id,
+              vmName: vm.name,
+              fromVersion: vmSecretVersion,
+              toVersion: SECRET_VERSION,
+            });
+          }
         }
 
         if (auditResult.fixed.length > 0) {

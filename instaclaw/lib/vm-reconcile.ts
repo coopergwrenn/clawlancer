@@ -114,6 +114,25 @@ const GBRAIN_PINNED_VERSION = "0.28.1";
 // Cold install (bun not present): ~165s. Both fit comfortably.
 const GBRAIN_INSTALL_TIMEOUT_MS = 240_000;
 
+// ── Secret distribution version ──
+//
+// Bump SECRET_VERSION whenever a value in SECRET_ENV_VAR_SOURCES is rotated
+// in Vercel. The reconcile-fleet cron's candidate query OR-s
+// `secret_version.lt.<SECRET_VERSION>` with the existing cv staleness filter,
+// so caught-up VMs (cv = MANIFEST.version) re-enter the queue and receive
+// the rotated secret via stepEnvVarPush. Without this bump, caught-up VMs
+// silently carry the stale value until the next manifest bump.
+//
+// Background: see migrations/20260514120000_secret_version.sql + the
+// 2026-05-14 EDGEOS_BEARER_TOKEN incident. Operator runbook in CLAUDE.md
+// "Operational runbook: rotating secrets" inside the Incident Response
+// Runbook section.
+//
+// Bump policy: increment by 1 per rotation. Don't reset. Past values don't
+// need to be remembered — only the comparison `vm.secret_version <
+// SECRET_VERSION` matters for queue inclusion.
+export const SECRET_VERSION = 1;
+
 // ── Result types ──
 
 export interface ReconcileResult {
@@ -152,6 +171,17 @@ export interface ReconcileResult {
    * is blocking coverage" vs "how often canary legitimately ran".
    */
   canarySkippedBudget: boolean;
+  /**
+   * True if stepEnvVarPush completed without pushing any errors for any
+   * key it processed (skipped, no-op'd, or fixed cleanly — all OK).
+   * Decoupled from overall reconcile success so the cron can bump
+   * `instaclaw_vms.secret_version` even when a later (non-env) step fails.
+   *
+   * Default true (vacuous when stepEnvVarPush is a full no-op). Set to
+   * false only by stepEnvVarPush itself, alongside the corresponding
+   * `result.errors.push(...)`.
+   */
+  envPushSucceeded: boolean;
 }
 
 export interface ReconcileOptions {
@@ -230,6 +260,7 @@ export async function runFileDriftPass(
     strictErrors: [],
     canaryHealthy: null,
     canarySkippedBudget: false,
+    envPushSucceeded: true,
   };
   await stepFiles(ssh, vm, VM_MANIFEST, result, dryRun);
   return {
@@ -269,6 +300,7 @@ export async function reconcileVM(
     strictErrors: [],
     canaryHealthy: null,
     canarySkippedBudget: false,
+    envPushSucceeded: true,
   };
 
   const ssh = await connectSSH(vm);
@@ -1105,11 +1137,16 @@ async function stepEnvVarPush(
       }
     } else if (failMatch) {
       result.errors.push(`stepEnvVarPush ${envKey}: ${failMatch[1]}`);
+      // Block secret_version bump on any per-key failure — next cron tick
+      // retries. Skips (gate mismatch / value unset) and no-ops do NOT
+      // clear this flag.
+      result.envPushSucceeded = false;
     } else {
       // Unexpected output — push to errors with snippet for forensics
       result.errors.push(
         `stepEnvVarPush ${envKey}: unexpected output exit=${res.code} stdout=${stdout.slice(0, 200)} stderr=${stderr.slice(0, 200)}`,
       );
+      result.envPushSucceeded = false;
     }
   }
 }

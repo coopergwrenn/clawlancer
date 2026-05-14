@@ -8349,7 +8349,7 @@ export interface AuditResult {
 export async function auditVMConfig(
   vm: VMRecord & { gateway_token?: string; api_mode?: string; tier?: string | null; user_timezone?: string | null },
   options?: { strict?: boolean; dryRun?: boolean; canary?: boolean; skipGatewayRestart?: boolean },
-): Promise<AuditResult & { strictErrors: string[]; canaryHealthy: boolean | null; canarySkippedBudget: boolean; errors: string[]; gatewayRestartNeeded: boolean; gatewayRestarted: boolean }> {
+): Promise<AuditResult & { strictErrors: string[]; canaryHealthy: boolean | null; canarySkippedBudget: boolean; errors: string[]; gatewayRestartNeeded: boolean; gatewayRestarted: boolean; envPushSucceeded: boolean }> {
   const reconcileResult = await reconcileVM(vm, VM_MANIFEST, options);
   return {
     fixed: reconcileResult.fixed,
@@ -8370,6 +8370,11 @@ export async function auditVMConfig(
     errors: reconcileResult.errors,
     gatewayRestartNeeded: reconcileResult.gatewayRestartNeeded,
     gatewayRestarted: reconcileResult.gatewayRestarted,
+    // True when stepEnvVarPush completed without per-key errors. Lets the
+    // cron route advance `instaclaw_vms.secret_version` independently of
+    // config_version when secrets are distributed cleanly but a later
+    // step fails. See lib/vm-reconcile.ts:SECRET_VERSION.
+    envPushSucceeded: reconcileResult.envPushSucceeded,
   };
 }
 

@@ -1423,6 +1423,19 @@ Rule: <new R<N> | existing R<N> | none-mapped>.
 
 When receiving JWTs via Telegram or any messaging platform, the rendered text may contain soft-wrap line breaks that alter the token when naively joined. Always base64-decode the payload section (middle part between the two dots) and verify the decoded JSON contains expected values (email, citizen_id, etc.) BEFORE deploying. The 2026-05-14 EDGEOS_BEARER_TOKEN incident lost an hour of debugging because a single character was inserted at a line-break boundary (muvionai.com vs muvinai.com).
 
+### Operational runbook: rotating secrets
+
+When rotating any secret in `SECRET_ENV_VAR_SOURCES` (`lib/vm-reconcile.ts`), bump `SECRET_VERSION` in the same file and deploy. The reconciler will redistribute to all VMs on the next tick — caught-up VMs (those at `config_version = VM_MANIFEST.version`) re-enter the candidate queue because the cron's filter OR-s `secret_version.lt.<SECRET_VERSION>` with the config-version staleness filter. After a successful `stepEnvVarPush`, the route bumps the VM's `secret_version` to current, taking it back out of the queue.
+
+The 2026-05-14 EDGEOS_BEARER_TOKEN incident is what this mechanism prevents: without it, the only paths to deliver a rotated secret to a caught-up VM were (a) a heavyweight manifest version bump, (b) operator-driven SQL `cv` decrement, or (c) out-of-band SSH fleet patch. All three are operator-toil shortcuts to a structural gap. `secret_version` decouples secret distribution from manifest drift — both axes can advance independently.
+
+**Procedure:**
+1. Update the secret value in Vercel env (all 3 environments — `printf '%s' ...| vercel env add`, no trailing newline per Rule 6).
+2. Bump `SECRET_VERSION` in `lib/vm-reconcile.ts` (`+1`, never reset).
+3. Commit + push. Vercel redeploys the cron route with the new constant.
+4. Next cron tick (≤3 min): the OR clause widens the candidate set; `stepEnvVarPush` distributes the new value to each affected VM; on success, the route bumps that VM's `secret_version` to current.
+5. Within `CONFIG_AUDIT_BATCH_SIZE × N_ticks`, all assigned+healthy VMs are caught up. Quarantined and non-healthy VMs are not touched (by design — same gating as `config_version` propagation).
+
 ### Patrol mode — proactive checks (no incident in flight)
 
 Run every 6h or on Cooper's manual invocation. Outputs a digest only if anomalies found; silent if clean.
