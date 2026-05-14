@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-14
 
-Window: `19b5fa47e965556412597d6435422b2e0f44f91b` → `HEAD` (HEAD = `8a8314fe`)
+Window: `8a8314fed796111fecfdb02e3b66d1d51c5e6e83` → `HEAD` (HEAD = `5d04389d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 8a8314fed796111fecfdb02e3b66d1d51c5e6e83 -->
+<!-- LAST_GENERATED_SHA: 5d04389de36961dd1b2b0d3d90c1b1b3ce21e261 -->
 
 ## Summary
 
@@ -11,18 +11,19 @@ Total commits: 2
 - **Reconciler / manifest:** 0
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
-- **Edge City partner:** 1
-- **Docs / PRD only:** 1
+- **Edge City partner:** 0
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-- `8a8314fe` 2026-05-14 — docs(edgeos): sandbox test setup runbook for operator-driven first run [1 files] _(multi: [edge, docs]; ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `c997e498` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `c6609d8e` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `5d04389d` 2026-05-14 — docs(edgeos): deep audit of lib/edgeos-auth.ts + lib/edgeos-api-keys.ts [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -38,27 +39,22 @@ _(none)_
 
 _(none)_
 
-### Edge City partner (1)
+### Edge City partner (0)
 
-- `8a8314fe` 2026-05-14 — docs(edgeos): sandbox test setup runbook for operator-driven first run [1 files] _(multi: [edge, docs]; ai-assisted)_
+_(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `c997e498` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `8a8314fe` 2026-05-14 — [edge, docs] — docs(edgeos): sandbox test setup runbook for operator-driven first run
+- `c6609d8e` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `5d04389d` 2026-05-14 — docs(edgeos): deep audit of lib/edgeos-auth.ts + lib/edgeos-api-keys.ts [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `8a8314fe` 2026-05-14 — docs(edgeos): sandbox test setup runbook for operator-driven first run
+- `5d04389d` 2026-05-14 — docs(edgeos): deep audit of lib/edgeos-auth.ts + lib/edgeos-api-keys.ts
 
 ## Appendix — every commit (chronological)
 
-- `c997e498` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `8a8314fe` 2026-05-14 — docs(edgeos): sandbox test setup runbook for operator-driven first run [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `c6609d8e` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `5d04389d` 2026-05-14 — docs(edgeos): deep audit of lib/edgeos-auth.ts + lib/edgeos-api-keys.ts [1 files] _(ai-assisted)_
