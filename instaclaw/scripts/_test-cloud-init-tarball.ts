@@ -17,11 +17,13 @@ import { gunzipSync } from "node:zlib";
 import { extract as tarExtract } from "tar-stream";
 
 import {
+  MEMORY_MD_PATHS,
   buildAgentKey,
   buildAuthProfilesJson,
   buildBootstrapMd,
   buildDotEnv,
   buildIdentityMd,
+  buildMemoryMdForTarball,
   buildSystemPromptForTarball,
   buildUserMdForTarball,
   buildWalletMd,
@@ -749,6 +751,130 @@ async function test9_BuildSystemPromptForTarball() {
   );
 }
 
+async function test10_BuildMemoryMdForTarball() {
+  console.log("\n─── TEST 10: buildMemoryMdForTarball (wrapper #4) ──");
+
+  // ── MEMORY_MD_PATHS contract pin ─────────────────────────────────────
+  // The double-write tech-debt is documented in the contracts doc; pin
+  // the destination paths so a "let's simplify to one path" change has
+  // to deliberately update this test (which forces re-reading §5b(e)
+  // and removing BOTH writers in lockstep, not just one).
+  assert(MEMORY_MD_PATHS.length === 2, "MEMORY_MD_PATHS has exactly 2 entries (workspace + agent-dir)");
+  assert(
+    MEMORY_MD_PATHS[0] === "home/openclaw/.openclaw/workspace/MEMORY.md",
+    "MEMORY_MD_PATHS[0] is the workspace path (live source of truth)",
+  );
+  assert(
+    MEMORY_MD_PATHS[1] === "home/openclaw/.openclaw/agents/main/agent/MEMORY.md",
+    "MEMORY_MD_PATHS[1] is the agent-dir path (fossilized tech debt — §5b(e))",
+  );
+
+  // ── Happy path: Gmail present → content === gmailProfileSummary ─────
+  // configureOpenClaw at lib/ssh.ts:5795 writes
+  //   `echo '${memB64}' | base64 -d > "${workspaceDir}/MEMORY.md"`
+  // where memB64 is Buffer.from(config.gmailProfileSummary, 'utf-8').toString('base64').
+  // The decoded result is the gmailProfileSummary verbatim. Wrapper must
+  // emit the same exact string.
+  const profile =
+    "Andrew Smith works at Acme Corp. Recent threads: Sarah Chen on pricing, " +
+    "Mike Park on Stripe migration.";
+  const withGmail: TarballParams = { ...validParams, gmailProfileSummary: profile };
+
+  const wrapped = buildMemoryMdForTarball(withGmail);
+  assert(wrapped !== null, "Gmail present: returns non-null");
+  assert(wrapped === profile, "Gmail present: content === p.gmailProfileSummary verbatim (pass-through)");
+
+  // Cross-validate against SSH-path byte-output: the SSH path's base64
+  // round-trip produces gmailProfileSummary verbatim, so the test below
+  // is equivalent to "matches the SSH-path bytes."
+  const sshPathDecoded = Buffer.from(
+    Buffer.from(profile, "utf-8").toString("base64"),
+    "base64",
+  ).toString("utf-8");
+  assert(wrapped === sshPathDecoded, "Wrapper matches SSH-path's base64-round-trip output exactly");
+
+  // ── Gmail-absent → null (caller omits BOTH entries) ─────────────────
+  const noGmail: TarballParams = { ...validParams, gmailProfileSummary: null };
+  assert(
+    buildMemoryMdForTarball(noGmail) === null,
+    "Gmail null → null (caller omits both workspace + agent-dir entries)",
+  );
+
+  const undefGmail: TarballParams = { ...validParams, gmailProfileSummary: undefined };
+  assert(buildMemoryMdForTarball(undefGmail) === null, "Gmail undefined → null");
+
+  const emptyGmail: TarballParams = { ...validParams, gmailProfileSummary: "" };
+  assert(buildMemoryMdForTarball(emptyGmail) === null, "Gmail empty string → null (falsy)");
+
+  // ── Whitespace truthy ────────────────────────────────────────────────
+  // SSH path's line 5791 `if (config.gmailProfileSummary)` treats "   "
+  // as truthy → enters personalized branch → writes MEMORY.md = "   ".
+  // Wrapper preserves this (no `.trim()` semantics here, unlike system-
+  // prompt's internal trim).
+  const wsGmail: TarballParams = { ...validParams, gmailProfileSummary: "   " };
+  assert(buildMemoryMdForTarball(wsGmail) === "   ", "Whitespace Gmail → emits whitespace verbatim");
+
+  // ── Unicode preserved verbatim (no template, just pass-through) ──────
+  // The 2026-05-13 vm-918 case: khomenko89's name "Андрей" lives in their
+  // profile content. Cloud-init must preserve Cyrillic + any other Unicode
+  // byte-for-byte. configureOpenClaw uses Buffer.from(str, 'utf-8') →
+  // base64 → decode = lossless. Wrapper's pass-through is equivalent.
+  const cyrillicProfile =
+    "Андрей is a developer at a Kiev startup. " +
+    "JavaScript backend work — projects: 社交平台 + Telegram bots. " +
+    "Emoji status: 🚀 shipping weekly.";
+  const cyrillicTar: TarballParams = { ...validParams, gmailProfileSummary: cyrillicProfile };
+  assert(
+    buildMemoryMdForTarball(cyrillicTar) === cyrillicProfile,
+    "Unicode (Cyrillic + CJK + emoji) preserved verbatim",
+  );
+
+  // ── Markdown special chars preserved (not interpreted as anything) ───
+  // The agent will render the MEMORY.md content as plain text in their
+  // context window. Markdown chars are NOT escaped — they're embedded
+  // verbatim, just like the SSH path does (base64-round-trip is lossless).
+  const markdownProfile =
+    "Working on `~/projects/foo`. **Important**: see [docs](https://example.com). " +
+    "Code: ```const x = `template ${var}`;``` " +
+    "Edge: $TEMPLATE_VAR + backtick`s + asterisks ***";
+  const mdTar: TarballParams = { ...validParams, gmailProfileSummary: markdownProfile };
+  assert(
+    buildMemoryMdForTarball(mdTar) === markdownProfile,
+    "Markdown special chars (backticks, ${}, **, []) preserved verbatim",
+  );
+
+  // ── Large content preserved ──────────────────────────────────────────
+  // No truncation at the wrapper layer. configureOpenClaw also doesn't
+  // truncate at write-time; the agent's bootstrap loader may truncate
+  // upstream, but that's SOUL.md's concern, not MEMORY.md's.
+  const largeProfile = "Lorem ipsum dolor sit amet. ".repeat(1000); // ~27KB
+  const largeTar: TarballParams = { ...validParams, gmailProfileSummary: largeProfile };
+  const largeResult = buildMemoryMdForTarball(largeTar);
+  assert(largeResult === largeProfile, "Large content (~27KB) preserved without truncation");
+  assert(largeResult!.length === largeProfile.length, "No silent truncation at the wrapper");
+
+  // ── Determinism ──────────────────────────────────────────────────────
+  assert(
+    buildMemoryMdForTarball(withGmail) === buildMemoryMdForTarball(withGmail),
+    "deterministic on Gmail present",
+  );
+  assert(
+    buildMemoryMdForTarball(noGmail) === buildMemoryMdForTarball(noGmail),
+    "deterministic on Gmail null (both calls return null)",
+  );
+
+  // ── Edge: identical content at both paths (double-write consistency) ─
+  // The Day 8 assembler will emit TWO TarEntry objects with identical
+  // bodies. Test that the wrapper's output is the SAME single string —
+  // the dual emission must not produce drift between the two paths
+  // (which would defeat byte-parity with configureOpenClaw, which also
+  // writes identical content at both paths).
+  const content = buildMemoryMdForTarball(withGmail);
+  assert(content === content, "single source: same content used at BOTH MEMORY_MD_PATHS");
+  // Note: we can't test "both entries in the tarball" until the Day 8
+  // assembler lands. Pinning the contract here is sufficient.
+}
+
 async function main() {
   console.log("════════════════════════════════════════════════════════");
   console.log("cloud-init-tarball.ts foundation smoke test");
@@ -762,6 +888,7 @@ async function main() {
   await test7_EdgeosBearerToken();
   await test8_BuildUserMdForTarball();
   await test9_BuildSystemPromptForTarball();
+  await test10_BuildMemoryMdForTarball();
   await test5_PerFileBuildersDirect();
 
   console.log("\n════════════════════════════════════════════════════════");

@@ -674,6 +674,71 @@ export function buildSystemPromptForTarball(p: TarballParams): string {
   return buildSystemPrompt(p.gmailProfileSummary ?? "");
 }
 
+/**
+ * The two destination paths where MEMORY.md is written by both the
+ * SSH-configure path AND this cloud-init path. The Day 8 assembler
+ * emits TWO TarEntry objects with identical body bytes, one per path.
+ *
+ * **TECH DEBT — DO NOT NORMALIZE TO ONE PATH WITHOUT READING §5b(e) FIRST.**
+ *
+ * Per the investigation at docs/cloud-init-wrapper-contracts-2026-05-13.md
+ * §5b(e), the agents/main/agent/MEMORY.md copy is fossilized at provision
+ * time and never updated:
+ *   - workspace/MEMORY.md: LIVE source of truth. Written by
+ *     configureOpenClaw (line 5803), strip-thinking.py (line 1273), and
+ *     the agent's own SOUL.md memory-filing system. Read by gateway
+ *     bootstrap (annotated "bootstrap-loaded" at line 1273 of strip-
+ *     thinking).
+ *   - agents/main/agent/MEMORY.md: WRITE-ONCE-AT-PROVISION. ONLY writer
+ *     in the entire repo is configureOpenClaw line 5809. The ONLY other
+ *     reference is the delete-loop at line 9835 (privacy wipe). NO
+ *     reader was found in lib/ssh.ts or strip-thinking.py.
+ *
+ * The cloud-init path preserves the double-write for byte-parity with
+ * configureOpenClaw (Phase 1B-2 byte compare). P1 follow-up: a separate
+ * PR removes the agent-dir write from BOTH paths simultaneously; the
+ * delete-loop at line 9835 stays as defensive cleanup for legacy VMs.
+ *
+ * If you find yourself wanting to remove ONE of these paths, REMOVE BOTH
+ * (and ship the configureOpenClaw delete in the same PR) or you'll
+ * break Phase 1B-2.
+ */
+export const MEMORY_MD_PATHS = [
+  "home/openclaw/.openclaw/workspace/MEMORY.md",
+  "home/openclaw/.openclaw/agents/main/agent/MEMORY.md",
+] as const;
+
+/**
+ * MEMORY.md — the agent's long-term memory file (Gmail-derived initial
+ * content). Returns the content string that gets emitted at BOTH paths
+ * in MEMORY_MD_PATHS above. Day 8's collectCoreEntries assembler is
+ * responsible for the dual emission.
+ *
+ * configureOpenClaw at lib/ssh.ts:5795 writes `config.gmailProfileSummary`
+ * verbatim (base64-encoded for shell-transit safety, then decoded back to
+ * the original bytes on the VM). The wrapper is a literal pass-through.
+ * No template, no string substitution — same input bytes go in, same
+ * input bytes come out. Markdown special characters, Unicode (Cyrillic /
+ * CJK / emoji), embedded code blocks, template-literal-looking syntax
+ * — all preserved verbatim because this is not a template, it's a
+ * straight value copy.
+ *
+ * Gmail-absent (gmailProfileSummary null/undefined/empty): returns null.
+ * The SSH path's line 5812-5826 (Gmail-absent branch) does NOT write
+ * MEMORY.md — it falls through to the defensive heredoc block at line
+ * 5831+ which creates a default template ONLY IF the file is missing.
+ * Cloud-init must match by omitting both entries. The setup.sh template
+ * (Day 8) already includes the equivalent defensive heredoc.
+ *
+ * Mode 0o644 (both paths).
+ */
+export function buildMemoryMdForTarball(p: TarballParams): string | null {
+  if (!p.gmailProfileSummary) {
+    return null;
+  }
+  return p.gmailProfileSummary;
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // §4. Partner overlay selection
 // ════════════════════════════════════════════════════════════════════════
