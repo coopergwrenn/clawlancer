@@ -255,6 +255,15 @@ SESSIONS_JSON = os.path.join(SESSIONS_DIR, "sessions.json")
 ARCHIVE_DIR = os.path.join(SESSIONS_DIR, "archive")
 SESSION_BACKUP_DIR = os.path.expanduser("~/.openclaw/session-backups")
 SESSION_BACKUP_RETENTION_DAYS = 7
+# Cooldown between backups of the SAME source jsonl. The old mtime-only
+# idempotency check failed because strip-thinking modifies source after
+# each backup; this is a wall-clock cap that fires regardless of source
+# state. 5 min = 288 backups/day max per session in the worst case,
+# vs 1440 with the prior mtime-only check.
+SESSION_BACKUP_COOLDOWN_SEC = 300
+# Hard cap on backups per source jsonl. Defense-in-depth even if cooldown
+# is somehow bypassed. 50 × 7d retention = bounded at 50 per session.
+SESSION_BACKUP_MAX_PER_SESSION = 50
 LOCK_FILE = os.path.join(SESSIONS_DIR, ".strip-thinking.lock")
 LOG_DIR = os.path.expanduser("~/.openclaw/logs")
 LOG_FILE = os.path.join(LOG_DIR, "strip-thinking.log")
@@ -350,36 +359,47 @@ def _backup_session_file(path):
     """Copy a session JSONL file to the backup dir before destructive operation.
     Forensic evidence — kept for SESSION_BACKUP_RETENTION_DAYS days.
     Never crashes the cron — wrapped in try/except.
-    Added 2026-04-10 after losing audit trail on Not Bored Kid investigation.
 
-    2026-05-11 P1 fix: idempotency gate. Pre-fix, this function was called
-    from strip-thinking.py's per-tick loop on every session that hit a
-    quality issue (empty_responses / error_loop / oversized). A single
-    persistently-problematic session would generate 1440 backup files/day
-    (cron fires every minute). vm-512 census found 186K backup files in
-    7 days on a single VM — 56GB on a 79GB disk, eventually triggering
-    ENOSPC and killing the gateway with 'failed to acquire gateway lock'.
+    History:
+    - Added 2026-04-10 after losing audit trail on Not Bored Kid investigation.
+    - 2026-05-11: idempotency gate (skip if backup mtime >= source mtime).
+      Found insufficient on 2026-05-13.
+    - 2026-05-14: cooldown-based idempotency + per-session count cap. The
+      mtime-based gate failed because strip-thinking.py MODIFIES the source
+      file after each backup (strips thinking blocks, compacts, etc.), so
+      the source mtime is ALWAYS newer than the most recent backup mtime
+      on the next cron tick. The check effectively never fired, producing
+      ~1 backup per cron tick per session. Fleet-wide census found
+      vm-788 with 242,219 backup files (58GB) and vm-375 with 211,728
+      (56GB), both filling 79GB disks to 100% and crashing gateways.
 
-    Idempotency rule: skip the new backup if a backup of the same source
-    file already exists in SESSION_BACKUP_DIR with mtime >= source mtime.
-    "We already have a snapshot of this version" — no point making another.
-    The forensic value is preserved (one backup per modification of the
-    source); the runaway is gone (no backup if source hasn't changed
-    since last backup).
+    New idempotency rules (BOTH must allow before backing up):
+    1. COOLDOWN: skip if any backup for this basename has mtime within the
+       last SESSION_BACKUP_COOLDOWN_SEC (default 300s = 5 min). One backup
+       per session per 5 min is plenty of forensic granularity; protects
+       against runaway loops independent of how the source mutates.
+    2. COUNT CAP: skip if there are already
+       SESSION_BACKUP_MAX_PER_SESSION (default 50) backups for this
+       basename. Hard ceiling — even if cooldown is somehow bypassed,
+       per-session disk usage is bounded.
     """
     try:
         if not path or not path.endswith(".jsonl") or not os.path.exists(path):
             return
         os.makedirs(SESSION_BACKUP_DIR, exist_ok=True)
-        # Idempotency check: existing backups follow the pattern
-        # "<ts>-<basename>" so glob the basename suffix.
         basename = os.path.basename(path)
         try:
-            src_mtime = os.path.getmtime(path)
-            for existing in glob.glob(os.path.join(SESSION_BACKUP_DIR, f"*-{basename}")):
+            now = time.time()
+            existing = glob.glob(os.path.join(SESSION_BACKUP_DIR, f"*-{basename}"))
+            # Cap check first (O(1) on a known-size list)
+            if len(existing) >= SESSION_BACKUP_MAX_PER_SESSION:
+                return
+            # Cooldown check
+            cutoff = now - SESSION_BACKUP_COOLDOWN_SEC
+            for e in existing:
                 try:
-                    if os.path.getmtime(existing) >= src_mtime:
-                        return  # already have a backup of this version
+                    if os.path.getmtime(e) >= cutoff:
+                        return  # made one within cooldown window
                 except Exception:
                     continue
         except Exception:
