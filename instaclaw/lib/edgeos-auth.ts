@@ -37,8 +37,57 @@ const DEFAULT_API_BASE =
 
 const NETWORK_TIMEOUT_MS = 15_000;
 
+/**
+ * Known EdgeOS tenant UUIDs. Resolved 2026-05-14 via OpenAPI archaeology
+ * + frontend JS chunk mining + live probe. See
+ * `instaclaw/docs/edgeos-sandbox-test-setup.md` for derivation.
+ *
+ * Map by InstaClaw `partner` field to pick the right one:
+ *   partner=edge_city → EDGEOS_TENANT_EDGECITY_PROD
+ *   partner=(anything else, or unset, in sandbox tests) → EDGEOS_TENANT_DEMO_SANDBOX
+ */
+export const EDGEOS_TENANT_EDGECITY_PROD =
+  "6018917b-3bce-4333-9870-c29aae915038";
+export const EDGEOS_TENANT_DEMO_SANDBOX =
+  "ea1aaa1d-d06f-4c43-b690-79c22c441093";
+
+/**
+ * Known popup IDs.
+ *
+ * Edge Esmeralda 2026: hard-coded so the agent doesn't have to discover
+ * it at call time. If EdgeOS ever invalidates this UUID we'll surface
+ * via the events-list 404 → no_events failure mode.
+ */
+export const POPUP_EDGE_ESMERALDA_2026 =
+  "43746fd0-bce2-472b-93e4-a438177b2dff";
+
 export type EdgeOSEnv = {
   apiBase?: string;
+  /**
+   * EdgeOS X-Tenant-Id header value. The frontend interceptor sets this
+   * from `localStorage[portal_tenant_id]` on every request; we substitute
+   * by explicit pass-through.
+   *
+   * - REQUIRED for /api/v1/popups/public/list, /api/v1/events/portal/*,
+   *   and (defensively) /api/v1/api-keys/*. The api-keys requirement is
+   *   based on the frontend's universal interceptor — empirical
+   *   confirmation is open as of 2026-05-14.
+   * - NOT REQUIRED for /api/v1/auth/user/login or
+   *   /api/v1/auth/user/authenticate (empirically confirmed).
+   *
+   * Both auth functions accept the field and pass it through harmlessly
+   * if set, mirroring the frontend's universal interceptor. Setting it
+   * here is the safe default.
+   */
+  tenantId?: string;
+  /**
+   * Per-call network timeout. Default 15_000 ms. Useful to bump up to
+   * 30_000 for the EdgeOS sandbox during glitchy migration windows
+   * (Tule 2026-05-14: "not tested on the latest version, migration is
+   * glitchy until Tuesday May 19"), or down to e.g. 5_000 inside a
+   * configureOpenClaw flow where total time is bounded.
+   */
+  timeoutMs?: number;
 };
 
 // ─── requestOTP ───────────────────────────────────────────────────────────
@@ -79,11 +128,15 @@ export async function requestOTP(
 
   let res: Response;
   try {
-    res = await fetchWithTimeout(`${apiBase}/api/v1/auth/user/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: trimmed }),
-    });
+    res = await fetchWithTimeout(
+      `${apiBase}/api/v1/auth/user/login`,
+      {
+        method: "POST",
+        headers: buildHeaders({ contentType: "application/json", tenantId: env.tenantId }),
+        body: JSON.stringify({ email: trimmed }),
+        timeoutMs: env.timeoutMs,
+      }
+    );
   } catch (err) {
     return {
       ok: false,
@@ -176,11 +229,15 @@ export async function authenticateOTP(
 
   let res: Response;
   try {
-    res = await fetchWithTimeout(`${apiBase}/api/v1/auth/user/authenticate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: trimmedEmail, code: trimmedCode }),
-    });
+    res = await fetchWithTimeout(
+      `${apiBase}/api/v1/auth/user/authenticate`,
+      {
+        method: "POST",
+        headers: buildHeaders({ contentType: "application/json", tenantId: env.tenantId }),
+        body: JSON.stringify({ email: trimmedEmail, code: trimmedCode }),
+        timeoutMs: env.timeoutMs,
+      }
+    );
   } catch (err) {
     return {
       ok: false,
@@ -222,10 +279,33 @@ export async function authenticateOTP(
 
 // ─── helpers ──────────────────────────────────────────────────────────────
 
-async function fetchWithTimeout(url: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
+/**
+ * Build standard headers for an EdgeOS request.
+ *
+ * - `Content-Type` if `contentType` provided.
+ * - `X-Tenant-Id` if `tenantId` provided (frontend pattern: send on every
+ *   request, auth endpoints ignore harmlessly).
+ * - `Authorization: Bearer ${bearer}` if `bearer` provided.
+ */
+export function buildHeaders(opts: {
+  contentType?: string;
+  tenantId?: string;
+  bearer?: string;
+}): Record<string, string> {
+  const h: Record<string, string> = {};
+  if (opts.contentType) h["Content-Type"] = opts.contentType;
+  if (opts.tenantId) h["X-Tenant-Id"] = opts.tenantId;
+  if (opts.bearer) h["Authorization"] = `Bearer ${opts.bearer}`;
+  return h;
+}
+
+export async function fetchWithTimeout(
+  url: string,
+  init: RequestInit & { timeoutMs?: number } = {}
+): Promise<Response> {
   const { timeoutMs = NETWORK_TIMEOUT_MS, ...rest } = init;
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  const t = setTimeout(() => ctrl.abort(), timeoutMs ?? NETWORK_TIMEOUT_MS);
   try {
     return await fetch(url, { ...rest, signal: ctrl.signal });
   } finally {

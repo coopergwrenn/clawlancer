@@ -30,12 +30,15 @@
  *     - on retry: skip if the .env already has a valid-looking eos_live_*
  */
 
-import { maskToken } from "./edgeos-auth";
+import {
+  buildHeaders,
+  fetchWithTimeout,
+  maskToken,
+  type EdgeOSEnv,
+} from "./edgeos-auth";
 
 const DEFAULT_API_BASE =
   process.env.EDGEOS_API_BASE || "https://api.dev.edgeos.world";
-
-const NETWORK_TIMEOUT_MS = 15_000;
 
 // ─── types ────────────────────────────────────────────────────────────────
 
@@ -85,7 +88,8 @@ export type CreateApiKeyInput = {
 
 export type CreateApiKeyFailureStatus =
   | "unauthorized" // 401 — bearer expired or wrong
-  | "validation_error" // 422 — bad scopes, bad name, bad expires_at
+  | "name_conflict" // 409 or 422-with-"exists"/"duplicate" — key with this name already exists
+  | "validation_error" // 422 — bad scopes, bad name, bad expires_at (and NOT a name-conflict)
   | "rate_limited" // 429
   | "network"
   | "unknown";
@@ -97,12 +101,20 @@ export type CreateApiKeyResult =
       status: CreateApiKeyFailureStatus;
       httpStatus?: number;
       raw?: string;
+      /**
+       * Hint to the caller that retrying with the same input is NOT safe —
+       * the request may have reached EdgeOS and a duplicate key could be
+       * minted. Set on `network` (in-flight timeout / connection drop).
+       * The mintOrReuseApiKey helper in lib/edgeos-mint.ts knows to do
+       * a list-after-network-fail probe before retrying.
+       */
+      retryUnsafe?: boolean;
     };
 
 export async function createApiKey(
   bearer: string,
   input: CreateApiKeyInput,
-  env: { apiBase?: string } = {}
+  env: EdgeOSEnv = {}
 ): Promise<CreateApiKeyResult> {
   const apiBase = env.apiBase ?? DEFAULT_API_BASE;
 
@@ -121,17 +133,23 @@ export async function createApiKey(
   try {
     res = await fetchWithTimeout(`${apiBase}/api/v1/api-keys`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${bearer}`,
-        "Content-Type": "application/json",
-      },
+      headers: buildHeaders({
+        contentType: "application/json",
+        tenantId: env.tenantId,
+        bearer,
+      }),
       body: JSON.stringify(body),
+      timeoutMs: env.timeoutMs,
     });
   } catch (err) {
+    // Network failure: the request MAY have reached EdgeOS. Caller MUST
+    // probe via listApiKeys before retrying, otherwise a duplicate key
+    // could be minted. retryUnsafe=true is the contract.
     return {
       ok: false,
       status: "network",
       raw: err instanceof Error ? err.message : String(err),
+      retryUnsafe: true,
     };
   }
 
@@ -194,7 +212,7 @@ export type ListApiKeysResult =
 
 export async function listApiKeys(
   bearer: string,
-  env: { apiBase?: string } = {}
+  env: EdgeOSEnv = {}
 ): Promise<ListApiKeysResult> {
   const apiBase = env.apiBase ?? DEFAULT_API_BASE;
 
@@ -204,7 +222,8 @@ export async function listApiKeys(
   try {
     res = await fetchWithTimeout(`${apiBase}/api/v1/api-keys`, {
       method: "GET",
-      headers: { Authorization: `Bearer ${bearer}` },
+      headers: buildHeaders({ tenantId: env.tenantId, bearer }),
+      timeoutMs: env.timeoutMs,
     });
   } catch (err) {
     return {
@@ -261,7 +280,7 @@ export type RevokeApiKeyResult =
 export async function revokeApiKey(
   bearer: string,
   keyId: string,
-  env: { apiBase?: string } = {}
+  env: EdgeOSEnv = {}
 ): Promise<RevokeApiKeyResult> {
   const apiBase = env.apiBase ?? DEFAULT_API_BASE;
 
@@ -274,7 +293,8 @@ export async function revokeApiKey(
       `${apiBase}/api/v1/api-keys/${encodeURIComponent(keyId)}`,
       {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${bearer}` },
+        headers: buildHeaders({ tenantId: env.tenantId, bearer }),
+        timeoutMs: env.timeoutMs,
       }
     );
   } catch (err) {
@@ -295,35 +315,42 @@ export async function revokeApiKey(
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────
+// (fetchWithTimeout + buildHeaders imported from edgeos-auth.ts to avoid drift)
 
-async function fetchWithTimeout(
-  url: string,
-  init: RequestInit & { timeoutMs?: number } = {}
-): Promise<Response> {
-  const { timeoutMs = NETWORK_TIMEOUT_MS, ...rest } = init;
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...rest, signal: ctrl.signal });
-  } finally {
-    clearTimeout(t);
-  }
-}
+/**
+ * Substrings that signal "key name already exists" inside an error body.
+ * Used defensively in case EdgeOS returns 422 (validation) instead of the
+ * canonical 409 (conflict) — we'd rather catch a name-collision and let
+ * the caller branch correctly than mis-categorize it as "bad input".
+ */
+const NAME_CONFLICT_HINTS = ["already exists", "duplicate", "name in use", "unique constraint"];
 
 function categorizeFailure(
   httpStatus: number,
   raw: string
 ):
   | { ok: false; status: "unauthorized"; httpStatus: number; raw: string }
+  | { ok: false; status: "name_conflict"; httpStatus: number; raw: string }
   | { ok: false; status: "validation_error"; httpStatus: number; raw: string }
   | { ok: false; status: "rate_limited"; httpStatus: number; raw: string }
   | { ok: false; status: "not_found"; httpStatus: number; raw: string }
   | { ok: false; status: "unknown"; httpStatus: number; raw: string } {
   const short = raw.slice(0, 500);
+  const rawLower = short.toLowerCase();
+  const looksLikeNameConflict = NAME_CONFLICT_HINTS.some((h) => rawLower.includes(h));
   if (httpStatus === 401 || httpStatus === 403) {
     return { ok: false, status: "unauthorized", httpStatus, raw: short };
   }
+  if (httpStatus === 409) {
+    return { ok: false, status: "name_conflict", httpStatus, raw: short };
+  }
   if (httpStatus === 422) {
+    if (looksLikeNameConflict) {
+      // Defensive: EdgeOS uses 422 (Unprocessable Entity) for some constraint
+      // violations. If the body talks about uniqueness, surface as the more
+      // specific name_conflict so callers can switch correctly.
+      return { ok: false, status: "name_conflict", httpStatus, raw: short };
+    }
     return { ok: false, status: "validation_error", httpStatus, raw: short };
   }
   if (httpStatus === 429) {
