@@ -1365,10 +1365,40 @@ async function stepConfigSettings(
     // cron route's `pushFailed` gate uses to refuse the config_version
     // bump). Successfully-verified keys go to `result.fixed`. Silent
     // failures are no longer possible.
+    //
+    // Rule 36 (2026-05-14): wrap each `set` with BEGIN/END markers and
+    // redirect stderr→stdout (`2>&1`). When verify-after-set detects a
+    // mismatch, we can attribute the actual upstream error (ENOSPC,
+    // schema rejection, permission denied) to the specific key that
+    // failed — instead of reporting a misleading "silent failure" that
+    // forces operators to SSH-probe to find the real cause. Single
+    // SSH round-trip preserved.
     const fixCommands = settingsToFix
-      .map((key) => `openclaw config set ${key} '${settings[key]}' || true`)
-      .join(' && ');
-    await ssh.execCommand(`${NVM_PREAMBLE} && ${fixCommands}`);
+      .map(
+        (key) =>
+          `echo "===SET_BEGIN:${key}===" && ` +
+          `openclaw config set ${key} '${settings[key]}' 2>&1; ` +
+          `echo "===SET_END:${key}==="`,
+      )
+      .join(" ; ");
+    const fixResult = await ssh.execCommand(`${NVM_PREAMBLE} && ${fixCommands}`);
+
+    // Parse per-key upstream output (anything between BEGIN/END markers).
+    // Used below as a Rule-36 diagnostic when verify-after-set fails.
+    const upstreamPerKey = new Map<string, string>();
+    for (const key of settingsToFix) {
+      const beginMarker = `===SET_BEGIN:${key}===`;
+      const endMarker = `===SET_END:${key}===`;
+      const startIdx = fixResult.stdout.indexOf(beginMarker);
+      if (startIdx < 0) continue;
+      const endIdx = fixResult.stdout.indexOf(endMarker, startIdx);
+      if (endIdx <= startIdx) continue;
+      const between = fixResult.stdout
+        .slice(startIdx + beginMarker.length, endIdx)
+        .trim();
+      // Only store when non-empty; successful `set` emits nothing.
+      if (between) upstreamPerKey.set(key, between);
+    }
 
     // Verify each key landed. Reuse the same get-batch pattern from above
     // for efficiency (one SSH round-trip vs N).
@@ -1405,7 +1435,19 @@ async function stepConfigSettings(
       } else {
         // Push to errors so reconcile-fleet route's `pushFailed` gate
         // refuses to bump config_version. Next cron cycle retries.
-        result.errors.push(`config-set silent failure: ${key} expected=${JSON.stringify(expected)} actual=${JSON.stringify(actual ?? "(unread)")}`);
+        // Rule 36: include the upstream stderr (captured per-key above)
+        // so the actual cause — ENOSPC, schema rejection, permission
+        // denied, etc. — is in the audit log instead of forcing an
+        // operator to SSH-probe to figure out why the set didn't land.
+        const upstream = upstreamPerKey.get(key);
+        const upstreamHint = upstream
+          ? ` upstream=${JSON.stringify(upstream.slice(0, 200))}`
+          : "";
+        result.errors.push(
+          `config-set verify-after-set mismatch: ${key} ` +
+            `expected=${JSON.stringify(expected)} ` +
+            `actual=${JSON.stringify(actual ?? "(unread)")}${upstreamHint}`,
+        );
       }
     }
     return;
