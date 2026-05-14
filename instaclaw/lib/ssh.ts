@@ -4283,6 +4283,171 @@ Once the user responds:
 }
 
 /**
+ * Build IDENTITY.md — the agent's name + persona seed file.
+ *
+ * Extracted from configureOpenClaw's inline block on 2026-05-14 so the
+ * cloud-init tarball builder can produce byte-identical output. Original
+ * inline block was at lib/ssh.ts:5836-5871 (now calls this helper).
+ *
+ * Derives an agent display name from the bot's Telegram username via a
+ * 3-step regex strip:
+ *   - "@" prefix removed
+ *   - "_bot" / "-bot" / "_Bot" / "-Bot" / "bot" / "Bot" suffix removed
+ *   - trailing digits stripped IF the result is still ≥2 chars
+ * Examples:
+ *   "@Mucus09bot"     → "Mucus"
+ *   "DanA7171_bot"    → "DanA7171" (digits kept; stripping leaves "DanA" — still ≥2 — actually stripping leaves "DanA" which is < the "DanA7171" length but ≥2, so it strips. Result: "DanA")
+ *   "fucking1999_bot" → "fucking" (digits stripped; result ≥2)
+ *   "_bot"            → "" (then unchanged because empty < 2 chars)
+ *
+ * The agent reads IDENTITY.md and the gateway tells it "I'm {agentName}".
+ * Without a sensible name here, the agent says "I'm an AI assistant" — the
+ * "42/50 VMs in March 2026" identity crisis Cooper called out in the
+ * source comments.
+ */
+export function buildIdentityMd(botUsername: string): string {
+  const cleanedBotUsername = (botUsername || "agent").replace(/^@/, "");
+  let agentName = cleanedBotUsername.replace(/[_-]?[Bb]ot$/, "");
+  const stripped = agentName.replace(/\d+$/, "");
+  if (stripped.length >= 2) agentName = stripped;
+
+  return [
+    "# IDENTITY.md - Who Am I?",
+    "",
+    `- **Name:** ${agentName}`,
+    "- **Creature:** AI agent — resourceful, capable, always learning",
+    "- **Vibe:** Direct, helpful, genuine. Gets things done.",
+    `- **Telegram:** @${cleanedBotUsername}`,
+    "",
+    "---",
+    "",
+    `You are ${agentName}. That's your name.`,
+    `When someone asks who you are, you say "I'm ${agentName}" — not "I'm an AI assistant."`,
+    "You're a personal AI agent on InstaClaw.",
+    "",
+    "_Update this file as your personality develops. Make it yours._",
+  ].join("\n");
+}
+
+/**
+ * Build WALLET.md — the agent's wallet + financial configuration.
+ *
+ * Extracted from configureOpenClaw's inline block on 2026-05-14. Original
+ * was at lib/ssh.ts:5580-5642. Always emits the Wallet Summary + Key
+ * Rules sections; conditionally emits Bankr + token sections based on
+ * which fields are populated.
+ *
+ * Bankr wallet block: emitted when bankrEvmAddress set. Includes "How to
+ * Use" section pointing at the bankr skill.
+ *
+ * Token block: emitted when BOTH bankrTokenAddress AND bankrTokenSymbol
+ * set. Includes BaseScan link, Bankr launches link, fee mechanics, and
+ * the "do NOT launch another token" guard.
+ */
+export function buildWalletMd(params: {
+  bankrEvmAddress?: string | null;
+  bankrTokenAddress?: string | null;
+  bankrTokenSymbol?: string | null;
+  bankrTokenName?: string | null;
+}): string {
+  const lines: string[] = [
+    "# Wallet & Financial Configuration",
+    "",
+    "## Wallets",
+  ];
+  if (params.bankrEvmAddress) {
+    lines.push(
+      `- **Bankr Wallet:** ${params.bankrEvmAddress}`,
+      "- **Network:** Base (EVM)",
+      "- **Provider:** Bankr (bankr.bot)",
+      "",
+      "### How to Use Your Bankr Wallet",
+      "- Use the **bankr skill** for: balance checks, token swaps, transfers, and token launches.",
+      "- This is your **primary crypto wallet** — use it for general trading and token operations.",
+      "- Trading fees from your token (if launched) automatically fund your compute credits.",
+      "- **DO NOT use this wallet for:** Virtuals/ACP marketplace jobs (use Virtuals wallet), Clawlancer bounties (oracle handles it), Solana trading (separate Solana wallet), or AgentBook registration (identity wallet).",
+    );
+  } else {
+    lines.push(
+      "<!-- Add wallet addresses here. This file is always fully injected into context. -->",
+      "<!-- Example:",
+      "- **Primary wallet:** 0x...",
+      "- **Network:** Base / Polygon / etc.",
+      "-->",
+    );
+  }
+  if (params.bankrTokenAddress && params.bankrTokenSymbol) {
+    lines.push(
+      "",
+      "## Your Token",
+      "",
+      `- **Token:** $${params.bankrTokenSymbol}${params.bankrTokenName ? ` (${params.bankrTokenName})` : ""}`,
+      `- **Contract:** ${params.bankrTokenAddress} (Base mainnet)`,
+      "- **Trading:** Live on Uniswap V4",
+      `- **BaseScan:** https://basescan.org/token/${params.bankrTokenAddress}`,
+      `- **Manage:** https://bankr.bot/launches/${params.bankrTokenAddress}`,
+      "",
+      "### How Fees Work",
+      "- 1.2% fee on every swap of your token",
+      "- 57% of that fee (creator share) goes to YOUR Bankr wallet automatically",
+      "- These fees can fund your compute credits over time",
+      "- Check your earnings at the Bankr launches page above",
+      "",
+      "### Important",
+      "- Your token is already live. Do NOT attempt to launch another token.",
+      "- If users ask about your token, you can share the BaseScan or Bankr link.",
+      "- Do not shill or spam about your token — only mention it when relevant.",
+    );
+  }
+  lines.push(
+    "",
+    "## Wallet Summary",
+    "- **Bankr Wallet** — your primary wallet for trading, swaps, and token operations. Use the bankr skill.",
+    "- **Virtuals Wallet** (if enabled) — separate wallet for Virtuals Protocol marketplace jobs only. Managed by ACP.",
+    "- **AgentBook Wallet** — identity-only wallet for World ID on-chain registration. Do NOT use for transactions.",
+    "",
+    "## Key Rules",
+    "- Never share private keys",
+    "- Always verify wallet addresses before transactions",
+    "- Use the correct wallet for each purpose — do not mix them",
+  );
+  return lines.join("\n");
+}
+
+/**
+ * Build WORLD_ID.md — the agent's World ID verification context.
+ *
+ * Extracted from configureOpenClaw's inline block on 2026-05-14. Original
+ * was at lib/ssh.ts:5347-5363 (used a bizarre double-escape pattern with
+ * `\\n` and `\\\``  to round-trip through bash heredoc; the extracted
+ * function produces the final output directly).
+ *
+ * Returns the file body. Caller decides whether to write it (config-
+ * conditional on worldIdNullifier being set in the SSH path; cloud-init
+ * wrapper checks the same).
+ */
+export function buildWorldIdMd(nullifier: string, level?: string | null): string {
+  const lvl = level ?? "orb";
+  return [
+    "# World ID Verification",
+    "",
+    `**Status:** Verified (${lvl} level)`,
+    `**Nullifier Hash:** ${nullifier}`,
+    "",
+    "## What This Means",
+    "You are backed by a World ID verified human. Your nullifier hash is a",
+    "privacy-preserving cryptographic identifier that proves a unique real person",
+    "operates this agent — without revealing who they are.",
+    "",
+    "## How to Use",
+    "- When asked about your identity: you can state you are World ID verified",
+    `- Your nullifier: \`${nullifier}\``,
+    `- Verification level: ${lvl}`,
+    "- This proof may be used in the future to bypass Cloudflare bot challenges",
+  ].join("\n");
+}
+
+/**
  * Build the complete openclaw.json config object in TypeScript.
  * Replaces `openclaw onboard` + 15-20 individual `openclaw config set` calls
  * with a single JSON write (~0.5s vs ~40-60s).
@@ -5404,25 +5569,10 @@ export async function configureOpenClaw(
         ''
       );
 
-      const worldIdMd = [
-        '# World ID Verification',
-        '',
-        `**Status:** Verified (${level} level)`,
-        `**Nullifier Hash:** ${nullifier}`,
-        '',
-        '## What This Means',
-        'You are backed by a World ID verified human. Your nullifier hash is a',
-        'privacy-preserving cryptographic identifier that proves a unique real person',
-        'operates this agent — without revealing who they are.',
-        '',
-        '## How to Use',
-        '- When asked about your identity: you can state you are World ID verified',
-        `- Your nullifier: \\\`${nullifier}\\\``,
-        `- Verification level: ${level}`,
-        '- This proof may be used in the future to bypass Cloudflare bot challenges',
-      ].join('\\n');
-
-      const worldIdB64 = Buffer.from(worldIdMd.replace(/\\n/g, '\n').replace(/\\\\/g, '\\'), 'utf-8').toString('base64');
+      // 2026-05-14: builder extracted to exported buildWorldIdMd() so the
+      // cloud-init tarball builder produces byte-identical output.
+      const worldIdMd = buildWorldIdMd(nullifier, level);
+      const worldIdB64 = Buffer.from(worldIdMd, 'utf-8').toString('base64');
       scriptParts.push(
         `echo '${worldIdB64}' | base64 -d > "$HOME/.openclaw/workspace/WORLD_ID.md"`,
         ''
@@ -5577,71 +5727,15 @@ export async function configureOpenClaw(
     );
 
     // Build Wallet.md content — include Bankr address if provisioned
-    const walletLines = [
-      '# Wallet & Financial Configuration',
-      '',
-      '## Wallets',
-    ];
-    if (config.bankrEvmAddress) {
-      walletLines.push(
-        `- **Bankr Wallet:** ${config.bankrEvmAddress}`,
-        '- **Network:** Base (EVM)',
-        '- **Provider:** Bankr (bankr.bot)',
-        '',
-        '### How to Use Your Bankr Wallet',
-        '- Use the **bankr skill** for: balance checks, token swaps, transfers, and token launches.',
-        '- This is your **primary crypto wallet** — use it for general trading and token operations.',
-        '- Trading fees from your token (if launched) automatically fund your compute credits.',
-        '- **DO NOT use this wallet for:** Virtuals/ACP marketplace jobs (use Virtuals wallet), Clawlancer bounties (oracle handles it), Solana trading (separate Solana wallet), or AgentBook registration (identity wallet).',
-      );
-    } else {
-      walletLines.push(
-        '<!-- Add wallet addresses here. This file is always fully injected into context. -->',
-        '<!-- Example:',
-        '- **Primary wallet:** 0x...',
-        '- **Network:** Base / Polygon / etc.',
-        '-->',
-      );
-    }
-    // Include token info if agent has been tokenized (belt-and-suspenders with after() SSH write)
-    if (config.bankrTokenAddress && config.bankrTokenSymbol) {
-      walletLines.push(
-        '',
-        '## Your Token',
-        '',
-        `- **Token:** $${config.bankrTokenSymbol}${config.bankrTokenName ? ` (${config.bankrTokenName})` : ''}`,
-        `- **Contract:** ${config.bankrTokenAddress} (Base mainnet)`,
-        '- **Trading:** Live on Uniswap V4',
-        `- **BaseScan:** https://basescan.org/token/${config.bankrTokenAddress}`,
-        `- **Manage:** https://bankr.bot/launches/${config.bankrTokenAddress}`,
-        '',
-        '### How Fees Work',
-        '- 1.2% fee on every swap of your token',
-        '- 57% of that fee (creator share) goes to YOUR Bankr wallet automatically',
-        '- These fees can fund your compute credits over time',
-        '- Check your earnings at the Bankr launches page above',
-        '',
-        '### Important',
-        '- Your token is already live. Do NOT attempt to launch another token.',
-        '- If users ask about your token, you can share the BaseScan or Bankr link.',
-        '- Do not shill or spam about your token — only mention it when relevant.',
-      );
-    }
-
-    walletLines.push(
-      '',
-      '## Wallet Summary',
-      '- **Bankr Wallet** — your primary wallet for trading, swaps, and token operations. Use the bankr skill.',
-      '- **Virtuals Wallet** (if enabled) — separate wallet for Virtuals Protocol marketplace jobs only. Managed by ACP.',
-      '- **AgentBook Wallet** — identity-only wallet for World ID on-chain registration. Do NOT use for transactions.',
-      '',
-      '## Key Rules',
-      '- Never share private keys',
-      '- Always verify wallet addresses before transactions',
-      '- Use the correct wallet for each purpose — do not mix them',
-    );
-
-    const walletB64 = Buffer.from(walletLines.join('\n'), 'utf-8').toString('base64');
+    // 2026-05-14: builder extracted to exported buildWalletMd() so the
+    // cloud-init tarball builder produces byte-identical output.
+    const walletMdContent = buildWalletMd({
+      bankrEvmAddress: config.bankrEvmAddress,
+      bankrTokenAddress: config.bankrTokenAddress,
+      bankrTokenSymbol: config.bankrTokenSymbol,
+      bankrTokenName: config.bankrTokenName,
+    });
+    const walletB64 = Buffer.from(walletMdContent, 'utf-8').toString('base64');
     scriptParts.push(
       `echo '${walletB64}' | base64 -d > "$HOME/.openclaw/workspace/WALLET.md"`,
       '',
@@ -5895,34 +5989,18 @@ export async function configureOpenClaw(
     // The bot picks its display name from the Telegram username; the user
     // info comes from instaclaw_users (name, email, timezone).
     {
+      // 2026-05-14: builder extracted to exported buildIdentityMd() so the
+      // cloud-init tarball builder produces byte-identical output. The
+      // fullName/email/timezone vars below are intentionally kept here —
+      // they're used by subsequent SSH-path-only logic, not by IDENTITY.md.
       const botUsername = config.botUsername || "agent";
-      // Derive agent display name: "@Mucus09bot" → "Mucus", "@DanA7171_bot" → "DanA7171"
-      let agentName = botUsername.replace(/^@/, "").replace(/[_-]?[Bb]ot$/, "");
-      const stripped = agentName.replace(/\d+$/, "");
-      if (stripped.length >= 2) agentName = stripped;
-
       const fullName = config.userName || "User";
       const firstName = fullName.split(" ")[0];
       const email = config.userEmail || "unknown";
       const timezone = config.userTimezone || "America/New_York";
+      void firstName; void email; void timezone; // touched by USER.md heredoc below
 
-      const identityMd = [
-        "# IDENTITY.md - Who Am I?",
-        "",
-        `- **Name:** ${agentName}`,
-        "- **Creature:** AI agent — resourceful, capable, always learning",
-        "- **Vibe:** Direct, helpful, genuine. Gets things done.",
-        `- **Telegram:** @${botUsername.replace(/^@/, "")}`,
-        "",
-        "---",
-        "",
-        `You are ${agentName}. That's your name.`,
-        `When someone asks who you are, you say "I'm ${agentName}" — not "I'm an AI assistant."`,
-        "You're a personal AI agent on InstaClaw.",
-        "",
-        "_Update this file as your personality develops. Make it yours._",
-      ].join("\n");
-
+      const identityMd = buildIdentityMd(botUsername);
       const identityB64 = Buffer.from(identityMd, "utf-8").toString("base64");
       scriptParts.push(
         "# Deploy IDENTITY.md — agent's name and personality seed",

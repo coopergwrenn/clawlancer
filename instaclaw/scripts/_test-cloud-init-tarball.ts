@@ -22,13 +22,13 @@ import {
   buildAuthProfilesJsonForTarball,
   buildBootstrapMd,
   buildDotEnv,
-  buildIdentityMd,
+  buildIdentityMdForTarball,
   buildMemoryMdForTarball,
   buildOpenClawJsonForTarball,
   buildSystemPromptForTarball,
   buildUserMdForTarball,
-  buildWalletMd,
-  buildWorldIdMd,
+  buildWalletMdForTarball,
+  buildWorldIdMdForTarball,
   collectPartialEntries,
   packPartialTarball,
   validateTarballParams,
@@ -37,10 +37,13 @@ import {
 import {
   WORKSPACE_BOOTSTRAP_SHORT,
   buildAuthProfilesJson,
+  buildIdentityMd,
   buildOpenClawConfig,
   buildPersonalizedBootstrap,
   buildSystemPrompt,
   buildUserMd,
+  buildWalletMd,
+  buildWorldIdMd,
 } from "../lib/ssh";
 
 // ── helpers ──
@@ -202,16 +205,35 @@ async function test1_AllInclusiveNoPartner() {
     );
   }
 
-  // IDENTITY.md content
+  // IDENTITY.md content (2026-05-14 audit fix: now byte-parity with SSH path
+  // via buildIdentityMd in lib/ssh.ts — no more hand-written sentinel).
   const id = files.get("home/openclaw/.openclaw/workspace/IDENTITY.md")!.body;
   assert(id.includes(`@${validParams.telegramBotUsername}`), "IDENTITY.md mentions bot username");
-  assert(id.includes("<!-- INSTACLAW_IDENTITY_V1 -->"), "IDENTITY.md carries sentinel");
+  assert(id.startsWith("# IDENTITY.md - Who Am I?"), "IDENTITY.md has SSH-path header");
+  assert(id.includes("- **Creature:** AI agent"), "IDENTITY.md has Creature line");
+  // Agent-name regex: "fucking1999_bot" → strip "_bot" → "fucking1999" → strip
+  // trailing digits → "fucking" (≥2 chars so the digit-strip applies).
+  assert(id.includes("- **Name:** fucking"), "IDENTITY.md derives agent name via regex");
 
-  // WALLET.md content
+  // WALLET.md content (2026-05-14 audit fix: now byte-parity with SSH path
+  // via buildWalletMd in lib/ssh.ts — no more hand-written WALLET_V1 sentinel
+  // and no agentbookAddress in WALLET.md since SSH path doesn't include it).
   const wallet = files.get("home/openclaw/.openclaw/workspace/WALLET.md")!.body;
-  assert(wallet.includes(validParams.agentbookAddress), "WALLET.md has agentbook address");
+  assert(
+    wallet.startsWith("# Wallet & Financial Configuration"),
+    "WALLET.md has SSH-path header",
+  );
   assert(wallet.includes(validParams.bankrEvmAddress!), "WALLET.md has bankr EVM address");
-  assert(wallet.includes("<!-- INSTACLAW_WALLET_V1 -->"), "WALLET.md carries sentinel");
+  assert(
+    wallet.includes("## Wallet Summary"),
+    "WALLET.md has Wallet Summary section (SSH path)",
+  );
+  assert(wallet.includes("## Key Rules"), "WALLET.md has Key Rules section");
+  // Pin a specific SSH-path string that the pre-audit wrapper was missing
+  assert(
+    wallet.includes("- **AgentBook Wallet** — identity-only wallet"),
+    "WALLET.md mentions AgentBook Wallet (SSH path semantic — identity only, NOT for transactions)",
+  );
 
   // agent.key
   const key = files.get("home/openclaw/.openclaw/wallet/agent.key")!.body;
@@ -224,11 +246,27 @@ async function test2_ByokEdgeCity() {
   const buf = await streamToBuffer(packPartialTarball(edgeCityParams));
   const files = await unpackTarball(buf);
 
-  // WORLD_ID.md should appear now
+  // WORLD_ID.md should appear now (2026-05-14 audit fix: byte-parity with
+  // SSH path via buildWorldIdMd in lib/ssh.ts — no more hand-written sentinel)
   assert(files.has("home/openclaw/.openclaw/workspace/WORLD_ID.md"), "WORLD_ID.md present");
   const worldId = files.get("home/openclaw/.openclaw/workspace/WORLD_ID.md")!.body;
   assert(worldId.includes(edgeCityParams.worldIdNullifier!), "WORLD_ID.md has nullifier");
-  assert(worldId.includes("<!-- INSTACLAW_WORLD_ID_V1 -->"), "WORLD_ID.md carries sentinel");
+  assert(
+    worldId.startsWith("# World ID Verification"),
+    "WORLD_ID.md has SSH-path header",
+  );
+  assert(
+    worldId.includes("**Status:** Verified (orb level)"),
+    "WORLD_ID.md has Verified + level line",
+  );
+  assert(
+    worldId.includes("## What This Means"),
+    "WORLD_ID.md has 'What This Means' section",
+  );
+  assert(
+    worldId.includes("## How to Use"),
+    "WORLD_ID.md has 'How to Use' section",
+  );
 
   // Partner overlays
   assert(files.has("overlays/soul-edge-stub.md"), "soul-edge-stub.md present for edge_city");
@@ -312,10 +350,10 @@ async function test5_PerFileBuildersDirect() {
   // These run the builders without going through tarball pack — faster
   // failure isolation when a per-file builder regresses.
   validateTarballParams(validParams);
-  assert(buildIdentityMd(validParams).includes("@fucking1999_bot"), "buildIdentityMd substitutes username");
-  assert(buildWalletMd(validParams).includes("0x5Bc5"), "buildWalletMd includes agentbook address");
-  assert(buildWorldIdMd(validParams) === null, "buildWorldIdMd returns null without nullifier");
-  assert(buildWorldIdMd(edgeCityParams) !== null, "buildWorldIdMd returns content with nullifier");
+  assert(buildIdentityMdForTarball(validParams).includes("@fucking1999_bot"), "buildIdentityMdForTarball includes bot username");
+  assert(buildWalletMdForTarball(validParams).includes(validParams.bankrEvmAddress!), "buildWalletMdForTarball includes bankr address");
+  assert(buildWorldIdMdForTarball(validParams) === null, "buildWorldIdMdForTarball returns null without nullifier");
+  assert(buildWorldIdMdForTarball(edgeCityParams) !== null, "buildWorldIdMdForTarball returns content with nullifier");
   assert(buildDotEnv(validParams).includes("INSTACLAW_ENV_V1"), "buildDotEnv has sentinel");
   assert(JSON.parse(buildAuthProfilesJsonForTarball(validParams)).profiles, "buildAuthProfilesJsonForTarball is valid JSON");
   assert(buildAgentKey(validParams).endsWith("\n"), "buildAgentKey newline-terminated");
@@ -1306,6 +1344,154 @@ async function test12_AuthProfilesJsonByteParity() {
   );
 }
 
+async function test13_ChunkOneByteParity() {
+  console.log("\n─── TEST 13: chunk-1 wrappers byte-parity (audit Fix 2) ──");
+
+  // ── buildIdentityMdForTarball byte-parity ───────────────────────────
+  // Wrapper maps p.telegramBotUsername → buildIdentityMd's only param.
+  // Output MUST be byte-identical to lib/ssh.ts:buildIdentityMd(botUsername).
+  {
+    const wrapped = buildIdentityMdForTarball(validParams);
+    const reference = buildIdentityMd(validParams.telegramBotUsername);
+    assert(
+      wrapped === reference,
+      "buildIdentityMdForTarball: byte-identical to buildIdentityMd(p.telegramBotUsername)",
+    );
+  }
+
+  // Agent-name regex pins (would have caught the pre-audit hand-written wrapper)
+  const idForFucking = buildIdentityMd("fucking1999_bot");
+  assert(
+    idForFucking.includes("- **Name:** fucking"),
+    "agent-name regex: 'fucking1999_bot' → 'fucking' (strip _bot then digits)",
+  );
+  const idForMucus = buildIdentityMd("@Mucus09bot");
+  assert(
+    idForMucus.includes("- **Name:** Mucus"),
+    "agent-name regex: '@Mucus09bot' → 'Mucus' (strip @, bot, digits)",
+  );
+  assert(
+    idForMucus.includes("- **Telegram:** @Mucus09bot"),
+    "agent-name regex: Telegram line has @-prefix-stripped username",
+  );
+
+  // Identity claim pin — caught the pre-audit wrapper which had no
+  // "You are X" claim. Without this the agent says "I'm an AI assistant".
+  assert(
+    idForMucus.includes("You are Mucus. That's your name."),
+    "Identity claim 'You are {agentName}. That's your name.' present (pre-audit wrapper lacked this)",
+  );
+
+  // Header pin — old wrapper used "# Identity"; SSH-path uses
+  // "# IDENTITY.md - Who Am I?"
+  assert(
+    idForMucus.startsWith("# IDENTITY.md - Who Am I?"),
+    "Header is 'IDENTITY.md - Who Am I?' (pre-audit wrapper used '# Identity')",
+  );
+
+  // ── buildWalletMdForTarball byte-parity ─────────────────────────────
+  // Wrapper maps p.bankr* → buildWalletMd's params object.
+  {
+    const wrapped = buildWalletMdForTarball(validParams);
+    const reference = buildWalletMd({
+      bankrEvmAddress: validParams.bankrEvmAddress,
+      bankrTokenAddress: validParams.bankrTokenAddress,
+      bankrTokenSymbol: validParams.bankrTokenSymbol,
+      bankrTokenName: validParams.bankrTokenName,
+    });
+    assert(
+      wrapped === reference,
+      "buildWalletMdForTarball: byte-identical to buildWalletMd({...bankr})",
+    );
+  }
+
+  // Branch pins for buildWalletMd
+  const walletNoBankr = buildWalletMd({});
+  assert(
+    walletNoBankr.includes("<!-- Add wallet addresses here."),
+    "WALLET.md no-bankr branch emits the placeholder comment",
+  );
+  assert(
+    !walletNoBankr.includes("## Your Token"),
+    "WALLET.md no-bankr branch has no token section",
+  );
+
+  const walletWithToken = buildWalletMd({
+    bankrEvmAddress: "0xtest",
+    bankrTokenAddress: "0xtoken",
+    bankrTokenSymbol: "TEST",
+    bankrTokenName: "TestCoin",
+  });
+  assert(
+    walletWithToken.includes("- **Token:** $TEST (TestCoin)"),
+    "WALLET.md token branch shows ticker + name when name provided",
+  );
+  assert(
+    walletWithToken.includes("Do NOT attempt to launch another token"),
+    "WALLET.md token-launch guard present (pre-audit wrapper missing this)",
+  );
+
+  const walletTokenNoName = buildWalletMd({
+    bankrEvmAddress: "0xtest",
+    bankrTokenAddress: "0xtoken",
+    bankrTokenSymbol: "TEST",
+    // bankrTokenName intentionally absent
+  });
+  assert(
+    walletTokenNoName.includes("- **Token:** $TEST\n"),
+    "WALLET.md token branch omits parens when name not provided",
+  );
+
+  // Wallet Summary + Key Rules always emit
+  assert(
+    walletNoBankr.includes("## Wallet Summary") && walletNoBankr.includes("## Key Rules"),
+    "WALLET.md always emits Wallet Summary + Key Rules (even no-bankr branch)",
+  );
+
+  // ── buildWorldIdMdForTarball byte-parity ────────────────────────────
+  // Wrapper checks p.worldIdNullifier truthiness then passes to helper.
+  {
+    const wrapped = buildWorldIdMdForTarball(edgeCityParams);
+    assert(wrapped !== null, "WorldId wrapper returns non-null when nullifier set");
+    const reference = buildWorldIdMd(
+      edgeCityParams.worldIdNullifier!,
+      edgeCityParams.worldIdLevel,
+    );
+    assert(
+      wrapped === reference,
+      "buildWorldIdMdForTarball: byte-identical to buildWorldIdMd(nullifier, level)",
+    );
+  }
+
+  // null gate
+  assert(
+    buildWorldIdMdForTarball({ ...validParams, worldIdNullifier: null }) === null,
+    "WorldId wrapper returns null when nullifier null (caller omits entry)",
+  );
+
+  // Level default to "orb" when not provided
+  const wiNoLevel = buildWorldIdMd("0xtest", null);
+  assert(
+    wiNoLevel.includes("Verified (orb level)"),
+    "WorldId helper defaults to 'orb' when level null",
+  );
+  const wiDevice = buildWorldIdMd("0xtest", "device");
+  assert(
+    wiDevice.includes("Verified (device level)"),
+    "WorldId helper passes through 'device' level",
+  );
+
+  // Nullifier appears 3 times: header (Hash:), body bullet (Your nullifier),
+  // and the "How to Use" prose. SSH path emits all 3 — wrapper must too.
+  const nullifier = "0xabc123";
+  const wi = buildWorldIdMd(nullifier, "orb");
+  const occurrences = wi.split(nullifier).length - 1;
+  assert(
+    occurrences === 2,
+    `Nullifier appears 2x in WORLD_ID.md (got ${occurrences} — pin against pre-audit wrapper which only had 1)`,
+  );
+}
+
 async function main() {
   console.log("════════════════════════════════════════════════════════");
   console.log("cloud-init-tarball.ts foundation smoke test");
@@ -1322,6 +1508,7 @@ async function main() {
   await test10_BuildMemoryMdForTarball();
   await test11_BuildOpenClawJsonForTarball();
   await test12_AuthProfilesJsonByteParity();
+  await test13_ChunkOneByteParity();
   await test5_PerFileBuildersDirect();
 
   console.log("\n════════════════════════════════════════════════════════");

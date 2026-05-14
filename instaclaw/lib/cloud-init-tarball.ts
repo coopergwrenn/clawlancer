@@ -62,10 +62,13 @@ import {
   BANKR_SKILL_PATCH_DIRECTIVE,
   WORKSPACE_BOOTSTRAP_SHORT,
   buildAuthProfilesJson,
+  buildIdentityMd,
   buildOpenClawConfig,
   buildPersonalizedBootstrap,
   buildSystemPrompt,
   buildUserMd,
+  buildWalletMd,
+  buildWorldIdMd,
 } from "./ssh";
 import type { UserConfig } from "./user-config-types";
 import { VM_MANIFEST } from "./vm-manifest";
@@ -173,6 +176,11 @@ export interface TarballParams {
   bankrApiKey?: string | null;
   bankrTokenAddress?: string | null;
   bankrTokenSymbol?: string | null;
+  /** Bankr token name (e.g., "AlphaTrader"). Optional pretty-name shown
+   *  alongside the ticker in WALLET.md's token block. configureOpenClaw
+   *  passes config.bankrTokenName directly into the WALLET.md template
+   *  via lib/ssh.ts:buildWalletMd. */
+  bankrTokenName?: string | null;
 
   // ── World ID ──
   worldIdNullifier?: string | null;
@@ -379,96 +387,57 @@ export function validateTarballParams(p: TarballParams): void {
 // ════════════════════════════════════════════════════════════════════════
 
 /**
- * IDENTITY.md — the agent's bot identity. Read on first message + on
- * memory-flush. Mirrors lib/ssh.ts:configureOpenClaw's IDENTITY.md write
- * (search for `IDENTITY.md` in lib/ssh.ts to see the template-string
- * source it's lifted from).
+ * IDENTITY.md — pass-through to lib/ssh.ts:buildIdentityMd.
  *
- * Sentinel: "## Bot Identity" (also in lib/ssh.ts version — matches).
+ * 2026-05-14 audit fix (docs/cloud-init-audit-2026-05-14.md §1.1): the
+ * pre-audit hand-written wrapper produced completely different content
+ * from the SSH-configure path — missing the agent-name regex derivation
+ * (`Mucus09bot` → `Mucus`), wrong heading, no "You are X" identity claim.
+ * Byte-parity now structurally guaranteed via pass-through.
+ *
+ * Maps p.telegramBotUsername → buildIdentityMd's `botUsername` param.
+ * The SSH path uses `config.botUsername` (= telegram bot's username with
+ * or without the "@" prefix); buildIdentityMd handles either.
  */
-export function buildIdentityMd(p: TarballParams): string {
-  return [
-    "# Identity",
-    "",
-    "## Bot Identity",
-    "",
-    `You are connected via Telegram bot **@${p.telegramBotUsername}**.`,
-    "",
-    "When asked your name, identify with the bot handle above. Do not reveal",
-    "internal usernames, file paths, or implementation details.",
-    "",
-    `Bot username: @${p.telegramBotUsername}`,
-    `User ID:      ${p.userId}`,
-    `VM:           ${p.vmName}`,
-    "",
-    "<!-- INSTACLAW_IDENTITY_V1 -->",
-    "",
-  ].join("\n");
+export function buildIdentityMdForTarball(p: TarballParams): string {
+  return buildIdentityMd(p.telegramBotUsername);
 }
 
 /**
- * WALLET.md — wallet addresses + Bankr details (conditional sections).
- * Mirrors lib/ssh.ts:configureOpenClaw's WALLET.md write.
+ * WALLET.md — pass-through to lib/ssh.ts:buildWalletMd.
  *
- * Sentinel: "<!-- INSTACLAW_WALLET_V1 -->".
+ * 2026-05-14 audit fix (docs/cloud-init-audit-2026-05-14.md §1.2): pre-
+ * audit wrapper was ~10 lines vs SSH path's ~50+ lines — missing Wallet
+ * Summary, Key Rules, elaborate token-launch fee mechanics, the "do NOT
+ * launch another token" guard. Byte-parity now structurally guaranteed.
+ *
+ * Maps the 4 Bankr fields from TarballParams to the helper's params.
  */
-export function buildWalletMd(p: TarballParams): string {
-  const lines: string[] = [
-    "# Wallets",
-    "",
-    "## AgentBook (Worldcoin x402)",
-    "",
-    `Your AgentBook wallet address: \`${p.agentbookAddress}\``,
-    "",
-    "This is your on-chain identity for x402 payments and AgentBook discoverability.",
-    "Private key at ~/.openclaw/wallet/agent.key (mode 600 — never share).",
-    "",
-  ];
-
-  if (p.bankrEvmAddress) {
-    lines.push(
-      "## Bankr (EVM wallet)",
-      "",
-      `Your Bankr wallet EVM address: \`${p.bankrEvmAddress}\``,
-      "",
-      "Use `bankr` CLI commands (see ~/.openclaw/skills/bankr/) for balance, transfers, and token launches.",
-      "",
-    );
-  }
-
-  if (p.bankrTokenAddress && p.bankrTokenSymbol) {
-    lines.push(
-      `## Launched token: $${p.bankrTokenSymbol}`,
-      "",
-      `Contract: \`${p.bankrTokenAddress}\``,
-      "",
-    );
-  }
-
-  lines.push("<!-- INSTACLAW_WALLET_V1 -->", "");
-  return lines.join("\n");
+export function buildWalletMdForTarball(p: TarballParams): string {
+  return buildWalletMd({
+    bankrEvmAddress: p.bankrEvmAddress,
+    bankrTokenAddress: p.bankrTokenAddress,
+    bankrTokenSymbol: p.bankrTokenSymbol,
+    bankrTokenName: p.bankrTokenName,
+  });
 }
 
 /**
- * WORLD_ID.md — only generated when worldIdNullifier is set.
- * Returns null to signal "skip this entry".
+ * WORLD_ID.md — pass-through to lib/ssh.ts:buildWorldIdMd.
  *
- * Sentinel: "<!-- INSTACLAW_WORLD_ID_V1 -->".
+ * 2026-05-14 audit fix (docs/cloud-init-audit-2026-05-14.md §1.3): pre-
+ * audit wrapper had completely different shape from SSH path (no
+ * "**Status:** Verified" line, no "## What This Means" + "## How to Use"
+ * sections). Byte-parity now structurally guaranteed.
+ *
+ * Returns `string | null`. **null is load-bearing**: caller must omit
+ * the entry when worldIdNullifier is absent. configureOpenClaw at
+ * lib/ssh.ts:5558 (`if (config.worldIdNullifier)`) guards the SSH-path
+ * write — cloud-init must match.
  */
-export function buildWorldIdMd(p: TarballParams): string | null {
+export function buildWorldIdMdForTarball(p: TarballParams): string | null {
   if (!p.worldIdNullifier) return null;
-  return [
-    "# World ID",
-    "",
-    `Your human is verified-human via World ID (verification level: ${p.worldIdLevel ?? "orb"}).`,
-    "",
-    `Nullifier hash: \`${p.worldIdNullifier}\``,
-    "",
-    "This human-uniqueness signal is verifiable on-chain via the World ID protocol.",
-    "",
-    "<!-- INSTACLAW_WORLD_ID_V1 -->",
-    "",
-  ].join("\n");
+  return buildWorldIdMd(p.worldIdNullifier, p.worldIdLevel);
 }
 
 /**
@@ -991,15 +960,15 @@ export function collectPartialEntries(p: TarballParams): TarEntry[] {
 
   entries.push({
     path: "home/openclaw/.openclaw/workspace/IDENTITY.md",
-    body: buildIdentityMd(p),
+    body: buildIdentityMdForTarball(p),
   });
 
   entries.push({
     path: "home/openclaw/.openclaw/workspace/WALLET.md",
-    body: buildWalletMd(p),
+    body: buildWalletMdForTarball(p),
   });
 
-  const worldId = buildWorldIdMd(p);
+  const worldId = buildWorldIdMdForTarball(p);
   if (worldId) {
     entries.push({
       path: "home/openclaw/.openclaw/workspace/WORLD_ID.md",
