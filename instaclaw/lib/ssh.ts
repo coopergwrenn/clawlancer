@@ -10204,15 +10204,6 @@ const ACP_SERVE_SERVICE = [
   'Restart=on-failure',
   'RestartSec=15',
   'Environment=HOME=%h',
-  // v100 (2026-05-14): PATH so the acp-serve.sh shebang's `npx` resolves.
-  // acp-serve.service is a SIBLING user-systemd unit (not a child of the
-  // gateway) so the v100 gateway override.conf PATH fix does NOT propagate
-  // here — needs its own Environment=PATH. Same PATH spec as the gateway
-  // override for consistency. Affects only NEW agdp_enabled provisions —
-  // existing broken acp-serve units (Doug's vm-725 etc.) are tracked as
-  // CLAUDE.md P1-9 and need either a stepAcpServeUnit heal step or a
-  // one-shot fleet-push to rewrite the unit file.
-  'Environment=PATH=/home/openclaw/.bun/bin:/home/openclaw/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin',
   '',
   '[Install]',
   'WantedBy=default.target',
