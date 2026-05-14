@@ -17,6 +17,14 @@ export default function BotVerification({
 }: BotVerificationProps) {
   const [connected, setConnected] = useState(false);
   const [checking, setChecking] = useState(false);
+  // P1-7 / Rule 33 race-fix: VM-status verification phase. Even after
+  // check-bot-status reports connected=true (bot reachable), the
+  // configure path's atomic write may not have populated
+  // telegram_bot_username + gateway_url + health_status yet — sending
+  // the user to /plan with those NULL is exactly the 2026-05-12
+  // Carter Cleveland trap-state class. Poll /api/vm/status until all
+  // three are populated before calling onVerified.
+  const [verifyTimedOut, setVerifyTimedOut] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
@@ -51,11 +59,55 @@ export default function BotVerification({
     };
   }, []);
 
-  // Auto-advance 1.5s after connection detected
+  // P1-7: replace the legacy unconditional 1500ms auto-advance with a
+  // stricter verification phase. Polls /api/vm/status until all three
+  // load-bearing fields are populated (telegramBotUsername, gatewayUrl,
+  // healthStatus='healthy'). Up to 30 attempts at 1s = 30s budget.
+  // On success → onVerified. On timeout → verifyTimedOut UX with
+  // Try again / Continue anyway buttons (no silent advance).
   useEffect(() => {
     if (!connected) return;
-    const t = setTimeout(onVerified, 1500);
-    return () => clearTimeout(t);
+    let cancelled = false;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 30;
+
+    const pollStatus = async () => {
+      if (cancelled) return;
+      try {
+        const res = await fetch("/api/vm/status");
+        if (res.ok) {
+          const data = await res.json();
+          const vm = data?.vm as
+            | {
+                telegramBotUsername?: string | null;
+                gatewayUrl?: string | null;
+                healthStatus?: string | null;
+              }
+            | undefined;
+          const ready =
+            data?.status === "assigned" &&
+            !!vm?.telegramBotUsername &&
+            !!vm?.gatewayUrl &&
+            vm?.healthStatus === "healthy";
+          if (ready) {
+            if (!cancelled) onVerified();
+            return;
+          }
+        }
+      } catch {
+        // network/transient — fall through to retry
+      }
+      attempts++;
+      if (attempts >= MAX_ATTEMPTS) {
+        if (!cancelled) setVerifyTimedOut(true);
+        return;
+      }
+      setTimeout(pollStatus, 1000);
+    };
+    pollStatus();
+    return () => {
+      cancelled = true;
+    };
   }, [connected, onVerified]);
 
   const telegramUrl = botUsername
@@ -87,7 +139,53 @@ export default function BotVerification({
         animate={{ scale: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
       >
-        {connected ? (
+        {verifyTimedOut ? (
+          /* Verification timeout — VM took longer than 30s to populate the
+             full ready-state (telegramBotUsername + gatewayUrl +
+             healthStatus='healthy'). Show explicit options instead of
+             silently advancing the user into a trap state. */
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 500, damping: 25 }}
+          >
+            <div className="w-16 h-16 rounded-full mx-auto mb-5 flex items-center justify-center bg-amber-50">
+              <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+            </div>
+            <h2
+              className="text-2xl font-normal tracking-[-0.5px] mb-2"
+              style={{ fontFamily: "var(--font-serif)", color: "var(--foreground)" }}
+            >
+              Still configuring...
+            </h2>
+            <p className="text-sm mb-5" style={{ color: "var(--muted)" }}>
+              Your bot is connected but final setup is taking longer than
+              usual. You can try again or continue and the rest will catch up.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-90 active:scale-[0.97]"
+                style={{ background: "var(--foreground)", color: "var(--background)" }}
+              >
+                Try again
+              </button>
+              <button
+                type="button"
+                onClick={onSkip}
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-90 active:scale-[0.97]"
+                style={{
+                  background: "transparent",
+                  color: "var(--muted)",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                }}
+              >
+                Continue anyway
+              </button>
+            </div>
+          </motion.div>
+        ) : connected ? (
           /* Success state */
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
