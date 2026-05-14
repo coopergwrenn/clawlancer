@@ -304,7 +304,7 @@ export async function reconcileVM(
     // that reads its API key from the per-VM .env. See
     // PRD-gbrain-fleet-rollout-2026-05-12.md §1 for design rationale.
     currentStep = "env-var-push";
-    await stepEnvVarPush(ssh, result, dryRun);
+    await stepEnvVarPush(ssh, vm, result, dryRun);
 
     // ── Step 1c: gbrain install (partner-gated, env-flag-gated) ──
     // Phase 4c of gbrain fleet rollout. Auto-installs gbrain (PGLite KG +
@@ -709,8 +709,10 @@ async function stepWorkspaceIntegrity(
 /**
  * stepEnvVarPush — distribute platform-managed secret env vars (Vercel → ~/.openclaw/.env).
  *
- * Currently scoped to GBRAIN_ANTHROPIC_API_KEY (Anthropic project key for
- * gbrain's expansion + chat models per the 2026-05-11 Path A decision).
+ * Entries are declared in SECRET_ENV_VAR_SOURCES below. Each entry can be
+ * either universal (every VM) or partner-gated (only VMs whose vm.partner
+ * matches `partnerGate`). Initially scoped to GBRAIN_ANTHROPIC_API_KEY
+ * (universal) and EDGEOS_BEARER_TOKEN (gated to partner="edge_city").
  * Future Phase 5/6 keys (e.g., third-party-SDK keys per partner) drop in
  * via the SECRET_ENV_VAR_SOURCES array below.
  *
@@ -749,10 +751,28 @@ interface SecretEnvVarSource {
   envKey: string;
   /** Human-readable label for logs (e.g., "gbrain Anthropic project key"). */
   label: string;
+  /**
+   * Optional partner allowlist. When set, the value is only distributed to
+   * VMs whose `vm.partner` matches this string. Universal keys (every VM)
+   * leave this undefined. Skip is silent (INFO log only), never errors —
+   * matches the "missing Vercel env" skip semantics so config_version is not
+   * held hostage by a key that intentionally doesn't apply to most of the fleet.
+   */
+  partnerGate?: string;
 }
 
 const SECRET_ENV_VAR_SOURCES: SecretEnvVarSource[] = [
   { envKey: "GBRAIN_ANTHROPIC_API_KEY", label: "gbrain Anthropic project key" },
+  // 2026-05-14: the attendee-directory endpoint at
+  // api-citizen-portal.simplefi.tech requires a JWT (eyJ...), but Vercel held
+  // a 64-char hex string from day one — EDGEOS_API_KEY was duplicated into
+  // the BEARER_TOKEN slot 34 days ago. Every edge_city VM has carried the
+  // wrong token since its configure ran, because configureOpenClaw at
+  // lib/ssh.ts:5286-5308 only writes EDGEOS_BEARER_TOKEN at provision and
+  // never on rotation. Enrolling it here so the corrected JWT propagates to
+  // existing edge_city VMs on the next reconcile tick (per CLAUDE.md Rule 34
+  // — DB/disk/Vercel single source of truth).
+  { envKey: "EDGEOS_BEARER_TOKEN", label: "EdgeOS attendee directory JWT", partnerGate: "edge_city" },
 ];
 
 // Bash payload that does the write. Assembled as a string array so there's no
@@ -818,10 +838,25 @@ const ENV_VAR_PUSH_BASH: string = [
 
 async function stepEnvVarPush(
   ssh: SSHConnection,
+  vm: VMRecord & { partner?: string | null },
   result: ReconcileResult,
   dryRun: boolean,
 ): Promise<void> {
-  for (const { envKey, label } of SECRET_ENV_VAR_SOURCES) {
+  for (const { envKey, label, partnerGate } of SECRET_ENV_VAR_SOURCES) {
+    // Partner-gate check: silent skip when this entry is restricted to a
+    // specific partner and the VM doesn't match. Mirrors the stepGbrain
+    // gate semantics — never push to result.errors (would hold config_version
+    // on a key that isn't supposed to apply here).
+    if (partnerGate && vm.partner !== partnerGate) {
+      logger.info("stepEnvVarPush: skipping (partner gate mismatch)", {
+        envKey,
+        label,
+        partnerGate,
+        vmPartner: vm.partner ?? null,
+      });
+      continue;
+    }
+
     const value = process.env[envKey];
     if (!value || value.length < 20) {
       // Silent skip — don't block config_version. Logged so dashboards / the
