@@ -43,6 +43,7 @@ import {
 import { getSupabase } from "./supabase";
 import { logger } from "./logger";
 import { TIER_DISPLAY_LIMITS } from "./credit-constants";
+import { wrapSSHForEnospcDetection, isEnospcDetectedError } from "./enospc-guard";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -262,7 +263,27 @@ export async function runFileDriftPass(
     canarySkippedBudget: false,
     envPushSucceeded: true,
   };
-  await stepFiles(ssh, vm, VM_MANIFEST, result, dryRun);
+  // Rule 37: wrap SSH for ENOSPC detection. file-drift writes via putFile +
+  // execCommand, both of which can hit ENOSPC on a disk-full VM; the wrapper
+  // pushes a P0 to result.errors and fires the deduped alert. The single
+  // stepFiles call below catches the sentinel so we return cleanly.
+  const wrappedSsh = wrapSSHForEnospcDetection(ssh, vm, result);
+  try {
+    await stepFiles(wrappedSsh, vm, VM_MANIFEST, result, dryRun);
+  } catch (err) {
+    if (isEnospcDetectedError(err)) {
+      logger.error("runFileDriftPass: short-circuited on ENOSPC", {
+        route: "runFileDriftPass",
+        vmId: vm.id,
+        enospcPath: err.detail.path,
+      });
+      // result.errors already contains the wrapper's P0 entry — caller's
+      // route handler decides how to surface it (file-drift cron currently
+      // logs `drifted` counts).
+    } else {
+      throw err;
+    }
+  }
   return {
     fixed: result.fixed,
     alreadyCorrect: result.alreadyCorrect,
@@ -303,7 +324,15 @@ export async function reconcileVM(
     envPushSucceeded: true,
   };
 
-  const ssh = await connectSSH(vm);
+  const rawSsh = await connectSSH(vm);
+  // ── Rule 37: ENOSPC detection wrapper ──
+  // Wrap once here; every step* receives the wrapped instance via the `ssh`
+  // local. On any ENOSPC observed in execCommand/putFile output, the wrapper
+  // pushes a P0 entry to result.errors, fires a 6h-deduped admin alert, and
+  // throws EnospcDetectedError to short-circuit the reconcile. The catch
+  // handler below treats the sentinel as a controlled stop, not an error,
+  // and lets the pushFailed gate (cron route) hold cv. See lib/enospc-guard.ts.
+  const ssh = wrapSSHForEnospcDetection(rawSsh, vm, result);
 
   // ── Strict-mode outer deadline ──
   // Budget the ENTIRE reconcile (all steps including canary) at 180s when
@@ -659,9 +688,23 @@ export async function reconcileVM(
         lastStep: currentStep,
         deadlineMs: STRICT_DEADLINE_MS,
       });
+    } else if (isEnospcDetectedError(err)) {
+      // Rule 37 short-circuit — the wrapper already pushed the P0 error
+      // entry and fired the admin alert. Treat this exactly like a clean
+      // stop: don't re-throw, let pushFailed gate (cron route:486) hold
+      // cv-bump on the result.errors entry the wrapper queued. The customer's
+      // running gateway is unaffected (in-memory config snapshot survives);
+      // the next cron tick will re-evaluate after stepDiskGuard (Rule 46)
+      // has had another chance to free space.
+      logger.error("reconcileVM: short-circuited on ENOSPC", {
+        route: "reconcileVM",
+        vmId: vm.id,
+        lastStep: currentStep,
+        enospcPath: err.detail.path,
+      });
     } else {
-      // Non-deadline error — re-throw so the caller (auditVMConfig →
-      // reconcile-fleet) catches it as a normal audit failure. The finally
+      // Non-deadline, non-ENOSPC error — re-throw so the caller (auditVMConfig
+      // → reconcile-fleet) catches it as a normal audit failure. The finally
       // block still runs ssh.dispose() + clearTimeout.
       throw err;
     }

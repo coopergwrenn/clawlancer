@@ -16,10 +16,10 @@ This PRD is the **operational tracker** for the next ~10 days. Every open item i
 
 ## 1. Executive Summary
 
-Today's session (2026-05-14) closed **9 of the open items** from my CLAUDE.md audit. **10 items remain open** (8 genuinely + 2 partial). Update 2026-05-14 (in-progress sweep): **P1-1 closed via shipped fixes + natural reconcile (0/144 lying-DB by census).** Remaining 9 items fall into three tiers:
+Today's session (2026-05-14) closed **9 of the open items** from my CLAUDE.md audit. **10 items remain open** (8 genuinely + 2 partial). Update 2026-05-14 (in-progress sweep): **P1-1 closed via shipped fixes + natural reconcile (0/144 lying-DB by census). Rule 37 closed via lib/enospc-guard.ts wrapper (32/32 synthetic tests).** Remaining 8 items fall into three tiers:
 
 - **Tier 0 — Critical path blocker**: ~~P1-1 lying-DB~~ **SHIPPED 2026-05-14**. 0 items remaining at Tier 0.
-- **Tier 1 — Hardening before snapshot bake (3 items)**: P1-4 Vercel-nft, Rule 37 ENOSPC, Rule 38 atomic-write self-clean. Must land before 2026-05-23 so the new snapshot baseline is correct.
+- **Tier 1 — Hardening before snapshot bake (2 items remaining)**: P1-4 Vercel-nft, Rule 38 atomic-write self-clean. ~~Rule 37 ENOSPC~~ **SHIPPED 2026-05-14**. Must land before 2026-05-23 so the new snapshot baseline is correct.
 - **Tier 2 — Partner-readiness before Edge Esmeralda (3 items)**: Rule 42 private-repo skill auth, Rule 43 plugin-aware cold-boot, P1-9 acp-serve.service. Edge Esmeralda starts 2026-05-30. These items don't block the bake but DO block reliable partner onboarding.
 - **Tier 3 — Cross-PRD or post-launch (3 items)**: Rule 44 strict-deadline (owned by reconcile-deadline PRD), P1-2 node_exporter PORT_FAIL surfacing (partial — diagnostic enhancement only), P1-3 vm-726 SSH-degraded auto-detect (partial — generic detection cron). Plus 3 lying-DB semantic-misclassification followups noted in §6.1.
 
@@ -154,7 +154,7 @@ Both migrations applied via Supabase SQL Editor; safe + idempotent (`IF NOT EXIS
 ### Tier 1 — Hardening before snapshot bake (2026-05-23 → 25)
 
 **2. P1-4 Vercel-nft trace cache → JSON manifest** — §6.2
-**3. Rule 37 ENOSPC detection + P0 alerting** — §6.3
+**3. Rule 37 ENOSPC detection + P0 alerting** — §6.3 [SHIPPED 2026-05-14]
 **4. Rule 38 atomic-write `.tmp` self-clean on ENOSPC** — §6.4
 
 ### Tier 2 — Partner-readiness before Edge Esmeralda (2026-05-30)
@@ -287,7 +287,32 @@ c. Detection wishlist: daily audit cron picks 5 random VMs at `cv == VM_MANIFEST
 
 ---
 
-### 6.3 — Rule 37 ENOSPC detection + P0 alerting
+### 6.3 — Rule 37 ENOSPC detection + P0 alerting [SHIPPED 2026-05-14]
+
+**Status**: **SHIPPED 2026-05-14.** `lib/enospc-guard.ts` wraps `ssh.execCommand`/`ssh.putFile` at `reconcileVM` (and `runFileDriftPass`) entry. On ENOSPC detection: pushes P0 to `result.errors` (cron's `pushFailed` gate at `app/api/cron/reconcile-fleet/route.ts:486` holds cv-bump), fires 6h-deduped admin alert keyed by `enospc:${vm.id}`, throws `EnospcDetectedError` to short-circuit. Catch handler in `reconcileVM` (lib/vm-reconcile.ts:670+) treats sentinel as controlled stop. Path-extraction matches three formats (Node fs, bash redirect, tool error). 32/32 synthetic test scenarios pass via `scripts/_test-enospc-guard.ts`.
+
+**Files (this session):**
+- `lib/enospc-guard.ts` — new wrapper + alert dispatch
+- `lib/vm-reconcile.ts` — wrap site after `connectSSH(vm)` + catch-handler branch in both `reconcileVM` and `runFileDriftPass`
+- `scripts/_test-enospc-guard.ts` — 32-assertion synthetic test
+- CLAUDE.md Rule 37 + Root Cause 1 → SHIPPED
+- This PRD entry → SHIPPED
+
+**Acceptance criteria:**
+
+| # | Criterion | Status |
+|---|---|---|
+| 1 | Synthetic ENOSPC trigger → result.errors entry with path | ✓ DONE — 32/32 wrapper tests pass; Node fs / bash / npm / putFile formats all extract paths correctly |
+| 2 | Admin alert arrives within 2 min | ✓ WIRED (sendAdminAlertEmail via 6h-dedup-then-send pattern); end-to-end delivery NOT live-tested |
+| 3 | 6h cooldown verification | ✓ WIRED (instaclaw_admin_alert_log INSERT-before-send mirrors sendVMReadyEmail pattern); not live-tested |
+
+**Live-test deferral rationale**: Cooper has no dedicated low-stakes "staging" VM. vm-050 is his test agent but is a real paying account. `fallocate` to fill the root disk risks crashing the running gateway or corrupting openclaw.json via the very failure mode this rule is meant to detect. The synthetic test exercises every code path of the wrapper deterministically — Node fs format, bash redirect, npm output, putFile rejection, healthy-command passthrough, fire-once across multiple hits, non-ENOSPC error passthrough, prototype passthrough of `dispose()`. The dedup-then-send pattern is mechanically identical to `sendVMReadyEmail` which has been in production for months. If live verification is required, the documented procedure (`fallocate -l 79G /tmp/fill` on a throwaway VM, never on a customer VM) is the cleanest path.
+
+**Followup**: track ENOSPC alert frequency post-deploy. If we see ENOSPC alerts within 14 days, that's a signal stepDiskGuard (Rule 46) isn't catching cases at 90% — and the wrapper would be the only thing standing between the customer and config corruption. Tier 3.
+
+---
+
+**Original entry kept below for forensic reference:**
 
 **CLAUDE.md reference**: §2241 (RULE 37 definition).
 
