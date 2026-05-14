@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-14
 
-Window: `d7c8c483345e64a46dcd83cbf038dc14584fb5a8` → `HEAD` (HEAD = `19b5fa47`)
+Window: `19b5fa47e965556412597d6435422b2e0f44f91b` → `HEAD` (HEAD = `8a8314fe`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 19b5fa47e965556412597d6435422b2e0f44f91b -->
+<!-- LAST_GENERATED_SHA: 8a8314fed796111fecfdb02e3b66d1d51c5e6e83 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `19b5fa47` 2026-05-14 — docs(edgeos-events): resolve real popup_id + tenant UUIDs from sandbox probe [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `8a8314fe` 2026-05-14 — docs(edgeos): sandbox test setup runbook for operator-driven first run [1 files] _(multi: [edge, docs]; ai-assisted)_
 
 ## What changed under the hood
 
-- `cb51fa08` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `c997e498` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -40,25 +40,25 @@ _(none)_
 
 ### Edge City partner (1)
 
-- `19b5fa47` 2026-05-14 — docs(edgeos-events): resolve real popup_id + tenant UUIDs from sandbox probe [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `8a8314fe` 2026-05-14 — docs(edgeos): sandbox test setup runbook for operator-driven first run [1 files] _(multi: [edge, docs]; ai-assisted)_
 
 ### Docs / PRD only (1)
 
-- `cb51fa08` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `c997e498` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `19b5fa47` 2026-05-14 — [edge, docs] — docs(edgeos-events): resolve real popup_id + tenant UUIDs from sandbox probe
+- `8a8314fe` 2026-05-14 — [edge, docs] — docs(edgeos): sandbox test setup runbook for operator-driven first run
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `19b5fa47` 2026-05-14 — docs(edgeos-events): resolve real popup_id + tenant UUIDs from sandbox probe
+- `8a8314fe` 2026-05-14 — docs(edgeos): sandbox test setup runbook for operator-driven first run
 
 ## Appendix — every commit (chronological)
 
-- `cb51fa08` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `19b5fa47` 2026-05-14 — docs(edgeos-events): resolve real popup_id + tenant UUIDs from sandbox probe [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `c997e498` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `8a8314fe` 2026-05-14 — docs(edgeos): sandbox test setup runbook for operator-driven first run [1 files] _(multi: [edge, docs]; ai-assisted)_
