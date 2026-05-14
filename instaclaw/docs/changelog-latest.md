@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-14
 
-Window: `42a1c8d8dc9019280de357df7077fbb40f227957` → `HEAD` (HEAD = `a4e40f54`)
+Window: `a4e40f54315992c62bf08bd7ef738f4f3e84753f` → `HEAD` (HEAD = `4aa566aa`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: a4e40f54315992c62bf08bd7ef738f4f3e84753f -->
+<!-- LAST_GENERATED_SHA: 4aa566aa5d8c16742411961171c47c3285c47ec0 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `a4e40f54` 2026-05-14 — docs(prd)+ops: fleet-health-hardening v2 + batch-2 disk cleanup script [2 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
-- `e8424392` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `e56b8b3c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `4aa566aa` 2026-05-14 — docs(CLAUDE.md): add Incident Response Runbook (extended) [1 files] _(ai-assisted)_
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `a4e40f54` 2026-05-14 — docs(prd)+ops: fleet-health-hardening v2 + batch-2 disk cleanup script [2 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+_(none)_
 
 ### Infrastructure (0)
 
@@ -43,23 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `e8424392` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `a4e40f54` 2026-05-14 — [reconciler, infrastructure, edge, docs] — docs(prd)+ops: fleet-health-hardening v2 + batch-2 disk cleanup script
+- `e56b8b3c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `4aa566aa` 2026-05-14 — docs(CLAUDE.md): add Incident Response Runbook (extended) [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `a4e40f54` 2026-05-14 — docs(prd)+ops: fleet-health-hardening v2 + batch-2 disk cleanup script
+- `4aa566aa` 2026-05-14 — docs(CLAUDE.md): add Incident Response Runbook (extended)
 
 ## Appendix — every commit (chronological)
 
-- `e8424392` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `a4e40f54` 2026-05-14 — docs(prd)+ops: fleet-health-hardening v2 + batch-2 disk cleanup script [2 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `e56b8b3c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `4aa566aa` 2026-05-14 — docs(CLAUDE.md): add Incident Response Runbook (extended) [1 files] _(ai-assisted)_
