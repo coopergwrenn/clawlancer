@@ -7,46 +7,40 @@
  * that curls /api/vm/cloud-init-config; this module builds the tarball
  * that endpoint streams back.
  *
- * Phase 1A Day 4-7 + Day 8 deliverable. This file owns:
- *   - Type definitions (TarballParams).
- *   - Per-file builders for the conditional + per-user content that the
- *     v1-plan inline approach base64-encoded into bash. Same per-file
- *     logic, new transport.
- *   - tar.gz packing via tar-stream + zlib.createGzip (streaming-first,
- *     so the endpoint can pipe the body without buffering).
+ * This file owns:
+ *   - TarballParams type (the per-user-VM input shape)
+ *   - validateTarballParams (boundary validation)
+ *   - Per-file wrappers that produce each file in the tarball:
+ *     openclaw.json, auth-profiles.json, .env, IDENTITY.md, WALLET.md,
+ *     WORLD_ID.md, BOOTSTRAP.md, USER.md, system-prompt.md, MEMORY.md
+ *     (workspace + agent-dir copies), wallet/agent.key, partner overlays.
+ *   - tar.gz packing (tar-stream + zlib.createGzip, streaming).
  *
- * What this module is NOT:
- *   - It does NOT generate openclaw.json (use buildOpenClawConfig from
- *     lib/ssh.ts:4303 — reused verbatim).
- *   - It does NOT generate USER.md / system-prompt.md / BOOTSTRAP.md
- *     (use buildUserMd / buildSystemPrompt / buildPersonalizedBootstrap
- *     from lib/ssh.ts — exported in c5eb8f23).
- *   - It does NOT generate setup.sh (Day 8: lib/cloud-init-setup-sh.ts).
+ * Byte-parity with the SSH-configure path is structurally guaranteed:
+ * every per-file wrapper is a pass-through to a generator function
+ * exported from lib/ssh.ts. configureOpenClaw and buildCloudInitTarball
+ * call the same underlying functions with the same inputs and get
+ * byte-identical output. See docs/cloud-init-audit-2026-05-14.md for
+ * the pre-audit hand-written wrapper bugs this discipline now prevents.
  *
- * Reusing existing helpers vs re-implementing: the SSH-configure path in
- * lib/ssh.ts has battle-tested generators for openclaw.json + the three
- * .md files. We reuse them directly — same in/out semantics, just a
- * different "where the output gets written" (tarball entry vs base64
- * heredoc). This keeps the SSH-shipped path and the cloud-init-shipped
- * path producing byte-identical files per Cooper's directive on the
- * cutover ("a VM produced by cloud-init must be byte-for-byte identical
- * in functional state to a VM produced by configureOpenClaw").
+ * The exception is buildDotEnv: the SSH path appends env vars piecemeal
+ * across configureOpenClaw rather than building the .env body in one
+ * shot, so no single helper exists to pass-through to. buildDotEnv
+ * mirrors the SSH path's conditional emission per env var, verified by
+ * test14 + test15.
  *
  * Security:
- *   - Input validation (validateTarballParams): shell-unsafe characters
- *     blocked. The setup.sh template (Day 8) substitutes these into a
- *     bash script; any unsafe char would be a shell injection.
- *   - Tokens (gatewayToken, callbackToken, telegramBotToken, apiKey) live
- *     in the tarball ONLY (never in Linode user_data). The tarball is
- *     extracted to /tmp during cloud-init then rm -rf'd; on-disk lifetime
- *     ~5 seconds. See plan §6 threat model.
+ *   - Input validation (validateTarballParams): shell-unsafe chars
+ *     blocked on every param that flows into setup.sh as a template
+ *     substitution. JWT shape enforced on EDGEOS_BEARER_TOKEN.
+ *   - Tokens (gatewayToken, callbackToken, telegramBotToken, apiKey,
+ *     edgeosBearerToken, openaiApiKey, etc.) live in the tarball ONLY
+ *     (never in Linode user_data — see lib/cloud-init-userdata.ts).
+ *     Tarball at-rest lifetime in /tmp is ~5 seconds.
  *   - File modes: openclaw.json + .env + auth-profiles.json + agent.key
  *     → 0o600. Workspace .md files → 0o644. setup.sh → 0o755.
- *
- * Sentinels (Rule 23):
- *   - Each generated file includes a marker comment so the reconciler
- *     can verify the file was produced by THIS module's version (not a
- *     stale module-cache load). Markers documented per-builder.
+ *   - Tar entry mtimes pinned to TARBALL_FIXED_MTIME for determinism
+ *     (Phase 1B-2 byte-compare audit relies on this).
  */
 import { pack as tarPack } from "tar-stream";
 import { createGzip } from "node:zlib";
@@ -54,7 +48,6 @@ import { Readable } from "node:stream";
 
 import {
   EDGE_INSTACLAW_OVERLAY_MD,
-  PARTNER_V80_MARKER,
   SOUL_STUB_CONSENSUS,
   SOUL_STUB_EDGE,
 } from "./partner-content";
@@ -391,12 +384,16 @@ export function validateTarballParams(p: TarballParams): void {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// §3. Per-file builders (the simple subset — Day 4-7 chunk 1)
+// §3. Per-file builders + wrappers
 //
-// These produce per-user content that doesn't reuse a lib/ssh.ts helper.
-// The remaining builders (openclaw.json, USER.md, system-prompt.md,
-// BOOTSTRAP.md) wrap existing exported helpers from lib/ssh.ts and will
-// land in the next chunk along with setup.sh (Day 8).
+// Every builder below maps TarballParams → file content for one entry in
+// the tarball. The chunk-1 wrappers (buildIdentityMdForTarball,
+// buildWalletMdForTarball, buildWorldIdMdForTarball,
+// buildAuthProfilesJsonForTarball) are pass-throughs to extracted
+// helpers in lib/ssh.ts — byte-parity is structurally guaranteed.
+// buildDotEnv has no SSH-path helper to pass through to (env vars are
+// appended piecemeal in configureOpenClaw); it mirrors the SSH-path's
+// conditional emission per env var.
 // ════════════════════════════════════════════════════════════════════════
 
 /**
@@ -487,10 +484,23 @@ export function buildAuthProfilesJsonForTarball(p: TarballParams): string {
 }
 
 /**
- * .env — per-user env vars consumed by gateway + scripts.
- * 13 conditional keys per cloud-init-implementation-map §3.5. This chunk
- * implements the universal subset (8 keys); the partner-conditional keys
- * (EDGEOS, polygon RPC overrides) land with the partner-overlay chunk.
+ * .env — per-user env vars consumed by gateway + scripts. Mirrors the
+ * SSH path's piecemeal emission at configureOpenClaw — every env var
+ * the SSH path writes is emitted here under the same condition:
+ *
+ *   Universal (always): GATEWAY_TOKEN, TELEGRAM_BOT_TOKEN,
+ *     INSTACLAW_USER_ID/VM_NAME/NEXTAUTH_URL, AGENTBOOK_ADDRESS,
+ *     POLYGON_RPC_URL, CLOB_PROXY_URL, CLOB_PROXY_URL_BACKUP,
+ *     AGENT_REGION, INSTACLAW_MUAPI_PROXY.
+ *
+ *   Conditional (per TarballParams):
+ *     BANKR_WALLET_ADDRESS, BANKR_API_KEY,
+ *     BANKR_TOKEN_ADDRESS, BANKR_TOKEN_SYMBOL,
+ *     USER_TIMEZONE,
+ *     WORLD_ID_NULLIFIER + WORLD_ID_LEVEL (paired),
+ *     EDGEOS_BEARER_TOKEN (partner-gated),
+ *     ELEVENLABS_API_KEY, RESEND_API_KEY, ALPHAVANTAGE_API_KEY,
+ *     BRAVE_SEARCH_API_KEY, OPENAI_API_KEY.
  *
  * Sentinel: "# INSTACLAW_ENV_V1" comment at top.
  */
@@ -990,15 +1000,20 @@ function packTarGz(entries: TarEntry[]): Readable {
 // ════════════════════════════════════════════════════════════════════════
 
 /**
- * Build the tarball entries this module owns (Day 4-7 chunk 1).
+ * Build the partial tarball entry list. Used by the smoke test
+ * (scripts/_test-cloud-init-tarball.ts) to validate the file-set in
+ * isolation, and by the (future) buildCloudInitTarball entry point
+ * which combines these entries with the remaining wrappers
+ * (openclaw.json, BOOTSTRAP.md, USER.md, system-prompt.md, MEMORY.md
+ * double-write, setup.sh).
  *
- * INCOMPLETE — the remaining entries (openclaw.json, USER.md,
- * system-prompt.md, BOOTSTRAP.md, setup.sh) land in the next chunk.
- * Callers that need a complete tarball MUST wait for Day 8 to merge.
- *
- * Returns the partial entry list for the chunks-1 builders. Used by:
- *   - scripts/_test-cloud-init-tarball.ts (smoke test — Day 13).
- *   - buildCloudInitTarball (final assembly — Day 8 wiring).
+ * Includes:
+ *   - auth-profiles.json (mode 0o600)
+ *   - .env (mode 0o600)
+ *   - workspace/IDENTITY.md, WALLET.md, WORLD_ID.md (conditional)
+ *   - wallet/agent.key (mode 0o600)
+ *   - partner overlays (bankr universal; soul-edge/consensus/edge-
+ *     overlay per partner)
  */
 export function collectPartialEntries(p: TarballParams): TarEntry[] {
   validateTarballParams(p);
@@ -1060,20 +1075,30 @@ export function packPartialTarball(p: TarballParams): Readable {
 export { packTarGz };
 export type { TarEntry };
 
-// ── DEBUG / TEST HOOK ───────────────────────────────────────────────────
-// Foundational chunk only — buildCloudInitTarball intentionally NOT
-// exported yet. It depends on builders not yet present in this file
-// (openclaw.json wrapper, USER.md wrapper, system-prompt.md wrapper,
-// BOOTSTRAP.md wrapper, setup.sh template). When Day 8 lands, we add:
+// ── buildCloudInitTarball entry point — pending Day 8a ──────────────────
 //
-//   export async function buildCloudInitTarball(p: TarballParams): Promise<Readable> {
+// The /api/vm/cloud-init-config endpoint will call a single function
+// that assembles every entry the tarball needs. That function is the
+// only remaining piece of Day 4-7 work. Shape:
+//
+//   export function buildCloudInitTarball(p: TarballParams): Readable {
+//     validateTarballParams(p);
 //     return packTarGz([
-//       ...collectOpenClawConfig(p),      // wraps buildOpenClawConfig
-//       ...collectWorkspaceFiles(p),       // wraps buildUserMd, etc.
-//       ...collectPartialEntries(p),       // this file (chunk 1)
-//       { path: "setup.sh", body: setupShTemplate(p), mode: 0o755 },
+//       ...collectPartialEntries(p),
+//       { path: "home/openclaw/.openclaw/openclaw.json",
+//         body: JSON.stringify(buildOpenClawJsonForTarball(p), null, 2),
+//         mode: 0o600 },
+//       { path: "home/openclaw/.openclaw/workspace/BOOTSTRAP.md",
+//         body: buildBootstrapMd(p) },
+//       ...(buildUserMdForTarball(p) ? [{ path: ".../USER.md", body: ... }] : []),
+//       { path: ".../agent/system-prompt.md", body: buildSystemPromptForTarball(p) },
+//       ...(buildMemoryMdForTarball(p)
+//             ? MEMORY_MD_PATHS.map(path => ({ path, body: buildMemoryMdForTarball(p)! }))
+//             : []),
+//       { path: "setup.sh", body: buildSetupSh(p), mode: 0o755 },
 //     ]);
 //   }
 //
-// The /api/vm/cloud-init-config endpoint also lands in chunk 2 because
-// importing buildCloudInitTarball before it exists would break the build.
+// Gated on the post-audit fixes landing (Fixes 1-5 from
+// docs/cloud-init-audit-2026-05-14.md) — Day 8a should not assemble a
+// tarball wired up with bug-laden wrappers.
