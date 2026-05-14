@@ -1907,6 +1907,40 @@ async function deployFileEntry(
 
   switch (entry.mode) {
     case "overwrite": {
+      // Idempotency: md5-compare expected content against on-disk before
+      // writing. Closes the file-drift cron's "drifted: 30/30" inefficiency
+      // where every overwrite-mode file was re-SCP'd every 15 min even
+      // when bit-identical. Cheap probe (one SSH `md5sum`); huge savings
+      // when stable. If the file doesn't exist yet, md5sum returns empty
+      // stdout → falls through to write path.
+      const expectedMd5 = crypto.createHash("md5").update(content).digest("hex");
+      const remoteMd5Probe = await ssh.execCommand(
+        `md5sum ${remotePath} 2>/dev/null | awk '{print $1}'`,
+      );
+      const remoteMd5 = remoteMd5Probe.stdout.trim();
+      if (remoteMd5 === expectedMd5) {
+        // File content is bit-identical. If entry.executable is true,
+        // also verify the +x bit is set — without this, an idempotent
+        // skip on a file that lost its executable bit would leave the
+        // service half-broken.
+        if (entry.executable) {
+          const execCheck = await ssh.execCommand(
+            `test -x ${remotePath} && echo yes || echo no`,
+          );
+          if (execCheck.stdout.trim() !== "yes") {
+            if (dryRun) {
+              result.fixed.push(`[dry-run] chmod +x (content already correct): ${fileName}`);
+              return;
+            }
+            await ssh.execCommand(`chmod +x ${remotePath}`);
+            result.fixed.push(`${fileName} (chmod +x only — content was correct)`);
+            return;
+          }
+        }
+        result.alreadyCorrect.push(fileName);
+        return;
+      }
+
       if (dryRun) {
         result.fixed.push(`[dry-run] overwrite: ${fileName}`);
         return;
