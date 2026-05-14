@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-14
 
-Window: `bc60f0e3c56cfff625a25beda469b821a1badfa9` → `HEAD` (HEAD = `fdfcc1c0`)
+Window: `fdfcc1c0870becc9b20d13a03b25b89f926d80fe` → `HEAD` (HEAD = `2511bb12`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: fdfcc1c0870becc9b20d13a03b25b89f926d80fe -->
+<!-- LAST_GENERATED_SHA: 2511bb12ade1de588185e6128cef22e423427663 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `fdfcc1c0` 2026-05-14 — feat(cloud-init): wrapper #5 — buildOpenClawJsonForTarball + 35-assertion test [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `bb494aa6` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `2511bb12` 2026-05-14 — feat(admin+cron): P1-6 — lock-status endpoint + clear-stale-configure-locks cron [4 files] _(ai-assisted)_
+- `15e3931c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `fdfcc1c0` 2026-05-14 — feat(cloud-init): wrapper #5 — buildOpenClawJsonForTarball + 35-assertion test [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `2511bb12` 2026-05-14 — feat(admin+cron): P1-6 — lock-status endpoint + clear-stale-configure-locks cron [4 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `bb494aa6` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `fdfcc1c0` 2026-05-14 — [infrastructure, edge] — feat(cloud-init): wrapper #5 — buildOpenClawJsonForTarball + 35-assertion test
+- `15e3931c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `fdfcc1c0` 2026-05-14 — feat(cloud-init): wrapper #5 — buildOpenClawJsonForTarball + 35-assertion test
+- `2511bb12` 2026-05-14 — feat(admin+cron): P1-6 — lock-status endpoint + clear-stale-configure-locks cron
 
 ## Appendix — every commit (chronological)
 
-- `bb494aa6` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `fdfcc1c0` 2026-05-14 — feat(cloud-init): wrapper #5 — buildOpenClawJsonForTarball + 35-assertion test [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `15e3931c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `2511bb12` 2026-05-14 — feat(admin+cron): P1-6 — lock-status endpoint + clear-stale-configure-locks cron [4 files] _(ai-assisted)_
