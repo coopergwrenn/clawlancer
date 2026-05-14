@@ -1131,7 +1131,6 @@ ssh -i /tmp/ic_ssh_key root@66.228.43.140 'for q in \
   "(1 - node_filesystem_avail_bytes{mountpoint=\"/\",instance=\"<IP>:9100\"} / node_filesystem_size_bytes{mountpoint=\"/\",instance=\"<IP>:9100\"}) * 100" \
   "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\",instance=\"<IP>:9100\"}[5m])) * 100)" \
   "(1 - node_memory_MemAvailable_bytes{instance=\"<IP>:9100\"} / node_memory_MemTotal_bytes{instance=\"<IP>:9100\"}) * 100" \
-  "node_systemd_unit_state{name=\"openclaw-gateway.service\",state=\"active\",instance=\"<IP>:9100\"}" \
   "changes(node_boot_time_seconds{instance=\"<IP>:9100\"}[1h])"; do \
     echo "--- $q ---"; \
     curl -s --data-urlencode "query=$q" localhost:9090/api/v1/query \
@@ -1142,7 +1141,7 @@ ssh -i /tmp/ic_ssh_key root@66.228.43.140 'for q in \
 What Prom alone tells you (no SSH needed):
 - VM alive? → `up=1`
 - Disk %? → filesystem query
-- Gateway running? → `node_systemd_unit_state{name="openclaw-gateway.service",state="active"} == 1`
+- Gateway running? → **no Prom metric currently** (openclaw-gateway is a user-scoped systemd service; node_exporter's `--collector.systemd` tracks system services only). SSH `systemctl --user is-active openclaw-gateway` is the only signal until blackbox-exporter or textfile-collector is wired up. See `/etc/prometheus/alert_rules.yml` comment block for restoration options.
 - Crash loop? → `changes(node_boot_time_seconds[1h]) > 1`
 - CPU pressure? → idle-rate query
 - Memory pressure? → memory ratio query
@@ -1287,9 +1286,10 @@ ssh root@66.228.43.140 'curl -s "localhost:9090/api/v1/query" \
   --data-urlencode "query=(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100 > 85" \
   | python3 -m json.tool'
 
-# All gateways inactive
+# All VMs with node_exporter down (proxy for "unreachable VM") — gateway-up is NOT
+# directly observable via Prom; see Step 2.1 note about user-scoped systemd services.
 ssh root@66.228.43.140 'curl -s "localhost:9090/api/v1/query" \
-  --data-urlencode "query=node_systemd_unit_state{name=\"openclaw-gateway.service\",state=\"active\"} == 0"'
+  --data-urlencode "query=up{job=\"fleet-nodes\"} == 0"'
 ```
 
 **4.2 — Supabase state query (state-related symptoms):**
@@ -1392,7 +1392,7 @@ Rule: <new R<N> | existing R<N> | none-mapped>.
 |---|---|---|---|
 | `DiskCritical` (>95%) | `du -sh ~/.openclaw/{session-backups,sessions,workspace}` | Backup runaway, session bloat | Purge backups + vacuum journal + restart gateway. Per Rule 37 |
 | `DiskAlmostFull` (>85%) | Same as DiskCritical, no urgency | Slow growth | Schedule cleanup; track 24h |
-| `GatewayDown` (≥5m) | `journalctl --user -u openclaw-gateway -n 100` | Rule 16 (auth-cache), Rule 32 (config restart needed), Rule 35 (prctl-subreaper) | `reset-failed` then `restart` after addressing journal cause |
+| `GatewayDown` (**alert removed 2026-05-14**, rule was silently inert — see `/etc/prometheus/alert_rules.yml` comment for restoration paths) | `journalctl --user -u openclaw-gateway -n 100` (manual SSH probe) | Rule 16 (auth-cache), Rule 32 (config restart needed), Rule 35 (prctl-subreaper) | `reset-failed` then `restart` after addressing journal cause |
 | `NodeExporterDown` (≥10m) | Linode API instance state | VM hibernating, ufw drop, OOM killer | Wake (if paying), add ufw rule, restart service |
 | `VMUnreachable` (≥5m) | Same as NodeExporterDown | Same | Same |
 | `HighCPU` (>90% for 5m) | `journalctl --user -u openclaw-gateway -n 200` | Runaway tool loop, prompt injection (Rule 25), browser zombie | Restart gateway; investigate prompt context |
