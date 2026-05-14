@@ -1661,6 +1661,173 @@ async function test14_AllMissingEnvVars() {
   }
 }
 
+async function test15_FullTarballByteParityIntegration() {
+  console.log("\n─── TEST 15: full-tarball byte-parity integration (audit Fix 4) ──");
+
+  // The previous per-wrapper byte-parity tests (test12 / test13 / test14)
+  // verify each WRAPPER produces SSH-path-matching output. This test
+  // verifies the ASSEMBLER (collectPartialEntries + packTarGz) puts each
+  // wrapper's output into the tarball at the correct path with the
+  // correct mode, byte-for-byte unchanged. Catches glue bugs that
+  // per-wrapper unit tests can't.
+
+  // Use a params object that exercises every conditional path: all bankr
+  // fields set + world ID set + edge_city partner + OpenAI key.
+  const params: TarballParams = {
+    ...edgeCityParams,
+    bankrTokenAddress: "0xtoken0123456789",
+    bankrTokenSymbol: "TEST",
+    bankrTokenName: "TestCoin",
+    openaiApiKey: "sk-proj-openai-test-mno",
+  };
+
+  const buf = await streamToBuffer(packPartialTarball(params));
+  const files = await unpackTarball(buf);
+
+  // For each file the assembler emits, the extracted bytes MUST equal
+  // the corresponding wrapper's output for the same params.
+  type ByteParityCase = {
+    path: string;
+    expectedMode: number;
+    actualContent: () => string | null;
+    label: string;
+  };
+  const cases: ByteParityCase[] = [
+    {
+      path: "home/openclaw/.openclaw/.env",
+      expectedMode: 0o600,
+      actualContent: () => buildDotEnv(params),
+      label: ".env from buildDotEnv(p)",
+    },
+    {
+      path: "home/openclaw/.openclaw/agents/main/agent/auth-profiles.json",
+      expectedMode: 0o600,
+      actualContent: () => buildAuthProfilesJsonForTarball(params),
+      label: "auth-profiles.json from buildAuthProfilesJsonForTarball(p)",
+    },
+    {
+      path: "home/openclaw/.openclaw/workspace/IDENTITY.md",
+      expectedMode: 0o644,
+      actualContent: () => buildIdentityMdForTarball(params),
+      label: "IDENTITY.md from buildIdentityMdForTarball(p)",
+    },
+    {
+      path: "home/openclaw/.openclaw/workspace/WALLET.md",
+      expectedMode: 0o644,
+      actualContent: () => buildWalletMdForTarball(params),
+      label: "WALLET.md from buildWalletMdForTarball(p)",
+    },
+    {
+      path: "home/openclaw/.openclaw/workspace/WORLD_ID.md",
+      expectedMode: 0o644,
+      actualContent: () => buildWorldIdMdForTarball(params),
+      label: "WORLD_ID.md from buildWorldIdMdForTarball(p)",
+    },
+    {
+      path: "home/openclaw/.openclaw/wallet/agent.key",
+      expectedMode: 0o600,
+      actualContent: () => buildAgentKey(params),
+      label: "agent.key from buildAgentKey(p)",
+    },
+  ];
+
+  for (const c of cases) {
+    const entry = files.get(c.path);
+    assert(entry !== undefined, `tarball contains ${c.path}`);
+    if (!entry) continue;
+    const expectedContent = c.actualContent();
+    assert(
+      expectedContent !== null,
+      `wrapper for ${c.label} returns content (not null) for full-fixture params`,
+    );
+    assert(
+      entry.body === expectedContent,
+      `byte-parity (assembler glue): ${c.label}`,
+    );
+    assert(
+      entry.mode === c.expectedMode,
+      `mode-parity: ${c.path} has mode ${c.expectedMode.toString(8)} (got ${entry.mode.toString(8)})`,
+    );
+  }
+
+  // Indirect SSH-path transitive byte-parity check: since the wrappers
+  // are now pure pass-throughs to lib/ssh.ts exports (post Fix 1+2), the
+  // tarball-extracted bytes must equal what the SSH path generates for
+  // the same inputs. Verify the transitive chain by going one hop further
+  // back: extract from tarball, compute via SSH-path helper, assert equal.
+  const idEntry = files.get("home/openclaw/.openclaw/workspace/IDENTITY.md")!;
+  const idViaSshHelper = buildIdentityMd(params.telegramBotUsername);
+  assert(
+    idEntry.body === idViaSshHelper,
+    "TARBALL → SSH helper chain: tarball IDENTITY.md === buildIdentityMd(botUsername)",
+  );
+
+  const walletEntry = files.get("home/openclaw/.openclaw/workspace/WALLET.md")!;
+  const walletViaSshHelper = buildWalletMd({
+    bankrEvmAddress: params.bankrEvmAddress,
+    bankrTokenAddress: params.bankrTokenAddress,
+    bankrTokenSymbol: params.bankrTokenSymbol,
+    bankrTokenName: params.bankrTokenName,
+  });
+  assert(
+    walletEntry.body === walletViaSshHelper,
+    "TARBALL → SSH helper chain: tarball WALLET.md === buildWalletMd({...bankr})",
+  );
+
+  const worldIdEntry = files.get("home/openclaw/.openclaw/workspace/WORLD_ID.md")!;
+  const worldIdViaSshHelper = buildWorldIdMd(
+    params.worldIdNullifier!,
+    params.worldIdLevel,
+  );
+  assert(
+    worldIdEntry.body === worldIdViaSshHelper,
+    "TARBALL → SSH helper chain: tarball WORLD_ID.md === buildWorldIdMd(nullifier, level)",
+  );
+
+  const authEntry = files.get(
+    "home/openclaw/.openclaw/agents/main/agent/auth-profiles.json",
+  )!;
+  const apiKeyForAuth =
+    params.apiMode === "all_inclusive" ? params.gatewayToken : (params.apiKey ?? "");
+  const proxyBaseUrlForAuth =
+    params.apiMode === "all_inclusive"
+      ? `${params.nextauthUrl.replace(/\/+$/, "")}/api/gateway`
+      : "";
+  const authViaSshHelper = buildAuthProfilesJson(
+    apiKeyForAuth,
+    proxyBaseUrlForAuth,
+    params.openaiApiKey ?? undefined,
+  );
+  assert(
+    authEntry.body === authViaSshHelper,
+    "TARBALL → SSH helper chain: tarball auth-profiles.json === buildAuthProfilesJson(...)",
+  );
+
+  // Sanity: no UNEXPECTED files in the tarball. Pin the expected entry
+  // count for this fixture so a future "accidentally added a file" bug
+  // breaks this assertion.
+  const expectedPaths = new Set([
+    "home/openclaw/.openclaw/.env",
+    "home/openclaw/.openclaw/agents/main/agent/auth-profiles.json",
+    "home/openclaw/.openclaw/workspace/IDENTITY.md",
+    "home/openclaw/.openclaw/workspace/WALLET.md",
+    "home/openclaw/.openclaw/workspace/WORLD_ID.md",
+    "home/openclaw/.openclaw/wallet/agent.key",
+    "overlays/bankr-overlay.md",
+    "overlays/soul-edge-stub.md",
+    "overlays/soul-consensus-stub.md",
+    "overlays/edge-instaclaw-overlay.md",
+  ]);
+  const actualPaths = new Set(files.keys());
+  assert(
+    actualPaths.size === expectedPaths.size,
+    `tarball has exactly ${expectedPaths.size} entries (got ${actualPaths.size})`,
+  );
+  for (const p of expectedPaths) {
+    assert(actualPaths.has(p), `expected path present: ${p}`);
+  }
+}
+
 async function main() {
   console.log("════════════════════════════════════════════════════════");
   console.log("cloud-init-tarball.ts foundation smoke test");
@@ -1679,6 +1846,7 @@ async function main() {
   await test12_AuthProfilesJsonByteParity();
   await test13_ChunkOneByteParity();
   await test14_AllMissingEnvVars();
+  await test15_FullTarballByteParityIntegration();
   await test5_PerFileBuildersDirect();
 
   console.log("\n════════════════════════════════════════════════════════");
