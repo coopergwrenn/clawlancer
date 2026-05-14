@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-14
 
-Window: `80ec702f9f9689b39e41baa92fc2a75e36961c5a` → `HEAD` (HEAD = `c893f76e`)
+Window: `c893f76efcf624c9c8b2bf8faa5f7990deab2966` → `HEAD` (HEAD = `cb79758d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: c893f76efcf624c9c8b2bf8faa5f7990deab2966 -->
+<!-- LAST_GENERATED_SHA: cb79758dfaf46ec8f3297a9bb09cfdf3b129ec9a -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `665e2df7` 2026-05-13 — chore(changelog): auto-update [skip ci] [2 files]
-- `c893f76e` 2026-05-14 — refactor(types): extract UserConfig to lib/user-config-types.ts [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `cb79758d` 2026-05-14 — feat(cloud-init): TarballParams — tier required, +brave +discord [2 files] _(ai-assisted)_
+- `32adcfc8` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `c893f76e` 2026-05-14 — refactor(types): extract UserConfig to lib/user-config-types.ts [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `cb79758d` 2026-05-14 — feat(cloud-init): TarballParams — tier required, +brave +discord [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `665e2df7` 2026-05-13 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `c893f76e` 2026-05-14 — [reconciler, infrastructure, docs] — refactor(types): extract UserConfig to lib/user-config-types.ts
+- `32adcfc8` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `c893f76e` 2026-05-14 — refactor(types): extract UserConfig to lib/user-config-types.ts
+- `cb79758d` 2026-05-14 — feat(cloud-init): TarballParams — tier required, +brave +discord
 
 ## Appendix — every commit (chronological)
 
-- `665e2df7` 2026-05-13 — chore(changelog): auto-update [skip ci] [2 files]
-- `c893f76e` 2026-05-14 — refactor(types): extract UserConfig to lib/user-config-types.ts [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `32adcfc8` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `cb79758d` 2026-05-14 — feat(cloud-init): TarballParams — tier required, +brave +discord [2 files] _(ai-assisted)_
