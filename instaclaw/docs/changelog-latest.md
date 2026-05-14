@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-14
 
-Window: `7c97df5b88fca05909e262e7fa9349c4c2eafcf6` → `HEAD` (HEAD = `0db77dd1`)
+Window: `0db77dd1c986992edc168f91bcfaad88f64e9f81` → `HEAD` (HEAD = `88ee814e`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 0db77dd1c986992edc168f91bcfaad88f64e9f81 -->
+<!-- LAST_GENERATED_SHA: 88ee814e0b70f70169345bfdbf8fff7c069de697 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `0db77dd1` 2026-05-14 — feat(reconcile-fleet): Rule 40 — CV_BUMP_BLOCKED structured logging [1 files] _(ai-assisted)_
-- `dfcd64ab` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `88ee814e` 2026-05-14 — docs: capture JWT line-break lesson from 2026-05-14 EDGEOS incident [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `093c2514` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `88ee814e` 2026-05-14 — docs: capture JWT line-break lesson from 2026-05-14 EDGEOS incident [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `0db77dd1` 2026-05-14 — feat(reconcile-fleet): Rule 40 — CV_BUMP_BLOCKED structured logging [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `dfcd64ab` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `093c2514` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `88ee814e` 2026-05-14 — [reconciler, infrastructure, docs] — docs: capture JWT line-break lesson from 2026-05-14 EDGEOS incident
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `0db77dd1` 2026-05-14 — feat(reconcile-fleet): Rule 40 — CV_BUMP_BLOCKED structured logging
+- `88ee814e` 2026-05-14 — docs: capture JWT line-break lesson from 2026-05-14 EDGEOS incident
 
 ## Appendix — every commit (chronological)
 
-- `dfcd64ab` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `0db77dd1` 2026-05-14 — feat(reconcile-fleet): Rule 40 — CV_BUMP_BLOCKED structured logging [1 files] _(ai-assisted)_
+- `093c2514` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `88ee814e` 2026-05-14 — docs: capture JWT line-break lesson from 2026-05-14 EDGEOS incident [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
