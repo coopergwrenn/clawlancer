@@ -8,6 +8,34 @@ import { verifyManifestFreshness } from "@/lib/manifest-integrity";
 import { sendAdminAlertEmail } from "@/lib/email";
 import * as crypto from "crypto";
 
+/**
+ * Rule 40 — extract reconciler step names from error strings.
+ *
+ * Most reconciler errors are formatted "step-tag: details" (e.g.
+ *   "config-set verify-after-set mismatch: messages.streaming.mode ..."
+ *   "instaclaw-xmtp: surgical fix failed: state=activating NRestarts=19736"
+ *   "node_exporter: port did not open ()"
+ *   "file ~/.openclaw/scripts/strip-thinking.py: ..."
+ * ). The token before the first ':' is the step tag. We deduplicate +
+ * cap at 6 so a multi-step failure doesn't blow up the log payload.
+ */
+function extractFailingSteps(errors: readonly string[]): string[] {
+  const tags = new Set<string>();
+  for (const err of errors) {
+    const colon = err.indexOf(":");
+    let tag: string;
+    if (colon > 0 && colon < 80) {
+      tag = err.slice(0, colon).trim();
+    } else {
+      // Fallback: first 3 words.
+      tag = err.split(/\s+/).slice(0, 3).join(" ").slice(0, 40);
+    }
+    if (tag) tags.add(tag);
+    if (tags.size >= 6) break;
+  }
+  return Array.from(tags);
+}
+
 // ─── Vercel cron config ────────────────────────────────────────────────────
 
 export const dynamic = "force-dynamic";
@@ -443,14 +471,21 @@ export async function GET(req: NextRequest) {
             errors: auditResult.strictErrors,
           });
 
-          logger.error("reconcile-fleet: strict-mode failure — holding config_version", {
+          // Rule 40 — structured CV_BUMP_BLOCKED line (strict variant).
+          // Strict and push hold-paths emit the SAME greppable prefix so a
+          // single log search surfaces all currently-blocked VMs.
+          logger.error("CV_BUMP_BLOCKED", {
             route: "cron/reconcile-fleet",
+            reason: "strict",
             vmId: vm.id,
             vmName: vm.name,
+            cvCurrent: vm.config_version ?? 0,
+            cvTarget: VM_MANIFEST.version,
+            errorsCount: auditResult.strictErrors.length,
+            failingSteps: extractFailingSteps(auditResult.strictErrors),
+            sampleError: (auditResult.strictErrors[0] ?? "").slice(0, 200),
             strictErrors: auditResult.strictErrors,
             canaryHealthy: auditResult.canaryHealthy,
-            atVersion: vm.config_version ?? 0,
-            manifestVersion: VM_MANIFEST.version,
             streak: newStreak,
           });
           errorDetails.push({
@@ -503,12 +538,20 @@ export async function GET(req: NextRequest) {
           }
           await supabase.from("instaclaw_vms").update(update).eq("id", vm.id);
 
-          logger.warn("reconcile-fleet: push errors — holding config_version", {
+          // Rule 40 — structured CV_BUMP_BLOCKED line. The "CV_BUMP_BLOCKED"
+          // message is the canonical greppable prefix; failingSteps +
+          // sampleError accelerate incident triage from "SSH-probe each
+          // stuck VM" to one log search / SQL query.
+          logger.warn("CV_BUMP_BLOCKED", {
             route: "cron/reconcile-fleet",
+            reason: "push",
             vmId: vm.id,
             vmName: vm.name,
-            atVersion: vm.config_version ?? 0,
-            manifestVersion: VM_MANIFEST.version,
+            cvCurrent: vm.config_version ?? 0,
+            cvTarget: VM_MANIFEST.version,
+            errorsCount: auditResult.errors.length,
+            failingSteps: extractFailingSteps(auditResult.errors),
+            sampleError: (auditResult.errors[0] ?? "").slice(0, 200),
             errors: auditResult.errors,
             healthStatus: vm.health_status,
             reconcileConsecutiveFailures: newCounter,
