@@ -149,6 +149,19 @@ export interface TarballParams {
    *  and passes through. When null/undefined, the openai:default profile
    *  is OMITTED (matches SSH-path behavior exactly). */
   openaiApiKey?: string | null;
+  /** ElevenLabs API key — voice/TTS skill. SSH path source:
+   *  `config.elevenlabsApiKey || process.env.ELEVENLABS_API_KEY`
+   *  (BYOK takes precedence over the server-side env). Endpoint should
+   *  resolve both and pass the result. Emitted in .env when truthy. */
+  elevenlabsApiKey?: string | null;
+  /** Resend API key — server-side email sending. SSH path source:
+   *  `process.env.RESEND_API_KEY`. Endpoint passes through. Emitted in
+   *  .env when truthy. */
+  resendApiKey?: string | null;
+  /** Alpha Vantage API key — financial-data skill. SSH path source:
+   *  `process.env.ALPHAVANTAGE_API_KEY`. Endpoint passes through.
+   *  Emitted in .env when truthy. */
+  alphavantageApiKey?: string | null;
   /** EdgeOS attendee-directory JWT. Only emitted in .env when partner ===
    *  "edge_city". The endpoint sources this from process.env.EDGEOS_BEARER_TOKEN
    *  (mirrors lib/ssh.ts:5286). 2026-05-14 incident — for 34 days the
@@ -496,7 +509,36 @@ export function buildDotEnv(p: TarballParams): string {
 
   if (p.bankrEvmAddress) lines.push(`BANKR_WALLET_ADDRESS=${p.bankrEvmAddress}`);
   if (p.bankrApiKey) lines.push(`BANKR_API_KEY=${p.bankrApiKey}`);
+  if (p.bankrTokenAddress) lines.push(`BANKR_TOKEN_ADDRESS=${p.bankrTokenAddress}`);
+  if (p.bankrTokenSymbol) lines.push(`BANKR_TOKEN_SYMBOL=${p.bankrTokenSymbol}`);
   if (p.userTimezone) lines.push(`USER_TIMEZONE=${p.userTimezone}`);
+
+  // ── World ID env vars — paired emission ─────────────────────────────
+  // SSH path (lib/ssh.ts:5558-5568) emits both NULLIFIER + LEVEL when
+  // worldIdNullifier is set. LEVEL defaults to "orb" if worldIdLevel
+  // is null/undefined. Cloud-init mirrors exactly.
+  if (p.worldIdNullifier) {
+    lines.push(`WORLD_ID_NULLIFIER=${p.worldIdNullifier}`);
+    lines.push(`WORLD_ID_LEVEL=${p.worldIdLevel ?? "orb"}`);
+  }
+
+  // ── Higgsfield/Muapi video skill ────────────────────────────────────
+  // SSH path (lib/ssh.ts:5382-5386) emits this unconditionally pointing
+  // at our domain root (NOT /api/gateway — the muapi proxy is at the
+  // root path on instaclaw.io).
+  lines.push("INSTACLAW_MUAPI_PROXY=https://instaclaw.io");
+
+  // ── Server-side API keys (conditional on resolved value) ───────────
+  // Endpoint resolves each of these from process.env and passes through.
+  // Mirrors SSH-path conditionals at lib/ssh.ts:6096 (elevenlabs:
+  // `config.elevenlabsApiKey || process.env.ELEVENLABS_API_KEY`),
+  // lib/ssh.ts:6165 (resend), lib/ssh.ts:6216 (alpha vantage),
+  // lib/ssh.ts:6270 (brave search), lib/ssh.ts:6293 (openai).
+  if (p.elevenlabsApiKey) lines.push(`ELEVENLABS_API_KEY=${p.elevenlabsApiKey}`);
+  if (p.resendApiKey) lines.push(`RESEND_API_KEY=${p.resendApiKey}`);
+  if (p.alphavantageApiKey) lines.push(`ALPHAVANTAGE_API_KEY=${p.alphavantageApiKey}`);
+  if (p.braveApiKey) lines.push(`BRAVE_SEARCH_API_KEY=${p.braveApiKey}`);
+  if (p.openaiApiKey) lines.push(`OPENAI_API_KEY=${p.openaiApiKey}`);
 
   // ── Manifest-required env vars (per VM_MANIFEST.requiredEnvVars) ──
   //
@@ -896,6 +938,18 @@ function buildPartnerOverlays(p: TarballParams): TarEntry[] {
  * truncated response, retries (3 attempts × 5s backoff per the
  * bootstrap), or eventually marks /tmp/.instaclaw-failed.
  */
+/**
+ * Pinned mtime for every tar entry. tar-stream's `pack.entry()` defaults
+ * mtime to `new Date()` at call time, which makes back-to-back tarball
+ * builds non-deterministic across second boundaries (caught by test4 on
+ * 2026-05-14 after Fix 3 widened the test surface). Pinning to a fixed
+ * historical epoch makes the output byte-identical for the same inputs
+ * and gives Phase 1B-2's byte-compare a stable baseline.
+ *
+ * Value: 2026-01-01T00:00:00Z (start of 2026). Arbitrary but stable.
+ */
+const TARBALL_FIXED_MTIME = new Date("2026-01-01T00:00:00Z");
+
 function packTarGz(entries: TarEntry[]): Readable {
   const pack = tarPack();
   const gzip = createGzip();
@@ -909,7 +963,12 @@ function packTarGz(entries: TarEntry[]): Readable {
         const body = Buffer.isBuffer(e.body) ? e.body : Buffer.from(e.body, "utf-8");
         await new Promise<void>((resolve, reject) => {
           pack.entry(
-            { name: e.path, size: body.length, mode: e.mode ?? 0o644 },
+            {
+              name: e.path,
+              size: body.length,
+              mode: e.mode ?? 0o644,
+              mtime: TARBALL_FIXED_MTIME,
+            },
             body,
             (err) => (err ? reject(err) : resolve()),
           );

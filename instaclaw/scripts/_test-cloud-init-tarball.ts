@@ -1492,6 +1492,175 @@ async function test13_ChunkOneByteParity() {
   );
 }
 
+async function test14_AllMissingEnvVars() {
+  console.log("\n─── TEST 14: all 10 previously-missing env vars (audit Fix 3) ──");
+
+  // ── Empty-input fixture: everything optional null/absent ─────────────
+  // Only emit the universal env vars (GATEWAY_TOKEN, TELEGRAM_BOT_TOKEN,
+  // POLYGON/CLOB/AGENT_REGION, INSTACLAW_MUAPI_PROXY, AGENTBOOK_ADDRESS,
+  // INSTACLAW_USER_ID/VM_NAME/NEXTAUTH_URL). All conditional env vars OMITTED.
+  const minimal: TarballParams = {
+    ...validParams,
+    bankrEvmAddress: null,
+    bankrApiKey: null,
+    bankrTokenAddress: null,
+    bankrTokenSymbol: null,
+    bankrTokenName: null,
+    worldIdNullifier: null,
+    worldIdLevel: null,
+    elevenlabsApiKey: null,
+    resendApiKey: null,
+    alphavantageApiKey: null,
+    braveApiKey: null,
+    openaiApiKey: null,
+    edgeosBearerToken: null,
+    userTimezone: null,
+  };
+  const envMinimal = buildDotEnv(minimal);
+
+  // INSTACLAW_MUAPI_PROXY is unconditional per SSH-path emission at line 5382-5386
+  assert(
+    envMinimal.includes("INSTACLAW_MUAPI_PROXY=https://instaclaw.io"),
+    "INSTACLAW_MUAPI_PROXY=https://instaclaw.io always emitted (SSH-path lib/ssh.ts:5382)",
+  );
+
+  // All conditional env vars MUST be absent in minimal fixture
+  for (const conditionalKey of [
+    "BANKR_WALLET_ADDRESS",
+    "BANKR_API_KEY",
+    "BANKR_TOKEN_ADDRESS",
+    "BANKR_TOKEN_SYMBOL",
+    "WORLD_ID_NULLIFIER",
+    "WORLD_ID_LEVEL",
+    "USER_TIMEZONE",
+    "ELEVENLABS_API_KEY",
+    "RESEND_API_KEY",
+    "ALPHAVANTAGE_API_KEY",
+    "BRAVE_SEARCH_API_KEY",
+    "OPENAI_API_KEY",
+    "EDGEOS_BEARER_TOKEN",
+  ]) {
+    assert(
+      !new RegExp(`^${conditionalKey}=`, "m").test(envMinimal),
+      `${conditionalKey} ABSENT when input null (SSH-path conditional honored)`,
+    );
+  }
+
+  // ── Full-input fixture: all optional fields set ────────────────────
+  const REAL_JWT_FOR_TEST =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
+    "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ." +
+    "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+
+  const full: TarballParams = {
+    ...edgeCityParams,
+    bankrTokenAddress: "0xtoken0123456789",
+    bankrTokenSymbol: "TEST",
+    bankrTokenName: "TestCoin",
+    worldIdNullifier: "0xabcdef1234567890",
+    worldIdLevel: "device",
+    elevenlabsApiKey: "el_test_key_abc",
+    resendApiKey: "re_test_key_def",
+    alphavantageApiKey: "av_test_key_ghi",
+    braveApiKey: "BSA_test_brave_jkl",
+    openaiApiKey: "sk-proj-openai-mno",
+    edgeosBearerToken: REAL_JWT_FOR_TEST,
+  };
+  const envFull = buildDotEnv(full);
+
+  // BANKR_TOKEN_* (pin against audit §1.5 — pre-fix wrapper missing these)
+  assert(
+    envFull.includes(`BANKR_TOKEN_ADDRESS=0xtoken0123456789`),
+    "BANKR_TOKEN_ADDRESS emitted when set (audit §1.5 — previously missing)",
+  );
+  assert(
+    envFull.includes("BANKR_TOKEN_SYMBOL=TEST"),
+    "BANKR_TOKEN_SYMBOL emitted when set (audit §1.5)",
+  );
+
+  // WORLD_ID_* paired emission
+  assert(
+    envFull.includes("WORLD_ID_NULLIFIER=0xabcdef1234567890"),
+    "WORLD_ID_NULLIFIER emitted when set (audit §1.5 — previously missing)",
+  );
+  assert(
+    envFull.includes("WORLD_ID_LEVEL=device"),
+    "WORLD_ID_LEVEL emitted with explicit value (audit §1.5 — previously missing)",
+  );
+
+  // WORLD_ID_LEVEL default test (level null → "orb")
+  const wiDefaultLevel: TarballParams = {
+    ...full,
+    worldIdLevel: null,
+  };
+  const envWiDefault = buildDotEnv(wiDefaultLevel);
+  assert(
+    envWiDefault.includes("WORLD_ID_LEVEL=orb"),
+    "WORLD_ID_LEVEL defaults to 'orb' when worldIdLevel null (mirrors SSH-path ?? 'orb')",
+  );
+
+  // Server-side API keys — all 5 conditionals
+  assert(
+    envFull.includes("ELEVENLABS_API_KEY=el_test_key_abc"),
+    "ELEVENLABS_API_KEY emitted (audit §1.5)",
+  );
+  assert(
+    envFull.includes("RESEND_API_KEY=re_test_key_def"),
+    "RESEND_API_KEY emitted (audit §1.5)",
+  );
+  assert(
+    envFull.includes("ALPHAVANTAGE_API_KEY=av_test_key_ghi"),
+    "ALPHAVANTAGE_API_KEY emitted (audit §1.5)",
+  );
+  assert(
+    envFull.includes("BRAVE_SEARCH_API_KEY=BSA_test_brave_jkl"),
+    "BRAVE_SEARCH_API_KEY emitted (audit §1.5)",
+  );
+  assert(
+    envFull.includes("OPENAI_API_KEY=sk-proj-openai-mno"),
+    "OPENAI_API_KEY emitted (audit §1.5)",
+  );
+
+  // EDGEOS_BEARER_TOKEN partner-gated (already covered in test7 but pin here too)
+  assert(
+    envFull.includes(`EDGEOS_BEARER_TOKEN=${REAL_JWT_FOR_TEST}`),
+    "EDGEOS_BEARER_TOKEN emitted for edge_city with valid JWT",
+  );
+
+  // ── Coverage assertion: full required+optional env-var set ──────────
+  // After this fix, the cloud-init wrapper emits a superset of the
+  // SSH-path's .env. Enumerate every env var the SSH path emits, verify
+  // each is present in our full-input fixture.
+  const SSH_PATH_EMITTED_KEYS = [
+    "GATEWAY_TOKEN",
+    "POLYGON_RPC_URL",
+    "CLOB_PROXY_URL",
+    "CLOB_PROXY_URL_BACKUP",
+    "AGENT_REGION",
+    "INSTACLAW_MUAPI_PROXY",
+    "TELEGRAM_BOT_TOKEN",
+    "AGENTBOOK_ADDRESS",
+    "BANKR_WALLET_ADDRESS",
+    "BANKR_API_KEY",
+    "BANKR_TOKEN_ADDRESS",
+    "BANKR_TOKEN_SYMBOL",
+    "WORLD_ID_NULLIFIER",
+    "WORLD_ID_LEVEL",
+    "ELEVENLABS_API_KEY",
+    "RESEND_API_KEY",
+    "ALPHAVANTAGE_API_KEY",
+    "BRAVE_SEARCH_API_KEY",
+    "OPENAI_API_KEY",
+    "EDGEOS_BEARER_TOKEN",
+  ];
+  for (const key of SSH_PATH_EMITTED_KEYS) {
+    assert(
+      new RegExp(`^${key}=`, "m").test(envFull),
+      `Full-input env emits ${key} (SSH-path coverage)`,
+    );
+  }
+}
+
 async function main() {
   console.log("════════════════════════════════════════════════════════");
   console.log("cloud-init-tarball.ts foundation smoke test");
@@ -1509,6 +1678,7 @@ async function main() {
   await test11_BuildOpenClawJsonForTarball();
   await test12_AuthProfilesJsonByteParity();
   await test13_ChunkOneByteParity();
+  await test14_AllMissingEnvVars();
   await test5_PerFileBuildersDirect();
 
   console.log("\n════════════════════════════════════════════════════════");
