@@ -1941,6 +1941,59 @@ async function test16_BuildSetupSh() {
   } catch {
     console.log("  ◦ shellcheck not installed — skipping strict lint pass");
   }
+
+  // ── Day 8b BE-1 assertions ────────────────────────────────────────
+  // BE-1 wires up linger + sshd OOM-protect drop-in. Verify the three
+  // sentinels are present, the BEST_EFFORT (`|| echo WARN`) pattern is
+  // used (NOT the CRITICAL `|| { ... exit 1 }` pattern), and the block
+  // appears BEFORE §1.5 (canonical execution order per plan §4).
+
+  // 11. BE-1 ordering: must precede §1.5 CRITICAL.
+  const idxBE1 = sh.indexOf("§1.1 BEST_EFFORT [BE-1]");
+  const idx15 = sh.indexOf("§1.5 CRITICAL");
+  assert(
+    idxBE1 > 0 && idx15 > 0 && idxBE1 < idx15,
+    `BE-1 block appears BEFORE §1.5 CRITICAL (BE-1 at ${idxBE1}, §1.5 at ${idx15})`,
+  );
+
+  // 12. BE-1 uses the BEST_EFFORT pattern, NOT the CRITICAL pattern.
+  // Look for the WARN echo with the canonical BE-1 label as the close.
+  // The CRITICAL pattern would have `rm -f /tmp/.instaclaw-ready` +
+  // `touch /tmp/.instaclaw-failed` + `exit 1` after the `||`; BE-1 has
+  // a single echo line.
+  const be1Block = sh.slice(idxBE1, idx15);
+  assert(
+    be1Block.includes('|| echo "[$(date -u +%FT%TZ)] WARN: BE-1'),
+    "BE-1 uses BEST_EFFORT `|| echo WARN` pattern",
+  );
+  assert(
+    !be1Block.includes("touch /tmp/.instaclaw-failed"),
+    "BE-1 does NOT use CRITICAL `touch /tmp/.instaclaw-failed` pattern",
+  );
+  assert(
+    !be1Block.includes("exit 1"),
+    "BE-1 does NOT contain `exit 1` (BEST_EFFORT never aborts setup)",
+  );
+
+  // 13. BE-1 canonical OOM-protect drop-in heredoc body.
+  // The drop-in MUST be a single-quoted heredoc (so the body is taken
+  // literally; no $... expansion) and contain exactly the canonical
+  // OOMScoreAdjust=-900 stanza.
+  assert(
+    be1Block.includes("<<'OOMEOF'\n[Service]\nOOMScoreAdjust=-900\nOOMEOF"),
+    "BE-1 emits the canonical OOM-protect drop-in via single-quoted heredoc",
+  );
+
+  // 14. BE-1's daemon-reload is the SYSTEM instance (no `--user` flag).
+  // The drop-in lives in /etc/systemd/system/, so `daemon-reload` MUST
+  // hit the system manager. A `--user` daemon-reload here would silently
+  // reload the wrong manager and the drop-in would not be picked up
+  // until the next system reboot.
+  const reloadIdx = be1Block.indexOf("systemctl daemon-reload");
+  assert(
+    reloadIdx > 0 && !be1Block.slice(reloadIdx - 30, reloadIdx).includes("--user"),
+    "BE-1 daemon-reload is the system instance (no --user flag in the line)",
+  );
 }
 
 async function test17_BuildCloudInitTarball() {

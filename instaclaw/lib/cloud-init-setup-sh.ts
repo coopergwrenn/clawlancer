@@ -23,15 +23,31 @@
  * artifacts (skill clones, mcporter config, partner-stub SOUL.md inserts,
  * etc.) on its next tick.
  *
- * Phase 1A Day 8b scope (next commit): the 13 BEST_EFFORT steps from plan
- * §4. Per the 2026-05-14 inventory probe (docs/cloud-init-snapshot-bake-
- * requirements-2026-05-13.md §17b), Day 8b must also deploy 22 files/
- * packages that the bake-requirements doc claimed SNAPSHOT_BAKED but are
- * actually configureOpenClaw-installed (browser-relay-server.js,
- * check-skill-updates.sh, frontier+agent-status+clawlancer skills, 6 pip
- * packages, 3 npm globals, 3 systemd unit files). Each gets the
- * BEST_EFFORT `|| echo WARN ...` pattern from plan §4 — failure doesn't
- * fail the whole setup.
+ * Phase 1A Day 8b scope (lands incrementally — one BE-N step per commit
+ * per Cooper's 2026-05-14 discipline rules): 13 BEST_EFFORT steps + the
+ * subset of §17b.2 missing files NOT covered by the reconciler's
+ * stepFiles (manifest files[] heals most). True Day-8b-must-deploy:
+ * browser-relay-server.js, check-skill-updates.sh + daily cron,
+ * agent-status + clawlancer SKILL.md (frontier was committed
+ * standalone at instaclaw/skills/frontier/SKILL.md → manifest's
+ * skillsFromRepo walk picks it up). Each BE-N step uses the
+ * `{ ... } || echo WARN ...` pattern — never `exit 1` (that's the
+ * CRITICAL-step prerogative).
+ *
+ * Day 8b progress (update with each landing BE-N):
+ *   - [✓] BE-1: linger + sshd OOM-protect drop-in
+ *   - [ ] BE-2: mkdir defenses
+ *   - [ ] BE-3: privacy wipe
+ *   - [ ] BE-4: stop pre-existing gateway (likely redundant — under review)
+ *   - [ ] BE-5: skill clones + overlays (bankr, consensus, edge_city)
+ *   - [ ] BE-6: @bankr/cli pinned install
+ *   - [ ] BE-7: browser-relay-server.js + check-skill-updates.sh + cron
+ *   - [ ] BE-8: agent-status + clawlancer SKILL.md
+ *   - [ ] BE-9: mcporter clawlancer config
+ *   - [ ] BE-10: pip install §17b.2 packages
+ *   - [ ] BE-11: npm install §17b.2 packages
+ *   - [ ] BE-12: xvfb/x11vnc/websockify systemd units
+ *   - [ ] BE-13: daemon-reload (lands with BE-12 — no-op without it)
  *
  * Snapshot inventory cross-reference (verified 2026-05-14 against vm-944,
  * a status=ready cv=0 VM — pure snapshot baseline):
@@ -79,8 +95,8 @@ import type { TarballParams } from "./cloud-init-tarball";
  * Output is ~3-4KB of bash. Mode 0o755 (set by the caller in
  * buildCloudInitTarball).
  *
- * Day 8a returns the CRITICAL-only template. Day 8b extends with
- * BEST_EFFORT steps.
+ * Day 8a returned the CRITICAL-only template. Day 8b extends with
+ * BEST_EFFORT steps — landing incrementally, one BE-N per commit.
  */
 export function buildSetupSh(p: TarballParams): string {
   // Strip trailing slashes from nextauthUrl (validateTarballParams already
@@ -114,6 +130,45 @@ NEXTAUTH_URL="${nextauthUrl}"
 AGENTBOOK_ADDRESS="${p.agentbookAddress}"
 
 echo "[\$(date -u +%FT%TZ)] setup.sh starting (user=\$USER_ID vm=\$VM_NAME)"
+
+# ════════════════════════════════════════════════════════════════════════
+# §1.1 BEST_EFFORT [BE-1]: linger + sshd OOM-protect drop-in
+# ════════════════════════════════════════════════════════════════════════
+# Two independent safeties wired up before any service modification:
+#
+#   1. loginctl enable-linger openclaw — keeps the openclaw user's
+#      systemd-user instance alive after cloud-init exits. Without it,
+#      the openclaw-gateway user service stops at the next user-session
+#      tear-down (or VM reboot). The reconciler does NOT heal linger; if
+#      this step fails silently the VM works until first reboot, then the
+#      gateway is gone and manual SSH-in is required to recover.
+#
+#   2. /etc/systemd/system/ssh.service.d/oom-protect.conf with
+#      OOMScoreAdjust=-900 — protects sshd from the OOM killer during
+#      memory-pressure events (e.g., a runaway agent process). Without
+#      protection, OOM-killing sshd locks out admin access entirely.
+#      The reconciler's stepShdOomProtection heals this on the next
+#      ~3-min cycle, so a transient miss is recoverable; linger is not.
+#
+# Idempotency: enable-linger is a no-op when already set. oom-protect.conf
+# is a canonical-content overwrite — the snapshot does not have it (per
+# §17b inventory), and every future VM gets the same canonical bytes.
+#
+# systemctl daemon-reload picks up the drop-in for FUTURE sshd restarts;
+# the currently-running sshd PID retains its old OOMScoreAdjust. We do
+# NOT restart sshd here — cloud-init has root via Linode metadata, not
+# SSH, so an sshd restart would interrupt no live session of ours, but
+# it adds risk (a broken sshd config would brick admin access) for no
+# immediate gain. The next routine sshd restart picks up the new score.
+{
+  loginctl enable-linger openclaw
+  mkdir -p /etc/systemd/system/ssh.service.d
+  cat > /etc/systemd/system/ssh.service.d/oom-protect.conf <<'OOMEOF'
+[Service]
+OOMScoreAdjust=-900
+OOMEOF
+  systemctl daemon-reload
+} || echo "[\$(date -u +%FT%TZ)] WARN: BE-1 (linger + sshd OOM-protect) partial failure — reconciler heals oom-protect.conf on next tick; linger is NOT reconciler-healed (manual fix needed on first reboot)"
 
 # ════════════════════════════════════════════════════════════════════════
 # §1.5 CRITICAL: place openclaw.json + auth-profiles.json (mode 0600)
@@ -281,19 +336,19 @@ echo "OPENCLAW_CONFIGURE_DONE"
   exit 1
 }
 
-# ── Day 8b will add 13 BEST_EFFORT steps here ─────────────────────────
-# Steps 1-4: linger + sshd OOM, mkdir defenses, privacy wipe, stop pre-
-#            existing gateway.
-# Steps 7-8: skill clones (bankr, consensus-2026, partner-conditional),
-#            @bankr/cli install.
-# Steps 10-16: AgentBook wallet, mcporter clawlancer, partner-stub SOUL.md
-#              inserts.
-# Steps 31, 33-36: daemon-reload, device pairing, final verification.
-# Each follows the BEST_EFFORT pattern:
-#   { ... } || echo "[\$(date -u +%FT%TZ)] WARN: step N (label) failed — reconciler may heal"
-# These don't fail the whole setup; reconciler's next tick fills the gaps.
+# ── Day 8b BEST_EFFORT steps land incrementally — see docstring ───────
+# Done: BE-1 (linger + sshd OOM-protect).
+# Pending: BE-2 (mkdir defenses), BE-3 (privacy wipe), BE-4 (stop pre-
+# existing gateway — likely redundant with §1.32 restart, under review),
+# BE-5 (skill clones), BE-6 (@bankr/cli), BE-7 (browser-relay-server.js
+# + check-skill-updates.sh), BE-8 (agent-status + clawlancer SKILL.md),
+# BE-9 (mcporter clawlancer config), BE-10 (pip), BE-11 (npm),
+# BE-12 (xvfb/x11vnc/websockify systemd units), BE-13 (daemon-reload —
+# lands with BE-12 since it's a no-op without unit-file changes).
+# All follow the BEST_EFFORT pattern:
+#   { ... } || echo "[\$(date -u +%FT%TZ)] WARN: BE-N (label) — recovery"
 
-echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL steps only — Day 8a)"
+echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 — Day 8a + Day 8b BE-1)"
 exit 0
 `;
 }
@@ -316,4 +371,10 @@ export const SETUP_SH_SENTINELS = {
   CALLBACK_PATH: "/api/vm/cloud-init-callback",
   /** Critical-step gateway-health probe — must hit localhost:18789/health. */
   GATEWAY_HEALTH_PROBE: "http://localhost:18789/health",
+  /** BE-1: linger enable — gateway auto-start across reboots. */
+  BE1_LINGER: "loginctl enable-linger openclaw",
+  /** BE-1: sshd OOM-protect drop-in path. */
+  BE1_OOM_DROP_IN_PATH: "/etc/systemd/system/ssh.service.d/oom-protect.conf",
+  /** BE-1: canonical OOM score for sshd protection. */
+  BE1_OOM_SCORE: "OOMScoreAdjust=-900",
 } as const;
