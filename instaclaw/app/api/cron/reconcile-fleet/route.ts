@@ -84,7 +84,15 @@ const LOCK_TTL_SECONDS = 360; // > maxDuration with 60s headroom
 // Already-at-v91 VMs (vm-648, vm-043) won't auto-receive Layer 2 until the
 // next manifest bump — Layer 1 (the critical nuke-prevention fix) is on
 // them and protective regardless.
-const CONFIG_AUDIT_BATCH_SIZE = 3;
+//
+// 2026-05-14: dropped 3 → 1 as part of the PER_VM_TIMEOUT_MS hotfix below.
+// At 220s per-VM and 300s Vercel maxDuration, only one VM fits cleanly per
+// tick. Fleet drain rate becomes 20 VMs/hour (3-min cron interval × 1
+// VM/tick) — ~6h to clear the 142-VM cv=95 cohort that's currently
+// completely stuck. Option C (decouple secret_version to its own cron)
+// is the proper structural fix and is filed as a follow-up.
+const CONFIG_AUDIT_BATCH_SIZE = 1;
+// nft cache-bust auto-touch (vm-manifest.ts changed): 2026-05-14 19:41 UTC
 // nft cache-bust auto-touch (vm-manifest.ts changed): 2026-05-14 17:57 UTC
 // nft cache-bust auto-touch (vm-manifest.ts changed): 2026-05-14 17:16 UTC
 // nft cache-bust auto-touch (vm-manifest.ts changed): 2026-05-13 16:34 UTC
@@ -106,7 +114,19 @@ const CONFIG_AUDIT_BATCH_SIZE = 3;
 // designed to be idempotent and the cv bump only happens on full
 // success, so an aborted mid-flight reconcile leaves the VM at its
 // prior cv and the next cron tick retries naturally.
-const PER_VM_TIMEOUT_MS = 120_000;
+//
+// 2026-05-14: bumped 120s → 220s. v96 SOUL.md V2 rewrite + v99 stepNodeExporter
+// textfile-collector additions + v100 PATH fix collectively pushed per-VM
+// reconcile workload past the previous 120s budget for the cv=95 cohort
+// (142 of 148 healthy assigned VMs). Every per-VM Promise.race hit the
+// 120s outer timeout BEFORE reconcileVM's STRICT_DEADLINE_MS=180s could
+// return a partial result, so `audited++` and the secret_version bump
+// block at line ~432 were unreachable for every VM. Net effect: 0 VMs
+// advanced to cv=99/100 in 12+ minutes of cron ticks; 0 VMs bumped to
+// secret_version=1. 220s = 180s inner + 40s headroom > inner. Combined
+// with CONFIG_AUDIT_BATCH_SIZE=1, fits inside Vercel's 300s maxDuration
+// with ~80s headroom for batch setup / response serialization.
+const PER_VM_TIMEOUT_MS = 220_000;
 
 // Auto-quarantine threshold: after K consecutive reconcile failures (cycles
 // where pushFailed gate held the cv bump), set reconcile_quarantined_at and

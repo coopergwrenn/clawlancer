@@ -245,3 +245,61 @@ This means the cron would have auto-quarantined the cv=82 cohort hours ago, surf
 | Cron-vs-script separation (§3.4) | Pending decision | TBD | Next month |
 
 Cooper's input requested on §3.2, §3.3, §3.4, §3.5, and the open questions in §4.
+
+---
+
+## 7. Follow-up — 2026-05-14 secret_version starvation (Option C)
+
+**Discovered:** 2026-05-14, ~12 min after the v99 + v100 deploys. **Status:** awaiting bandwidth — not blocking ship; tactical hotfix (Option A) is live.
+
+### What happened
+
+`SECRET_VERSION` (lib/vm-reconcile.ts) was introduced 2026-05-14 to decouple secret distribution from `config_version`. The eligibility filter became `(config_version < MANIFEST.version OR secret_version < SECRET_VERSION)`. After deploy, ZERO of 242 assigned VMs advanced to `secret_version=1` in 12+ minutes (4+ reconciler ticks).
+
+### Root cause
+
+Same class of bug as the original §1 deadline issue, surfaced via a different symptom:
+
+- `app/api/cron/reconcile-fleet/route.ts:110` had `PER_VM_TIMEOUT_MS = 120_000`
+- `lib/vm-reconcile.ts:344` has `STRICT_DEADLINE_MS = 180_000`
+- **Outer < Inner.** Every per-VM Promise.race rejected at 120s before reconcileVM could complete its 180s strict cycle. The `audited++` increment and the secret_version bump block at route.ts:432 both sit AFTER `await Promise.race(...)` in the try block, so timeout-rejection skips both.
+
+For the v96 + v99 + v100 workload (SOUL.md V2 rewrite + textfile-collector dir+drop-in+restart + PATH unit-file fix), the cv=95 cohort (142 of 148 healthy assigned VMs) consistently takes 150-280s — always past 120s. Net throughput = 0 bumps/hour.
+
+### Option A (hotfix — SHIPPED 2026-05-14)
+
+Bumped `PER_VM_TIMEOUT_MS` 120s → 220s (40s headroom above STRICT_DEADLINE_MS) and dropped `CONFIG_AUDIT_BATCH_SIZE` 3 → 1. Fits 1 VM × 220s inside Vercel's 300s maxDuration with ~80s overhead headroom. Fleet drain rate = 20 VMs/hour at the 3-min cron cadence; ~6h to clear the 142-VM cv=95 cohort.
+
+Trade-off: throughput drops 3× per tick (3 → 1 VM). Acceptable because the previous 3-VM batch was achieving 0 successful reconciles anyway.
+
+### Option C (structural — NOT BUILT, this section is the follow-up)
+
+**Goal:** decouple secret_version distribution from full reconcile completion. The current bump is gated on `auditResult.envPushSucceeded`, which requires the whole reconcileVM to complete. That conflates two concerns: (1) "are platform secrets correctly distributed?" — fast, ~5-15s per VM (just stepEnvVarPush) and (2) "is this VM at the current manifest?" — slow, 150-280s.
+
+**Proposal:** new endpoint `/api/cron/secret-version-sweep` that:
+
+1. Acquires its own cron lock (separate from reconcile-fleet's lock — they can run concurrently).
+2. Queries VMs WHERE `status='assigned' AND health_status='healthy' AND secret_version < SECRET_VERSION` (no cv staleness filter, no `or()` clause).
+3. For each candidate (batch size ~10, since each costs <30s):
+   - SSH-connect, run a stripped-down version of stepEnvVarPush (just the env-var push, nothing else)
+   - On per-key success across all entries: bump `secret_version = SECRET_VERSION` for that VM
+   - On any per-key failure: leave `secret_version` alone, increment a `secret_push_consecutive_failures` counter (new column) for queue-fairness ordering
+4. Vercel cron schedule: `*/5 * * * *` (every 5 min).
+5. Tear out the secret_version bump from `reconcile-fleet/route.ts:432` — the new sweep owns it.
+
+**Benefits:**
+
+- Secret rotations propagate fleet-wide in ~5 min × ceil(N/10) = ~7 min for 142 VMs at batch=10, NOT 6+ hours.
+- No coupling to manifest-bump rollout throughput — a Vercel env var rotation doesn't need to wait for v100→v101.
+- Removes the outer-timeout-prevents-secret-bump foot-gun structurally. STRICT_DEADLINE_MS becoming larger than PER_VM_TIMEOUT_MS again can't re-introduce this bug, because the secret-sweep doesn't go through reconcileVM at all.
+
+**Risks:**
+
+- Two cron paths can race against the same VM's `.env` file. Mitigation: stepEnvVarPush uses a sentinel-based append that's idempotent across both paths; mutual locking via a per-VM key in `instaclaw_cron_locks` would be belt-and-suspenders.
+- New endpoint = new code + tests + monitoring. Estimate 1-2 days.
+
+**Estimated effort:** 1-2 days for the new endpoint + tests, 1 day for Vercel cron wiring + canary, 1 day for fleet rollout validation. Total ~3-4 days when bandwidth opens.
+
+**Trigger to build:** when the next SECRET_VERSION bump is needed (rotation of EDGEOS_BEARER_TOKEN, GBRAIN_ANTHROPIC_API_KEY, etc.) AND the cv-stale cohort is large enough that Option A's 6h drain would be unacceptable. Until then, Option A is sufficient.
+
+**Filed by:** Claude (Opus 4.7), 2026-05-14, after diagnosing the secret_version starvation. Cooper authorized shipping Option A and filing Option C here as a follow-up.
