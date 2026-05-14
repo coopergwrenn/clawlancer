@@ -397,6 +397,134 @@ async function test6_BuildBootstrapMd() {
   assert(buildBootstrapMd(noGmail) === buildBootstrapMd(noGmail), "deterministic on Gmail null");
 }
 
+async function test7_EdgeosBearerToken() {
+  console.log("\n─── TEST 7: EDGEOS_BEARER_TOKEN (2026-05-14 hex-vs-JWT defense) ──");
+
+  // A realistic JWT (HS256 header + minimal payload + signature). 173 chars,
+  // starts with eyJ, exactly two dots, parts are base64url-encoded.
+  const REAL_JWT =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
+    "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ." +
+    "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+
+  // The actual 2026-05-14 incident input — a 64-char hex string. Lives in
+  // Vercel for 34 days before someone noticed. We pin this exact shape so a
+  // future engineer who relaxes the validation can't claim "we didn't know".
+  const HEX_64 = "a1b2c3d4".repeat(8);
+
+  // Long garbage that passes the length check but fails JWT shape — proves
+  // the regex is doing real work (not just trusting length).
+  const LONG_GARBAGE = "g".repeat(120);
+
+  // ── Happy path: edge_city + valid JWT ─────────────────────────────────
+  const happy: TarballParams = { ...edgeCityParams, edgeosBearerToken: REAL_JWT };
+  validateTarballParams(happy); // must not throw
+  const happyEnv = buildDotEnv(happy);
+  assert(
+    happyEnv.includes(`EDGEOS_BEARER_TOKEN=${REAL_JWT}`),
+    "happy: edge_city + valid JWT emits EDGEOS_BEARER_TOKEN=<jwt> in .env",
+  );
+
+  // ── 2026-05-14 incident: 64-char hex MUST throw ────────────────────────
+  const hexBug: TarballParams = { ...edgeCityParams, edgeosBearerToken: HEX_64 };
+  let threw: Error | null = null;
+  try {
+    validateTarballParams(hexBug);
+  } catch (e) {
+    threw = e as Error;
+  }
+  assert(threw !== null, "2026-05-14 bug: 64-char hex throws");
+  // The hex is 64 chars < JWT_MIN_LENGTH (100), so it trips the length check first.
+  // Error must reference "too short" OR "JWT" — both are valid rejection reasons.
+  const hexErrMsg = String(threw?.message ?? "");
+  assert(
+    hexErrMsg.includes("JWT") && hexErrMsg.includes("hex"),
+    "2026-05-14 bug: error message names BOTH 'JWT' and 'hex' for incident traceability",
+  );
+
+  // ── Long garbage: passes length, fails shape ──────────────────────────
+  const garbage: TarballParams = { ...edgeCityParams, edgeosBearerToken: LONG_GARBAGE };
+  threw = null;
+  try {
+    validateTarballParams(garbage);
+  } catch (e) {
+    threw = e as Error;
+  }
+  assert(threw !== null, "long garbage (no eyJ, no dots) throws");
+  assert(
+    String(threw?.message ?? "").includes("JWT shape"),
+    "long garbage: error references JWT shape (not length)",
+  );
+
+  // ── Short eyJ-prefix value: caught by length check ────────────────────
+  // Real JWTs are 100+ chars; anything starting with eyJ but tiny is malformed.
+  const shortEyj: TarballParams = { ...edgeCityParams, edgeosBearerToken: "eyJ.a.b" };
+  threw = null;
+  try {
+    validateTarballParams(shortEyj);
+  } catch (e) {
+    threw = e as Error;
+  }
+  assert(threw !== null, "short eyJ-prefix (7 chars) throws");
+  assert(
+    String(threw?.message ?? "").includes("too short"),
+    "short eyJ: error references length check",
+  );
+
+  // ── Missing/null: silent skip, no EDGEOS line ─────────────────────────
+  // The attendee-directory feature requires this token. If Vercel's env is
+  // unset (e.g., during a rotation window or in a preview env), provisioning
+  // must succeed without the line — agents work, just can't query EdgeOS.
+  // Matches the reconciler's stepEnvVarPush "missing → silent skip" semantics.
+  const missing: TarballParams = { ...edgeCityParams, edgeosBearerToken: null };
+  validateTarballParams(missing); // must not throw
+  const missingEnv = buildDotEnv(missing);
+  assert(
+    !missingEnv.includes("EDGEOS_BEARER_TOKEN"),
+    "missing token (null) → no EDGEOS_BEARER_TOKEN line in .env",
+  );
+
+  const undef: TarballParams = { ...edgeCityParams, edgeosBearerToken: undefined };
+  validateTarballParams(undef); // must not throw
+  assert(
+    !buildDotEnv(undef).includes("EDGEOS_BEARER_TOKEN"),
+    "missing token (undefined) → no EDGEOS_BEARER_TOKEN line",
+  );
+
+  const emptyStr: TarballParams = { ...edgeCityParams, edgeosBearerToken: "" };
+  validateTarballParams(emptyStr); // must not throw (empty is falsy → skip)
+  assert(
+    !buildDotEnv(emptyStr).includes("EDGEOS_BEARER_TOKEN"),
+    "missing token (empty string) → no EDGEOS_BEARER_TOKEN line",
+  );
+
+  // ── Wrong partner: token completely ignored (NOT emitted, NOT validated) ──
+  // A non-edge_city VM passing a malformed EDGEOS token must NOT throw.
+  // The partner gate is the OUTER condition; the token is invisible to all
+  // other partners regardless of shape.
+  const wrongPartnerHex: TarballParams = {
+    ...validParams,
+    partner: null,
+    edgeosBearerToken: HEX_64,
+  };
+  validateTarballParams(wrongPartnerHex); // partner-gated: must not throw on hex
+  assert(
+    !buildDotEnv(wrongPartnerHex).includes("EDGEOS_BEARER_TOKEN"),
+    "wrong partner (null) + hex value → no EDGEOS line, no validation",
+  );
+
+  const consensusPartner: TarballParams = {
+    ...validParams,
+    partner: "consensus_2026",
+    edgeosBearerToken: REAL_JWT,
+  };
+  validateTarballParams(consensusPartner); // partner != edge_city, gate closed
+  assert(
+    !buildDotEnv(consensusPartner).includes("EDGEOS_BEARER_TOKEN"),
+    "consensus_2026 partner + valid JWT → no EDGEOS line (partner-gated)",
+  );
+}
+
 async function main() {
   console.log("════════════════════════════════════════════════════════");
   console.log("cloud-init-tarball.ts foundation smoke test");
@@ -407,6 +535,7 @@ async function main() {
   await test3_ValidationRejections();
   await test4_DeterministicOutput();
   await test6_BuildBootstrapMd();
+  await test7_EdgeosBearerToken();
   await test5_PerFileBuildersDirect();
 
   console.log("\n════════════════════════════════════════════════════════");

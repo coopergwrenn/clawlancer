@@ -126,6 +126,16 @@ export interface TarballParams {
    *  "every agent ships with web search working on first boot. no exceptions."
    *  Wrapper itself is purely functional — it doesn't touch env vars. */
   braveApiKey?: string | null;
+  /** EdgeOS attendee-directory JWT. Only emitted in .env when partner ===
+   *  "edge_city". The endpoint sources this from process.env.EDGEOS_BEARER_TOKEN
+   *  (mirrors lib/ssh.ts:5286). 2026-05-14 incident — for 34 days the
+   *  Vercel value was a 64-char hex string (duplicate of EDGEOS_API_KEY)
+   *  instead of a JWT; the api-citizen-portal.simplefi.tech endpoint
+   *  requires a JWT (eyJ...). The SSH-path's `|| ""` fallback had NO
+   *  format validation; this wrapper validates JWT shape at the boundary
+   *  so the cloud-init path can't make the same silent-bad-value mistake.
+   *  See validateTarballParams below. */
+  edgeosBearerToken?: string | null;
 
   // ── Wallets (per-VM) ──
   /** AgentBook agent.key file body — text of the private key (mode 0o600).
@@ -173,6 +183,20 @@ const SHELL_UNSAFE_RE = /[`$\\'"\n\r\t ]/;
 const VM_NAME_RE = /^instaclaw-vm-[a-zA-Z0-9_-]+$/;
 const HEX_TOKEN_RE = /^[a-fA-F0-9]+$/;
 const TG_BOT_USERNAME_RE = /^[a-zA-Z0-9_]{5,32}$/;
+
+/**
+ * JWT shape check. A real JWT is three base64url-encoded parts separated
+ * by exactly two dots; the header part is base64-encoded JSON beginning
+ * with `{"` which encodes to `eyJ`. Conservative validation that catches
+ * the actual 2026-05-14 incident input (64-char hex, no dots, no eyJ
+ * prefix) without false-rejecting any real-world JWT.
+ *
+ *   "eyJabc...".split(".").length === 3
+ *   "deadbeef" * 8 (64-char hex).split(".").length === 1  → reject
+ *   "" (empty)                                            → caller skips, never reaches here
+ */
+const JWT_SHAPE_RE = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+const JWT_MIN_LENGTH = 100; // The shortest real JWT (HS256, minimal claims) is ~120 chars; 100 is generous lower bound.
 
 function assertShellSafe(value: string | null | undefined, label: string): void {
   if (value == null) return;
@@ -231,6 +255,45 @@ export function validateTarballParams(p: TarballParams): void {
         "A signup flow that reaches cloud-init without a tier set is broken — " +
         "fix the upstream caller; do not relax this check.",
     );
+  }
+
+  // EDGEOS_BEARER_TOKEN — 2026-05-14 incident defense.
+  //
+  // The SSH-configure path at lib/ssh.ts:5286 reads
+  //   `process.env.EDGEOS_BEARER_TOKEN || ""`
+  // with NO format validation. From 2026-04-10 → 2026-05-14, Vercel's value
+  // was a 64-char hex string (someone duplicated EDGEOS_API_KEY into the
+  // BEARER_TOKEN slot); every edge_city VM carried the wrong token for 34
+  // days. The api-citizen-portal.simplefi.tech attendee-directory endpoint
+  // requires a JWT (eyJ...), and silently 401'd every request from the fleet.
+  //
+  // Defense-in-depth here: validate the JWT shape at the tarball-builder
+  // boundary so the cloud-init path CANNOT propagate a hex-shaped value.
+  // The endpoint catches the throw → returns 500 → bootstrap retries 3× →
+  // cloud-init-poll respawns → admin alert. Loud failure beats silent badness.
+  //
+  // Missing/null is acceptable (defensive: don't break agent provisioning
+  // over a token that only enables ONE feature — attendee directory queries).
+  // Wrong-shape is NOT acceptable.
+  if (p.partner === "edge_city" && p.edgeosBearerToken) {
+    if (p.edgeosBearerToken.length < JWT_MIN_LENGTH) {
+      throw new Error(
+        `cloud-init-tarball: edgeosBearerToken is too short to be a JWT ` +
+          `(got ${p.edgeosBearerToken.length} chars, expected ≥${JWT_MIN_LENGTH}). ` +
+          `This is almost certainly the 2026-05-14 hex-instead-of-JWT mistake — ` +
+          `verify Vercel's EDGEOS_BEARER_TOKEN starts with "eyJ".`,
+      );
+    }
+    if (!JWT_SHAPE_RE.test(p.edgeosBearerToken)) {
+      // Show only a prefix in the error message — never log full token.
+      const prefix = p.edgeosBearerToken.slice(0, 8);
+      throw new Error(
+        `cloud-init-tarball: edgeosBearerToken does not match JWT shape ` +
+          `(prefix="${prefix}…"; real JWTs are "eyJ...header.payload.signature"). ` +
+          `If this is a hex value, Vercel's EDGEOS_BEARER_TOKEN has been mis-set ` +
+          `again — see lib/vm-reconcile.ts:766 post-mortem.`,
+      );
+    }
   }
 
   // Shell-safety on all template-substituted fields. Body content (workspace
@@ -421,6 +484,15 @@ export function buildDotEnv(p: TarballParams): string {
   // means cloud-init-provisioned VMs are immediately complete without
   // waiting for the first reconciler tick.
   lines.push("POLYGON_RPC_URL=https://polygon-bor-rpc.publicnode.com");
+
+  // EDGEOS_BEARER_TOKEN — partner-gated to edge_city. JWT-shape validated
+  // in validateTarballParams (boundary check, see the 2026-05-14 incident
+  // commentary above). When token is absent: silent skip — the attendee-
+  // directory feature doesn't work until the reconciler's stepEnvVarPush
+  // delivers it on the next tick, but the agent provisions normally.
+  if (p.partner === "edge_city" && p.edgeosBearerToken) {
+    lines.push(`EDGEOS_BEARER_TOKEN=${p.edgeosBearerToken}`);
+  }
 
   lines.push("");
   return lines.join("\n");
