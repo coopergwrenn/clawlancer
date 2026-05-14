@@ -354,3 +354,160 @@ Before 2026-05-25 Phase 1B cutover:
 ---
 
 **End of inventory. Cross-check against the bake audit and flag divergences before 2026-05-25.**
+
+---
+
+## §17b. Probe-verified discrepancies (2026-05-14)
+
+**Author:** Claude (Opus 4.7) for Cooper Wrenn — pre-Day-8a inventory reconciliation per Cooper's directive: "setup.sh depends on knowing exactly which files are ALREADY on the snapshot vs which come from the tarball. if the doc is wrong, setup.sh will skip files it shouldn't or try to install files already there."
+
+**Methodology.** Two SSH probes (read-only, find/ls/cat/crontab-l/dpkg-l/pip3-list/npm-list):
+- **vm-944** — `status=ready`, `cv=0`, provisioned 2026-05-14T12:05Z. Pure snapshot state, never been configureOpenClaw'd. 6 hours of pool sitting, only cloud-init-poll touched it.
+- **vm-050** — `status=assigned`, `cv=95`, `partner=edge_city`. Configured + reconciled + 6 weeks of user activity. Used to confirm that files MISSING on the fresh snapshot DO land later (via configureOpenClaw + reconciler) on a configured VM.
+
+The delta (vm-050 has, vm-944 doesn't) = what configureOpenClaw + the reconciler ADD on top of the snapshot. The intersection = what's actually baked into the snapshot.
+
+### §17b.1 Files PRESENT on the fresh snapshot that doc lists as PER_USER
+
+The snapshot has default/placeholder versions of files configureOpenClaw later overwrites:
+
+| File | Doc class | Snapshot state |
+|---|---|---|
+| `workspace/IDENTITY.md` | "NOT in snapshot" (per §1) | **PRESENT** — placeholder/default content; configureOpenClaw overwrites |
+| `workspace/USER.md` | "NOT in snapshot" (per §1) | **PRESENT** — placeholder; configureOpenClaw overwrites if Gmail |
+| `workspace/BOOTSTRAP.md` | "NOT in snapshot if Gmail; short version SNAPSHOT_BAKED" | **PRESENT** — actually IS the WORKSPACE_BOOTSTRAP_SHORT default (consistent with doc) |
+| `workspace/AGENTS.md` | NOT MENTIONED ANYWHERE | **PRESENT** — additional file the doc doesn't list |
+
+**Implication for setup.sh:** the `install -m 644` commands for IDENTITY.md / USER.md (Gmail-only) / BOOTSTRAP.md (Gmail-only) / WALLET.md / WORLD_ID.md (conditional) / MEMORY.md (Gmail-only) on Day 8a overwrite the snapshot's placeholders. This is the correct behavior — no need for setup.sh to detect "file already exists, skip" logic.
+
+### §17b.2 Files MISSING from snapshot that doc lists as SNAPSHOT_BAKED
+
+These are real gaps where the doc's claim ("snapshot has it, cloud-init can skip") is wrong:
+
+| Section | File | Doc claim | Verified snapshot | configureOpenClaw deploys? | Day 8b BEST_EFFORT impact |
+|---|---|---|---|---|---|
+| §3 | `~/.openclaw/scripts/skill-integrity-check.sh` | SNAPSHOT_BAKED | **MISSING** | YES (lib/ssh.ts:448 + deploy step) | YES — must add to Day 8b BEST_EFFORT |
+| §3 | `~/.openclaw/scripts/privacy-bridge.sh` | SNAPSHOT_BAKED (edge_city) | **MISSING** | YES (lazy-registered) | YES — partner-conditional Day 8b |
+| §4 | `~/scripts/browser-relay-server.js` | **CRITICAL** | **MISSING** | YES (Rule 33 CRITICAL critical-failure step) | YES — Day 8b CRITICAL? Re-classify the doc OR ensure setup.sh deploys |
+| §4 | `~/scripts/check-skill-updates.sh` | SNAPSHOT_BAKED | **MISSING** | YES (lib/ssh.ts:6378 cron line) | YES — Day 8b |
+| §4 | `~/scripts/token-price.py` | SNAPSHOT_BAKED | **PRESENT** | (configureOpenClaw doesn't need to deploy) | ✓ correctly baked |
+| §5 | `~/.openclaw/skills/frontier/SKILL.md` | SNAPSHOT_BAKED | **MISSING** | YES (manifest skillsFromRepo walk) | YES — Day 8b skill deploy |
+| §5 | `~/.openclaw/skills/agent-status/` | NOT IN DOC | **MISSING** on snapshot, **PRESENT** on vm-050 | YES | YES — should be in doc |
+| §5 | `~/.openclaw/skills/clawlancer/` | NOT IN DOC | **MISSING** on snapshot, **PRESENT** on vm-050 | YES | YES — should be in doc |
+| §5 | `solana-defi/` rename to `.disabled` | "required" per doc note | **NOT RENAMED** on either snapshot or vm-050 | (doc is wrong; the .disabled suffix is unused) | Doc note can be removed |
+| §8 | `crawlee[beautifulsoup,playwright]==1.5.0` | SNAPSHOT_BAKED | **MISSING** | YES (pip install during configure) | YES — Day 8b pip install |
+| §8 | `web3` | SNAPSHOT_BAKED | **MISSING** | YES | YES |
+| §8 | `solders==0.27.1` | SNAPSHOT_BAKED | **MISSING** | YES | YES |
+| §8 | `eth-account` | SNAPSHOT_BAKED | **MISSING** | YES | YES |
+| §8 | `websockets` | SNAPSHOT_BAKED | **MISSING** | YES | YES |
+| §8 | `base58` | SNAPSHOT_BAKED | **MISSING** | YES | YES |
+| §9 | `@worldcoin/agentkit-cli@0.1.3` | SNAPSHOT_BAKED | **MISSING** | YES | YES |
+| §9 | `prctl-subreaper` | SNAPSHOT_BAKED | **MISSING** | reconciler-only (already documented §16 Q3) | reconciler heals; Day 8b can skip |
+| §9 | `usecomputer` | SNAPSHOT_BAKED | **MISSING** | YES | YES |
+| §9 | `mcporter` | SNAPSHOT_BAKED | **MISSING** | YES | YES |
+| §10 | `/etc/systemd/system/xvfb.service` | SNAPSHOT_BAKED | **MISSING** | YES (lib/ssh.ts:6979) | YES |
+| §10 | `/etc/systemd/system/x11vnc.service` | SNAPSHOT_BAKED | **MISSING** | YES | YES |
+| §10 | `/etc/systemd/system/websockify.service` | SNAPSHOT_BAKED | **MISSING** | YES | YES |
+
+### §17b.3 Files PRESENT on snapshot that doc doesn't list
+
+These are "snapshot has, doc doesn't mention" — runtime artifacts and additions made to the bake recipe over time but not reflected in the 2026-05-13 doc:
+
+- `~/.openclaw/scripts/gateway-health-textfile.sh` — Prometheus node-exporter textfile collector, looks new
+- `~/.openclaw/agents/main/agent/models.json` — OpenClaw model registry
+- `~/.openclaw/openclaw.json.hourly-*` — output of an hourly cron `cp openclaw.json openclaw.json.hourly-$(date +%H)`. Cron is on snapshot. Doc §11 doesn't list this cron.
+- `~/.openclaw/openclaw.json.last-good`, `openclaw.json.bak.{0..4}` — backup rotation
+- `~/.openclaw/update-check.json`, `watchdog-status.json`, `.watchdog-*` — runtime state files
+- `crontab -l` extras: hourly `cp openclaw.json …hourly-N`, `*/5 * * * * sudo /usr/local/bin/openclaw-config-watchdog`, the duplicated git-pull crons (likely benign drift from a partner-cron deploy that didn't dedupe)
+
+### §17b.4 The snapshot's `openclaw.json` has a real-looking gateway token
+
+`~/.openclaw/openclaw.json` on vm-944 contains a 48-char hex token at `gateway.auth.token`. **Every fresh-from-snapshot VM starts with the SAME token** until configureOpenClaw rewrites it. Cloud-init's setup.sh overwrites `openclaw.json` in step 5 (CRITICAL), so the shared-token window is narrow (~30-60s during cloud-init's bootstrap → fetch → setup.sh path). Documented for awareness; not a Day 8a blocker.
+
+### §17b.5 Snapshot directory inventory (verified)
+
+Created at snapshot bake time, present on vm-944:
+
+```
+~/.openclaw/                    (mode 0700)
+├── acpx/                       (3 files)
+├── agents/main/agent/          (only models.json — auth-profiles + system-prompt are PER_USER)
+├── agents/main/sessions/       (empty)
+├── canvas/, completions/, flows/, identity/, logs/, memory/, plugins/, qqbot/, tasks/  (empty/template dirs)
+├── plugin-runtime-deps/        (npm-installed openclaw plugin deps)
+├── scripts/                    (16 scripts — see §17b.6)
+├── skills/                     (23 skill dirs — see §17b.7)
+├── workspace/                  (16 files — see §17b.8)
+├── workspace/memory/           (active-tasks.md, session-log.md, MEMORY.md.bak)
+├── .env                        (placeholder, ~38 bytes)
+├── .openclaw-pinned-version    (contents "2026.4.26")
+├── exec-approvals.json         (the {"version":1,...} default)
+├── openclaw.json               (real-looking config with placeholder gateway token)
+├── openclaw.json.{bak,hourly-*,last-good}  (rotation cron output)
+├── update-check.json, watchdog-status.json, .watchdog-*, .session-summary-state.json
+└── (NOT PRESENT: cron/, devices/, wallet/, audio-config.json, email-config.json)
+```
+
+**setup.sh Day 8a `install -d` is responsible for creating `~/.openclaw/wallet/` (mode 0o700)** — the snapshot does NOT have it. My Day 8a draft already includes the `install -d -o openclaw -g openclaw -m 700 /home/openclaw/.openclaw/wallet` line.
+
+Likewise `cron/`, `devices/`, `audio-config.json`, `email-config.json` are absent on the snapshot — configureOpenClaw creates these conditionally (audio/email when their config is set). Cloud-init's setup.sh will need equivalent conditional installs for those that have per-user content (Day 8b — outside Day 8a CRITICAL scope).
+
+### §17b.6 Snapshot `~/.openclaw/scripts/` (16 verified)
+
+ack-watchdog.py, auto-approve-pairing.py, consensus_intent_extract.py, consensus_intent_sync.py, consensus_match_consent.py, consensus_match_deliberate.py, consensus_match_pipeline.py, consensus_match_rerank.py, consensus_match_skill_toggle.py, gateway-health-textfile.sh, generate_workspace_index.sh, memory-snapshot.sh, push-heartbeat.sh, silence-watchdog.py, strip-thinking.py, vm-watchdog.py
+
+**Missing vs doc §3:** `skill-integrity-check.sh` (configureOpenClaw deploys it), `privacy-bridge.sh` (edge_city + lazy-registered).
+
+**Extra (not in doc):** `gateway-health-textfile.sh`.
+
+### §17b.7 Snapshot `~/.openclaw/skills/` (23 verified)
+
+agentbook, bankr, brand-design, code-execution, competitive-intelligence, computer-dispatch, dgclaw, ecommerce-marketplace, email-outreach, financial-analysis, higgsfield-video, instagram-automation, language-teacher, marketplace-earning, motion-graphics, newsworthy, prediction-markets, sjinn-video, social-media-content, solana-defi, voice-audio-production, web-search-browser, x-twitter-search
+
+**Missing vs doc §5:** `frontier/` (configureOpenClaw skillsFromRepo deploys it).
+**Missing (configured-VM-only):** `agent-status/`, `clawlancer/` (configureOpenClaw deploys).
+**Doc-claim-wrong:** `solana-defi.disabled/` — the snapshot has `solana-defi/` (no .disabled suffix); doc note can be removed.
+
+### §17b.8 Snapshot `~/.openclaw/workspace/` (16 verified)
+
+AGENTS.md, BOOTSTRAP.md (short version), CAPABILITIES.md, EARN.md, HEARTBEAT.md, IDENTITY.md (placeholder), MEMORY.md, QUICK-REFERENCE.md, SOUL.md, TOOLS.md, USER.md (placeholder), `.bootstrap_consumed`, plus memory/ + workspace-state.json under `.openclaw/`
+
+**Doc §2 says HEARTBEAT.md lives at `agents/main/agent/HEARTBEAT.md`. SNAPSHOT REALITY: HEARTBEAT.md is at `workspace/HEARTBEAT.md`.** This is the same finding as my pre-audit notes — line 5390 in configureOpenClaw writes to AGENT_DIR but the snapshot bake's extraction placed it at workspace/. Either the bake or the doc has the path wrong. Cloud-init must not double-write HEARTBEAT.md to both paths.
+
+### §17b.9 Day 8a impact
+
+**None of these discrepancies block Day 8a.** Day 8a's CRITICAL steps (5/6/9/32/38) operate on the per-user content the tarball delivers; they overwrite snapshot placeholders cleanly:
+
+| Step | Snapshot has | Day 8a behavior |
+|---|---|---|
+| 5 (openclaw.json + auth-profiles.json) | placeholder openclaw.json (real gateway token); no auth-profiles.json | `install -m 600` overwrites both |
+| 6 (.env) | placeholder .env (~38 bytes) | `install -m 600` overwrites |
+| 9 (workspace files + wallet/agent.key) | snapshot has IDENTITY/USER/BOOTSTRAP/WALLET placeholders; NO wallet/ dir; NO agent.key | `install -d` creates wallet/, then `install -m 644/0600` puts files |
+| 32 (gateway start) | snapshot has openclaw-gateway.service user unit + override.conf | `systemctl --user start` works |
+| 38 (callback POST) | independent of snapshot | works |
+
+### §17b.10 Day 8b impact (deferred work)
+
+Day 8b's BEST_EFFORT steps must deploy/install everything in §17b.2 (the 22-line "MISSING from snapshot" table). Specifically:
+
+1. Deploy `~/.openclaw/scripts/skill-integrity-check.sh` (snapshot doesn't have it; the cron expects it).
+2. Deploy `~/scripts/browser-relay-server.js` (Rule 33 — was CRITICAL in SSH path; classify as Day 8b CRITICAL).
+3. Deploy `~/scripts/check-skill-updates.sh` + add the cron line.
+4. Deploy frontier skill (universal manifest skill).
+5. Deploy agent-status + clawlancer skills.
+6. `pip install --break-system-packages crawlee[beautifulsoup,playwright]==1.5.0 web3 solders==0.27.1 eth-account websockets base58`.
+7. `npm install -g @worldcoin/agentkit-cli@0.1.3 usecomputer mcporter` (prctl-subreaper handled by reconciler).
+8. Deploy `/etc/systemd/system/{xvfb,x11vnc,websockify}.service` unit files + enable.
+9. Edge City overlay write + skill clone (partner-conditional).
+
+These are Day 8b's responsibility. Document scope clarified.
+
+### §17b.11 Recommended bake-script updates (separate work)
+
+When the snapshot is re-baked (2026-05-23 → 2026-05-25 per doc header), the bake script SHOULD add the items in §17b.2 (preferred — cloud-init's setup.sh can be shorter and Day 8b lighter). If the bake author elects to defer (smaller bake-script diff), Day 8b must cover all 22 missing items.
+
+Tracking: this remediation list is the doc's source of truth for the bake author. Lines from §17b.2 marked **YES** in the "Day 8b BEST_EFFORT impact" column are the cloud-init's responsibility unless the bake script adds them first.
+
+---
+
+**End of §17b. Day 8a is unblocked.**
