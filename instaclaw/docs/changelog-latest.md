@@ -1,31 +1,20 @@
 # Changelog — generated 2026-05-14
 
-Window: `5626eb710da7bc39c5412a10fc63494564f2e692` → `HEAD` (HEAD = `fd29e53c`)
-Total commits: 3
+Window: `fd29e53c10ef7f7cef36163b66d6fdf4886367a1` → `HEAD` (HEAD = `171b3429`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: fd29e53c10ef7f7cef36163b66d6fdf4886367a1 -->
+<!-- LAST_GENERATED_SHA: 171b3429431e5d372ed75635dc18faed014fa9de -->
 
 ## Summary
 
-- **Manifest version bumps:** 1
-  - Range: v96 → v96
-- **Reconciler / manifest:** 1
+- **Manifest version bumps:** 0
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 2
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
-
-## Manifest version timeline
-
-### v96 — 2026-05-14 — `dfc3afff`
-
-feat(v96): cron-creation idempotency rule in SOUL.md + AGENTS.md V2
-
-> Adds a "list existing crons first, update don't duplicate" rule to the
-> workspace templates that every agent reads at session start. Prevents the
-> duplicate-cron explosion class.
 
 ## What changed for users
 
@@ -33,19 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `dfc3afff` 2026-05-14 — feat(v96): cron-creation idempotency rule in SOUL.md + AGENTS.md V2 [4 files] _(**MANIFEST v96**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `fd29e53c` 2026-05-14 — test(cloud-init): audit Fix 4 — full-tarball integration byte-parity [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `8c31dcaf` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `171b3429` 2026-05-14 — chore(cloud-init): audit Fix 5 — stale comments + orphan import cleanup [1 files] _(ai-assisted)_
+- `ccc7bcd4` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `dfc3afff` 2026-05-14 — feat(v96): cron-creation idempotency rule in SOUL.md + AGENTS.md V2 [4 files] _(**MANIFEST v96**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+_(none)_
 
 ### Infrastructure (1)
 
-- `fd29e53c` 2026-05-14 — test(cloud-init): audit Fix 4 — full-tarball integration byte-parity [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `171b3429` 2026-05-14 — chore(cloud-init): audit Fix 5 — stale comments + orphan import cleanup [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -57,24 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `8c31dcaf` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `ccc7bcd4` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
 
-## Multi-category commits (2)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `dfc3afff` 2026-05-14 — [reconciler, infrastructure, docs] — feat(v96): cron-creation idempotency rule in SOUL.md + AGENTS.md V2
-- `fd29e53c` 2026-05-14 — [infrastructure, edge] — test(cloud-init): audit Fix 4 — full-tarball integration byte-parity
-
-## AI-assisted commits (2)
+## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `dfc3afff` 2026-05-14 — feat(v96): cron-creation idempotency rule in SOUL.md + AGENTS.md V2
-- `fd29e53c` 2026-05-14 — test(cloud-init): audit Fix 4 — full-tarball integration byte-parity
+- `171b3429` 2026-05-14 — chore(cloud-init): audit Fix 5 — stale comments + orphan import cleanup
 
 ## Appendix — every commit (chronological)
 
-- `8c31dcaf` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `dfc3afff` 2026-05-14 — feat(v96): cron-creation idempotency rule in SOUL.md + AGENTS.md V2 [4 files] _(**MANIFEST v96**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `fd29e53c` 2026-05-14 — test(cloud-init): audit Fix 4 — full-tarball integration byte-parity [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `ccc7bcd4` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `171b3429` 2026-05-14 — chore(cloud-init): audit Fix 5 — stale comments + orphan import cleanup [1 files] _(ai-assisted)_
