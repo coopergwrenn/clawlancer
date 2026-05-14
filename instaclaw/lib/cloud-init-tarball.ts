@@ -90,6 +90,11 @@ export interface TarballParams {
   // ── Bots ──
   telegramBotToken: string;
   telegramBotUsername: string;
+  /** Per-user Discord bot token. As of 2026-05-13, 0 of 239 production
+   *  VMs have this set — keeping the field for forward-compat without
+   *  hardcoding the assumption that everyone is telegram-only. When
+   *  absent, buildOpenClawConfig naturally omits the discord channel. */
+  discordBotToken?: string | null;
 
   // ── User profile (workspace files) ──
   userName?: string | null;
@@ -106,7 +111,17 @@ export interface TarballParams {
    *  is all_inclusive (auth-profiles.json uses gatewayToken instead). */
   apiKey?: string | null;
   defaultModel: string;
-  tier?: string | null;
+  /** Subscription tier (e.g., "starter", "pro", "power"). REQUIRED — a
+   *  user reaching cloud-init without a tier set is a broken signup flow
+   *  and we throw rather than silently default. Per Cooper 2026-05-13:
+   *  "tier should NEVER be null at provisioning time." */
+  tier: string;
+  /** Brave Search API key. The endpoint resolves vm.brave_api_key first
+   *  (0 of 239 VMs set this in production as of 2026-05-13), falling back
+   *  to process.env.BRAVE_SEARCH_API_KEY (fleet-wide). Per Cooper 2026-05-13:
+   *  "every agent ships with web search working on first boot. no exceptions."
+   *  Wrapper itself is purely functional — it doesn't touch env vars. */
+  braveApiKey?: string | null;
 
   // ── Wallets (per-VM) ──
   /** AgentBook agent.key file body — text of the private key (mode 0o600).
@@ -199,6 +214,19 @@ export function validateTarballParams(p: TarballParams): void {
   }
   if (p.apiMode === "byok" && !p.apiKey) {
     throw new Error("cloud-init-tarball: BYOK mode requires apiKey");
+  }
+  // tier: per Cooper 2026-05-13, a NULL tier at provisioning time means the
+  // signup flow is broken upstream. Throw loudly rather than silently default
+  // to "starter" (which would mislabel paying customers in usage analytics +
+  // tier-gated feature flags). TypeScript already forbids `null`/`undefined`
+  // here at compile time (TarballParams.tier is required string); this check
+  // catches the runtime-dynamic-data path where TS was bypassed.
+  if (typeof p.tier !== "string" || p.tier.trim() === "") {
+    throw new Error(
+      `cloud-init-tarball: tier required (got ${JSON.stringify(p.tier)}). ` +
+        "A signup flow that reaches cloud-init without a tier set is broken — " +
+        "fix the upstream caller; do not relax this check.",
+    );
   }
 
   // Shell-safety on all template-substituted fields. Body content (workspace

@@ -221,7 +221,7 @@ async function test2_ByokEdgeCity() {
 async function test3_ValidationRejections() {
   console.log("\n─── TEST 3: validation rejections ──────────────────");
 
-  const cases: Array<[Partial<TarballParams>, string]> = [
+  const cases: Array<[Partial<TarballParams> & Record<string, unknown>, string]> = [
     [{ vmName: "evil; rm -rf /" }, "vmName with shell metachars"],
     [{ userId: "user`whoami`" }, "userId with backtick"],
     [{ gatewayToken: "short" }, "gatewayToken too short"],
@@ -232,6 +232,20 @@ async function test3_ValidationRejections() {
     [{ apiMode: "all_inclusive", apiKey: null }, "✓ valid: all_inclusive without apiKey"],
     [{ apiMode: "byok", apiKey: null }, "byok without apiKey"],
     [{ partner: "evil\nfoo" }, "partner with newline"],
+    // tier required (2026-05-14 — Cooper directive: throw on null, no silent default)
+    [{ tier: "" }, "tier empty string"],
+    [{ tier: "   " }, "tier whitespace-only"],
+    // The next two bypass TypeScript via `as unknown as Partial<TarballParams>` casts
+    // upstream to exercise the runtime guard. TS-clean callers can't trip these.
+    [{ tier: null as unknown as string }, "tier null"],
+    [{ tier: undefined as unknown as string }, "tier undefined"],
+    // braveApiKey + discordBotToken: optional, no validation. Accept presence
+    // (these add fields, they don't change the validation contract).
+    [
+      { braveApiKey: "BSA_test_abc123", discordBotToken: "Discord.bot.token.shape" },
+      "✓ valid: braveApiKey + discordBotToken set",
+    ],
+    [{ braveApiKey: null, discordBotToken: null }, "✓ valid: braveApiKey + discordBotToken null"],
   ];
 
   for (const [override, label] of cases) {
