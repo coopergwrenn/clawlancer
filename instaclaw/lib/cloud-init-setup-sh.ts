@@ -160,15 +160,17 @@ echo "[\$(date -u +%FT%TZ)] setup.sh starting (user=\$USER_ID vm=\$VM_NAME)"
 # SSH, so an sshd restart would interrupt no live session of ours, but
 # it adds risk (a broken sshd config would brick admin access) for no
 # immediate gain. The next routine sshd restart picks up the new score.
-{
-  loginctl enable-linger openclaw
-  mkdir -p /etc/systemd/system/ssh.service.d
-  cat > /etc/systemd/system/ssh.service.d/oom-protect.conf <<'OOMEOF'
-[Service]
-OOMScoreAdjust=-900
-OOMEOF
-  systemctl daemon-reload
-} || echo "[\$(date -u +%FT%TZ)] WARN: BE-1 (linger + sshd OOM-protect) partial failure — reconciler heals oom-protect.conf on next tick; linger is NOT reconciler-healed (manual fix needed on first reboot)"
+#
+# CHAIN DISCIPLINE: every command is &&-chained so a failure aborts.
+# Bash POSIX semantics suspend \`set -e\` inside conditional contexts
+# (LHS of \`||\`), so a bare newline-separated block would silently
+# swallow intermediate failures and the WARN would never fire. The
+# heredoc is rewritten as \`printf\` so it can sit cleanly inside the
+# && chain (bash can't continue a heredoc through \`\\<newline>&&\`).
+{ loginctl enable-linger openclaw \\
+    && mkdir -p /etc/systemd/system/ssh.service.d \\
+    && printf '[Service]\\nOOMScoreAdjust=-900\\n' > /etc/systemd/system/ssh.service.d/oom-protect.conf \\
+    && systemctl daemon-reload ; } || echo "[\$(date -u +%FT%TZ)] WARN: BE-1 (linger + sshd OOM-protect) partial failure — reconciler heals oom-protect.conf on next tick; linger is NOT reconciler-healed (manual fix needed on first reboot)"
 
 # ════════════════════════════════════════════════════════════════════════
 # §1.5 CRITICAL: place openclaw.json + auth-profiles.json (mode 0600)
@@ -177,17 +179,26 @@ OOMEOF
 # channels.telegram.botToken; auth-profiles.json has the Anthropic key
 # (or proxy gateway_token for all-inclusive). Mode 600 is non-negotiable.
 # Failure here means the gateway can't start authenticated — fail loud.
-{
-  install -d -o openclaw -g openclaw -m 700 /home/openclaw/.openclaw
-  install -d -o openclaw -g openclaw -m 700 /home/openclaw/.openclaw/agents
-  install -d -o openclaw -g openclaw -m 700 /home/openclaw/.openclaw/agents/main
-  install -d -o openclaw -g openclaw -m 700 /home/openclaw/.openclaw/agents/main/agent
-  install -o openclaw -g openclaw -m 600 \\
-    /tmp/instaclaw-config/home/openclaw/.openclaw/openclaw.json \\
-    /home/openclaw/.openclaw/openclaw.json
-  install -o openclaw -g openclaw -m 600 \\
-    /tmp/instaclaw-config/home/openclaw/.openclaw/agents/main/agent/auth-profiles.json \\
-    /home/openclaw/.openclaw/agents/main/agent/auth-profiles.json
+#
+# CHAIN DISCIPLINE (Bug #1 fix 2026-05-14): bash POSIX suspends \`set -e\`
+# inside \`{ } || handler\` blocks (verified empirically — \`set -e\` is
+# ignored when the compound command sits on the LHS of \`||\`). A bare
+# newline-separated block would mean: if \`install openclaw.json\` fails
+# but \`install auth-profiles.json\` succeeds, the block exits 0 and the
+# CRITICAL handler doesn't fire — gateway then restarts with the
+# snapshot's PLACEHOLDER token while /health returns 200 and callback
+# succeeds. The VM looks healthy; the user's bot is silently dead. To
+# prevent that, every command is && -chained so the first failure aborts.
+{ install -d -o openclaw -g openclaw -m 700 /home/openclaw/.openclaw \\
+    && install -d -o openclaw -g openclaw -m 700 /home/openclaw/.openclaw/agents \\
+    && install -d -o openclaw -g openclaw -m 700 /home/openclaw/.openclaw/agents/main \\
+    && install -d -o openclaw -g openclaw -m 700 /home/openclaw/.openclaw/agents/main/agent \\
+    && install -o openclaw -g openclaw -m 600 \\
+         /tmp/instaclaw-config/home/openclaw/.openclaw/openclaw.json \\
+         /home/openclaw/.openclaw/openclaw.json \\
+    && install -o openclaw -g openclaw -m 600 \\
+         /tmp/instaclaw-config/home/openclaw/.openclaw/agents/main/agent/auth-profiles.json \\
+         /home/openclaw/.openclaw/agents/main/agent/auth-profiles.json
 } || {
   echo "[\$(date -u +%FT%TZ)] FATAL: step 5 (place openclaw.json + auth-profiles.json) failed"
   rm -f /tmp/.instaclaw-ready
@@ -215,42 +226,60 @@ OOMEOF
 # ════════════════════════════════════════════════════════════════════════
 # §1.9 CRITICAL: per-user workspace files + agent dir + wallet/agent.key
 # ════════════════════════════════════════════════════════════════════════
-# Five workspace .md files (mode 644): IDENTITY, WALLET, BOOTSTRAP +
-# conditional USER.md, WORLD_ID.md, MEMORY.md. agent dir gets
-# system-prompt.md + (conditional) MEMORY.md. wallet/agent.key is the
-# AgentBook private key (mode 600 — never share). Conditional files are
-# emitted by the tarball builder only when applicable (Gmail present,
-# World ID set, etc.) — \`[ -f \$src ]\` guard handles absence cleanly.
+# Three universal .md files (mode 644): IDENTITY, WALLET, BOOTSTRAP —
+# the tarball builder ALWAYS emits these; missing == builder bug; fail
+# loud (Bug #2 fix 2026-05-14, no \`[ -f \$src ]\` guard). Three
+# conditional .md files: USER.md (iff Gmail), WORLD_ID.md (iff
+# worldIdNullifier), MEMORY.md (iff Gmail). Agent dir gets
+# system-prompt.md (always) + (conditional) MEMORY.md. wallet/agent.key
+# is the AgentBook private key (mode 600 — never share).
+#
+# CHAIN DISCIPLINE (Bug #1 fix 2026-05-14): bash POSIX suspends \`set -e\`
+# inside \`{ } || handler\` blocks. The for-loop's install commands would
+# silently swallow individual failures and the block's exit code would
+# only reflect the LAST install (agent.key). To gate the block exit on
+# ALL operations, we use an explicit \`rc=0 / rc=1 / [ "\$rc" = "0" ]\`
+# accumulator — every install records its failure into rc, and the
+# terminal test fires the CRITICAL handler if anything failed.
 {
-  install -d -o openclaw -g openclaw -m 755 /home/openclaw/.openclaw/workspace
-  install -d -o openclaw -g openclaw -m 700 /home/openclaw/.openclaw/wallet
+  rc=0
+  install -d -o openclaw -g openclaw -m 755 /home/openclaw/.openclaw/workspace || rc=1
+  install -d -o openclaw -g openclaw -m 700 /home/openclaw/.openclaw/wallet || rc=1
 
-  # Workspace .md files (universal: IDENTITY, WALLET, BOOTSTRAP;
-  # conditional: USER, WORLD_ID, MEMORY)
-  for f in IDENTITY.md WALLET.md BOOTSTRAP.md USER.md WORLD_ID.md MEMORY.md; do
+  # Universal .md files — fail loud if missing from tarball (Bug #2 fix).
+  for f in IDENTITY.md WALLET.md BOOTSTRAP.md; do
+    install -o openclaw -g openclaw -m 644 \\
+      "/tmp/instaclaw-config/home/openclaw/.openclaw/workspace/\$f" \\
+      "/home/openclaw/.openclaw/workspace/\$f" || rc=1
+  done
+
+  # Conditional .md files — skip cleanly if absent from tarball.
+  for f in USER.md WORLD_ID.md MEMORY.md; do
     src="/tmp/instaclaw-config/home/openclaw/.openclaw/workspace/\$f"
     if [ -f "\$src" ]; then
       install -o openclaw -g openclaw -m 644 "\$src" \\
-        "/home/openclaw/.openclaw/workspace/\$f"
+        "/home/openclaw/.openclaw/workspace/\$f" || rc=1
     fi
   done
 
-  # Agent dir files (system-prompt always; MEMORY conditional)
+  # Agent dir files (system-prompt universal; MEMORY conditional).
   install -o openclaw -g openclaw -m 644 \\
     /tmp/instaclaw-config/home/openclaw/.openclaw/agents/main/agent/system-prompt.md \\
-    /home/openclaw/.openclaw/agents/main/agent/system-prompt.md
+    /home/openclaw/.openclaw/agents/main/agent/system-prompt.md || rc=1
   if [ -f /tmp/instaclaw-config/home/openclaw/.openclaw/agents/main/agent/MEMORY.md ]; then
     install -o openclaw -g openclaw -m 644 \\
       /tmp/instaclaw-config/home/openclaw/.openclaw/agents/main/agent/MEMORY.md \\
-      /home/openclaw/.openclaw/agents/main/agent/MEMORY.md
+      /home/openclaw/.openclaw/agents/main/agent/MEMORY.md || rc=1
   fi
 
-  # AgentBook wallet key (mode 600)
+  # AgentBook wallet key (mode 600 — never share).
   install -o openclaw -g openclaw -m 600 \\
     /tmp/instaclaw-config/home/openclaw/.openclaw/wallet/agent.key \\
-    /home/openclaw/.openclaw/wallet/agent.key
+    /home/openclaw/.openclaw/wallet/agent.key || rc=1
+
+  [ "\$rc" = "0" ]
 } || {
-  echo "[\$(date -u +%FT%TZ)] FATAL: step 9 (workspace files + agent.key) failed"
+  echo "[\$(date -u +%FT%TZ)] FATAL: step 9 (workspace files + agent.key) failed (rc=\$rc)"
   rm -f /tmp/.instaclaw-ready
   touch /tmp/.instaclaw-failed
   exit 1
@@ -284,19 +313,24 @@ OOMEOF
 # line's \$HOME expands at install time (inside the sudo'd bash) so the
 # stored crontab entry has the literal /home/openclaw path — matches
 # what configureOpenClaw emits today (byte-parity).
-{
-  install -d -o openclaw -g openclaw -m 755 /home/openclaw/scripts
-  install -d -o openclaw -g openclaw -m 755 /home/openclaw/.openclaw/logs
-  install -o openclaw -g openclaw -m 755 \\
-    /tmp/instaclaw-config/home/openclaw/scripts/browser-relay-server.js \\
-    /home/openclaw/scripts/browser-relay-server.js
-  install -o openclaw -g openclaw -m 755 \\
-    /tmp/instaclaw-config/home/openclaw/scripts/check-skill-updates.sh \\
-    /home/openclaw/scripts/check-skill-updates.sh
-  sudo -u openclaw bash -c '
-    CRON_LINE="0 3 * * * /bin/bash \$HOME/scripts/check-skill-updates.sh >> \$HOME/.openclaw/logs/skill-updates.log 2>&1"
-    (crontab -l 2>/dev/null | grep -v "check-skill-updates"; echo "\$CRON_LINE") | crontab -
-  '
+#
+# CHAIN DISCIPLINE (Bug #1 fix 2026-05-14): every command is && -chained
+# so an intermediate failure (e.g., \`install -d\` permission denied)
+# aborts the block and fires the WARN. A bare newline-separated block
+# would silently swallow earlier failures because bash POSIX suspends
+# \`set -e\` inside \`{ } || handler\` (verified empirically).
+{ install -d -o openclaw -g openclaw -m 755 /home/openclaw/scripts \\
+    && install -d -o openclaw -g openclaw -m 755 /home/openclaw/.openclaw/logs \\
+    && install -o openclaw -g openclaw -m 755 \\
+         /tmp/instaclaw-config/home/openclaw/scripts/browser-relay-server.js \\
+         /home/openclaw/scripts/browser-relay-server.js \\
+    && install -o openclaw -g openclaw -m 755 \\
+         /tmp/instaclaw-config/home/openclaw/scripts/check-skill-updates.sh \\
+         /home/openclaw/scripts/check-skill-updates.sh \\
+    && sudo -u openclaw bash -c '
+      CRON_LINE="0 3 * * * /bin/bash \$HOME/scripts/check-skill-updates.sh >> \$HOME/.openclaw/logs/skill-updates.log 2>&1"
+      (crontab -l 2>/dev/null | grep -v "check-skill-updates"; echo "\$CRON_LINE") | crontab -
+    '
 } || echo "[\$(date -u +%FT%TZ)] WARN: BE-7 (browser-relay-server.js + check-skill-updates.sh + cron) partial failure — browser-relay NOT reconciler-healed (Chrome extension feature degraded; operator fleet-push to recover); check-skill-updates cron skipped (pip-package drift accumulates over time)"
 
 # ════════════════════════════════════════════════════════════════════════

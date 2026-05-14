@@ -1975,13 +1975,14 @@ async function test16_BuildSetupSh() {
     "BE-1 does NOT contain `exit 1` (BEST_EFFORT never aborts setup)",
   );
 
-  // 13. BE-1 canonical OOM-protect drop-in heredoc body.
-  // The drop-in MUST be a single-quoted heredoc (so the body is taken
-  // literally; no $... expansion) and contain exactly the canonical
-  // OOMScoreAdjust=-900 stanza.
+  // 13. BE-1 canonical OOM-protect drop-in body via printf.
+  // Rewritten 2026-05-14 (Bug #1 fix) from heredoc to printf so the
+  // command sits cleanly inside the && chain. The output bytes are
+  // byte-identical to the previous heredoc form (28 bytes:
+  // "[Service]\nOOMScoreAdjust=-900\n").
   assert(
-    be1Block.includes("<<'OOMEOF'\n[Service]\nOOMScoreAdjust=-900\nOOMEOF"),
-    "BE-1 emits the canonical OOM-protect drop-in via single-quoted heredoc",
+    be1Block.includes("printf '[Service]\\nOOMScoreAdjust=-900\\n' > /etc/systemd/system/ssh.service.d/oom-protect.conf"),
+    "BE-1 writes canonical OOM-protect drop-in via printf (Bug #1 fix)",
   );
 
   // 14. BE-1's daemon-reload is the SYSTEM instance (no `--user` flag).
@@ -1993,6 +1994,25 @@ async function test16_BuildSetupSh() {
   assert(
     reloadIdx > 0 && !be1Block.slice(reloadIdx - 30, reloadIdx).includes("--user"),
     "BE-1 daemon-reload is the system instance (no --user flag in the line)",
+  );
+
+  // 14b. Bug #1 fix verification: BE-1 commands are && -chained.
+  // POSIX semantics suspend `set -e` inside `{ } || handler`, so a bare
+  // newline-separated block would silently swallow intermediate failures
+  // (only the LAST command's exit code determines whether the WARN
+  // fires). Every BE-1 command must be && -chained so a failing
+  // intermediate command aborts the chain and triggers the WARN.
+  assert(
+    be1Block.includes("loginctl enable-linger openclaw \\\n    && mkdir -p"),
+    "BE-1: loginctl is && -chained to mkdir (Bug #1 fix)",
+  );
+  assert(
+    be1Block.includes("&& printf '[Service]"),
+    "BE-1: mkdir is && -chained to printf (Bug #1 fix)",
+  );
+  assert(
+    be1Block.includes("&& systemctl daemon-reload"),
+    "BE-1: printf is && -chained to daemon-reload (Bug #1 fix)",
   );
 
   // ── Day 8b BE-7 assertions ────────────────────────────────────────
@@ -2028,15 +2048,17 @@ async function test16_BuildSetupSh() {
   );
 
   // 17. BE-7 install commands target both files at the canonical paths.
+  // Indentation (9 spaces on continuation lines) reflects the && -chain
+  // nesting from the Bug #1 fix (2026-05-14).
   assert(
     be7Block.includes(
-      "/tmp/instaclaw-config/home/openclaw/scripts/browser-relay-server.js \\\n    /home/openclaw/scripts/browser-relay-server.js",
+      "/tmp/instaclaw-config/home/openclaw/scripts/browser-relay-server.js \\\n         /home/openclaw/scripts/browser-relay-server.js",
     ),
     "BE-7 installs browser-relay-server.js from tarball to /home/openclaw/scripts/",
   );
   assert(
     be7Block.includes(
-      "/tmp/instaclaw-config/home/openclaw/scripts/check-skill-updates.sh \\\n    /home/openclaw/scripts/check-skill-updates.sh",
+      "/tmp/instaclaw-config/home/openclaw/scripts/check-skill-updates.sh \\\n         /home/openclaw/scripts/check-skill-updates.sh",
     ),
     "BE-7 installs check-skill-updates.sh from tarball to /home/openclaw/scripts/",
   );
@@ -2079,6 +2101,129 @@ async function test16_BuildSetupSh() {
   assert(
     be7Block.includes("install -d -o openclaw -g openclaw -m 755 /home/openclaw/.openclaw/logs"),
     "BE-7 creates /home/openclaw/.openclaw/logs (for cron log target) before install",
+  );
+
+  // 21b. Bug #1 fix verification: BE-7 commands are && -chained.
+  assert(
+    be7Block.includes("/home/openclaw/scripts \\\n    && install -d"),
+    "BE-7: first install -d is && -chained to next (Bug #1 fix)",
+  );
+  assert(
+    be7Block.includes("/home/openclaw/.openclaw/logs \\\n    && install -o openclaw"),
+    "BE-7: second install -d is && -chained to file install (Bug #1 fix)",
+  );
+  assert(
+    be7Block.includes("&& sudo -u openclaw bash -c"),
+    "BE-7: file installs are && -chained to cron sudo block (Bug #1 fix)",
+  );
+
+  // ── Bug #1 fix verification: §1.5 CRITICAL block uses && chain ────
+  const idx15Critical = sh.indexOf("§1.5 CRITICAL");
+  const idx16Critical = sh.indexOf("§1.6 CRITICAL");
+  assert(
+    idx15Critical > 0 && idx16Critical > 0 && idx15Critical < idx16Critical,
+    "§1.5 and §1.6 markers present in correct order",
+  );
+  const block15 = sh.slice(idx15Critical, idx16Critical);
+  assert(
+    block15.includes("&& install -d -o openclaw -g openclaw -m 700"),
+    "§1.5: install -d commands are && -chained (Bug #1 fix)",
+  );
+  assert(
+    block15.includes("&& install -o openclaw -g openclaw -m 600 \\\n         /tmp/instaclaw-config/home/openclaw/.openclaw/openclaw.json"),
+    "§1.5: openclaw.json install is && -chained (Bug #1 fix; previously silent partial-failure → stale-token gateway)",
+  );
+
+  // ── Bug #1 fix verification: §1.9 CRITICAL uses rc-accumulator ────
+  const idx19Critical = sh.indexOf("§1.9 CRITICAL");
+  const idx110 = sh.indexOf("§1.10 BEST_EFFORT");
+  assert(
+    idx19Critical > 0 && idx110 > 0 && idx19Critical < idx110,
+    "§1.9 and §1.10 markers present in correct order",
+  );
+  const block19 = sh.slice(idx19Critical, idx110);
+  assert(
+    /^\s+rc=0$/m.test(block19),
+    "§1.9: rc-accumulator initialized to 0 (Bug #1 fix)",
+  );
+  assert(
+    block19.includes('|| rc=1'),
+    "§1.9: install failures captured into rc=1 (Bug #1 fix)",
+  );
+  assert(
+    block19.includes('[ "$rc" = "0" ]'),
+    "§1.9: terminal rc check gates the block exit (Bug #1 fix)",
+  );
+
+  // ── Bug #2 fix verification: §1.9 universal vs conditional split ──
+  // IDENTITY.md, WALLET.md, BOOTSTRAP.md MUST be in the universal loop
+  // (no [ -f ] guard — fail loud if tarball-builder bug omits them).
+  // USER.md, WORLD_ID.md, MEMORY.md stay in the conditional loop.
+  assert(
+    block19.includes("for f in IDENTITY.md WALLET.md BOOTSTRAP.md; do"),
+    "§1.9 Bug #2 fix: universal files in dedicated unguarded for-loop (IDENTITY/WALLET/BOOTSTRAP)",
+  );
+  assert(
+    block19.includes("for f in USER.md WORLD_ID.md MEMORY.md; do"),
+    "§1.9: conditional files in dedicated guarded for-loop (USER/WORLD_ID/MEMORY)",
+  );
+  // The universal loop must NOT have [ -f $src ] inside — verify by
+  // grepping the universal-loop body span.
+  const universalLoopStart = block19.indexOf("for f in IDENTITY.md WALLET.md BOOTSTRAP.md; do");
+  const universalLoopEnd = block19.indexOf("done", universalLoopStart);
+  const universalLoopBody = block19.slice(universalLoopStart, universalLoopEnd);
+  assert(
+    !universalLoopBody.includes("[ -f"),
+    "§1.9 Bug #2 fix: universal loop has NO [ -f ] guard (fail loud on tarball-builder regression)",
+  );
+
+  // ── Gap #2: install -m mode flag assertions ───────────────────────
+  // Verify each install command uses the correct mode flag. Catches
+  // future regressions where someone edits setup.sh and accidentally
+  // drops/changes a mode flag (e.g., agent.key needs 600 to keep the
+  // private key off the file-mode bitmask).
+  // §1.5
+  assert(
+    block15.includes("install -o openclaw -g openclaw -m 600 \\\n         /tmp/instaclaw-config/home/openclaw/.openclaw/openclaw.json"),
+    "§1.5 mode: openclaw.json install uses -m 600",
+  );
+  assert(
+    block15.includes("install -o openclaw -g openclaw -m 600 \\\n         /tmp/instaclaw-config/home/openclaw/.openclaw/agents/main/agent/auth-profiles.json"),
+    "§1.5 mode: auth-profiles.json install uses -m 600",
+  );
+  // §1.6
+  const idx132Critical = sh.indexOf("§1.32 CRITICAL");
+  const block16 = sh.slice(idx16Critical, sh.indexOf("§1.9 CRITICAL"));
+  assert(
+    block16.includes("install -o openclaw -g openclaw -m 600 \\\n    /tmp/instaclaw-config/home/openclaw/.openclaw/.env"),
+    "§1.6 mode: .env install uses -m 600",
+  );
+  // §1.9 — universal + conditional both use -m 644; agent.key uses -m 600;
+  // workspace dir is -m 755; wallet dir is -m 700.
+  assert(
+    block19.includes("install -d -o openclaw -g openclaw -m 755 /home/openclaw/.openclaw/workspace"),
+    "§1.9 mode: workspace dir uses -m 755",
+  );
+  assert(
+    block19.includes("install -d -o openclaw -g openclaw -m 700 /home/openclaw/.openclaw/wallet"),
+    "§1.9 mode: wallet dir uses -m 700",
+  );
+  assert(
+    block19.includes("install -o openclaw -g openclaw -m 644 \\\n      \"/tmp/instaclaw-config/home/openclaw/.openclaw/workspace/$f\""),
+    "§1.9 mode: workspace .md files use -m 644",
+  );
+  assert(
+    block19.includes("install -o openclaw -g openclaw -m 600 \\\n    /tmp/instaclaw-config/home/openclaw/.openclaw/wallet/agent.key"),
+    "§1.9 mode: agent.key uses -m 600 (private-key protection)",
+  );
+  // BE-7
+  assert(
+    be7Block.includes("install -o openclaw -g openclaw -m 755 \\\n         /tmp/instaclaw-config/home/openclaw/scripts/browser-relay-server.js"),
+    "BE-7 mode: browser-relay-server.js uses -m 755",
+  );
+  assert(
+    be7Block.includes("install -o openclaw -g openclaw -m 755 \\\n         /tmp/instaclaw-config/home/openclaw/scripts/check-skill-updates.sh"),
+    "BE-7 mode: check-skill-updates.sh uses -m 755",
   );
 }
 
