@@ -1,0 +1,244 @@
+/**
+ * EdgeOS OTP login helper — first half of the per-user eos_live_* mint chain.
+ *
+ * The flow (confirmed by Tule 2026-05-14):
+ *
+ *   1. POST /api/v1/auth/user/login        body { email }
+ *      → emails a 6-digit code to the user, returns { message, email, expires_in_minutes }
+ *   2. POST /api/v1/auth/user/authenticate body { email, code(6 digits) }
+ *      → returns { access_token, token_type: "bearer" }
+ *   3. POST /api/v1/api-keys (in lib/edgeos-api-keys.ts) with the bearer
+ *      → returns the eos_live_* token (shown once)
+ *
+ * State model: the chain is stateless from our side — there's no session_id
+ * to carry between login and authenticate. The email + code are the
+ * coupling. The OTP code expires per the `expires_in_minutes` on the login
+ * response.
+ *
+ * Security:
+ *   - Never logs the OTP code or the resulting access_token (they're
+ *     bearer-equivalent credentials).
+ *   - Returns structured Result-style discriminated unions so callers can
+ *     branch on specific failure modes (no_account, invalid_code, etc.)
+ *     without parsing error strings.
+ *   - Does NOT retry on 401/422 — those are caller bugs or expired state,
+ *     retrying just hides them. Returns the failure to the caller.
+ *
+ * Caveats (per Tule 2026-05-14):
+ *   - The OTP service is "not tested on the latest version" — migration is
+ *     glitchy until Tuesday May 19. Expect occasional 5xx; up to the caller
+ *     whether to retry.
+ *   - Calendar API (api-keys + events) is reportedly stable in the latest
+ *     version; the auth/OTP path is the wobbly piece.
+ */
+
+const DEFAULT_API_BASE =
+  process.env.EDGEOS_API_BASE || "https://api.dev.edgeos.world";
+
+const NETWORK_TIMEOUT_MS = 15_000;
+
+export type EdgeOSEnv = {
+  apiBase?: string;
+};
+
+// ─── requestOTP ───────────────────────────────────────────────────────────
+
+export type RequestOTPSuccess = {
+  ok: true;
+  email: string;
+  expiresInMinutes: number | null;
+  message: string | null;
+};
+
+export type RequestOTPFailureStatus =
+  | "no_account" // email isn't in EdgeOS
+  | "validation_error" // 422 — bad email format
+  | "rate_limited" // 429
+  | "network" // fetch threw / timed out
+  | "unknown"; // anything else, surfaced with httpStatus + raw
+
+export type RequestOTPFailure = {
+  ok: false;
+  status: RequestOTPFailureStatus;
+  httpStatus?: number;
+  raw?: string;
+};
+
+export type RequestOTPResult = RequestOTPSuccess | RequestOTPFailure;
+
+export async function requestOTP(
+  email: string,
+  env: EdgeOSEnv = {}
+): Promise<RequestOTPResult> {
+  const apiBase = env.apiBase ?? DEFAULT_API_BASE;
+
+  const trimmed = email.trim().toLowerCase();
+  if (!trimmed || !trimmed.includes("@")) {
+    return { ok: false, status: "validation_error", raw: "email is empty or missing @" };
+  }
+
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${apiBase}/api/v1/auth/user/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: trimmed }),
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      status: "network",
+      raw: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  const bodyText = await res.text().catch(() => "");
+
+  if (res.ok) {
+    let parsed: { message?: string; email?: string; expires_in_minutes?: number } = {};
+    try {
+      parsed = bodyText ? JSON.parse(bodyText) : {};
+    } catch {
+      // Body is supposed to be JSON; if not, fall through with the raw text.
+      return { ok: false, status: "unknown", httpStatus: res.status, raw: bodyText.slice(0, 500) };
+    }
+    return {
+      ok: true,
+      email: parsed.email ?? trimmed,
+      expiresInMinutes: parsed.expires_in_minutes ?? null,
+      message: parsed.message ?? null,
+    };
+  }
+
+  // Categorize failures
+  // Tule's API hasn't been documented for these specific failure modes — we
+  // infer from HTTP status. The endpoint declares no auth requirement, so
+  // 401 means something else (maybe "account exists but blocked"?). Treat
+  // 401/404 as no_account because we can't proceed either way.
+  if (res.status === 404 || res.status === 401) {
+    return { ok: false, status: "no_account", httpStatus: res.status, raw: bodyText.slice(0, 500) };
+  }
+  if (res.status === 422) {
+    return { ok: false, status: "validation_error", httpStatus: res.status, raw: bodyText.slice(0, 500) };
+  }
+  if (res.status === 429) {
+    return { ok: false, status: "rate_limited", httpStatus: res.status, raw: bodyText.slice(0, 500) };
+  }
+  return { ok: false, status: "unknown", httpStatus: res.status, raw: bodyText.slice(0, 500) };
+}
+
+// ─── authenticateOTP ──────────────────────────────────────────────────────
+
+export type AuthenticateOTPSuccess = {
+  ok: true;
+  accessToken: string;
+  tokenType: string;
+};
+
+export type AuthenticateOTPFailureStatus =
+  | "invalid_code" // 401 — wrong or expired code
+  | "validation_error" // 422 — bad format (not 6 digits, bad email, etc.)
+  | "rate_limited" // 429 — too many attempts
+  | "network"
+  | "unknown";
+
+export type AuthenticateOTPFailure = {
+  ok: false;
+  status: AuthenticateOTPFailureStatus;
+  httpStatus?: number;
+  raw?: string;
+};
+
+export type AuthenticateOTPResult = AuthenticateOTPSuccess | AuthenticateOTPFailure;
+
+const SIX_DIGITS = /^\d{6}$/;
+
+export async function authenticateOTP(
+  email: string,
+  code: string,
+  env: EdgeOSEnv = {}
+): Promise<AuthenticateOTPResult> {
+  const apiBase = env.apiBase ?? DEFAULT_API_BASE;
+
+  const trimmedEmail = email.trim().toLowerCase();
+  const trimmedCode = code.trim();
+
+  if (!trimmedEmail || !trimmedEmail.includes("@")) {
+    return { ok: false, status: "validation_error", raw: "email is empty or missing @" };
+  }
+  if (!SIX_DIGITS.test(trimmedCode)) {
+    return {
+      ok: false,
+      status: "validation_error",
+      raw: "code must be exactly 6 digits (server-side regex enforced)",
+    };
+  }
+
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${apiBase}/api/v1/auth/user/authenticate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: trimmedEmail, code: trimmedCode }),
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      status: "network",
+      raw: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  const bodyText = await res.text().catch(() => "");
+
+  if (res.ok) {
+    let parsed: { access_token?: string; token_type?: string } = {};
+    try {
+      parsed = bodyText ? JSON.parse(bodyText) : {};
+    } catch {
+      return { ok: false, status: "unknown", httpStatus: res.status, raw: bodyText.slice(0, 500) };
+    }
+    if (!parsed.access_token) {
+      return { ok: false, status: "unknown", httpStatus: res.status, raw: "200 response missing access_token" };
+    }
+    return {
+      ok: true,
+      accessToken: parsed.access_token,
+      tokenType: parsed.token_type ?? "bearer",
+    };
+  }
+
+  if (res.status === 401) {
+    return { ok: false, status: "invalid_code", httpStatus: res.status, raw: bodyText.slice(0, 500) };
+  }
+  if (res.status === 422) {
+    return { ok: false, status: "validation_error", httpStatus: res.status, raw: bodyText.slice(0, 500) };
+  }
+  if (res.status === 429) {
+    return { ok: false, status: "rate_limited", httpStatus: res.status, raw: bodyText.slice(0, 500) };
+  }
+  return { ok: false, status: "unknown", httpStatus: res.status, raw: bodyText.slice(0, 500) };
+}
+
+// ─── helpers ──────────────────────────────────────────────────────────────
+
+async function fetchWithTimeout(url: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
+  const { timeoutMs = NETWORK_TIMEOUT_MS, ...rest } = init;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...rest, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/**
+ * Mask a bearer/access_token for log output. Returns "abc12345…(96 chars)"
+ * so logs are scannable but the credential isn't leaked.
+ */
+export function maskToken(token: string): string {
+  if (!token) return "(empty)";
+  if (token.length <= 12) return "(short_token)";
+  return `${token.slice(0, 8)}…(${token.length} chars)`;
+}
