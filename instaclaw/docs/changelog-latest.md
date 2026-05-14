@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-14
 
-Window: `a4e40f54315992c62bf08bd7ef738f4f3e84753f` → `HEAD` (HEAD = `4aa566aa`)
+Window: `4aa566aa5d8c16742411961171c47c3285c47ec0` → `HEAD` (HEAD = `402b1108`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 4aa566aa5d8c16742411961171c47c3285c47ec0 -->
+<!-- LAST_GENERATED_SHA: 402b11089a8a0c8a32a08eca308f8e05330b6ae2 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `e56b8b3c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `4aa566aa` 2026-05-14 — docs(CLAUDE.md): add Incident Response Runbook (extended) [1 files] _(ai-assisted)_
+- `45897f5b` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `402b1108` 2026-05-14 — docs(CLAUDE.md): patch runbook — GatewayDown rule was silently inert [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -45,16 +45,16 @@ _(none)_
 
 ### Docs / PRD only (2)
 
-- `e56b8b3c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `4aa566aa` 2026-05-14 — docs(CLAUDE.md): add Incident Response Runbook (extended) [1 files] _(ai-assisted)_
+- `45897f5b` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `402b1108` 2026-05-14 — docs(CLAUDE.md): patch runbook — GatewayDown rule was silently inert [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `4aa566aa` 2026-05-14 — docs(CLAUDE.md): add Incident Response Runbook (extended)
+- `402b1108` 2026-05-14 — docs(CLAUDE.md): patch runbook — GatewayDown rule was silently inert
 
 ## Appendix — every commit (chronological)
 
-- `e56b8b3c` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `4aa566aa` 2026-05-14 — docs(CLAUDE.md): add Incident Response Runbook (extended) [1 files] _(ai-assisted)_
+- `45897f5b` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `402b1108` 2026-05-14 — docs(CLAUDE.md): patch runbook — GatewayDown rule was silently inert [1 files] _(ai-assisted)_
