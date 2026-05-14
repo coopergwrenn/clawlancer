@@ -5278,11 +5278,36 @@ export async function configureOpenClaw(
       // so a dev/preview env without the var doesn't crash configure — agents
       // still work, just can't query the attendee directory.
       //
-      // 2026-05-13: SOLA_AUTH_TOKEN removed. Edge City migrated from Sola
-      // (Social Layer) to their own EdgeOS calendar system; Sola integration
-      // is deprecated dead code. Existing edge_city VMs may have a stale
-      // SOLA_AUTH_TOKEN=PLACEHOLDER_WAITING_ON_TULE entry in their .env —
-      // inert string, no code references it, cosmetic-only debt.
+      // 2026-05-14 CORRECTION: SOLA TOKEN deprecated, BUT SOLA API IS LIVE.
+      //
+      // Earlier comment said "Sola is deprecated dead code" — that's wrong.
+      // The TOKEN (SOLA_AUTH_TOKEN) was deprecated because we never needed
+      // it (it was for writes). The SKILL (aromeoes/edge-agent-skill, cloned
+      // below) still calls api.sola.day for ALL calendar reads.
+      //
+      // Verified 2026-05-14 by cloning aromeoes/edge-agent-skill@main and
+      // grepping. The skill calls:
+      //   api.sola.day/api/event/list?group_id=3688          — list events
+      //   api.sola.day/api/event/get?id=X                    — event details
+      //   api.sola.day/api/event/list?...search_title=...    — search
+      //   api.sola.day/group/get?group_id=3688               — group info
+      //   api.sola.day/venue/get?id=X                        — venues
+      //   api.sola.day/api/profile/get?id=X                  — speaker bios
+      // All UNAUTHENTICATED reads (per Tule's README: "None for reads").
+      //
+      // EDGEOS_BEARER_TOKEN (below) is for a DIFFERENT API
+      // (api-citizen-portal.simplefi.tech) which serves ONLY the attendee
+      // directory — NOT calendar data. There is no EdgeOS calendar API to
+      // fall back to.
+      //
+      // **Risk**: if Sola goes offline before 2026-06-27 (Edge Esmeralda
+      // ends), every Edge attendee's agent reports empty calendars.
+      // Mitigation: cron/probe-edge-calendar (2026-05-14, P1-8) fires every
+      // 30 min and alerts on Sola failures so we get advance notice.
+      //
+      // Cosmetic debt: existing edge_city VMs may have a stale
+      // SOLA_AUTH_TOKEN=PLACEHOLDER_WAITING_ON_TULE in .env. Inert; no
+      // code reads it. Cleanup is optional.
       const edgeosToken = process.env.EDGEOS_BEARER_TOKEN || "";
       // v80 InstaClaw operational overlay — additive to Tule's upstream
       // SKILL.md (which we don't modify). Tule's 30-min cron does
