@@ -2274,6 +2274,234 @@ None of these check **whether the npm dependencies are actually installed and re
 
 **Detection rule**: any new `process.env.X_API_KEY` / `X_TOKEN` / `X_SECRET` reference added to the codebase must be matched by an entry in `SECRET_VERIFIERS`. If a verifier endpoint isn't available (e.g., partner hasn't shipped their auth-check API), use a shape check + a `TODO when partner ships smoke-test endpoint` comment — but never ship the secret without at least the shape check.
 
+### Freeze pipeline — $1,450/mo leak with zero successful freezes in system history (RESOLVED 2026-05-15)
+
+**Incident summary**. From the freeze cron's first deployment through 2026-05-15, **not a single VM** was ever frozen successfully on the InstaClaw fleet. Across 7 days of production logs: 935 lifecycle-log entries, 918 `freeze_skipped_safety`, 17 `freeze_failed`, **0 `frozen`**. 50 VMs sat in `status=assigned + health_status=suspended` past their 3-day freeze grace window — paying Linode $29/mo each (~$1,450/mo total) for instances whose owners cancelled weeks ago. 17 of those 50 were left **offline-on-Linode but still billing**: failed freezes shut the instance down, the one-shot boot-back-up recovery silently failed, and the cron retried every hour observing `ssh-fail` on an instance with no OS running.
+
+**Three independent root causes** combined to make the system look "working" while producing nothing:
+
+1. **Linode private-image 6,144 MB hard cap.** The synchronous `POST /images` returns 200 + image id even for over-cap disks. Linode's async preparation stage then emits a `disk_imagize status=failed msg="Size of disk (29273MB) is..."` event and silently deletes the half-created image. Our `waitForImageAvailable` polls and gets HTTP 404, with no visibility into the upstream "size exceeded" cause. Production VMs accumulate 5-30 GB of disk over weeks — every one of them hit the cap. Confirmed via Linode events API for 16 specific failures spanning 2026-05-09 → 2026-05-14.
+
+2. **SSH-mtime silence check reading our own platform writes.** `sshHasRecentActivity` runs `find ~/.openclaw/agents/main/sessions -mtime -7 -name '*.jsonl'` and `find ~/.openclaw/workspace -mtime -7 -name '*.md'`. But on every sleeping VM, **strip-thinking.py runs every minute** and modifies session jsonl files (compaction, thinking-block strip, trim-failed-turns). The **reconcile-fleet + file-drift crons** (per Rule 47, continuous reconciliation) write `CAPABILITIES.md`, `SOUL.md`, `MEMORY.md`, `QUICK-REFERENCE.md` on every cycle. Both signals fire the "SSH activity detected" gate, blocking freeze on 9 unique VMs (155 log entries in 24h). The check was reading the platform's own writes and reporting "user is active." Same bug class as Rule 45 — an idempotency / silence check whose subject is mutated by the same code that owns the check.
+
+3. **One-shot boot recovery silently swallowed failures.** `lib/vm-freeze-thaw.ts:467-482` issued a single `bootInstance` call after imagize failure, then logged `"RECOVERY FAILED"` and returned. No retry. No alert. The instance stayed `offline` on Linode (still billing). Subsequent freeze attempts then hit `ssh-fail: timed out` on every retry (no OS to connect to), looking identical to the chronic-failer cohort (vm-866, vm-873, vm-726). 17 zombies accumulated this way before the money audit caught them.
+
+**Why each was invisible**. Bug 1 hid behind Linode's async-preparation model — the synchronous API call succeeds. Bug 2 hid behind the legitimate-looking "SSH activity detected" reason string. Bug 3 hid behind the cron's success-suffixed `instance booted back` return reason that wasn't itself a Linode probe. Each bug looked normal in isolation; combined they meant zero successful freezes for the system's entire lifetime.
+
+**Resolution (2026-05-15, commit `2ce729f1`)**. Three coordinated fixes:
+
+- **Rule 50** — `userHasRecentActivity` (new helper in `lib/vm-lifecycle-helpers.ts`) replaces the SSH-mtime check in `freezeVM`. Reads `instaclaw_vms.last_user_activity_at` (real user-driven proxy calls only). Fail-CLOSED on NULL. Candidate query in `app/api/cron/vm-lifecycle/route.ts` switched to `last_user_activity_at` so phantom-heartbeat VMs re-enter the freeze pool.
+- **Rule 51** — `cleanupDiskForFreeze` (new helper in `lib/vm-freeze-thaw.ts`) runs whitelist-only aggressive cleanup before shutdown. Skip-cleanly gate refuses to imagize if disk is still ≥ 6,144 MB post-cleanup (no zombie creation; instance keeps running).
+- **Rule 52** — `recoverInstanceAfterFailedFreeze` retries `bootInstance` 3× with `[5s, 15s, 30s]` backoff, re-checks instance state at the top of each attempt, and fires a `sendAdminAlertEmail` P0 if all attempts fail.
+
+The 17 existing offline-billing zombies still need manual recovery (separate task — boot or destroy each). Going forward, the code paths that produced them no longer exist.
+
+### Rule 50 — Freeze silence check uses DB user-activity, never file mtimes
+
+Every cron / watchdog / lifecycle decision that asks "has the user been active recently?" MUST consult `instaclaw_vms.last_user_activity_at` (or the watchdog fallback chain `last_user_activity_at ?? last_proxy_call_at`) — never a `find -mtime -N` over files on the VM. Platform-owned writes (strip-thinking.py per-minute compaction, reconcile-fleet stepFiles, file-drift cron, backup crons) modify the same files the legacy silence check reads, producing structural false positives that block destructive actions on inactive VMs.
+
+**Why**: prior to 2026-05-15, the freeze cron's `sshHasRecentActivity(ip)` ran `find ~/.openclaw/agents/main/sessions -mtime -7 -name '*.jsonl'` and `find ~/.openclaw/workspace -mtime -7 -name '*.md'`. Both globs hit on every sleeping VM because our own crons touch those files. 9 sleeping-but-eligible VMs were blocked from freeze for weeks (155 false-positive `freeze_skipped_safety / SSH activity detected` entries in a 24h window, verified by directly probing vm-861 and vm-697 — gateways stopped since 2026-05-09 and 2026-05-10, but `find` still found fresh-mtime files at the time of audit because of strip-thinking).
+
+**How to apply**:
+- For **freeze gating** (where we have a DB row): use `userHasRecentActivity(vm)` from `lib/vm-lifecycle-helpers.ts`. Pure-data, synchronous, fail-CLOSED on NULL `last_user_activity_at`. The freezeVM gate is the canonical example.
+- For **orphan deletion** (Pass -1 in `vm-lifecycle/route.ts:338`): there is no DB row to query, so the SSH-mtime check is still the right primitive. Its preserved semantics — "no data on disk" → safe to delete an orphan with no DB owner — are correct in that narrow context.
+- For **any new code path** that asks the same question: prefer the DB column. Document the exception loudly if you must use file mtimes (e.g., orphan path); the default is "DB column wins."
+
+**Banned patterns**:
+- Adding new callsites of `find ~/.openclaw/{sessions,workspace} -mtime -N` to decide "is the user active?" Use `last_user_activity_at`.
+- Reading `last_proxy_call_at` alone — heartbeats fire on suspended-but-not-stopped VMs and contaminate it. Always prefer `last_user_activity_at`.
+- Falling back to `last_proxy_call_at` when `last_user_activity_at` is NULL **for freeze decisions** specifically. Fail-CLOSED (skip the destructive action) is the correct response to NULL — wasted freeze attempts are dramatically cheaper than wrongly-frozen paying customers. (The watchdog's fallback chain is OK because the watchdog's destructive action is `restart`, which is reversible; freeze is not.)
+
+**The protected files for any silence check are the same as for any cleanup operation**: NEVER look at mtime of, NEVER delete:
+- `~/.openclaw/workspace/*` (SOUL.md, MEMORY.md, CAPABILITIES.md, EARN.md, QUICK-REFERENCE.md, TOOLS.md)
+- `~/.openclaw/agents/main/sessions/*.jsonl` (active session transcripts — touched by strip-thinking)
+- `~/.openclaw/.env` (gateway + partner tokens)
+- `~/.openclaw/openclaw.json` (gateway config)
+- `~/.openclaw/agents/main/agent/auth-profiles.json` (Anthropic key)
+- `~/.openclaw/wallet/*` (private keys — load-bearing per Rule 22)
+- `~/scripts/*` (bot CLI entrypoints)
+
+**Detection rule**: any new `grep`/`find`/`stat` on the platform-modified files above is a code-review red flag. If the intent is "did the user do something?" the answer is `instaclaw_vms.last_user_activity_at`. If the intent is "is this VM healthy?" the answer is `/health` + `instaclaw_vms.health_status`. There is no third class.
+
+### Rule 51 — Pre-freeze disk cleanup mandatory; skip if > 6,144 MB after cleanup
+
+Linode private images have a **6,144 MB hard cap** documented in their API but enforced *asynchronously*: `POST /images` returns 200 with an image id, then internal preparation fails on size, then the image is silently deleted. Our polling gets HTTP 404 with no signal that "size exceeded" was the cause. Production VMs reach 5-30 GB within weeks of normal operation. Every freeze attempt on a production-sized VM trips this trap.
+
+**Mandatory pattern**:
+
+1. **Before any** `shutdownInstance` + `createImage`, call `cleanupDiskForFreeze(vm, runId)` (`lib/vm-freeze-thaw.ts`).
+2. The cleanup MUST be whitelist-only. Files that user data depends on (workspace, sessions/jsonl, .env, wallet, openclaw.json, auth-profiles, scripts/) are NEVER touched per Rule 22 / Rule 30.
+3. The cleanup MUST verify post-cleanup disk usage via `df --output=used /` and parse the result. If still ≥ 6,144 MB, return `{success: false, reason: "disk still N MB after cleanup"}` and let `freezeVM` skip the entire freeze. NEVER proceed to shutdown when imagize is doomed.
+4. The cleanup recipe MUST mirror the snapshot-bake recipe in CLAUDE.md (`Snapshot Creation Process`) — that recipe is the gold standard for "what's safe to nuke to fit under 6 GB":
+   - `~/.openclaw/session-backups/*` (Rule 45 leak — up to 58 GB observed)
+   - `npm cache clean --force` + `rm -rf ~/.npm/_cacache`
+   - `python3 -m pip cache purge` + `rm -rf ~/.cache/pip /root/.cache/pip`
+   - `rm -rf ~/.cache/* ~/.nvm/.cache`
+   - `find /tmp -maxdepth 2 -mtime +1 -type f -delete` (only files older than 24h)
+   - `sudo apt-get clean` + `sudo rm -rf /var/lib/apt/lists/*`
+   - `sudo journalctl --vacuum-time=1d`
+   - `sudo find /var/log -maxdepth 2 -type f \( -name '*.gz' -o -name '*.1' -o -name '*.2' -o ... -o -name '*.old' \) -delete`
+
+**Banned patterns**:
+- Calling `shutdownInstance` without a prior verified-under-cap cleanup. The instance might never come back (Rule 52 dependent).
+- Removing or relaxing the 6,144 MB gate before Linode officially raises their cap. The number is from `LINODE_IMAGE_MAX_MB` constant — change only when Linode docs change.
+- Adding paths to the cleanup whitelist that touch user data. Even "harmless"-looking caches that overlap with workspace/session-state are forbidden. Whitelist is conservative-by-construction.
+- "Best-effort" cleanup that doesn't verify the resulting size. We must KNOW the disk is under the cap before issuing the imagize.
+
+**Detection rule**: every new code path that calls `createImage` or `disk_imagize` MUST call `cleanupDiskForFreeze` first AND check its `success: true` return. PR review should grep the diff for `createImage(` and refuse the change if there's no `cleanupDiskForFreeze` upstream. The cleanup whitelist is also a code-review checkpoint: any addition to the cleanup commands must justify why it's not in the protected-files list above.
+
+### Rule 52 — Post-freeze-failure recovery retries `bootInstance` 3×; alerts P0 on failure
+
+When imagize fails (any reason — over-cap silently, transient Linode error, timeout, DB write failure post-image), the source Linode instance is left in `offline` state from the upstream `shutdownInstance`. A single one-shot `bootInstance` call is insufficient: 2026-05-09 → 2026-05-14 produced 17 offline-on-Linode zombies billing $29/mo each because the recovery's `bootInstance` (or its `waitForInstanceStatus`) failed silently and the cron moved on.
+
+**Mandatory pattern** (`recoverInstanceAfterFailedFreeze` in `lib/vm-freeze-thaw.ts`):
+
+1. Retry up to `RECOVERY_MAX_ATTEMPTS = 3` times with backoff `[5s, 15s, 30s]`.
+2. At the top of every attempt, `getInstanceState` first — if already `running`, short-circuit return.
+3. Issue `bootInstance` only if state is `offline` (don't double-boot a `running` or transitional state).
+4. Each attempt waits up to `INSTANCE_RUNNING_TIMEOUT_MS` for `status=running`.
+5. If all 3 attempts fail, `sendAdminAlertEmail` with subject `[P0] Freeze recovery FAILED for <vmName>` and a body that contains:
+   - VM id + name + Linode id + owner id
+   - The original imagize failure reason
+   - The final Linode status observed
+   - **Paste-ready manual recovery steps** (Linode dashboard URL, SSH command, hypothesized root cause)
+   - `runId` for log correlation
+6. Wrap the alert send in try/catch — the alert failure path must NOT itself throw and double-fault the freeze cycle.
+
+**Banned patterns**:
+- A single `try { await bootInstance(...) } catch { /* noop */ }` after image failure. This was the pre-fix code; it produced the 17 zombies.
+- Any "best-effort" recovery that swallows error state without signaling P0. The customer is being billed $29/mo for an offline VM. There is no "best-effort" that's acceptable; we either recover or wake an operator.
+- Treating successful `bootInstance` as proof the instance came up. Always follow with `waitForInstanceStatus("running", ...)` and confirm.
+
+**Detection rule**: any code path that issues `shutdownInstance` followed by a destructive operation (imagize, disk delete, etc.) MUST be paired with a `recoverInstanceAfterFailedFreeze` (or equivalent retry-with-alert) on the failure branch. If the destructive operation can leave the instance in any state other than the intended terminal state, the recovery is mandatory. Code review: grep for `shutdownInstance` and refuse the diff if any callsite lacks a recovery path that escalates to P0 alert on persistent failure.
+
+### Operational runbook: monthly freeze pipeline health audit
+
+Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
+
+**Step 1 — Active leak count (top-line health):**
+
+```sql
+-- Sleeping VMs past 3-day grace with no image — money-leak cohort
+SELECT
+  COUNT(*) AS suspended_no_image_gt_3d,
+  COUNT(*) FILTER (WHERE suspended_at < NOW() - INTERVAL '7 days') AS gt_7d,
+  COUNT(*) FILTER (WHERE suspended_at < NOW() - INTERVAL '30 days') AS gt_30d
+FROM instaclaw_vms
+WHERE status = 'assigned'
+  AND health_status = 'suspended'
+  AND suspended_at < NOW() - INTERVAL '3 days'
+  AND frozen_image_id IS NULL;
+```
+
+Expected (healthy): `< 5` (steady-state — VMs transition through this state on their way to frozen). Anything `> 20` indicates the freeze cron is starved or broken.
+
+**Step 2 — Success/failure histogram (last 7 days):**
+
+```sql
+SELECT action, COUNT(*)
+FROM instaclaw_vm_lifecycle_log
+WHERE created_at > NOW() - INTERVAL '7 days'
+  AND action LIKE 'freeze%'
+GROUP BY action
+ORDER BY COUNT(*) DESC;
+```
+
+Expected (healthy): mix of `frozen` (≥ 5/week) and `freeze_skipped_safety` (intentional skips on still-credited / still-active users). **Zero `frozen` rows is the canary** — escalate immediately.
+
+**Step 3 — Skip-reason breakdown (where's the freeze pool stuck?):**
+
+```sql
+SELECT
+  CASE
+    WHEN reason ILIKE '%credit_balance%'         THEN 'paid_credits_remain'
+    WHEN reason ILIKE '%active Stripe%'          THEN 'live_sub'
+    WHEN reason ILIKE '%Bankr token%'            THEN 'bankr_token'
+    WHEN reason ILIKE '%last_user_activity_at%'  THEN 'user_active_within_window'
+    WHEN reason ILIKE '%pre-imagize cleanup%'    THEN 'disk_over_6gb_after_cleanup'
+    WHEN reason ILIKE '%lifecycle lock%'         THEN 'lock_busy'
+    WHEN reason ILIKE '%offline within%'         THEN 'shutdown_timeout'
+    ELSE 'other'
+  END AS bucket,
+  COUNT(*)
+FROM instaclaw_vm_lifecycle_log
+WHERE created_at > NOW() - INTERVAL '7 days'
+  AND action = 'freeze_skipped_safety'
+GROUP BY bucket
+ORDER BY COUNT(*) DESC;
+```
+
+If `disk_over_6gb_after_cleanup` dominates: the cleanup whitelist needs expansion (or a small set of VMs have large user-data workspaces — investigate per-VM `df -h` via SSH). If `user_active_within_window` dominates without corresponding user reports of agents working: re-validate that `last_user_activity_at` writers are correctly distinguishing user calls from heartbeats.
+
+**Step 4 — Recovery-alert audit:**
+
+Search Resend dashboard / admin inbox for `[P0] Freeze recovery FAILED` in the last 30 days. Each one is a zombie VM that needs manual triage:
+1. Power on the Linode via dashboard.
+2. SSH and verify the gateway recovers.
+3. Disk-cleanup-by-hand if > 6 GB.
+4. Mark VM `freeze_consecutive_failures = 0` to re-prioritize.
+
+**Step 5 — Zombie inventory (Linode-vs-DB drift):**
+
+```ts
+// scripts/_audit-freeze-zombies.ts (build if it doesn't exist)
+// For every status=assigned + health_status IN (suspended,hibernating) + frozen_image_id=NULL:
+//   GET /v4/linode/instances/<provider_server_id>
+//   If status=offline → log as ZOMBIE
+//   If 404 → log as DESTROYED_OUT_OF_BAND
+```
+
+Healthy fleet: zombie count `< 3`. Anything higher means Rule 52 alerts are being missed or ignored.
+
+**Step 6 — Linode events forensics for any zombie:**
+
+```bash
+curl -sS "https://api.linode.com/v4/account/events?page=1&page_size=20" \
+  -H "Authorization: Bearer $LINODE_API_TOKEN" \
+  -H 'X-Filter: {"entity.type":"linode","entity.id":<provider_server_id>}' \
+  | python3 -c "import json,sys; \
+    [print(e['created'][:19], e['action'], e['status'], (e.get('message') or '')[:140]) \
+     for e in json.load(sys.stdin)['data'][:20]]"
+```
+
+Look for `disk_imagize status=failed` (Rule 51 territory — disk over 6 GB). Look for `linode_shutdown status=finished` without a matching `linode_boot status=finished` after it (Rule 52 territory — recovery failed).
+
+### Monitoring: alert on freeze pipeline starvation
+
+Two stacked alerts to detect the 2026-05-15 failure mode if it ever recurs:
+
+**Alert FA1 — Pipeline starvation (no successes in 7 days):**
+
+```sql
+-- Fires if `frozen` count is zero across a 7d window
+SELECT COUNT(*) AS frozen_7d
+FROM instaclaw_vm_lifecycle_log
+WHERE created_at > NOW() - INTERVAL '7 days'
+  AND action = 'frozen';
+-- Alert when frozen_7d = 0 AND skipped_7d > 50
+```
+
+Threshold: `frozen_count(7d) = 0 AND freeze_skipped_safety_count(7d) ≥ 50`. The compound condition prevents the alert from firing during legitimate quiet periods (no eligible candidates). If skips are happening but no successes are landing, something is structurally broken.
+
+**Alert FA2 — Cost leak (eligible cohort growing):**
+
+```sql
+-- Fires if the eligible-for-freeze cohort exceeds expected steady-state
+SELECT COUNT(*) AS leak_count
+FROM instaclaw_vms
+WHERE status = 'assigned'
+  AND health_status = 'suspended'
+  AND suspended_at < NOW() - INTERVAL '3 days'
+  AND frozen_image_id IS NULL;
+-- Alert when leak_count > 20
+```
+
+Threshold: `leak_count > 20`. At $29/mo per VM that's $580/mo when alert fires; $1,450/mo is what we hit at 50 (the 2026-05-15 incident size).
+
+Both alerts route to `ADMIN_ALERT_EMAIL` via `sendAdminAlertEmail`. Implementation lives in a new cron at `/api/cron/freeze-pipeline-health` (P1 follow-up — wire by 2026-05-22). Until that lands, run the runbook queries above manually each Monday.
+
+**Cost guard**: this same query (Alert FA2) doubles as the **weekly cost-leak check**. Run every Monday morning. Any non-zero answer is a money trail to investigate — every row is $29/mo until frozen.
+
 ### Root cause 1: ENOSPC swallowed as "config-set silent failure" [BOTH FIXES SHIPPED]
 
 **Status**: Both layers shipped. (1) **stepConfigSettings** (Rule 36 / commit `7c97df5b`, 2026-05-14): non-strict path now wraps each `openclaw config set` in BEGIN/END markers and captures per-key upstream stderr; verify-after-set mismatches include the actual ENOSPC payload. (2) **Wrapper-level** (Rule 37, 2026-05-14): `lib/enospc-guard.ts:wrapSSHForEnospcDetection` intercepts ALL `ssh.execCommand` + `ssh.putFile` calls across the reconciler; ENOSPC anywhere short-circuits with a P0 error + 6h-deduped admin alert. The historical evidence below is preserved for context.
