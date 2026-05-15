@@ -408,9 +408,35 @@ echo "[\$(date -u +%FT%TZ)] setup.sh starting (user=\$USER_ID vm=\$VM_NAME)"
   fi
 
   # AgentBook wallet key (mode 600 — never share).
-  install -o openclaw -g openclaw -m 600 \\
-    /tmp/instaclaw-config/home/openclaw/.openclaw/wallet/agent.key \\
-    /home/openclaw/.openclaw/wallet/agent.key || rc=1
+  # 2026-05-15: dual-source. The legacy SSH-configure path and explicit-key
+  # callers pre-pack agent.key in the tarball — install it as before. The
+  # cloud-init bootstrap+fetch path (post-decision "no private keys in our
+  # DB ever") omits agent.key from the tarball and generates a fresh 32-byte
+  # hex private key here via openssl rand. Either source yields the same
+  # final state: /home/openclaw/.openclaw/wallet/agent.key, mode 600,
+  # owned by openclaw:openclaw. CLOUD_INIT_AGENT_KEY_ONVM_GEN sentinel.
+  #
+  # Address derivation is intentionally NOT done here. Computing an EVM
+  # address from a 32-byte secp256k1 private key requires keccak256(public
+  # key) which isn't in stdlib openssl (Ethereum uses pre-standard Keccak,
+  # not SHA3-256). node+viem and python+eth_account both work but aren't
+  # in this CRITICAL block's hot-path dependency surface. A future cloud-
+  # init-callback enhancement (Day 11-12) will derive on-VM and POST the
+  # address to backfill instaclaw_vms.agentbook_wallet_address.
+  if [ -f /tmp/instaclaw-config/home/openclaw/.openclaw/wallet/agent.key ]; then
+    install -o openclaw -g openclaw -m 600 \\
+      /tmp/instaclaw-config/home/openclaw/.openclaw/wallet/agent.key \\
+      /home/openclaw/.openclaw/wallet/agent.key || rc=1
+  else
+    # umask 077 in subshell ensures the > redirect creates the file at
+    # mode 600 directly (no transient world-readable window). The chown
+    # finalizes ownership (file is initially root-owned since setup.sh
+    # runs as root in cloud-init). chmod 600 is defensive — umask should
+    # already cover it but verify.
+    (umask 077 && openssl rand -hex 32 > /home/openclaw/.openclaw/wallet/agent.key) || rc=1
+    chown openclaw:openclaw /home/openclaw/.openclaw/wallet/agent.key || rc=1
+    chmod 600 /home/openclaw/.openclaw/wallet/agent.key || rc=1
+  fi
 
   [ "\$rc" = "0" ]
 } || {
@@ -979,6 +1005,15 @@ export const SETUP_SH_SENTINELS = {
   CALLBACK_PATH: "/api/vm/cloud-init-callback",
   /** Critical-step gateway-health probe — must hit localhost:18789/health. */
   GATEWAY_HEALTH_PROBE: "http://localhost:18789/health",
+  /** 2026-05-15: dual-source agent.key install (tarball-supplied OR on-VM
+   *  openssl-generated). Anchor for tests asserting the on-VM-gen branch
+   *  is present in the rendered setup.sh. Rule 23 sentinel. */
+  AGENT_KEY_DUAL_SOURCE: "CLOUD_INIT_AGENT_KEY_ONVM_GEN",
+  /** 2026-05-15: the actual openssl-rand command for on-VM key generation.
+   *  If this drifts (e.g., someone "improves" to use a different RNG),
+   *  tests will fail because the rendered output no longer contains this
+   *  exact substring. */
+  AGENT_KEY_OPENSSL_RAND: "openssl rand -hex 32 > /home/openclaw/.openclaw/wallet/agent.key",
   /** BE-1: linger enable — gateway auto-start across reboots. */
   BE1_LINGER: "loginctl enable-linger openclaw",
   /** BE-1: sshd OOM-protect drop-in path. */

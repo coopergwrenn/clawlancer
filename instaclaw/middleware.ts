@@ -50,6 +50,7 @@ export default auth((req) => {
     "/api/billing/webhook",
     "/api/cron",
     "/api/vm/configure",
+    "/api/vm/cloud-init-config", // Self-auth via X-Cloud-Init-Config-Token header — one-time-use per-VM token, atomic claim-and-invalidate at the route. Used by cloud-init bootstrap to fetch per-VM tarball. See app/api/vm/cloud-init-config/route.ts + plan §5.
     "/api/vm/resync-token",
     "/api/admin/provision",
     "/api/admin/pool-audit",

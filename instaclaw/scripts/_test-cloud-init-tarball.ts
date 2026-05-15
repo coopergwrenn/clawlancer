@@ -362,7 +362,10 @@ async function test5_PerFileBuildersDirect() {
   assert(buildWorldIdMdForTarball(edgeCityParams) !== null, "buildWorldIdMdForTarball returns content with nullifier");
   assert(buildDotEnv(validParams).includes("INSTACLAW_ENV_V1"), "buildDotEnv has sentinel");
   assert(JSON.parse(buildAuthProfilesJsonForTarball(validParams)).profiles, "buildAuthProfilesJsonForTarball is valid JSON");
-  assert(buildAgentKey(validParams).endsWith("\n"), "buildAgentKey newline-terminated");
+  // buildAgentKey returns string | null (null when agentbookKey is omitted —
+  // 2026-05-15 on-VM-generation path). validParams supplies the key, so
+  // narrowing is safe here; on-VM-gen path is exercised in testOnVmKeyGen().
+  assert(buildAgentKey(validParams)!.endsWith("\n"), "buildAgentKey newline-terminated");
 
   const entries = collectPartialEntries(validParams);
   // 7 entries for the no-partner-no-worldId case:
@@ -2212,9 +2215,39 @@ async function test16_BuildSetupSh() {
     block19.includes("install -o openclaw -g openclaw -m 644 \\\n      \"/tmp/instaclaw-config/home/openclaw/.openclaw/workspace/$f\""),
     "§1.9 mode: workspace .md files use -m 644",
   );
+  // §1.9 dual-source agent.key (2026-05-15): tarball-supplied branch
+  // (legacy SSH-path / explicit-key callers) still installs at mode 600;
+  // the install line is now nested inside an `if [ -f ... ]; then` block,
+  // so the indentation widens from 4 → 6 spaces relative to the previous
+  // unconditional emission.
   assert(
-    block19.includes("install -o openclaw -g openclaw -m 600 \\\n    /tmp/instaclaw-config/home/openclaw/.openclaw/wallet/agent.key"),
-    "§1.9 mode: agent.key uses -m 600 (private-key protection)",
+    block19.includes("install -o openclaw -g openclaw -m 600 \\\n      /tmp/instaclaw-config/home/openclaw/.openclaw/wallet/agent.key"),
+    "§1.9 mode: agent.key uses -m 600 (private-key protection, tarball-supplied branch)",
+  );
+  // §1.9 on-VM-generation branch (2026-05-15): when the tarball omits
+  // agent.key (cloud-init bootstrap+fetch path), setup.sh generates a
+  // fresh key via openssl rand -hex 32 under umask 077, then chowns to
+  // openclaw and chmod 600 as defense-in-depth. Verifies the AGENT_KEY_
+  // OPENSSL_RAND sentinel actually appears in the rendered output.
+  assert(
+    block19.includes(SETUP_SH_SENTINELS.AGENT_KEY_DUAL_SOURCE),
+    "§1.9: CLOUD_INIT_AGENT_KEY_ONVM_GEN sentinel present",
+  );
+  assert(
+    block19.includes(SETUP_SH_SENTINELS.AGENT_KEY_OPENSSL_RAND),
+    "§1.9: openssl rand -hex 32 command is the canonical key-generation",
+  );
+  assert(
+    block19.includes("(umask 077 && openssl rand -hex 32 > /home/openclaw/.openclaw/wallet/agent.key)"),
+    "§1.9: openssl rand wrapped in umask 077 subshell (no transient world-readable window)",
+  );
+  assert(
+    block19.includes("chown openclaw:openclaw /home/openclaw/.openclaw/wallet/agent.key"),
+    "§1.9: chown openclaw:openclaw after on-VM-generated key",
+  );
+  assert(
+    block19.includes("chmod 600 /home/openclaw/.openclaw/wallet/agent.key"),
+    "§1.9: defensive chmod 600 after on-VM-generated key",
   );
   // BE-7
   assert(
@@ -3259,6 +3292,126 @@ async function test17_BuildCloudInitTarball() {
   }
 }
 
+/**
+ * 2026-05-15 — on-VM agent-key-generation path (Day 9-10).
+ *
+ * The cloud-init bootstrap+fetch endpoint constructs TarballParams without
+ * agentbookKey or agentbookAddress (post-decision "no private keys in our
+ * DB ever"). setup.sh §1.9 generates the key on-VM via openssl rand -hex 32.
+ *
+ * This test asserts:
+ *   1. validateTarballParams ACCEPTS params with both fields omitted.
+ *   2. validateTarballParams REJECTS supplying only one of them (paired
+ *      presence — partial supply means caller bug).
+ *   3. validateTarballParams REJECTS a malformed agentbookAddress when
+ *      both fields are present.
+ *   4. buildAgentKey returns null when key absent (callers must guard).
+ *   5. collectPartialEntries OMITS the wallet/agent.key tar entry when
+ *      the key is absent.
+ *   6. buildDotEnv OMITS the AGENTBOOK_ADDRESS=... line when the address
+ *      is absent.
+ *   7. Setup.sh's on-VM-gen branch is present in the rendered output
+ *      (sentinel + canonical openssl-rand command — already covered by
+ *      test16, asserted here too for cohesion).
+ *
+ * Failure-mode coverage per CLAUDE.md Rule 31.
+ */
+async function test18_OnVmKeyGeneration() {
+  console.log("\n─── TEST 18: on-VM key-generation path (no agentbookKey/Address) ──");
+
+  // ── (1) Accept params with both fields omitted ──
+  // Build a copy of validParams with agentbookKey/Address explicitly omitted.
+  // TS narrowing: spread validParams (which has them), then override both to
+  // undefined. The optional-property narrowing on TarballParams allows this.
+  const onVmParams: TarballParams = {
+    ...validParams,
+    agentbookKey: undefined,
+    agentbookAddress: undefined,
+  };
+  let threw: Error | null = null;
+  try {
+    validateTarballParams(onVmParams);
+  } catch (e) {
+    threw = e as Error;
+  }
+  assert(threw === null, "accepted: TarballParams without agentbookKey/Address");
+
+  // ── (2) Paired-presence rule: reject if only one is supplied ──
+  for (const partial of [
+    { agentbookKey: undefined, agentbookAddress: "0x5Bc5C4072a68Dd2a1e8595d863e114f54DFf04af" },
+    { agentbookKey: "deadbeef".repeat(8), agentbookAddress: undefined },
+  ]) {
+    const p = { ...validParams, ...partial } as TarballParams;
+    threw = null;
+    try {
+      validateTarballParams(p);
+    } catch (e) {
+      threw = e as Error;
+    }
+    assert(
+      threw !== null && /must be set together/i.test(threw.message),
+      `rejected paired-presence violation: ${JSON.stringify(partial)}`,
+    );
+  }
+
+  // ── (3) Address-shape validation when both present ──
+  const badAddress: TarballParams = {
+    ...validParams,
+    agentbookKey: "deadbeef".repeat(8),
+    agentbookAddress: "not-an-evm-address",
+  };
+  threw = null;
+  try {
+    validateTarballParams(badAddress);
+  } catch (e) {
+    threw = e as Error;
+  }
+  assert(
+    threw !== null && /0x-prefixed 40-hex-char EVM address/i.test(threw.message),
+    "rejected: malformed agentbookAddress when both fields present",
+  );
+
+  // ── (4) buildAgentKey returns null when key absent ──
+  assert(buildAgentKey(onVmParams) === null, "buildAgentKey(onVmParams) returns null");
+
+  // ── (5) collectPartialEntries omits wallet/agent.key ──
+  const entries = collectPartialEntries(onVmParams);
+  const hasAgentKey = entries.some((e) => e.path.endsWith("wallet/agent.key"));
+  assert(!hasAgentKey, "collectPartialEntries OMITS wallet/agent.key entry on on-VM-gen path");
+
+  // Compare: with agentbookKey supplied, the entry IS present (regression
+  // guard — make sure my conditional didn't accidentally drop the legacy path).
+  const entriesWithKey = collectPartialEntries(validParams);
+  assert(
+    entriesWithKey.some((e) => e.path.endsWith("wallet/agent.key")),
+    "collectPartialEntries INCLUDES wallet/agent.key when agentbookKey supplied (regression guard)",
+  );
+
+  // ── (6) buildDotEnv omits AGENTBOOK_ADDRESS line ──
+  const env = buildDotEnv(onVmParams);
+  assert(
+    !/^AGENTBOOK_ADDRESS=/m.test(env),
+    ".env OMITS AGENTBOOK_ADDRESS line when agentbookAddress absent",
+  );
+  // Regression guard: with agentbookAddress supplied, the line IS present.
+  const envWithAddress = buildDotEnv(validParams);
+  assert(
+    /^AGENTBOOK_ADDRESS=/m.test(envWithAddress),
+    ".env INCLUDES AGENTBOOK_ADDRESS when agentbookAddress supplied (regression guard)",
+  );
+
+  // ── (7) setup.sh's on-VM-gen branch is in the rendered output ──
+  const sh = buildSetupSh(onVmParams);
+  assert(
+    sh.includes(SETUP_SH_SENTINELS.AGENT_KEY_DUAL_SOURCE),
+    "setup.sh includes AGENT_KEY_DUAL_SOURCE sentinel",
+  );
+  assert(
+    sh.includes(SETUP_SH_SENTINELS.AGENT_KEY_OPENSSL_RAND),
+    "setup.sh includes the canonical openssl rand -hex 32 command",
+  );
+}
+
 async function main() {
   console.log("════════════════════════════════════════════════════════");
   console.log("cloud-init-tarball.ts foundation smoke test");
@@ -3280,6 +3433,7 @@ async function main() {
   await test15_FullTarballByteParityIntegration();
   await test16_BuildSetupSh();
   await test17_BuildCloudInitTarball();
+  await test18_OnVmKeyGeneration();
   await test5_PerFileBuildersDirect();
 
   console.log("\n════════════════════════════════════════════════════════");

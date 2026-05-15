@@ -178,9 +178,25 @@ export interface TarballParams {
 
   // ── Wallets (per-VM) ──
   /** AgentBook agent.key file body — text of the private key (mode 0o600).
-   *  Generated server-side via lib/agentbook-wallet.ts. */
-  agentbookKey: string;
-  agentbookAddress: string;
+   *
+   * 2026-05-15: optional. The cloud-init bootstrap+fetch path (post-decision
+   * "no private keys in our DB ever") generates the key ON THE VM during
+   * setup.sh via `openssl rand -hex 32 > ~/.openclaw/wallet/agent.key`. When
+   * the endpoint constructs TarballParams for the on-demand path, this field
+   * is omitted; collectPartialEntries skips the wallet/agent.key tar entry
+   * and the setup.sh on-VM generation step writes it. The legacy SSH-
+   * configure path (lib/ssh.ts:7567) still server-generates the key and
+   * populates this field for byte-parity tests. */
+  agentbookKey?: string;
+  /** AgentBook agent EVM address (e.g., 0xAbc...123).
+   *
+   * 2026-05-15: optional. When agentbookKey is generated on-VM, the address
+   * isn't known at endpoint-fetch time. buildDotEnv emits the
+   * AGENTBOOK_ADDRESS line ONLY when this field is set (mirrors the other
+   * optional `if (p.bankrEvmAddress) lines.push(...)` patterns above and
+   * below). A future cloud-init-callback enhancement will derive the
+   * address from the on-VM key and backfill instaclaw_vms.agentbook_wallet_address. */
+  agentbookAddress?: string;
   bankrEvmAddress?: string | null;
   bankrApiKey?: string | null;
   bankrTokenAddress?: string | null;
@@ -279,8 +295,31 @@ export function validateTarballParams(p: TarballParams): void {
     );
   }
   if (!p.defaultModel) throw new Error("cloud-init-tarball: defaultModel required");
-  if (!p.agentbookKey) throw new Error("cloud-init-tarball: agentbookKey required");
-  if (!p.agentbookAddress) throw new Error("cloud-init-tarball: agentbookAddress required");
+  // 2026-05-15: agentbookKey + agentbookAddress are OPTIONAL for the cloud-init
+  // bootstrap+fetch path (key generated on-VM via openssl during setup.sh).
+  // The legacy SSH-configure path still supplies both, and external callers
+  // may too — validate paired presence (either both supplied or both absent)
+  // and shape (key ≥32 hex chars; address EVM-shaped) when present.
+  if ((p.agentbookKey != null) !== (p.agentbookAddress != null)) {
+    throw new Error(
+      "cloud-init-tarball: agentbookKey and agentbookAddress must be set together " +
+      "(supplying one without the other indicates a bug in the caller's TarballParams construction). " +
+      "For the on-VM-generation path, omit BOTH.",
+    );
+  }
+  if (p.agentbookKey != null && p.agentbookAddress != null) {
+    if (p.agentbookKey.length < 32) {
+      throw new Error("cloud-init-tarball: agentbookKey must be ≥32 chars when present");
+    }
+    // EVM address is 0x-prefixed 40-hex-char string. Conservative validation —
+    // we don't checksum-verify here (buildWalletMd / configureOpenClaw both
+    // accept lowercased or checksummed forms).
+    if (!/^0x[a-fA-F0-9]{40}$/.test(p.agentbookAddress)) {
+      throw new Error(
+        `cloud-init-tarball: agentbookAddress must be 0x-prefixed 40-hex-char EVM address (got "${p.agentbookAddress.slice(0, 20)}...")`,
+      );
+    }
+  }
   if (p.apiMode !== "all_inclusive" && p.apiMode !== "byok") {
     throw new Error(`cloud-init-tarball: invalid apiMode "${p.apiMode}"`);
   }
@@ -517,8 +556,16 @@ export function buildDotEnv(p: TarballParams): string {
     `INSTACLAW_USER_ID=${p.userId}`,
     `INSTACLAW_VM_NAME=${p.vmName}`,
     `INSTACLAW_NEXTAUTH_URL=${p.nextauthUrl.replace(/\/+$/, "")}`,
-    `AGENTBOOK_ADDRESS=${p.agentbookAddress}`,
   ];
+
+  // 2026-05-15: AGENTBOOK_ADDRESS now conditional. The cloud-init bootstrap+
+  // fetch path doesn't know the address at endpoint-fetch time (key generated
+  // on-VM via openssl during setup.sh, address derived later). Setup.sh
+  // appends this line itself once it has computed the address, OR a future
+  // cloud-init-callback enhancement backfills both the .env line and the
+  // instaclaw_vms.agentbook_wallet_address column. SSH-configure path
+  // continues to supply agentbookAddress for byte-parity.
+  if (p.agentbookAddress) lines.push(`AGENTBOOK_ADDRESS=${p.agentbookAddress}`);
 
   if (p.bankrEvmAddress) lines.push(`BANKR_WALLET_ADDRESS=${p.bankrEvmAddress}`);
   if (p.bankrApiKey) lines.push(`BANKR_API_KEY=${p.bankrApiKey}`);
@@ -592,8 +639,17 @@ export function buildDotEnv(p: TarballParams): string {
  * wallet/agent.key — AgentBook private key, written as text. Mode 0o600.
  * No transformation; the agentbookKey field carries the raw key body
  * (generated server-side by the agentbook wallet provisioning).
+ *
+ * 2026-05-15: When agentbookKey is undefined (cloud-init bootstrap+fetch
+ * path where the key is generated on-VM via openssl during setup.sh),
+ * returns null. Callers MUST guard the corresponding tar entry — see
+ * collectPartialEntries which checks for null before pushing the entry.
+ * Returning null instead of throwing keeps this function safe to call
+ * on a partially-populated TarballParams without forcing every test
+ * fixture to either supply the key or wrap the call in a try/catch.
  */
-export function buildAgentKey(p: TarballParams): string {
+export function buildAgentKey(p: TarballParams): string | null {
+  if (p.agentbookKey == null) return null;
   return p.agentbookKey.endsWith("\n") ? p.agentbookKey : p.agentbookKey + "\n";
 }
 
@@ -1053,11 +1109,20 @@ export function collectPartialEntries(p: TarballParams): TarEntry[] {
     });
   }
 
-  entries.push({
-    path: "home/openclaw/.openclaw/wallet/agent.key",
-    body: buildAgentKey(p),
-    mode: 0o600,
-  });
+  // 2026-05-15: agent.key emission is CONDITIONAL on agentbookKey being
+  // supplied. The cloud-init bootstrap+fetch path omits the key (it's
+  // generated on-VM during setup.sh via openssl rand -hex 32 — no private
+  // keys in our DB ever). The legacy SSH-configure path and explicit-key
+  // callers still flow through here and get the wallet/agent.key entry
+  // packed at mode 0o600 as before.
+  const agentKeyBody = buildAgentKey(p);
+  if (agentKeyBody !== null) {
+    entries.push({
+      path: "home/openclaw/.openclaw/wallet/agent.key",
+      body: agentKeyBody,
+      mode: 0o600,
+    });
+  }
 
   entries.push(...buildPartnerOverlays(p));
 
