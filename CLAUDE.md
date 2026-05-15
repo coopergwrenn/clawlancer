@@ -1429,6 +1429,8 @@ When rotating any secret in `SECRET_ENV_VAR_SOURCES` (`lib/vm-reconcile.ts`), bu
 
 The 2026-05-14 EDGEOS_BEARER_TOKEN incident is what this mechanism prevents: without it, the only paths to deliver a rotated secret to a caught-up VM were (a) a heavyweight manifest version bump, (b) operator-driven SQL `cv` decrement, or (c) out-of-band SSH fleet patch. All three are operator-toil shortcuts to a structural gap. `secret_version` decouples secret distribution from manifest drift — both axes can advance independently.
 
+**Asymmetric naming (`vercelKey`):** when the Vercel-side env var name differs from what the VM-side agent expects (e.g., Brave Search ships as `BRAVE_SEARCH_API_KEY` in Vercel via Brave's own naming convention, but the OpenClaw browser plugin reads `BRAVE_API_KEY` on the VM), set the optional `vercelKey` field on the `SECRET_ENV_VAR_SOURCES` entry. `envKey` stays the VM-side name (what gets written to `~/.openclaw/.env`), `vercelKey` is the `process.env[X]` name `stepEnvVarPush` reads from. When `vercelKey` is unset, it defaults to `envKey` (same name on both sides — the original behavior, unchanged). 2026-05-15 BRAVE_API_KEY enrollment (commit `03e1c87f`) is the reference precedent — adding a one-line entry plus the field handled the asymmetry without renaming on either side, which let a single Vercel variable feed every VM under the agent-expected name.
+
 **Procedure:**
 1. Update the secret value in Vercel env (all 3 environments — `printf '%s' ...| vercel env add`, no trailing newline per Rule 6).
 2. Bump `SECRET_VERSION` in `lib/vm-reconcile.ts` (`+1`, never reset).
