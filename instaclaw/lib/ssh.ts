@@ -7294,8 +7294,10 @@ export async function configureOpenClaw(
       'MemoryMax=3500M',
       'TasksMax=75',
       'OOMScoreAdjust=500',
-      'RuntimeMaxSec=86400',
-      'RuntimeRandomizedExtraSec=3600',
+      // Removed 2026-05-15: RuntimeMaxSec=86400 + RuntimeRandomizedExtraSec=3600.
+      // The 24h forced restart caused mid-conversation SIGTERM with no drain
+      // mechanism. MemoryHigh=3G + MemoryMax=3500M cgroup limits provide the
+      // OOM safety net. See P0 incident 2026-05-14 00:01:34 UTC on vm-050.
       'OVEOF',
       'fi',
       '',

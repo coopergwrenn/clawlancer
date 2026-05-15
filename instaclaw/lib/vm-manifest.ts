@@ -1225,8 +1225,59 @@ export const VM_MANIFEST = {
    * Rollback: revert this commit. stepSoul/stepAgents idempotently restore
    * the prior content via the V2 markers. cv-decrement script can re-mark
    * affected VMs as cv=95-eligible if needed.
+   *
+   * v100 (2026-05-15): Removed RuntimeMaxSec=86400 + RuntimeRandomizedExtraSec=3600
+   * from systemdOverrides. The 24h forced restart caused mid-conversation SIGTERM
+   * with no drain mechanism. Discovered after P0 incident 2026-05-14 00:01:34 UTC
+   * on vm-050 (Cooper mid-conversation; queued "the one from uofa" message hit
+   * gateway DOWN window + post-restart gbrain MCP hang → user-facing "Something
+   * went wrong, use /new" Telegram error).
+   *
+   * Justification for removal:
+   *   - Original justification ("prevent memory bloat") has no documented
+   *     incident backing — no record of gateway OOM after >24h uptime.
+   *   - MemoryHigh=3G + MemoryMax=3500M cgroup limits provide the real-OOM
+   *     restart safety net if bloat ever materializes (kernel kills the
+   *     gateway, systemd Restart=always brings it back).
+   *   - The 24h restart costs ~0.2-0.5 customer-impacting incidents per day
+   *     across the fleet (mid-conversation SIGTERM rate); zero observed
+   *     memory-bloat incidents prevented.
+   *
+   * Companion fix landing separately: session-recovery on startup (scan latest
+   * jsonl for orphan tool_use without matching tool_result; emit synthetic
+   * tool_result with is_error=true so the next agent turn sees a valid messages
+   * array). Even after this RuntimeMaxSec removal, gateways still SIGTERM on
+   * other paths (deploys, manual restarts, kernel updates), so the broken-tool_use
+   * problem persists until the recovery path lands.
+   *
+   * Three-site change (deployed via stepSystemdUnit on reconcile):
+   *   - lib/vm-manifest.ts:2126-2127 — manifest template (this file)
+   *   - lib/ssh.ts:7297-7298 — configureOpenClaw fresh-VM path
+   *   - app/api/vm/fix-infra/route.ts:175-176 — manual fix-infra path
+   *
+   * Fleet rollout: reconcile-fleet picks up v100 next cycle. For each VM at
+   * cv<100, stepSystemdUnit rewrites override.conf without the two lines,
+   * daemon-reload + restart. With CONFIG_AUDIT_BATCH_SIZE=1 + 220s per-VM
+   * timeout, ~150 cv<100 VMs drain in ~7-9h. During that window, each VM gets
+   * exactly one (controlled, verified) gateway restart. After: zero scheduled
+   * gateway restarts on the fleet.
+   *
+   * The irony: rolling this out requires ~150 gateway restarts — the very
+   * thing we're eliminating. Accepted because (a) the rollout window is once,
+   * (b) the natural 24h cycle would have done these restarts anyway over the
+   * next 25h, (c) reconcile-fleet restarts include verification (Rule 5) which
+   * natural systemd kills don't.
+   *
+   * Detection note: after rollout, sample 5 VMs and confirm
+   * `~/.config/systemd/user/openclaw-gateway.service.d/override.conf` does NOT
+   * contain "RuntimeMaxSec" or "RuntimeRandomizedExtraSec". Also confirm
+   * `systemctl --user show openclaw-gateway --property=RuntimeMaxSec` returns
+   * "infinity" (the systemd default).
+   *
+   * Rollback: revert this commit. Reconciler re-adds the two lines on next
+   * cycle. 24h scheduled restart resumes for the cohort.
    */
-  version: 99,
+  version: 100,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -2123,8 +2174,12 @@ export const VM_MANIFEST = {
     "MemoryMax": "3500M",           // Hard kill: cgroup OOM at 3.5GB (leaves 500MB for sshd/system)
     "TasksMax": "120",              // v86 (2026-05-05): raised 75 → 120. The 75 cap was the *real* root cause of vm-724-class fork errors (34/24h on vm-724 with 0 zombies in the snapshot — see docs/prd/zombie-reaping-tini-analysis-2026-05-05.md §11). Chrome alone uses ~50; Node ~11; idle headroom was 14 — easily blown by an agent burst. 120 restores burst headroom (~59) without restoring the full pre-incident 150 risk. Canary on vm-050 first per Upgrade Playbook before fleet rollout.
     "OOMScoreAdjust": "500",        // Higher = killed first. sshd has -900. Gateway dies before sshd.
-    "RuntimeMaxSec": "86400",       // Auto-restart gateway after 24h to prevent memory bloat
-    "RuntimeRandomizedExtraSec": "3600", // Stagger restarts across fleet by up to 1h
+    // Removed 2026-05-15: RuntimeMaxSec=86400 + RuntimeRandomizedExtraSec=3600. The 24h
+    // forced restart caused mid-conversation SIGTERM with no drain mechanism.
+    // MemoryHigh=3G + MemoryMax=3500M cgroup limits provide the OOM safety net.
+    // See P0 incident 2026-05-14 00:01:34 UTC on vm-050 (Cooper mid-conversation,
+    // queued message hit gateway DOWN window + post-restart MCP hang → user-facing
+    // "Something went wrong, use /new" Telegram error).
     // Virtuals Protocol partner attribution — ensures ALL child processes (agent tools,
     // npx acp, dgclaw.sh) inherit PARTNER_ID regardless of working directory or dotenv.
     // Confirmed by Mira @ Virtuals 2026-03-30: "inject PARTNER_ID=INSTACLAW to process.env"
