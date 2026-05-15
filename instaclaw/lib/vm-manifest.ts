@@ -2104,23 +2104,36 @@ export const VM_MANIFEST = {
       command: "find ~/.openclaw/workspace/backups -mindepth 1 -maxdepth 1 -type d -mtime +14 -exec rm -rf {} + 2>/dev/null",
       marker: "workspace/backups",
     },
-    // ── Consensus matching pipeline ──
-    // Runs Layer 1 → Layer 2 → Layer 3 → POST results every 30 minutes.
-    // The orchestrator self-throttles (25-min minimum interval) and applies
-    // 0-240s startup jitter to prevent 200-VM thundering herd against
-    // Anthropic. Cold-start branch handles thin-MEMORY.md users (skips L3,
-    // labels output preliminary). Aborts cycle on >25% Layer 3 fallback
-    // rate to preserve last-good cached_top3 instead of writing degraded
-    // results. Output to /tmp/consensus_match.log for forensics; stderr
-    // contains pipeline.<event> telemetry.
+    // ── Consensus matching pipeline ── DISABLED 2026-05-15 ──
+    // Removed from the manifest so the reconciler stops re-installing the
+    // cron line after `scripts/_disable-consensus-pipeline-cron.ts` cleared
+    // it across the fleet. The Vercel-side CONSENSUS_INTRO_FLOW_ENABLED=false
+    // kill switch (lib/outreach-feature-flag.ts) blocks the API reserve
+    // path, but the pipeline's user-notify path (Telegram via
+    // maybe_send_match_notification → notify_user.sh) is NOT gated by the
+    // API kill — running the cron on each VM still chattered match results
+    // into the owner's Telegram inbox, which Timour Kosters reported as "5
+    // connection requests in 4 hours" on 2026-05-15.
     //
-    // Lays dormant on existing VMs until the next manifest version bump
-    // triggers reconciler propagation.
-    {
-      schedule: "*/30 * * * *",
-      command: "python3 ~/.openclaw/scripts/consensus_match_pipeline.py >> /tmp/consensus_match.log 2>&1",
-      marker: "consensus_match_pipeline.py",
-    },
+    // To re-enable:
+    //  1. Restore this entry, OR
+    //  2. Run scripts/_reenable-consensus-pipeline-cron.ts (mirror of the
+    //     disable script — produces this exact cron line).
+    // AND
+    //  3. Remove CONSENSUS_INTRO_FLOW_ENABLED env var from Vercel:
+    //     `npx vercel env rm CONSENSUS_INTRO_FLOW_ENABLED production`
+    //     and redeploy.
+    // AND
+    //  4. (recommended) Fix the retry-path bug in consensus_match_pipeline.py
+    //     — `retry_unacked_outreach` sends XMTP via the local listener
+    //     BEFORE POST'ing phase=retry to the API. Reorder so the API check
+    //     gates the send (consistent with the reserve path).
+    //
+    // {
+    //   schedule: "*/30 * * * *",
+    //   command: "python3 ~/.openclaw/scripts/consensus_match_pipeline.py >> /tmp/consensus_match.log 2>&1",
+    //   marker: "consensus_match_pipeline.py",
+    // },
     // ── Intent extraction (Component 4) ──
     // Runs every 15 minutes on each VM. Self-throttles internally (only
     // extracts when MEMORY.md has materially changed AND last extraction
