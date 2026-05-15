@@ -1,9 +1,9 @@
-# Changelog — generated 2026-05-14
+# Changelog — generated 2026-05-15
 
-Window: `1bac526c1f7c2d262c0308d0e58dd951ebc618ab` → `HEAD` (HEAD = `2a18c0da`)
+Window: `2a18c0da80c278213c8a75bcf71169647e6b0a54` → `HEAD` (HEAD = `5612bddf`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 2a18c0da80c278213c8a75bcf71169647e6b0a54 -->
+<!-- LAST_GENERATED_SHA: 5612bddf017861f845981eb240ef8e87626d7573 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `2a18c0da` 2026-05-14 — feat(cloud-init): Day 8b BE-10 — pip install §17b.2 Python packages [2 files] _(ai-assisted)_
-- `300202b8` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `73222d6f` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `5612bddf` 2026-05-15 — feat(cloud-init): Day 8b BE-5 — skill clones + InstaClaw overlays (bankr + consensus-2026 + edge-esmeralda) [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `2a18c0da` 2026-05-14 — feat(cloud-init): Day 8b BE-10 — pip install §17b.2 Python packages [2 files] _(ai-assisted)_
+- `5612bddf` 2026-05-15 — feat(cloud-init): Day 8b BE-5 — skill clones + InstaClaw overlays (bankr + consensus-2026 + edge-esmeralda) [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `300202b8` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `73222d6f` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `5612bddf` 2026-05-15 — [infrastructure, edge] — feat(cloud-init): Day 8b BE-5 — skill clones + InstaClaw overlays (bankr + consensus-2026 + edge-esmeralda)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `2a18c0da` 2026-05-14 — feat(cloud-init): Day 8b BE-10 — pip install §17b.2 Python packages
+- `5612bddf` 2026-05-15 — feat(cloud-init): Day 8b BE-5 — skill clones + InstaClaw overlays (bankr + consensus-2026 + edge-esmeralda)
 
 ## Appendix — every commit (chronological)
 
-- `300202b8` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
-- `2a18c0da` 2026-05-14 — feat(cloud-init): Day 8b BE-10 — pip install §17b.2 Python packages [2 files] _(ai-assisted)_
+- `73222d6f` 2026-05-14 — chore(changelog): auto-update [skip ci] [2 files]
+- `5612bddf` 2026-05-15 — feat(cloud-init): Day 8b BE-5 — skill clones + InstaClaw overlays (bankr + consensus-2026 + edge-esmeralda) [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
