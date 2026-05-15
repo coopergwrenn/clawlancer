@@ -132,7 +132,12 @@ const GBRAIN_INSTALL_TIMEOUT_MS = 240_000;
 // Bump policy: increment by 1 per rotation. Don't reset. Past values don't
 // need to be remembered — only the comparison `vm.secret_version <
 // SECRET_VERSION` matters for queue inclusion.
-export const SECRET_VERSION = 1;
+//
+// v1 (2026-05-14): initial baseline + EDGEOS_BEARER_TOKEN rotation.
+// v2 (2026-05-15): BRAVE_API_KEY enrollment (SECRET_ENV_VAR_SOURCES new
+//                  entry via vercelKey: Vercel-side BRAVE_SEARCH_API_KEY →
+//                  VM-side BRAVE_API_KEY). Universal — every VM gets it.
+export const SECRET_VERSION = 2;
 
 // ── Result types ──
 
@@ -1083,8 +1088,24 @@ async function stepWorkspaceIntegrity(
  * re-apply, replace) pass via `scripts/_test-stepenvvarpush.ts`.
  */
 interface SecretEnvVarSource {
-  /** Key name as it appears in process.env AND in ~/.openclaw/.env (same name on both sides). */
+  /**
+   * Key name on the VM side — appears in `~/.openclaw/.env` and is what the
+   * agent reads at runtime. Also used as the Vercel-side name UNLESS
+   * `vercelKey` is set below (asymmetric-naming case).
+   */
   envKey: string;
+  /**
+   * Optional override for the Vercel-side process.env name when it differs
+   * from the VM-side `envKey`. Defaults to `envKey` when unset.
+   *
+   * Use this when Vercel was provisioned with a different convention than
+   * what the VM agent expects (e.g., BRAVE Search ships as
+   * `BRAVE_SEARCH_API_KEY` in Vercel but the VM-side OpenClaw plugin
+   * looks for `BRAVE_API_KEY`). Renaming on the Vercel side is the
+   * cleanest fix when there's only one entry, but using `vercelKey` lets
+   * the same Vercel variable feed multiple consumers with different names.
+   */
+  vercelKey?: string;
   /** Human-readable label for logs (e.g., "gbrain Anthropic project key"). */
   label: string;
   /**
@@ -1117,6 +1138,18 @@ const SECRET_ENV_VAR_SOURCES: SecretEnvVarSource[] = [
   // Response Runbook. The 2026-05-14 incident shipped muvionai.com (extra
   // 'o' from a soft-wrap join) before being caught.
   { envKey: "EDGEOS_BEARER_TOKEN", label: "EdgeOS attendee directory JWT", partnerGate: "edge_city" },
+  // 2026-05-15: BRAVE Search API key enrollment. Vercel ships this under
+  // `BRAVE_SEARCH_API_KEY` (provisioned via Brave dashboard, matches
+  // Brave's naming convention). The OpenClaw browser plugin + web_search
+  // tool on the VM reads `BRAVE_API_KEY` from ~/.openclaw/.env. The
+  // `vercelKey` field bridges the asymmetric naming so a single Vercel
+  // env var feeds every VM with the agent-expected name.
+  // Universal (no partnerGate): web search is core capability for every
+  // tier, not partner-gated.
+  // Companion bump: SECRET_VERSION 1 → 2 so caught-up VMs (sv=1 from the
+  // v1 EDGEOS rotation) re-enter the reconcile queue and pick up the
+  // new key.
+  { envKey: "BRAVE_API_KEY", vercelKey: "BRAVE_SEARCH_API_KEY", label: "Brave Search API key" },
 ];
 
 // Bash payload that does the write. Assembled as a string array so there's no
@@ -1186,7 +1219,7 @@ async function stepEnvVarPush(
   result: ReconcileResult,
   dryRun: boolean,
 ): Promise<void> {
-  for (const { envKey, label, partnerGate } of SECRET_ENV_VAR_SOURCES) {
+  for (const { envKey, vercelKey, label, partnerGate } of SECRET_ENV_VAR_SOURCES) {
     // Partner-gate check: silent skip when this entry is restricted to a
     // specific partner and the VM doesn't match. Mirrors the stepGbrain
     // gate semantics — never push to result.errors (would hold config_version
@@ -1201,12 +1234,17 @@ async function stepEnvVarPush(
       continue;
     }
 
-    const value = process.env[envKey];
+    // 2026-05-15: vercelKey lets a Vercel-side env var with a different
+    // name feed the VM-side .env under `envKey`. When unset, vercelKey
+    // defaults to envKey (same name on both sides — the original behavior).
+    const sourceKey = vercelKey ?? envKey;
+    const value = process.env[sourceKey];
     if (!value || value.length < 20) {
       // Silent skip — don't block config_version. Logged so dashboards / the
       // future gbrain-coverage cron (P2) can pick up on persistent absences.
       logger.info("stepEnvVarPush: skipping (env var not set in Vercel)", {
         envKey,
+        vercelKey: sourceKey,
         label,
         value_len: value?.length ?? 0,
       });
