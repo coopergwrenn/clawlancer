@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-15
 
-Window: `79eaabc44ba3b0542e23bf874bdf6f4b9a5e81a0` → `HEAD` (HEAD = `aedd24be`)
+Window: `aedd24be21b3c873c54eedf3b8bedef09a925146` → `HEAD` (HEAD = `087434b4`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: aedd24be21b3c873c54eedf3b8bedef09a925146 -->
+<!-- LAST_GENERATED_SHA: 087434b46be11baf9d57c5a41a4295fa553a639b -->
 
 ## Summary
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `aedd24be` 2026-05-15 — fix(reconcile): stepPythonPackages BE-10 fleet heal — crawlee 1.5.0 pin + 8 §17b.2 packages [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `4c1a5dad` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
+- `087434b4` 2026-05-15 — fix(reconcile): stepExternalSkillHeal BE-9 fleet heal — mcporter clawlancer config [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `c36f4fe5` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `aedd24be` 2026-05-15 — fix(reconcile): stepPythonPackages BE-10 fleet heal — crawlee 1.5.0 pin + 8 §17b.2 packages [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `087434b4` 2026-05-15 — fix(reconcile): stepExternalSkillHeal BE-9 fleet heal — mcporter clawlancer config [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `4c1a5dad` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
+- `c36f4fe5` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `aedd24be` 2026-05-15 — [reconciler, infrastructure] — fix(reconcile): stepPythonPackages BE-10 fleet heal — crawlee 1.5.0 pin + 8 §17b.2 packages
+- `087434b4` 2026-05-15 — [reconciler, infrastructure, edge] — fix(reconcile): stepExternalSkillHeal BE-9 fleet heal — mcporter clawlancer config
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `aedd24be` 2026-05-15 — fix(reconcile): stepPythonPackages BE-10 fleet heal — crawlee 1.5.0 pin + 8 §17b.2 packages
+- `087434b4` 2026-05-15 — fix(reconcile): stepExternalSkillHeal BE-9 fleet heal — mcporter clawlancer config
 
 ## Appendix — every commit (chronological)
 
-- `4c1a5dad` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
-- `aedd24be` 2026-05-15 — fix(reconcile): stepPythonPackages BE-10 fleet heal — crawlee 1.5.0 pin + 8 §17b.2 packages [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c36f4fe5` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
+- `087434b4` 2026-05-15 — fix(reconcile): stepExternalSkillHeal BE-9 fleet heal — mcporter clawlancer config [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
