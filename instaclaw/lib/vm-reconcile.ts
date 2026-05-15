@@ -13,7 +13,7 @@
  */
 
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
-import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, AGENTKIT_CLI_PINNED_VERSION, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, PRCTL_SUBREAPER_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
+import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, AGENTKIT_CLI_PINNED_VERSION, BANKR_SKILL_PATCH_MARKER, BANKR_SKILL_PATCH_DIRECTIVE, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, PRCTL_SUBREAPER_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
 import { INSTALL_GBRAIN_SH, VERIFY_GBRAIN_MCP_PY } from "./gbrain-scripts-content";
 import {
   DISPATCH_SCRIPTS,
@@ -613,6 +613,14 @@ export async function reconcileVM(
 
     currentStep = "heal-skill-dirs";
     await stepSkillDirectories(ssh, result, dryRun, strict);
+
+    // Step 8i2: External-skill heal — bankr overlay + clanker/base
+    // subdir delete + consensus-2026 clone + cron + (edge_city)
+    // edge-esmeralda clone + cron. Fleet-heal counterpart to cloud-
+    // init BE-5 (commit 5612bddf). Bankr overlay is missing on every
+    // existing fleet VM today; this step heals on next cron tick.
+    currentStep = "heal-external-skills";
+    await stepExternalSkillHeal(ssh, vm, result, dryRun);
 
     currentStep = "heal-gateway-watchdog";
     await stepGatewayWatchdogTimer(ssh, result, dryRun, strict, isPausedState);
@@ -4738,6 +4746,258 @@ async function stepSkillDirectories(
     }
   } catch (err) {
     recordHealError(result, strict, `skill-dirs: ${String(err).slice(0, 200)}`);
+  }
+}
+
+/**
+ * Step 8i2: External-skill heal — bankr overlay + clanker/base subdir
+ * delete + consensus-2026 clone + cron + (edge_city) edge-esmeralda
+ * clone + cron.
+ *
+ * Fleet-heal counterpart to cloud-init Day 8b BE-5 (commit 5612bddf).
+ * BE-5 added these to setup.sh for NEW cloud-init VMs; this step heals
+ * the EXISTING fleet that's been missing them since the snapshot bake
+ * pattern took hold.
+ *
+ * Gaps this step closes (verified empirically on vm-944 2026-05-14
+ * AND vm-050 cv=95 paying customer):
+ *
+ *   - Bankr overlay: snapshot pre-clones bankr but does NOT apply
+ *     the INSTACLAW_BANKR_PATCH_V1 overlay. EVERY existing VM today
+ *     lacks the marker — the agent gets the upstream bankr/SKILL.md
+ *     without InstaClaw's routing context → `bankr launch` may
+ *     misroute (Doug-class incident hazard).
+ *   - Bankr subdirs: snapshot pre-clones bankr WITH the clanker
+ *     and base subdirs. clanker requires PRIVATE_KEY not configured
+ *     on InstaClaw VMs; base is an empty placeholder. Both confuse
+ *     the agent when the user mentions "tokens".
+ *   - consensus-2026 clone: NOT in snapshot. Missing on every fleet
+ *     VM that hasn't been through configureOpenClaw recently.
+ *   - consensus-2026 auto-update cron: NOT in snapshot crontab. Same.
+ *   - edge-esmeralda clone (partner=edge_city): NOT in snapshot.
+ *     stepDeployEdgeOverlay's pre-check WARNS when edge dir missing
+ *     (Rule 39) — this step fills the gap by cloning.
+ *   - edge-esmeralda auto-update cron: NOT in snapshot crontab.
+ *
+ * Coexistence with existing reconciler steps:
+ *   - stepSkillDirectories (Step 8i, line 4694) clones bankr if the
+ *     dir is missing entirely. This step assumes the dir EXISTS and
+ *     applies the overlay + subdir delete.
+ *   - stepDeployEdgeOverlay (line 6356) writes INSTACLAW_OVERLAY.md
+ *     if the edge dir exists. This step clones the edge dir so
+ *     stepDeployEdgeOverlay can do its work on the NEXT cycle (1-
+ *     cycle latency for first overlay application on new VMs).
+ *
+ * Failure classification:
+ *   - Bankr SKILL.md absent after stepSkillDirectories ran → result
+ *     .warnings (Rule 39 — needs operator-side re-clone, not a fleet
+ *     -wide cv stall).
+ *   - Bankr overlay write fails (local operation, should succeed if
+ *     SKILL.md exists) → result.errors so cv stays put.
+ *   - Bankr subdir delete fails → result.warnings (cosmetic).
+ *   - Consensus / edge clone fails (network-dependent) → result
+ *     .warnings (transient — don't stall cv on a network blip).
+ *   - Cron install fails (local) → result.errors (should always
+ *     succeed if crontab daemon is up).
+ */
+async function stepExternalSkillHeal(
+  ssh: SSHConnection,
+  vm: VMRecord & { partner?: string | null },
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // ── Bankr overlay + subdir delete (universal) ─────────────────────
+  // Probe state with a single ssh.execCommand so we know exactly what
+  // to fix. Marker check is the idempotency primitive.
+  try {
+    const probe = await ssh.execCommand(
+      `BANKR_SKILL_BASE="$HOME/.openclaw/skills/bankr"; ` +
+      `BANKR_SKILL_MD="$BANKR_SKILL_BASE/bankr/SKILL.md"; ` +
+      `base=$([ -d "$BANKR_SKILL_BASE" ] && echo 1 || echo 0); ` +
+      `md=$([ -f "$BANKR_SKILL_MD" ] && echo 1 || echo 0); ` +
+      `marker=$([ -f "$BANKR_SKILL_MD" ] && grep -q "${BANKR_SKILL_PATCH_MARKER}" "$BANKR_SKILL_MD" && echo 1 || echo 0); ` +
+      `clanker=$([ -d "$BANKR_SKILL_BASE/clanker" ] && echo 1 || echo 0); ` +
+      `base_sub=$([ -d "$BANKR_SKILL_BASE/base" ] && echo 1 || echo 0); ` +
+      `echo "base=$base md=$md marker=$marker clanker=$clanker base_sub=$base_sub"`
+    );
+    const m = probe.stdout.match(/base=(\d) md=(\d) marker=(\d) clanker=(\d) base_sub=(\d)/);
+    if (!m) {
+      result.warnings.push(`bankr-overlay: probe parse failed: ${probe.stdout.slice(0, 120)}`);
+    } else {
+      const [, bankrBase, bankrMd, bankrMarker, hasClanker, hasBaseSub] = m;
+
+      // Overlay: apply if SKILL.md exists but marker absent.
+      if (bankrBase !== "1") {
+        result.warnings.push("bankr-overlay: bankr skill dir does not exist (stepSkillDirectories must clone it first)");
+      } else if (bankrMd !== "1") {
+        result.warnings.push("bankr-overlay: bankr dir exists but bankr/bankr/SKILL.md is missing (corrupt clone — operator re-clone needed)");
+      } else if (bankrMarker === "1") {
+        result.alreadyCorrect.push("bankr-overlay (marker present)");
+      } else if (dryRun) {
+        result.fixed.push("[dry-run] bankr-overlay: would prepend BANKR_SKILL_PATCH_DIRECTIVE");
+      } else {
+        // Atomic prepend: mktemp → cat directive → cat SKILL.md → mv.
+        // Matches the cloud-init BE-5 setup.sh pattern + lib/ssh.ts:5444 byte-parity.
+        const directiveB64 = Buffer.from(BANKR_SKILL_PATCH_DIRECTIVE, "utf-8").toString("base64");
+        const apply = await ssh.execCommand(
+          `BANKR_SKILL_MD="$HOME/.openclaw/skills/bankr/bankr/SKILL.md"; ` +
+          `BANKR_OVERLAY_TMP=$(mktemp) && ` +
+          `echo '${directiveB64}' | base64 -d > "$BANKR_OVERLAY_TMP" && ` +
+          `cat "$BANKR_SKILL_MD" >> "$BANKR_OVERLAY_TMP" && ` +
+          `mv "$BANKR_OVERLAY_TMP" "$BANKR_SKILL_MD" && ` +
+          `grep -q "${BANKR_SKILL_PATCH_MARKER}" "$BANKR_SKILL_MD" && echo APPLIED || echo FAILED`,
+        );
+        if (apply.stdout.includes("APPLIED")) {
+          result.fixed.push("bankr-overlay applied");
+        } else {
+          result.errors.push(
+            `bankr-overlay write failed: stdout=${apply.stdout.slice(-200)} stderr=${apply.stderr.slice(-200)}`,
+          );
+        }
+      }
+
+      // Subdir delete: clanker + base. Always run (idempotent — rm -rf
+      // on absent dirs is a no-op).
+      if (bankrBase === "1" && (hasClanker === "1" || hasBaseSub === "1") && !dryRun) {
+        const del = await ssh.execCommand(
+          `rm -rf "$HOME/.openclaw/skills/bankr/clanker" "$HOME/.openclaw/skills/bankr/base" 2>&1`,
+        );
+        if (del.code === 0) {
+          result.fixed.push(`bankr-subdirs deleted (clanker=${hasClanker} base=${hasBaseSub})`);
+        } else {
+          result.warnings.push(`bankr-subdirs delete failed: ${del.stderr.slice(0, 200)}`);
+        }
+      } else if (bankrBase === "1" && hasClanker === "0" && hasBaseSub === "0") {
+        result.alreadyCorrect.push("bankr-subdirs (clean)");
+      } else if (dryRun && (hasClanker === "1" || hasBaseSub === "1")) {
+        result.fixed.push(`[dry-run] would delete bankr-subdirs (clanker=${hasClanker} base=${hasBaseSub})`);
+      }
+    }
+  } catch (err) {
+    result.warnings.push(`bankr-overlay heal: exception: ${String(err).slice(0, 200)}`);
+  }
+
+  // ── Consensus-2026 clone + cron (universal) ───────────────────────
+  try {
+    const probe = await ssh.execCommand(
+      `dir=$([ -d "$HOME/.openclaw/skills/consensus-2026" ] && echo 1 || echo 0); ` +
+      `md=$([ -f "$HOME/.openclaw/skills/consensus-2026/SKILL.md" ] && echo 1 || echo 0); ` +
+      `cron=$(crontab -l 2>/dev/null | grep -c "skills/consensus-2026" || echo 0); ` +
+      `echo "dir=$dir md=$md cron=$cron"`
+    );
+    const m = probe.stdout.match(/dir=(\d) md=(\d) cron=(\d+)/);
+    if (!m) {
+      result.warnings.push(`consensus-2026: probe parse failed: ${probe.stdout.slice(0, 120)}`);
+    } else {
+      const [, consDir, consMd, consCron] = m;
+
+      // Clone if missing.
+      if (consDir === "0") {
+        if (dryRun) {
+          result.fixed.push("[dry-run] consensus-2026: would clone");
+        } else {
+          const clone = await ssh.execCommand(
+            `timeout 60 git clone --depth 1 https://github.com/coopergwrenn/consensus-2026-skill.git "$HOME/.openclaw/skills/consensus-2026" 2>&1 | tail -3 ; ` +
+            `test -f "$HOME/.openclaw/skills/consensus-2026/SKILL.md" && echo CLONED || echo FAILED`,
+          );
+          if (clone.stdout.includes("CLONED")) {
+            result.fixed.push("consensus-2026 cloned");
+          } else {
+            result.warnings.push(
+              `consensus-2026 clone failed (network or repo issue): ${clone.stdout.slice(-200)}`,
+            );
+          }
+        }
+      } else if (consMd === "1") {
+        result.alreadyCorrect.push("consensus-2026 (cloned)");
+      } else {
+        result.warnings.push("consensus-2026: dir exists but SKILL.md missing (corrupt clone)");
+      }
+
+      // Cron install: re-add if absent OR if any prior entry exists (idempotent grep -v + re-add).
+      // We always re-run to ensure the cron is well-formed.
+      if (!dryRun) {
+        const cronInstall = await ssh.execCommand(
+          `(crontab -l 2>/dev/null | grep -v "consensus-2026-skill" | grep -v "skills/consensus-2026"; ` +
+          `echo "*/30 * * * * cd $HOME/.openclaw/skills/consensus-2026 && git pull --ff-only -q 2>/dev/null") | crontab - && echo OK || echo FAIL`,
+        );
+        if (cronInstall.stdout.includes("OK")) {
+          if (consCron === "0") {
+            result.fixed.push("consensus-2026 cron installed");
+          } else {
+            result.alreadyCorrect.push("consensus-2026 cron (present)");
+          }
+        } else {
+          result.errors.push(
+            `consensus-2026 cron install failed: ${cronInstall.stdout.slice(-200)}`,
+          );
+        }
+      }
+    }
+  } catch (err) {
+    result.warnings.push(`consensus-2026 heal: exception: ${String(err).slice(0, 200)}`);
+  }
+
+  // ── Edge-esmeralda clone + cron (partner=edge_city only) ──────────
+  // Overlay (INSTACLAW_OVERLAY.md) is handled by stepDeployEdgeOverlay
+  // on a subsequent cycle once the clone lands here.
+  if (vm.partner !== "edge_city") return;
+
+  try {
+    const probe = await ssh.execCommand(
+      `dir=$([ -d "$HOME/.openclaw/skills/edge-esmeralda" ] && echo 1 || echo 0); ` +
+      `md=$([ -f "$HOME/.openclaw/skills/edge-esmeralda/SKILL.md" ] && echo 1 || echo 0); ` +
+      `cron=$(crontab -l 2>/dev/null | grep -c "edge-agent-skill" || echo 0); ` +
+      `echo "dir=$dir md=$md cron=$cron"`
+    );
+    const m = probe.stdout.match(/dir=(\d) md=(\d) cron=(\d+)/);
+    if (!m) {
+      result.warnings.push(`edge-esmeralda: probe parse failed: ${probe.stdout.slice(0, 120)}`);
+      return;
+    }
+    const [, edgeDir, edgeMd, edgeCron] = m;
+
+    if (edgeDir === "0") {
+      if (dryRun) {
+        result.fixed.push("[dry-run] edge-esmeralda: would clone");
+      } else {
+        const clone = await ssh.execCommand(
+          `timeout 60 git clone --depth 1 https://github.com/aromeoes/edge-agent-skill.git "$HOME/.openclaw/skills/edge-esmeralda" 2>&1 | tail -3 ; ` +
+          `test -f "$HOME/.openclaw/skills/edge-esmeralda/SKILL.md" && echo CLONED || echo FAILED`,
+        );
+        if (clone.stdout.includes("CLONED")) {
+          result.fixed.push("edge-esmeralda cloned");
+        } else {
+          result.warnings.push(
+            `edge-esmeralda clone failed (network or repo issue): ${clone.stdout.slice(-200)}`,
+          );
+        }
+      }
+    } else if (edgeMd === "1") {
+      result.alreadyCorrect.push("edge-esmeralda (cloned)");
+    } else {
+      result.warnings.push("edge-esmeralda: dir exists but SKILL.md missing (corrupt clone)");
+    }
+
+    if (!dryRun) {
+      const cronInstall = await ssh.execCommand(
+        `(crontab -l 2>/dev/null | grep -v "edge-agent-skill"; ` +
+        `echo "*/30 * * * * cd $HOME/.openclaw/skills/edge-esmeralda && git pull --ff-only -q 2>/dev/null") | crontab - && echo OK || echo FAIL`,
+      );
+      if (cronInstall.stdout.includes("OK")) {
+        if (edgeCron === "0") {
+          result.fixed.push("edge-esmeralda cron installed");
+        } else {
+          result.alreadyCorrect.push("edge-esmeralda cron (present)");
+        }
+      } else {
+        result.errors.push(
+          `edge-esmeralda cron install failed: ${cronInstall.stdout.slice(-200)}`,
+        );
+      }
+    }
+  } catch (err) {
+    result.warnings.push(`edge-esmeralda heal: exception: ${String(err).slice(0, 200)}`);
   }
 }
 
