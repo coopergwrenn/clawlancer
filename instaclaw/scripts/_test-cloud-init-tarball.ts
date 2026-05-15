@@ -3134,6 +3134,46 @@ async function test17_BuildCloudInitTarball() {
       `[fullParams] tarball entry count === 19 (got ${actualPaths.size})`,
     );
 
+    // 2026-05-15 Day 13: tarball SIZE budget assertion.
+    //
+    // Why this exists: the cloud-init tarball is downloaded over HTTPS by
+    // the VM at first boot. Two failure modes a runaway size would cause:
+    //
+    //   (1) Linode's user_data limit is ~49KB (pre-base64). The bootstrap
+    //       script size is checked separately (lib/cloud-init-userdata.ts
+    //       BOOTSTRAP_MAX_BYTES=4096), but the TARBALL is fetched at runtime
+    //       and isn't subject to that limit. Still — a multi-MB tarball
+    //       takes meaningful seconds over slow links and pushes the
+    //       bootstrap close to its curl `-m 30` timeout window.
+    //
+    //   (2) Server-side memory: the endpoint buffers the full tarball
+    //       before responding (per Day 9-10 design — atomic success/failure).
+    //       Vercel Fluid Compute is generous on memory, but unbounded growth
+    //       would eventually OOM the function.
+    //
+    // The budget below is sized at ~3× the heaviest observed fixture so
+    // legitimate future additions (new skills, partner overlays, MEMORY.md
+    // growth) don't false-alarm, but a runaway-include regression (e.g.,
+    // accidentally embedding all of node_modules) trips immediately.
+    //
+    // If this assertion fires legitimately because we genuinely added a
+    // useful chunk of content, bump the budget — don't disable the check.
+    // The fullParams fixture is intentionally maxed out (every conditional
+    // field set), so 200KB is generous headroom over current ~30-40KB.
+    const FULL_PARAMS_TARBALL_MAX_BYTES = 200_000; // 200KB
+    assert(
+      buf.length < FULL_PARAMS_TARBALL_MAX_BYTES,
+      `[fullParams] tarball stays under 200KB budget (got ${buf.length} bytes — ` +
+        `bump the budget if this is a legitimate content addition, do NOT remove the check)`,
+    );
+    // Non-trivially-sized lower bound — guards against an "empty tarball"
+    // regression where buildCloudInitTarball returns a 0-byte stream.
+    assert(
+      buf.length > 10_000,
+      `[fullParams] tarball is non-trivially sized (got ${buf.length} bytes — ` +
+        `under 10KB means many entries are missing or empty)`,
+    );
+
     // BE-7 byte-parity + mode pin verification (the two new entries
     // from Day 8b BE-7). Source files are read at module load via
     // fs.readFileSync; tarball-extracted bytes must equal the on-disk
