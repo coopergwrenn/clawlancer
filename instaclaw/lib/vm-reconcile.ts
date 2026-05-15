@@ -3525,43 +3525,154 @@ async function stepSystemPackages(
   }
 }
 
+/**
+ * Pinned crawlee version — the web-search-browser skill is written against
+ * the crawlee 1.x API; crawlee 2.x ships a breaking change. Mirrors the
+ * cloud-init BE-10 setup.sh pin at lib/cloud-init-setup-sh.ts (committed
+ * 2a18c0da). Keep both call sites in sync when bumping.
+ */
+const CRAWLEE_PINNED_VERSION = "1.5.0";
+const CRAWLEE_PIP_INSTALL_ARG = `crawlee[beautifulsoup,playwright]==${CRAWLEE_PINNED_VERSION}`;
+
+/**
+ * BE-10 fleet-heal Python package list — §17b.2 audit packages that
+ * configureOpenClaw's parallel installs at lib/ssh.ts:7035-7051 silently
+ * dropped (via `|| true`) for every fleet VM. Unpinned: presence check only.
+ * crawlee is handled separately above because it needs exact-version verify.
+ *
+ * Without these:
+ *   - prediction-markets (Polymarket / Kalshi): trade calls fail (web3,
+ *     py-clob-client, eth-account, websockets, cryptography)
+ *   - AgentBook registration: impossible (web3 + eth-account)
+ *   - solana-defi: Solana RPC calls fail (solders, base58, httpx)
+ *
+ * Match the cloud-init BE-10 setup.sh ordering for byte-parity.
+ */
+const BE10_UNPINNED_PYTHON_PACKAGES: readonly string[] = [
+  "web3", "py-clob-client", "eth-account", "websockets", "cryptography",
+  "solders", "base58", "httpx",
+] as const;
+
 async function stepPythonPackages(
   ssh: SSHConnection,
   manifest: typeof VM_MANIFEST,
   result: ReconcileResult,
   dryRun: boolean,
 ): Promise<void> {
+  // ── Block 1: manifest.pythonPackages (just "openai" today) ──
   const packages = manifest.pythonPackages as readonly string[];
-  if (packages.length === 0) return;
+  if (packages.length > 0) {
+    try {
+      const checks = packages
+        .map((pkg) => `echo "${pkg}:$(python3 -c 'import ${pkg}' 2>/dev/null && echo OK || echo MISSING)"`)
+        .join('; ');
+      const checkResult = await ssh.execCommand(checks);
 
+      for (const pkg of packages) {
+        if (checkResult.stdout.includes(`${pkg}:OK`)) {
+          result.alreadyCorrect.push(`python: ${pkg}`);
+          continue;
+        }
+
+        if (dryRun) {
+          result.fixed.push(`[dry-run] pip install: ${pkg}`);
+          continue;
+        }
+
+        const install = await ssh.execCommand(
+          `export PATH="$HOME/.local/bin:$PATH"; pip3 install --break-system-packages --quiet ${pkg} 2>/dev/null || pip3 install --user --quiet ${pkg} 2>/dev/null; python3 -c "import ${pkg}" 2>/dev/null && echo INSTALLED || echo FAIL`
+        );
+        if (install.stdout.includes('INSTALLED')) {
+          result.fixed.push(`${pkg} python (installed)`);
+        } else {
+          result.errors.push(`python ${pkg}: pip install failed`);
+        }
+      }
+    } catch (err) {
+      result.errors.push(`python packages: ${String(err)}`);
+    }
+  }
+
+  // ── Block 2: BE-10 fleet heal — §17b.2 Python packages (2026-05-15) ──
+  //
+  // Fleet-heal counterpart to cloud-init Day 8b BE-10 (commit 2a18c0da).
+  // BE-10 added these to setup.sh for NEW cloud-init VMs; this block
+  // covers the EXISTING fleet that has been missing them since
+  // configureOpenClaw's `|| true` parallel pip installs silently swallowed
+  // every install failure for the lifetime of the fleet.
+  //
+  // Pattern (mirrors bb12558d's stepNpmPinDrift extension):
+  //   - crawlee: exact-version probe (`pip show | grep "^Version: 1.5.0$"`)
+  //     + install with extras [beautifulsoup,playwright] + verify after
+  //   - 8 unpinned packages: per-package presence probe (`pip show`
+  //     exit code) + install + verify
+  //
+  // Each install command wrapped in `timeout` to bound worst-case (crawlee
+  // can be slow if playwright fetches Chromium); execOptions timeout
+  // bumped slightly above the bash timeout so the inner sentinel reaches
+  // us before node-ssh's default 60s wall-clock cuts in.
+  //
+  // Failure classification: result.errors (matches stepNpmPinDrift —
+  // a persistent install failure should block cv bump until it succeeds
+  // on a subsequent reconcile cycle; transient network issues retry
+  // automatically).
   try {
-    const checks = packages
-      .map((pkg) => `echo "${pkg}:$(python3 -c 'import ${pkg}' 2>/dev/null && echo OK || echo MISSING)"`)
-      .join('; ');
-    const checkResult = await ssh.execCommand(checks);
+    // crawlee — pinned 1.5.0 with extras. Idempotent via exact-version grep.
+    const crawleeCurr = (await ssh.execCommand(
+      `python3 -m pip show crawlee 2>/dev/null | grep "^Version:" | awk '{print $2}' || true`,
+    )).stdout.trim();
 
-    for (const pkg of packages) {
-      if (checkResult.stdout.includes(`${pkg}:OK`)) {
+    if (crawleeCurr === CRAWLEE_PINNED_VERSION) {
+      result.alreadyCorrect.push(`python: crawlee (${CRAWLEE_PINNED_VERSION})`);
+    } else if (dryRun) {
+      result.fixed.push(`[dry-run] python: crawlee ${crawleeCurr || "missing"} → ${CRAWLEE_PINNED_VERSION}`);
+    } else {
+      const install = await ssh.execCommand(
+        `timeout 300 python3 -m pip install --quiet --break-system-packages "${CRAWLEE_PIP_INSTALL_ARG}" 2>&1 | tail -3`,
+        { execOptions: { timeout: 320_000 } },
+      );
+      const verify = (await ssh.execCommand(
+        `python3 -m pip show crawlee 2>/dev/null | grep "^Version:" | awk '{print $2}'`,
+      )).stdout.trim();
+      if (verify === CRAWLEE_PINNED_VERSION) {
+        result.fixed.push(`python: crawlee ${crawleeCurr || "missing"} → ${CRAWLEE_PINNED_VERSION}`);
+      } else {
+        result.errors.push(
+          `python: crawlee install failed: was=${crawleeCurr || "missing"} got=${verify || "(empty)"} pip-tail=${(install.stdout + install.stderr).slice(-200)}`,
+        );
+      }
+    }
+
+    // Unpinned packages — per-package probe + install + verify.
+    for (const pkg of BE10_UNPINNED_PYTHON_PACKAGES) {
+      const probe = await ssh.execCommand(
+        `python3 -m pip show ${pkg} >/dev/null 2>&1 && echo OK || echo MISSING`,
+      );
+      if (probe.stdout.includes("OK")) {
         result.alreadyCorrect.push(`python: ${pkg}`);
         continue;
       }
-
       if (dryRun) {
-        result.fixed.push(`[dry-run] pip install: ${pkg}`);
+        result.fixed.push(`[dry-run] python: pip install ${pkg}`);
         continue;
       }
-
       const install = await ssh.execCommand(
-        `export PATH="$HOME/.local/bin:$PATH"; pip3 install --break-system-packages --quiet ${pkg} 2>/dev/null || pip3 install --user --quiet ${pkg} 2>/dev/null; python3 -c "import ${pkg}" 2>/dev/null && echo INSTALLED || echo FAIL`
+        `timeout 180 python3 -m pip install --quiet --break-system-packages ${pkg} 2>&1 | tail -3`,
+        { execOptions: { timeout: 200_000 } },
       );
-      if (install.stdout.includes('INSTALLED')) {
-        result.fixed.push(`${pkg} python (installed)`);
+      const verify = await ssh.execCommand(
+        `python3 -m pip show ${pkg} >/dev/null 2>&1 && echo OK || echo MISSING`,
+      );
+      if (verify.stdout.includes("OK")) {
+        result.fixed.push(`python: ${pkg} (installed)`);
       } else {
-        result.errors.push(`python ${pkg}: pip install failed`);
+        result.errors.push(
+          `python: ${pkg} install failed: pip-tail=${(install.stdout + install.stderr).slice(-200)}`,
+        );
       }
     }
   } catch (err) {
-    result.errors.push(`python packages: ${String(err)}`);
+    result.errors.push(`python packages BE-10: ${String(err)}`);
   }
 }
 
