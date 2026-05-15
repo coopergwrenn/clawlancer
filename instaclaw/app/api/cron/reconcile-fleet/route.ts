@@ -1,3 +1,8 @@
+// ─── @vercel/nft cache-bust: 2026-05-15 16:30 UTC ─────────────────────────
+// Forces re-trace after v100 stale-bundle halt (stale_bundle:9a4afc5c8d0e5348,
+// fired 15:12 UTC). Runtime bundle was at v99 while main has v100. Rule 44
+// gate (line ~226) halted every tick for ~80 min. Re-add on future incidents.
+
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
