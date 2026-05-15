@@ -26,10 +26,11 @@
  */
 
 import { logger } from "./logger";
+import { sendAdminAlertEmail } from "./email";
 import { connectSSH, type VMRecord } from "./ssh";
 import {
-  sshHasRecentActivity,
   userHasLiveSubscription,
+  userHasRecentActivity,
   vmHasCredits,
 } from "./vm-lifecycle-helpers";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -63,6 +64,27 @@ const INSTANCE_RUNNING_TIMEOUT_MS = 180_000;
 /** Maximum lifecycle_locked_at age before considered stuck. */
 const LIFECYCLE_LOCK_STALE_MINUTES = 15;
 
+/**
+ * Linode private-image hard ceiling. Images over this size trip Linode's
+ * async preparation stage with a silent imagize_failed event — the
+ * synchronous POST /images returns 200 with an image id, then the image
+ * is internally deleted by Linode after the async failure, and our
+ * waitForImageAvailable() polling sees an HTTP 404. See Rule 51 + the
+ * 2026-05-15 incident report.
+ *
+ * The limit is documented at
+ * https://www.linode.com/docs/api/images/#image-create — and exercised
+ * 17 times historically before discovery.
+ */
+const LINODE_IMAGE_MAX_MB = 6144;
+
+/**
+ * Per-attempt backoff for the post-imagize-failure boot recovery.
+ * See Rule 52 / `recoverInstanceAfterFailedFreeze`.
+ */
+const RECOVERY_BACKOFF_MS = [5_000, 15_000, 30_000] as const;
+const RECOVERY_MAX_ATTEMPTS = RECOVERY_BACKOFF_MS.length;
+
 /** Total time to wait for SSH to come up on a thawed instance. */
 const SSH_VERIFY_TOTAL_MS = 90_000;
 
@@ -95,6 +117,12 @@ export interface FreezeCandidate {
   bankr_token_address: string | null;
   region: string | null;
   lifecycle_locked_at: string | null;
+  /**
+   * Real-user activity timestamp from the proxy route. Replaces the SSH-mtime
+   * silence check (Rule 50). Caller MUST populate from `instaclaw_vms`. NULL
+   * → freezeVM fails CLOSED (treats as active, skips freeze).
+   */
+  last_user_activity_at: string | null;
 }
 
 export interface FreezeResult {
@@ -270,6 +298,224 @@ async function createInstanceFromImage(opts: {
   })) as { id: number; ipv4: string[]; status: string };
 }
 
+// ─── Pre-imagize disk cleanup (Rule 51) ──────────────────────────────────
+
+/**
+ * Aggressively shrink the on-disk footprint of a candidate VM so the
+ * subsequent `disk_imagize` operation fits under Linode's 6144 MB
+ * private-image cap.
+ *
+ * Whitelist-only. NEVER touches user data:
+ *   - workspace/* (SOUL.md, MEMORY.md, CAPABILITIES.md, EARN.md, …)
+ *   - agents/main/sessions/*.jsonl (active session transcripts)
+ *   - .openclaw/.env (gateway + partner tokens)
+ *   - .openclaw/openclaw.json (gateway config)
+ *   - .openclaw/agents/main/agent/auth-profiles.json (Anthropic key)
+ *   - .openclaw/wallet/* (load-bearing private key files)
+ *   - ~/scripts/* (bot CLI entrypoints)
+ *
+ * Targets ephemeral state only:
+ *   - .openclaw/session-backups/* (Rule 45 fixed the runaway but old
+ *     accumulations remain on the fleet — up to 58 GB observed)
+ *   - .cache, .npm, .nvm/.cache (rebuildable caches)
+ *   - /tmp/* (older than 1 day — never touch in-flight files)
+ *   - /var/lib/apt/lists/* (rebuildable)
+ *   - /var/log/*.gz /var/log/*.1 /var/log/*.old (rotated logs)
+ *   - journalctl --vacuum-time=1d
+ *
+ * If the post-cleanup disk usage is still ≥ LINODE_IMAGE_MAX_MB the
+ * caller MUST NOT proceed to shutdown+imagize — that path silently fails
+ * and leaves an offline-billing zombie (the 2026-05-15 leak pattern).
+ */
+async function cleanupDiskForFreeze(
+  vm: FreezeCandidate,
+  runId: string,
+): Promise<{ success: boolean; reason: string; preUsedMb?: number; postUsedMb?: number }> {
+  const vmRecord: VMRecord = {
+    id: vm.id,
+    ip_address: vm.ip_address,
+    ssh_port: vm.ssh_port,
+    ssh_user: vm.ssh_user,
+  };
+  let ssh: Awaited<ReturnType<typeof connectSSH>> | null = null;
+  try {
+    ssh = await connectSSH(vmRecord, { skipDuplicateIPCheck: true });
+
+    // Pre-cleanup measurement.
+    const preR = await ssh.execCommand("df --output=used / | tail -1");
+    const preUsedKb = Number.parseInt(preR.stdout.trim(), 10);
+    const preUsedMb = Number.isFinite(preUsedKb) ? Math.floor(preUsedKb / 1024) : null;
+
+    // Cleanup. Mirrors the snapshot-bake recipe in CLAUDE.md (the gold
+    // standard for "what's safe to nuke to fit under 6 GB"). Each command
+    // uses `2>/dev/null || true` so a missing path or permission deny on
+    // one target NEVER aborts the cleanup of the rest. The sudo-prefixed
+    // lines depend on the passwordless-sudo grant that the rest of the
+    // platform already requires (stepNodeExporter etc.).
+    const cleanupCmd = [
+      "set +e",
+      // Session-backup runaway (the Rule 45 leak — up to 58 GB observed).
+      "rm -rf ~/.openclaw/session-backups/* 2>/dev/null || true",
+      // npm caches — CLI version when nvm is available, plus brute force.
+      "source ~/.nvm/nvm.sh 2>/dev/null && npm cache clean --force 2>/dev/null || true",
+      "rm -rf ~/.npm/_cacache 2>/dev/null || true",
+      // pip caches (both root + user).
+      "python3 -m pip cache purge 2>/dev/null || true",
+      "rm -rf ~/.cache/pip 2>/dev/null || true",
+      "sudo rm -rf /root/.cache/pip 2>/dev/null || true",
+      // generic user caches + nvm download cache.
+      "rm -rf ~/.cache/* 2>/dev/null || true",
+      "rm -rf ~/.nvm/.cache 2>/dev/null || true",
+      // /tmp: only files older than 24h (avoid stomping in-flight uploads).
+      "find /tmp -maxdepth 2 -mtime +1 -type f -delete 2>/dev/null || true",
+      // apt: clears archives (/var/cache/apt/archives) AND package lists.
+      "sudo apt-get clean 2>/dev/null || true",
+      "sudo rm -rf /var/lib/apt/lists/* 2>/dev/null || true",
+      // journalctl + rotated logs.
+      "sudo journalctl --vacuum-time=1d 2>/dev/null || true",
+      "sudo find /var/log -maxdepth 2 -type f \\( -name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4' -o -name '*.5' -o -name '*.old' \\) -delete 2>/dev/null || true",
+      "sync",
+    ].join(" && ");
+    await ssh.execCommand(cleanupCmd);
+
+    // Post-cleanup measurement.
+    const postR = await ssh.execCommand("df --output=used / | tail -1");
+    const postUsedKb = Number.parseInt(postR.stdout.trim(), 10);
+    const postUsedMb = Number.isFinite(postUsedKb)
+      ? Math.floor(postUsedKb / 1024)
+      : preUsedMb ?? null;
+
+    if (postUsedMb === null) {
+      // Couldn't parse df output — refuse to proceed. Imagize would silently
+      // fail if disk is actually over-limit and we can't tell.
+      return {
+        success: false,
+        reason: `df parse failed (post-cleanup): pre=${preR.stdout.trim().slice(0, 60)} post=${postR.stdout.trim().slice(0, 60)}`,
+        preUsedMb: preUsedMb ?? undefined,
+      };
+    }
+
+    logger.info("freezeVM.cleanupDiskForFreeze: cleanup complete", {
+      route: "lib/vm-freeze-thaw",
+      runId,
+      vmId: vm.id,
+      vmName: vm.name,
+      preUsedMb,
+      postUsedMb,
+      freedMb: preUsedMb !== null ? preUsedMb - postUsedMb : null,
+    });
+
+    if (postUsedMb >= LINODE_IMAGE_MAX_MB) {
+      return {
+        success: false,
+        reason: `disk still ${postUsedMb} MB after cleanup (≥${LINODE_IMAGE_MAX_MB} MB Linode image cap; pre=${preUsedMb ?? "?"} MB) — refusing to imagize`,
+        preUsedMb: preUsedMb ?? undefined,
+        postUsedMb,
+      };
+    }
+    return {
+      success: true,
+      reason: `disk ${postUsedMb} MB / ${LINODE_IMAGE_MAX_MB} MB cap (pre=${preUsedMb ?? "?"} MB)`,
+      preUsedMb: preUsedMb ?? undefined,
+      postUsedMb,
+    };
+  } catch (err) {
+    const msg = (err as Error).message ?? String(err);
+    return {
+      success: false,
+      reason: `ssh cleanup failed: ${msg.slice(0, 160)}`,
+    };
+  } finally {
+    try { ssh?.dispose?.(); } catch { /* noop */ }
+  }
+}
+
+// ─── Post-imagize recovery (Rule 52) ─────────────────────────────────────
+
+/**
+ * After an imagize failure (timeout, 404, status≠available), the source
+ * instance is in `offline` state and must be booted back so the VM
+ * continues to bill-and-serve normally on the next user wake. The old
+ * one-shot `bootInstance(...)` call silently consumed boot failures and
+ * left ~17 offline-billing zombies on the 2026-05-09 → 2026-05-14 window,
+ * which we discovered only on a money audit.
+ *
+ * This helper retries up to RECOVERY_MAX_ATTEMPTS with exponential
+ * backoff, re-checks the instance state at the start of every attempt
+ * (so an already-running instance short-circuits), and sends a P0 admin
+ * alert if every attempt fails — making the zombie state visible within
+ * the freeze cycle that created it.
+ */
+async function recoverInstanceAfterFailedFreeze(
+  vm: FreezeCandidate,
+  runId: string,
+  imagizeFailReason: string,
+  log: (level: "info" | "warn" | "error", msg: string, extra?: Record<string, unknown>) => void,
+): Promise<{ recovered: boolean; finalStatus: string | null }> {
+  let lastStatus: string | null = null;
+  for (let attempt = 0; attempt < RECOVERY_MAX_ATTEMPTS; attempt++) {
+    try {
+      const state = await getInstanceState(vm.provider_server_id!);
+      lastStatus = state.status;
+      if (state.status === "running") {
+        log("info", `recovery attempt ${attempt + 1}: instance already running`);
+        return { recovered: true, finalStatus: state.status };
+      }
+      if (state.status === "offline") {
+        log("info", `recovery attempt ${attempt + 1}/${RECOVERY_MAX_ATTEMPTS}: issuing boot`);
+        await bootInstance(vm.provider_server_id!);
+      } else {
+        log("warn", `recovery attempt ${attempt + 1}: unexpected instance status`, {
+          status: state.status,
+        });
+      }
+      const running = await waitForInstanceStatus(
+        vm.provider_server_id!,
+        "running",
+        INSTANCE_RUNNING_TIMEOUT_MS,
+      );
+      if (running) {
+        log("info", `recovery attempt ${attempt + 1}: instance reached running`);
+        return { recovered: true, finalStatus: "running" };
+      }
+      log("warn", `recovery attempt ${attempt + 1}: still not running after wait`);
+    } catch (err) {
+      log("error", `recovery attempt ${attempt + 1} threw`, { error: String(err) });
+    }
+    if (attempt < RECOVERY_MAX_ATTEMPTS - 1) {
+      await new Promise((r) => setTimeout(r, RECOVERY_BACKOFF_MS[attempt]));
+    }
+  }
+
+  // All attempts failed — fire P0 admin alert. Wrap in try so the alert
+  // failure path can't itself throw and double-fault the freeze cycle.
+  log("error", "RECOVERY FAILED — instance left offline; firing P0 admin alert");
+  try {
+    await sendAdminAlertEmail(
+      `[P0] Freeze recovery FAILED for ${vm.name ?? vm.id} (offline-billing zombie)`,
+      `VM ${vm.name ?? "?"} (id ${vm.id}, Linode ${vm.provider_server_id})\n` +
+        `Owner: ${vm.assigned_to ?? "<unassigned>"}\n` +
+        `\n` +
+        `Imagize failed: ${imagizeFailReason}\n` +
+        `\n` +
+        `Boot recovery: ${RECOVERY_MAX_ATTEMPTS}/${RECOVERY_MAX_ATTEMPTS} attempts failed.\n` +
+        `Final Linode status: ${lastStatus ?? "<unknown>"}.\n` +
+        `\n` +
+        `The Linode is offline AND still billing $29/mo. Manual recovery:\n` +
+        `  1. https://cloud.linode.com/linodes/${vm.provider_server_id}\n` +
+        `  2. Click "Power on" → wait for status=running\n` +
+        `  3. ssh openclaw@${vm.ip_address} 'systemctl --user is-active openclaw-gateway && curl -sf localhost:18789/health'\n` +
+        `  4. If imagize keeps failing, root cause is likely disk > ${LINODE_IMAGE_MAX_MB} MB (Rule 51) —\n` +
+        `     run additional cleanup or replace the cleanup whitelist.\n` +
+        `\n` +
+        `runId=${runId}\n`,
+    );
+  } catch (alertErr) {
+    log("error", "P0 admin alert send threw (non-fatal)", { error: String(alertErr) });
+  }
+  return { recovered: false, finalStatus: lastStatus };
+}
+
 // ─── Lifecycle lock ───────────────────────────────────────────────────────
 
 /**
@@ -400,26 +646,18 @@ export async function freezeVM(
     return { success: false, reason: `active Bankr token ${vm.bankr_token_address.slice(0, 10)}... — refuse` };
   }
 
-  // ── Safety check 4: SSH activity in last 7 days (PRD rule 2) ──
-  // sshHasRecentActivity returns active=false on connect failure (designed
-  // for orphan reconciliation where SSH-down implies dead VM). For freeze,
-  // we don't have that luxury: an unreachable VM is one we CANNOT prove is
-  // silent. PRD rule 11 ("when in doubt, SKIP") says fail closed. We only
-  // proceed if we successfully connected and saw NO recent files.
-  const activity = await sshHasRecentActivity(vm.ip_address);
+  // ── Safety check 4: real-user activity in last 7 days (Rule 50) ──
+  // Authoritative signal: instaclaw_vms.last_user_activity_at, set only by
+  // genuine user-driven proxy calls. Replaces the legacy SSH-mtime check
+  // which produced false positives because strip-thinking.py (every min)
+  // and reconcile-fleet / file-drift (every cycle) touch session jsonl +
+  // workspace markdown on every sleeping VM — so `find -mtime -7` always
+  // hit. The 2026-05-15 incident blocked 9 paying customer VMs from freeze
+  // this way. userHasRecentActivity is pure-data (no SSH); fail-CLOSED on
+  // NULL.
+  const activity = userHasRecentActivity(vm);
   if (activity.active) {
-    return { success: false, reason: `SSH activity detected: ${activity.reason}` };
-  }
-  if (
-    activity.reason === "no-ipv4" ||
-    activity.reason.startsWith("ssh-fail")
-  ) {
-    return { success: false, reason: `cannot verify silence (${activity.reason}) — failing closed per PRD rule 11` };
-  }
-  // Only the "silent" reason proves we successfully connected and saw no
-  // recent files — that's the only safe path forward.
-  if (activity.reason !== "silent") {
-    return { success: false, reason: `unexpected activity-check result: ${activity.reason} — failing closed` };
+    return { success: false, reason: activity.reason };
   }
 
   // ── Dry-run early-return (must be BEFORE lock acquire) ──
@@ -440,6 +678,25 @@ export async function freezeVM(
   // We hold the lock now — release in finally.
   try {
 
+    // ── Pre-imagize: aggressively shrink the disk (Rule 51) ──
+    // Linode images > LINODE_IMAGE_MAX_MB silently fail in async preparation
+    // (returns 200 + imageId from POST /images, then disappears with 404
+    // on subsequent GET). This step does whitelist-only cleanup — caches,
+    // session-backups, journal, apt lists — and verifies disk usage is
+    // under the cap. If we can't get under, we skip BEFORE shutting down
+    // (so the instance keeps serving and the next cycle can retry after
+    // additional user-driven log/cache growth burns off, or operator
+    // intervenes).
+    const cleanup = await cleanupDiskForFreeze(vm, runId);
+    if (!cleanup.success) {
+      return { success: false, reason: `pre-imagize cleanup: ${cleanup.reason}` };
+    }
+    log("info", "disk cleanup complete", {
+      preUsedMb: cleanup.preUsedMb,
+      postUsedMb: cleanup.postUsedMb,
+      limitMb: LINODE_IMAGE_MAX_MB,
+    });
+
     // ── Get the ext4 disk to snapshot ──
     const disks = await getInstanceDisks(vm.provider_server_id);
     const ext4 = disks.find((d) => d.filesystem === "ext4");
@@ -453,6 +710,9 @@ export async function freezeVM(
     await shutdownInstance(vm.provider_server_id);
     const offline = await waitForInstanceStatus(vm.provider_server_id, "offline", POWER_OFF_TIMEOUT_MS);
     if (!offline) {
+      // Failed to power off — but the instance was already running and we
+      // didn't yet create an image. Don't try to recover; just bail. The
+      // next cycle will retry. (Linode shutdown is non-destructive.)
       return { success: false, reason: `instance did not reach offline within ${POWER_OFF_TIMEOUT_MS / 1000}s` };
     }
 
@@ -466,19 +726,13 @@ export async function freezeVM(
     // ── Wait for image=available, then VERIFY (PRD rule 4) ──
     const finalImage = await waitForImageAvailable(image.id, IMAGE_AVAILABLE_TIMEOUT_MS);
     if (!finalImage || finalImage.status !== "available") {
-      // Snapshot didn't complete cleanly. BOOT THE INSTANCE BACK UP and abort.
-      log("error", "image did not reach available — recovering by booting instance back", {
-        finalStatus: finalImage?.status ?? "<timeout>",
-      });
-      try {
-        await bootInstance(vm.provider_server_id);
-        await waitForInstanceStatus(vm.provider_server_id, "running", INSTANCE_RUNNING_TIMEOUT_MS);
-      } catch (bootErr) {
-        log("error", "RECOVERY FAILED: instance is offline AND image is not available", {
-          error: String(bootErr),
-        });
-      }
-      return { success: false, reason: `image status=${finalImage?.status ?? "timeout"} — instance booted back` };
+      // Imagize failed. Boot recovery with retry + P0 alert (Rule 52).
+      const imagizeFailReason = `image status=${finalImage?.status ?? "timeout"}`;
+      const rec = await recoverInstanceAfterFailedFreeze(vm, runId, imagizeFailReason, log);
+      const suffix = rec.recovered
+        ? "instance recovered to running"
+        : `RECOVERY FAILED (final=${rec.finalStatus ?? "?"}) — admin alerted`;
+      return { success: false, reason: `${imagizeFailReason} — ${suffix}` };
     }
 
     // ── Update DB BEFORE deleting instance ──
@@ -501,12 +755,24 @@ export async function freezeVM(
       .eq("id", vm.id);
     if (updateErr) {
       // DB update failed. Image exists but not tracked. Boot the instance
-      // back up and fail. The orphan image needs manual cleanup.
+      // back up (with retry + alert per Rule 52) and fail. The orphan image
+      // needs manual cleanup.
       log("error", "DB update failed — booting instance back, image will be orphaned", {
         imageId: finalImage.id, error: updateErr.message,
       });
-      try { await bootInstance(vm.provider_server_id); } catch { /* noop */ }
-      return { success: false, reason: `DB update failed (image ${finalImage.id} may need cleanup): ${updateErr.message}` };
+      const rec = await recoverInstanceAfterFailedFreeze(
+        vm,
+        runId,
+        `DB update failed for image ${finalImage.id}: ${updateErr.message}`,
+        log,
+      );
+      const suffix = rec.recovered
+        ? "instance recovered"
+        : `RECOVERY FAILED (final=${rec.finalStatus ?? "?"}) — admin alerted`;
+      return {
+        success: false,
+        reason: `DB update failed (image ${finalImage.id} may need cleanup): ${updateErr.message} — ${suffix}`,
+      };
     }
 
     // ── NOW delete the instance ──

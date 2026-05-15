@@ -189,6 +189,79 @@ export async function sshHasRecentActivity(
   }
 }
 
+// ─── DB-based user-activity check (preferred over SSH-mtime for freeze) ──
+
+/**
+ * Subset of `instaclaw_vms` columns needed by {@link userHasRecentActivity}.
+ * Centralized so callers see the exact columns they must SELECT.
+ */
+export interface VMActivityFields {
+  last_user_activity_at: string | null;
+}
+
+/**
+ * Returns whether a VM has had real user-driven traffic inside the activity
+ * window. The signal is the database column `instaclaw_vms.last_user_activity_at`
+ * — touched only by genuine user-initiated proxy calls — NOT file mtimes on
+ * disk and NOT `last_proxy_call_at` (which is mutated by the heartbeat cron
+ * and by other platform-internal traffic).
+ *
+ * This replaces the SSH-mtime based silence check in the freeze flow.
+ * 2026-05-15 root-cause investigation showed that strip-thinking.py (per-min)
+ * and the reconcile-fleet / file-drift cron continuously modify session
+ * jsonl + workspace markdown on sleeping VMs, so the old `find -mtime -7`
+ * check produced false-positive "SSH activity detected" on every sleeping
+ * VM with platform crons running. Result: 9 paying customer VMs blocked
+ * from freeze for weeks while burning $29/mo each. See Rule 50.
+ *
+ * Behavior:
+ *   - `last_user_activity_at` is set, age < window  → `{ active: true }` (skip freeze)
+ *   - `last_user_activity_at` is set, age ≥ window  → `{ active: false }` (proceed)
+ *   - `last_user_activity_at` is NULL               → **fail CLOSED** (`active: true`)
+ *
+ * The fail-closed semantics protect new VMs that the watchdog-v2 migration
+ * (2026-05-02) hasn't backfilled, or any future schema state where the
+ * column is unset. A wasted freeze attempt is dramatically cheaper than
+ * a wrongly-frozen paying user's VM.
+ *
+ * Synchronous: this is a pure-data check against a row the caller already
+ * loaded. Synchronous keeps the freeze flow's latency budget tight.
+ */
+export function userHasRecentActivity(
+  vm: VMActivityFields,
+  windowDays: number = ACTIVITY_WINDOW_DAYS,
+): { active: boolean; reason: string; ageDays: number | null } {
+  const ts = vm.last_user_activity_at;
+  if (!ts) {
+    return {
+      active: true,
+      reason: "last_user_activity_at NULL — failing closed (Rule 50)",
+      ageDays: null,
+    };
+  }
+  const parsed = Date.parse(ts);
+  if (Number.isNaN(parsed)) {
+    return {
+      active: true,
+      reason: `last_user_activity_at unparseable (${ts}) — failing closed`,
+      ageDays: null,
+    };
+  }
+  const ageDays = (Date.now() - parsed) / 86_400_000;
+  if (ageDays < windowDays) {
+    return {
+      active: true,
+      reason: `last_user_activity_at ${ageDays.toFixed(1)}d ago (window=${windowDays}d)`,
+      ageDays,
+    };
+  }
+  return {
+    active: false,
+    reason: `silent: last_user_activity_at ${ageDays.toFixed(1)}d ago (window=${windowDays}d)`,
+    ageDays,
+  };
+}
+
 // ─── Stripe re-check (authoritative) ─────────────────────────────────────
 
 /**

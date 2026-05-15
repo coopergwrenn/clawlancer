@@ -593,17 +593,23 @@ export async function GET(req: NextRequest) {
   // ═══════════════════════════════════════════════════════════════════
   if (settings.vmLifecycleV2Enabled) {
     try {
-      // PRD rule 2: skip any VM with proxy activity in the last 7 days.
-      // last_proxy_call_at is the canonical "user attempted to use the VM"
-      // signal — set on every successful gateway/proxy call. SSH file-mtime
-      // checks miss paywall-bouncing users (proxy hits don't touch ~/.openclaw).
-      const proxyActivityCutoff = new Date(
+      // Skip any VM with REAL user activity in the last 7 days. Rule 50:
+      // last_user_activity_at is the only signal not contaminated by
+      // platform-internal traffic (heartbeats, crons, reconcile writes).
+      // The prior filter on last_proxy_call_at excluded 17/50 sleeping VMs
+      // with phantom heartbeat fires from the freeze pool entirely — they
+      // looked active to the cron but their owners had stopped using them
+      // weeks before. Switching to last_user_activity_at brings them back
+      // in. (Defense in depth: freezeVM also re-checks live via
+      // `userHasRecentActivity` — fail-CLOSED on NULL — so a NULL row that
+      // slips through the query is skipped at the gate, not frozen.)
+      const userActivityCutoff = new Date(
         Date.now() - 7 * 24 * 60 * 60 * 1000,
       ).toISOString();
       const { data: candidates } = await supabase
         .from("instaclaw_vms")
         .select(
-          "id, name, ip_address, ssh_port, ssh_user, provider_server_id, assigned_to, credit_balance, bankr_token_address, suspended_at, status, health_status, region, lifecycle_locked_at, last_proxy_call_at, frozen_image_id, freeze_consecutive_failures"
+          "id, name, ip_address, ssh_port, ssh_user, provider_server_id, assigned_to, credit_balance, bankr_token_address, suspended_at, status, health_status, region, lifecycle_locked_at, last_user_activity_at, frozen_image_id, freeze_consecutive_failures"
         )
         .in("health_status", ["suspended", "hibernating"])
         .eq("provider", "linode")
@@ -614,10 +620,10 @@ export async function GET(req: NextRequest) {
         // post-thaw means SSH never verified — the previous thaw is in a
         // hold state and we shouldn't re-freeze and overwrite the image).
         .is("frozen_image_id", null)
-        // Skip VMs with proxy activity in the last 7 days. PostgREST .or
-        // syntax: column.op.value comma column.op.value — combined with
-        // existing .eq filters via implicit AND.
-        .or(`last_proxy_call_at.is.null,last_proxy_call_at.lt.${proxyActivityCutoff}`)
+        // Rule 50: include NULL-activity VMs (freezeVM fails CLOSED on
+        // NULL, so they don't get frozen — but including them in the
+        // candidate set means the gate observes them, not the cron filter).
+        .or(`last_user_activity_at.is.null,last_user_activity_at.lt.${userActivityCutoff}`)
         // v97 (2026-05-14): order by (failures ASC, suspended_at ASC) so
         // persistent failers move to the back of the queue. vm-866 + vm-873
         // sat at the head of the result set for 5+ days each because they
@@ -699,6 +705,7 @@ export async function GET(req: NextRequest) {
           bankr_token_address: vm.bankr_token_address ?? null,
           region: vm.region ?? null,
           lifecycle_locked_at: vm.lifecycle_locked_at ?? null,
+          last_user_activity_at: vm.last_user_activity_at ?? null,
         };
 
         // Per-VM try/catch — a single Linode API throw must NOT kill the rest
