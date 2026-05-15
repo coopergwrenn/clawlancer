@@ -39,7 +39,7 @@
  *   - [ ] BE-2: mkdir defenses
  *   - [ ] BE-3: privacy wipe
  *   - [ ] BE-4: stop pre-existing gateway (likely redundant — under review)
- *   - [ ] BE-5: skill clones + overlays (bankr, consensus, edge_city)
+ *   - [✓] BE-5: skill clones + overlays (bankr, consensus, edge_city)
  *   - [ ] BE-6: @bankr/cli pinned install
  *   - [✓] BE-7: browser-relay-server.js + check-skill-updates.sh + cron
  *   - [ ] BE-8: agent-status + clawlancer SKILL.md
@@ -84,6 +84,7 @@
  *     buildSetupSh's template fails loudly
  */
 
+import { BANKR_SKILL_PATCH_MARKER } from "./ssh";
 import type { TarballParams } from "./cloud-init-tarball";
 
 /**
@@ -222,6 +223,140 @@ echo "[\$(date -u +%FT%TZ)] setup.sh starting (user=\$USER_ID vm=\$VM_NAME)"
   touch /tmp/.instaclaw-failed
   exit 1
 }
+
+# ════════════════════════════════════════════════════════════════════════
+# §1.7 BEST_EFFORT [BE-5]: clone external skills + apply InstaClaw overlays
+# ════════════════════════════════════════════════════════════════════════
+# Three external git-cloned skills. Each gets idempotent clone-if-missing
+# + skill-specific overlays + auto-update cron (where applicable).
+#
+#   1. Bankr (universal) — github.com/BankrBot/skills
+#      Snapshot already has it cloned (verified 2026-05-14 vm-944). The
+#      idempotency check skips the clone on every existing snapshot.
+#      But the snapshot does NOT apply InstaClaw's overlay — every
+#      fleet VM today lacks the \`INSTACLAW_BANKR_PATCH_V1\` marker AND
+#      has the clanker + base subdirs still present (misroute the agent
+#      because clanker requires PRIVATE_KEY not configured on InstaClaw
+#      and base is an empty placeholder). This block:
+#       a) Deletes clanker + base unconditionally (idempotent — rm -rf
+#          on absent dirs is a no-op).
+#       b) Prepends BANKR_SKILL_PATCH_DIRECTIVE to bankr/bankr/SKILL.md
+#          if marker absent. Atomic write via mktemp + cat + mv chain.
+#          Re-runs are no-ops via the grep -q marker check.
+#
+#   2. Consensus 2026 (universal) — github.com/coopergwrenn/consensus-2026-skill.git
+#      Cloned per signup (snapshot does NOT have it — verified 2026-
+#      05-14). 30-min auto-update cron keeps the agenda/side-event
+#      data fresh (repo re-bakes hourly via GitHub Actions). Cron
+#      install idempotent via grep -v + re-add.
+#
+#   3. Edge Esmeralda (partner=edge_city only) — github.com/aromeoes/edge-agent-skill.git
+#      Partner-gated via TARBALL FILE PRESENCE: buildPartnerOverlays
+#      emits \`overlays/edge-instaclaw-overlay.md\` ONLY when partner
+#      === "edge_city". setup.sh's \`if [ -f /tmp/.../edge-instaclaw-
+#      overlay.md ]\` guard IS the partner gate. Inside, clone +
+#      INSTACLAW_OVERLAY.md write (atomic via .tmp + mv; Tule's
+#      upstream \`git pull --ff-only\` leaves untracked files alone) +
+#      30-min auto-update cron. NO .env mutation here — Day 8a §1.6
+#      already places EDGEOS_BEARER_TOKEN via the tarball's buildDotEnv.
+#
+# What breaks if BE-5 fails:
+#   - Bankr overlay missing: agent has bankr SKILL.md but lacks the
+#     InstaClaw-specific routing context → \`bankr launch\` may misroute.
+#   - clanker/base subdirs present: agent reads them, gets confused
+#     about which sub-skill to use, especially when the user asks
+#     about "tokens" — could attempt clanker flow and fail on
+#     missing PRIVATE_KEY.
+#   - Consensus clone missing: agent can't answer "what's on the
+#     Consensus agenda?" Loses universal feature.
+#   - Edge clone missing (edge_city VMs only): Edge attendees can't
+#     query the agenda, attendees, side events.
+#
+# CHAIN DISCIPLINE: rc-accumulator inside \`sudo -u openclaw bash -lc\`.
+# \`set -e\` is suspended inside \`{ } || handler\` (Bug #1), so we use
+# per-operation \`|| rc=1\` + terminal \`[ "\$rc" = "0" ]\`.
+#
+# Empirical verification (2026-05-14, vm-944):
+#   - Consensus clone: <1s, SKILL.md 27041 bytes
+#   - Edge clone: <1s, SKILL.md 8971 bytes
+#   - Bankr overlay logic: first-run applies (marker added), second-run
+#     skips (marker found) — atomic mv preserves SKILL.md on partial fail
+#
+# Runs as openclaw user (sudo -u + bash -lc) — same pattern as BE-7/
+# BE-9/BE-10/BE-11. git clones land at the right ownership without
+# explicit chown.
+#
+# NOT reconciler-healed today. Future P1 (matches the BE-11 fleet-
+# heal pattern in commit bb12558d): add a reconciler step that
+# applies bankr overlay + clones consensus + clones edge (when partner=
+# edge_city). Existing fleet still missing these until then.
+{ sudo -u openclaw bash -lc '
+    rc=0
+
+    # ── Bankr (universal) — clone, delete misroute subdirs, apply overlay ──
+    if [ ! -d "\$HOME/.openclaw/skills/bankr" ]; then
+      timeout 60 git clone --depth 1 https://github.com/BankrBot/skills "\$HOME/.openclaw/skills/bankr" 2>/dev/null || rc=1
+    fi
+    BANKR_SKILL_BASE="\$HOME/.openclaw/skills/bankr"
+    BANKR_SKILL_MD="\$BANKR_SKILL_BASE/bankr/SKILL.md"
+    if [ -d "\$BANKR_SKILL_BASE" ]; then
+      # Idempotent subdir removal. clanker needs PRIVATE_KEY (not configured
+      # on InstaClaw VMs); base is an empty placeholder. rm -rf on absent
+      # dir is a no-op, so this is safe to re-run on every cycle.
+      rm -rf "\$BANKR_SKILL_BASE/clanker" "\$BANKR_SKILL_BASE/base" 2>/dev/null || true
+    fi
+    if [ -f "\$BANKR_SKILL_MD" ] && ! grep -q "${BANKR_SKILL_PATCH_MARKER}" "\$BANKR_SKILL_MD"; then
+      # Atomic overlay-prepend: mktemp → cat overlay → cat SKILL.md →
+      # mv tmp to SKILL.md. && -chain so any failure aborts cleanly and
+      # leaves SKILL.md untouched.
+      BANKR_OVERLAY_TMP=\$(mktemp 2>/dev/null) \\
+        && cat /tmp/instaclaw-config/overlays/bankr-overlay.md > "\$BANKR_OVERLAY_TMP" \\
+        && cat "\$BANKR_SKILL_MD" >> "\$BANKR_OVERLAY_TMP" \\
+        && mv "\$BANKR_OVERLAY_TMP" "\$BANKR_SKILL_MD" \\
+        || rc=1
+    fi
+
+    # ── Consensus 2026 (universal) — clone + 30-min auto-update cron ──
+    if [ ! -d "\$HOME/.openclaw/skills/consensus-2026" ]; then
+      timeout 60 git clone --depth 1 https://github.com/coopergwrenn/consensus-2026-skill.git "\$HOME/.openclaw/skills/consensus-2026" 2>/dev/null || rc=1
+    fi
+    # Verify-after-clone: SKILL.md at top level (Rule 24 #1).
+    [ -f "\$HOME/.openclaw/skills/consensus-2026/SKILL.md" ] || rc=1
+    # Idempotent cron install: strip any prior entry (both legacy
+    # "consensus-2026-skill" and current "skills/consensus-2026"
+    # patterns — matches lib/ssh.ts:5560 byte-parity), then re-add.
+    # \$HOME expands at assignment time → stored crontab line has
+    # /home/openclaw literal (matches the BE-7 pattern).
+    CRON_CONSENSUS="*/30 * * * * cd \$HOME/.openclaw/skills/consensus-2026 && git pull --ff-only -q 2>/dev/null"
+    (crontab -l 2>/dev/null | grep -v "consensus-2026-skill" | grep -v "skills/consensus-2026"; echo "\$CRON_CONSENSUS") | crontab - 2>/dev/null || rc=1
+
+    # ── Edge Esmeralda (partner=edge_city) — clone + overlay + cron ──
+    # Partner gate: tarball emits overlays/edge-instaclaw-overlay.md
+    # ONLY when partner=edge_city. File presence IS the gate.
+    if [ -f /tmp/instaclaw-config/overlays/edge-instaclaw-overlay.md ]; then
+      if [ ! -d "\$HOME/.openclaw/skills/edge-esmeralda" ]; then
+        timeout 60 git clone --depth 1 https://github.com/aromeoes/edge-agent-skill.git "\$HOME/.openclaw/skills/edge-esmeralda" 2>/dev/null || rc=1
+      fi
+      # Verify-after-clone (Rule 24 #1).
+      [ -f "\$HOME/.openclaw/skills/edge-esmeralda/SKILL.md" ] || rc=1
+      # InstaClaw overlay write. Atomic via .tmp + mv. The upstream
+      # git pull --ff-only leaves untracked files alone, so the overlay
+      # survives across auto-update pulls.
+      if [ -d "\$HOME/.openclaw/skills/edge-esmeralda" ]; then
+        EDGE_OVERLAY_TMP="\$HOME/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md.tmp"
+        cp /tmp/instaclaw-config/overlays/edge-instaclaw-overlay.md "\$EDGE_OVERLAY_TMP" \\
+          && mv "\$EDGE_OVERLAY_TMP" "\$HOME/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md" \\
+          || rc=1
+      fi
+      # Auto-update cron (idempotent install — matches lib/ssh.ts:5531
+      # byte-parity).
+      CRON_EDGE="*/30 * * * * cd \$HOME/.openclaw/skills/edge-esmeralda && git pull --ff-only -q 2>/dev/null"
+      (crontab -l 2>/dev/null | grep -v "edge-agent-skill"; echo "\$CRON_EDGE") | crontab - 2>/dev/null || rc=1
+    fi
+
+    [ "\$rc" = "0" ]
+  '
+} || echo "[\$(date -u +%FT%TZ)] WARN: BE-5 (skill clones + InstaClaw overlays) partial failure. bankr overlay absence misroutes the agent on token / launch flows. consensus-2026 clone absence loses the universal Consensus 2026 agenda awareness. edge-esmeralda clone absence (edge_city only) breaks Edge attendee directory + agenda queries. NOT reconciler-healed today — manual fleet-push to recover until a reconciler step lands."
 
 # ════════════════════════════════════════════════════════════════════════
 # §1.9 CRITICAL: per-user workspace files + agent dir + wallet/agent.key
@@ -650,20 +785,21 @@ echo "OPENCLAW_CONFIGURE_DONE"
 }
 
 # ── Day 8b BEST_EFFORT steps land incrementally — see docstring ───────
-# Done: BE-1 (linger + sshd OOM-protect), BE-7 (browser-relay-server.js
+# Done: BE-1 (linger + sshd OOM-protect), BE-5 (skill clones + InstaClaw
+# overlays: bankr + consensus + edge_city), BE-7 (browser-relay-server.js
 # + check-skill-updates.sh + cron), BE-8 (agent-status + clawlancer
 # SKILL.md via repo check-in), BE-9 (mcporter clawlancer config),
 # BE-10 (pip install §17b.2 packages), BE-11 (npm install agentkit-cli
 # + mcporter + usecomputer).
 # Pending: BE-2 (mkdir defenses), BE-3 (privacy wipe), BE-4 (stop pre-
-# existing gateway — under review, likely redundant), BE-5 (skill
-# clones), BE-6 (@bankr/cli — reconciler heals via stepNpmPinDrift),
-# BE-12 (xvfb/x11vnc/websockify systemd units), BE-13 (daemon-reload
-# — lands with BE-12 since it's a no-op without unit-file changes).
+# existing gateway — under review, likely redundant), BE-6 (@bankr/cli —
+# reconciler heals via stepNpmPinDrift), BE-12 (xvfb/x11vnc/websockify
+# systemd units), BE-13 (daemon-reload — lands with BE-12 since it is a
+# no-op without unit-file changes).
 # All follow the BEST_EFFORT pattern:
 #   { ... } || echo "[\$(date -u +%FT%TZ)] WARN: BE-N (label) — recovery"
 
-echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 + BE-7 + BE-9 + BE-10 + BE-11)"
+echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 + BE-5 + BE-7 + BE-9 + BE-10 + BE-11)"
 exit 0
 `;
 }
@@ -718,4 +854,16 @@ export const SETUP_SH_SENTINELS = {
   BE10_PIP_INSTALL: "python3 -m pip install --quiet --break-system-packages",
   /** BE-10: per-package verify-after-install via pip show. */
   BE10_PIP_VERIFY: "python3 -m pip show",
+  /** BE-5: bankr skill repo URL. */
+  BE5_BANKR_REPO: "https://github.com/BankrBot/skills",
+  /** BE-5: consensus-2026 skill repo URL. */
+  BE5_CONSENSUS_REPO: "https://github.com/coopergwrenn/consensus-2026-skill.git",
+  /** BE-5: edge-esmeralda skill repo URL (partner=edge_city only). */
+  BE5_EDGE_REPO: "https://github.com/aromeoes/edge-agent-skill.git",
+  /** BE-5: bankr overlay idempotency marker. */
+  BE5_BANKR_MARKER: BANKR_SKILL_PATCH_MARKER,
+  /** BE-5: 30-min auto-update cron schedule. */
+  BE5_CRON_SCHEDULE: "*/30 * * * *",
+  /** BE-5: partner-gate via tarball file presence. */
+  BE5_PARTNER_GATE: "/tmp/instaclaw-config/overlays/edge-instaclaw-overlay.md",
 } as const;

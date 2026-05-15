@@ -2585,6 +2585,171 @@ async function test16_BuildSetupSh() {
     (verifyInLoops?.length ?? 0) === 2,
     `BE-10: post-install verify in each for-loop body (got ${verifyInLoops?.length ?? 0}, expected 2)`,
   );
+
+  // ── Day 8b BE-5 assertions ────────────────────────────────────────
+  // BE-5 clones 3 external skills + applies InstaClaw overlays. Bankr
+  // is universal; consensus-2026 is universal; edge-esmeralda is
+  // partner-gated via tarball file presence.
+
+  // 53. BE-5 ordering: between §1.6 CRITICAL (.env) and §1.9 CRITICAL
+  //     (workspace files) per the plan §1.7 position.
+  const idxBE5 = sh.indexOf("§1.7 BEST_EFFORT [BE-5]");
+  const idx16 = sh.indexOf("§1.6 CRITICAL");
+  const idx19Crit = sh.indexOf("§1.9 CRITICAL");
+  assert(
+    idxBE5 > 0 && idxBE5 > idx16 && idxBE5 < idx19Crit,
+    `BE-5 block sits between §1.6 CRITICAL and §1.9 CRITICAL (BE-5=${idxBE5}, §1.6=${idx16}, §1.9=${idx19Crit})`,
+  );
+
+  // 54. BE-5 uses BEST_EFFORT pattern.
+  const be5Block = sh.slice(idxBE5, idx19Crit);
+  assert(
+    be5Block.includes('|| echo "[$(date -u +%FT%TZ)] WARN: BE-5'),
+    "BE-5 uses BEST_EFFORT `|| echo WARN` pattern",
+  );
+  assert(
+    !be5Block.includes("touch /tmp/.instaclaw-failed"),
+    "BE-5 does NOT use CRITICAL `touch /tmp/.instaclaw-failed` pattern",
+  );
+
+  // 55. BE-5 runs as openclaw user via sudo -u + bash -lc.
+  assert(
+    /sudo -u openclaw bash -lc '/.test(be5Block),
+    "BE-5 wraps git clones in `sudo -u openclaw bash -lc`",
+  );
+
+  // 56. BE-5 uses rc-accumulator pattern.
+  assert(
+    /^\s+rc=0$/m.test(be5Block),
+    "BE-5: rc-accumulator initialized to 0 (Bug #1 fix)",
+  );
+  assert(
+    be5Block.includes('[ "$rc" = "0" ]'),
+    "BE-5: terminal rc check gates the inner-bash exit (Bug #1 fix)",
+  );
+
+  // 57. BE-5 contains all 3 canonical repo URLs.
+  assert(
+    be5Block.includes("https://github.com/BankrBot/skills"),
+    "BE-5: bankr repo URL present (byte-parity with lib/ssh.ts:5433)",
+  );
+  assert(
+    be5Block.includes("https://github.com/coopergwrenn/consensus-2026-skill.git"),
+    "BE-5: consensus-2026 repo URL present (byte-parity with lib/ssh.ts:5557)",
+  );
+  assert(
+    be5Block.includes("https://github.com/aromeoes/edge-agent-skill.git"),
+    "BE-5: edge-esmeralda repo URL present (byte-parity with lib/ssh.ts:5528)",
+  );
+
+  // 58. BE-5 wraps every git clone in `timeout 60` for bounded duration.
+  const cloneTimeouts = be5Block.match(/timeout 60 git clone --depth 1/g);
+  assert(
+    (cloneTimeouts?.length ?? 0) === 3,
+    `BE-5: each git clone wrapped in 'timeout 60' (got ${cloneTimeouts?.length ?? 0}, expected 3)`,
+  );
+
+  // 59. BE-5 idempotency: clone-if-missing guard on each skill dir.
+  assert(
+    be5Block.includes('if [ ! -d "$HOME/.openclaw/skills/bankr" ]; then'),
+    "BE-5 bankr: clone-if-missing guard",
+  );
+  assert(
+    be5Block.includes('if [ ! -d "$HOME/.openclaw/skills/consensus-2026" ]; then'),
+    "BE-5 consensus-2026: clone-if-missing guard",
+  );
+  assert(
+    be5Block.includes('if [ ! -d "$HOME/.openclaw/skills/edge-esmeralda" ]; then'),
+    "BE-5 edge-esmeralda: clone-if-missing guard",
+  );
+
+  // 60. BE-5 bankr subdir delete: clanker + base must be deleted
+  //     unconditionally inside the bankr-base-exists guard.
+  assert(
+    be5Block.includes('rm -rf "$BANKR_SKILL_BASE/clanker" "$BANKR_SKILL_BASE/base"'),
+    "BE-5 bankr: deletes clanker + base subdirs (misroute the agent)",
+  );
+
+  // 61. BE-5 bankr overlay: marker check gates the atomic prepend.
+  assert(
+    be5Block.includes('! grep -q "INSTACLAW_BANKR_PATCH_V1" "$BANKR_SKILL_MD"'),
+    "BE-5 bankr overlay: marker grep gates idempotent prepend",
+  );
+
+  // 62. BE-5 bankr overlay: atomic mktemp + cat + cat + mv chain (one
+  //     failure aborts cleanly leaving SKILL.md untouched).
+  assert(
+    be5Block.includes('BANKR_OVERLAY_TMP=$(mktemp 2>/dev/null) \\'),
+    "BE-5 bankr overlay: mktemp at start of atomic chain",
+  );
+  assert(
+    be5Block.includes('cat /tmp/instaclaw-config/overlays/bankr-overlay.md > "$BANKR_OVERLAY_TMP"'),
+    "BE-5 bankr overlay: cat overlay > tmp (start of atomic chain)",
+  );
+  assert(
+    be5Block.includes('mv "$BANKR_OVERLAY_TMP" "$BANKR_SKILL_MD"'),
+    "BE-5 bankr overlay: mv tmp to skill.md (atomic finish)",
+  );
+
+  // 63. BE-5 consensus cron: canonical schedule + idempotency pattern.
+  assert(
+    be5Block.includes('"*/30 * * * * cd $HOME/.openclaw/skills/consensus-2026 && git pull --ff-only -q 2>/dev/null"'),
+    "BE-5 consensus: canonical 30-min auto-update cron line",
+  );
+  assert(
+    be5Block.includes('grep -v "consensus-2026-skill" | grep -v "skills/consensus-2026"'),
+    "BE-5 consensus cron: dual-grep filter (byte-parity with lib/ssh.ts:5560)",
+  );
+
+  // 64. BE-5 edge partner gate: file-presence check at the canonical
+  //     tarball path.
+  assert(
+    be5Block.includes('if [ -f /tmp/instaclaw-config/overlays/edge-instaclaw-overlay.md ]; then'),
+    "BE-5 edge gate: presence of overlays/edge-instaclaw-overlay.md tarball file",
+  );
+
+  // 65. BE-5 edge overlay write: atomic .tmp + mv.
+  assert(
+    be5Block.includes('EDGE_OVERLAY_TMP="$HOME/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md.tmp"'),
+    "BE-5 edge overlay: uses .tmp suffix for atomic write",
+  );
+  assert(
+    be5Block.includes('mv "$EDGE_OVERLAY_TMP" "$HOME/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md"'),
+    "BE-5 edge overlay: atomic mv to final path",
+  );
+
+  // 66. BE-5 edge cron: canonical schedule + idempotency.
+  assert(
+    be5Block.includes('"*/30 * * * * cd $HOME/.openclaw/skills/edge-esmeralda && git pull --ff-only -q 2>/dev/null"'),
+    "BE-5 edge: canonical 30-min auto-update cron line",
+  );
+  assert(
+    be5Block.includes('grep -v "edge-agent-skill"'),
+    "BE-5 edge cron: grep-v filter (byte-parity with lib/ssh.ts:5531)",
+  );
+
+  // 67. BE-5 verify-after-clone for consensus + edge (Rule 24 #1):
+  //     SKILL.md presence check post-clone catches partial/corrupt
+  //     clones that succeeded but produced empty content.
+  assert(
+    be5Block.includes('[ -f "$HOME/.openclaw/skills/consensus-2026/SKILL.md" ] || rc=1'),
+    "BE-5 consensus: verify-after-clone via SKILL.md presence (Rule 24 #1)",
+  );
+  assert(
+    be5Block.includes('[ -f "$HOME/.openclaw/skills/edge-esmeralda/SKILL.md" ] || rc=1'),
+    "BE-5 edge: verify-after-clone via SKILL.md presence (Rule 24 #1)",
+  );
+
+  // 68. BE-5 WARN has no unescaped backticks (lesson from BE-9).
+  const be5WarnLine = (be5Block.match(/\|\| echo "\[\$\(date.*BE-5.*"$/m) ?? [""])[0];
+  assert(
+    be5WarnLine.length > 0,
+    "BE-5 WARN echo line found",
+  );
+  assert(
+    !be5WarnLine.includes("`"),
+    "BE-5 WARN echo has no unescaped backticks (avoids accidental command substitution)",
+  );
 }
 
 async function test17_BuildCloudInitTarball() {
