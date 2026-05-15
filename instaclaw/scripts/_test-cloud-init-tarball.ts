@@ -2750,6 +2750,157 @@ async function test16_BuildSetupSh() {
     !be5WarnLine.includes("`"),
     "BE-5 WARN echo has no unescaped backticks (avoids accidental command substitution)",
   );
+
+  // ── Day 8b BE-12 + BE-13 assertions ───────────────────────────────
+  // BE-12 is defensive: every operation is idempotent and the current
+  // snapshot has everything in place (empirical 2026-05-15). Tests
+  // assert the canonical heredocs + ordering + idempotency primitives
+  // so future regressions (broken heredoc, removed daemon-reload, etc.)
+  // fail loudly here.
+
+  // 69. BE-12 ordering: AFTER BE-11, BEFORE §1.32 CRITICAL.
+  const idxBE12 = sh.indexOf("§1.21-23 BEST_EFFORT [BE-12 + BE-13]");
+  assert(
+    idxBE12 > 0 && idxBE12 > idxBE11 && idxBE12 < idx132Critical,
+    `BE-12 block sits AFTER BE-11 and BEFORE §1.32 CRITICAL (BE-12=${idxBE12}, BE-11=${idxBE11}, §1.32=${idx132Critical})`,
+  );
+
+  // 70. BE-12 uses BEST_EFFORT pattern (no exit 1 / touch failed).
+  const be12Block = sh.slice(idxBE12, idx132Critical);
+  assert(
+    be12Block.includes('|| echo "[$(date -u +%FT%TZ)] WARN: BE-12'),
+    "BE-12 uses BEST_EFFORT `|| echo WARN` pattern",
+  );
+  assert(
+    !be12Block.includes("touch /tmp/.instaclaw-failed"),
+    "BE-12 does NOT use CRITICAL `touch /tmp/.instaclaw-failed` pattern",
+  );
+
+  // 71. BE-12 runs as ROOT (no outer `sudo -u openclaw bash -lc`
+  //     wrapper — unlike BE-5/7/9/10/11). Direct root execution is
+  //     correct because BE-12 needs apt-get, systemctl daemon-reload,
+  //     /etc/systemd writes, ufw, iptables — all root operations.
+  //     The block's opening line is `{\n  rc=0\n  ...` NOT
+  //     `{ sudo -u openclaw bash -lc '...`.
+  // Look for openbox start which is sudo -u openclaw (the only place
+  // we drop to openclaw user is for openbox + ~/.vnc operations).
+  assert(
+    be12Block.includes("sudo -u openclaw bash -c 'pgrep -x openbox"),
+    "BE-12: openbox start uses sudo -u openclaw (X server needs to run as openclaw)",
+  );
+  assert(
+    be12Block.includes("sudo -u openclaw mkdir -p /home/openclaw/.vnc"),
+    "BE-12: ~/.vnc creation as openclaw user",
+  );
+
+  // 72. BE-12 rc-accumulator pattern.
+  assert(
+    /^\s+rc=0$/m.test(be12Block),
+    "BE-12: rc-accumulator initialized to 0",
+  );
+  assert(
+    be12Block.includes('[ "$rc" = "0" ]'),
+    "BE-12: terminal rc check gates the block exit",
+  );
+
+  // 73. BE-12 apt install (idempotent — snapshot already has these,
+  //     but defensive against drift).
+  assert(
+    be12Block.includes("timeout 180 apt-get install -y -qq"),
+    "BE-12: apt-get install wrapped in `timeout 180`",
+  );
+  for (const pkg of ["xvfb", "openbox", "x11vnc", "websockify", "novnc", "imagemagick"]) {
+    assert(
+      be12Block.includes(pkg),
+      `BE-12 apt: includes ${pkg}`,
+    );
+  }
+
+  // 74. BE-12 writes all 3 systemd unit files with canonical heredocs.
+  assert(
+    be12Block.includes("cat > /etc/systemd/system/xvfb.service << 'XVFBEOF'"),
+    "BE-12: xvfb.service heredoc with quoted delimiter",
+  );
+  assert(
+    be12Block.includes("cat > /etc/systemd/system/x11vnc.service << 'X11EOF'"),
+    "BE-12: x11vnc.service heredoc",
+  );
+  assert(
+    be12Block.includes("cat > /etc/systemd/system/websockify.service << 'WSEOF'"),
+    "BE-12: websockify.service heredoc",
+  );
+
+  // 75. BE-12 unit-body byte-parity (key load-bearing lines from
+  //     lib/ssh.ts:7117-7170).
+  assert(
+    be12Block.includes("ExecStart=/usr/bin/Xvfb :99 -screen 0 1280x720x24 -ac"),
+    "BE-12 xvfb.service ExecStart matches lib/ssh.ts:7124 byte-parity",
+  );
+  assert(
+    be12Block.includes("ExecStart=/usr/bin/x11vnc -display :99 -forever -shared -rfbport 5901 -localhost -noxdamage -nopw"),
+    "BE-12 x11vnc.service ExecStart matches lib/ssh.ts:7149 byte-parity",
+  );
+  assert(
+    be12Block.includes("ExecStart=/usr/bin/websockify --web=/usr/share/novnc/ --token-plugin ReadOnlyTokenFile --token-source /home/openclaw/.vnc/live-tokens 6080"),
+    "BE-12 websockify.service ExecStart matches lib/ssh.ts:7164 byte-parity",
+  );
+
+  // 76. BE-12 daemon-reload (BE-13 folded). Required after writing the
+  //     unit files for systemd to pick them up.
+  assert(
+    be12Block.includes("systemctl daemon-reload || rc=1"),
+    "BE-12: systemctl daemon-reload (BE-13 folded; required after unit-file writes)",
+  );
+
+  // 77. BE-12 enable + start loop over all 3 services.
+  assert(
+    be12Block.includes("for svc in xvfb x11vnc websockify; do"),
+    "BE-12: enable+start loop covers all 3 services",
+  );
+  assert(
+    be12Block.includes('systemctl enable "$svc"'),
+    "BE-12: enable command in for-loop body",
+  );
+  assert(
+    be12Block.includes('systemctl is-active "$svc" >/dev/null 2>&1 || systemctl start "$svc"'),
+    "BE-12: is-active probe gates start (idempotent on active services)",
+  );
+
+  // 78. BE-12 ufw + iptables for ports 6080 (VNC websocket) + 8765
+  //     (dispatch). Idempotent.
+  for (const port of ["6080", "8765"]) {
+    assert(
+      be12Block.includes(`ufw allow ${port}/tcp`),
+      `BE-12: ufw allow ${port}/tcp`,
+    );
+    assert(
+      be12Block.includes(`iptables -C INPUT -p tcp --dport ${port} -j ACCEPT`),
+      `BE-12: iptables -C presence check for port ${port}`,
+    );
+    assert(
+      be12Block.includes(`iptables -I INPUT 1 -p tcp --dport ${port} -j ACCEPT`),
+      `BE-12: iptables -I insert for port ${port} (when -C fails)`,
+    );
+  }
+
+  // 79. BE-12 Caddyfile /vnc/ patch with file-presence guard. Caddy is
+  //     installed only for custom-domain users; the guard makes this
+  //     a no-op on most VMs.
+  assert(
+    be12Block.includes('if [ -f /etc/caddy/Caddyfile ] && ! grep -q "/vnc/" /etc/caddy/Caddyfile 2>/dev/null; then'),
+    "BE-12: Caddyfile guard checks file presence AND absence of existing /vnc/ block (idempotent)",
+  );
+
+  // 80. BE-12 WARN echo has no unescaped backticks.
+  const be12WarnLine = (be12Block.match(/\|\| echo "\[\$\(date.*BE-12.*"$/m) ?? [""])[0];
+  assert(
+    be12WarnLine.length > 0,
+    "BE-12 WARN echo line found",
+  );
+  assert(
+    !be12WarnLine.includes("`"),
+    "BE-12 WARN echo has no unescaped backticks",
+  );
 }
 
 async function test17_BuildCloudInitTarball() {

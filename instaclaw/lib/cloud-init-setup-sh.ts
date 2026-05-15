@@ -46,8 +46,8 @@
  *   - [✓] BE-9: mcporter clawlancer config
  *   - [✓] BE-10: pip install §17b.2 packages
  *   - [✓] BE-11: npm install §17b.2 packages
- *   - [ ] BE-12: xvfb/x11vnc/websockify systemd units
- *   - [ ] BE-13: daemon-reload (lands with BE-12 — no-op without it)
+ *   - [✓] BE-12: xvfb/x11vnc/websockify systemd units (defensive idempotent)
+ *   - [✓] BE-13: daemon-reload (folded into BE-12)
  *
  * Snapshot inventory cross-reference (verified 2026-05-14 against vm-944,
  * a status=ready cv=0 VM — pure snapshot baseline):
@@ -549,6 +549,162 @@ echo "[\$(date -u +%FT%TZ)] setup.sh starting (user=\$USER_ID vm=\$VM_NAME)"
 } || echo "[\$(date -u +%FT%TZ)] WARN: BE-11 (npm install @worldcoin/agentkit-cli + mcporter + usecomputer) partial failure — NOT reconciler-healed (stepNpmPinDrift only covers @bankr/cli + openclaw). Without mcporter: ALL MCP server calls (Clawlancer marketplace, custom MCPs) fail. Without agentkit-cli: AgentBook registration impossible. Without usecomputer: dispatch/browser mode broken. Manual fleet-push to recover."
 
 # ════════════════════════════════════════════════════════════════════════
+# §1.21-23 BEST_EFFORT [BE-12 + BE-13]: defensive idempotent install of
+#       VNC pipeline — xvfb / x11vnc / websockify systemd units +
+#       apt deps + openbox bg + live-tokens placeholder + ufw / iptables
+#       + Caddyfile /vnc/ patch
+# ════════════════════════════════════════════════════════════════════════
+# DEFENSIVE only. Empirically verified 2026-05-15 (vm-944 + vm-050) that
+# the current snapshot has everything BE-12 would install: all 3 unit
+# files present + active, all apt deps installed (xvfb, openbox,
+# x11vnc, websockify, novnc, imagemagick), ufw + iptables rules in
+# place. §17b.2 of the snapshot-bake-requirements doc claimed these
+# unit files were MISSING — that audit was based on an older snapshot
+# (or was outdated by the time BE-N work started).
+#
+# Why ship BE-12 anyway: defense against snapshot drift. If a future
+# bake stops including these unit files (e.g., a new base image
+# stripped them), BE-12 fills the gap. Every operation is idempotent —
+# zero functional impact on the current fleet.
+#
+# Operations (dependency order, matching lib/ssh.ts:7107-7188):
+#   1. apt install (idempotent — apt no-op when installed)
+#   2. Write /etc/systemd/system/xvfb.service (canonical heredoc;
+#      byte-identical to existing snapshot content per probe)
+#   3. Write /etc/systemd/system/x11vnc.service
+#   4. Write /etc/systemd/system/websockify.service
+#   5. systemctl daemon-reload (BE-13 from the original plan, folded
+#      here since BE-12 is the only thing that wants it)
+#   6. enable + start all 3 services (idempotent on active services)
+#   7. Start openbox window manager as openclaw user (DISPLAY=:99,
+#      background; idempotent via pgrep check)
+#   8. mkdir ~/.vnc + live-tokens placeholder file (websockify reads it)
+#   9. ufw + iptables for port 6080 (VNC websocket) + 8765 (dispatch)
+#      — idempotent
+#  10. Caddyfile /vnc/ patch (guarded on file presence — Caddy is
+#      installed separately via installCaddyTls for custom-domain
+#      users only; the snapshot does not include Caddy, so this step
+#      no-ops on most VMs)
+#
+# This block runs as ROOT (setup.sh's outer context — no \`sudo -u
+# openclaw bash -lc\` wrapper because we need root for /etc/systemd
+# writes + apt + systemctl daemon-reload + ufw + iptables). Where
+# openclaw-user operations are needed (openbox, live-tokens), \`sudo -u
+# openclaw\` is used inline.
+#
+# Rc-accumulator pattern. Local-operation failures (apt, systemd writes,
+# daemon-reload, enable/start) push to result.errors → cv stays put on
+# next reconcile cycle. Caddyfile patch is best-effort-skip-on-absence.
+#
+# NOT reconciler-healed today. If snapshot drift ever removes these
+# files, the gap surfaces on the next fresh-VM provision (the cloud-
+# init endpoint, which isn't live yet). For existing fleet: no impact
+# (already has everything per empirical verification).
+{
+  rc=0
+
+  # 1. apt install (defensive — every package already installed on
+  # current snapshot per the 2026-05-15 probe). Idempotent: apt-get
+  # install on satisfied packages is a no-op that exits 0 in <2s.
+  timeout 180 apt-get install -y -qq \\
+    xvfb xdotool libx11-dev libxext-dev libxtst-dev libpng-dev \\
+    openbox imagemagick x11vnc websockify novnc \\
+    >/dev/null 2>&1 || rc=1
+
+  # 2. xvfb.service — virtual display at :99 (1280x720x24).
+  # Heredoc body byte-identical to lib/ssh.ts:7118-7128.
+  cat > /etc/systemd/system/xvfb.service << 'XVFBEOF'
+[Unit]
+Description=Xvfb Virtual Display for Dispatch Mode
+After=network.target
+[Service]
+Type=simple
+User=openclaw
+ExecStart=/usr/bin/Xvfb :99 -screen 0 1280x720x24 -ac
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
+XVFBEOF
+
+  # 3. x11vnc.service — VNC server bound to Xvfb display :99.
+  # Heredoc body byte-identical to lib/ssh.ts:7142-7154.
+  cat > /etc/systemd/system/x11vnc.service << 'X11EOF'
+[Unit]
+Description=x11vnc VNC Server for Xvfb
+After=xvfb.service
+[Service]
+Type=simple
+User=openclaw
+Environment=DISPLAY=:99
+ExecStart=/usr/bin/x11vnc -display :99 -forever -shared -rfbport 5901 -localhost -noxdamage -nopw
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
+X11EOF
+
+  # 4. websockify.service — VNC-to-WebSocket bridge on port 6080.
+  # Heredoc body byte-identical to lib/ssh.ts:7158-7169.
+  cat > /etc/systemd/system/websockify.service << 'WSEOF'
+[Unit]
+Description=websockify VNC-to-WebSocket bridge
+After=x11vnc.service
+[Service]
+Type=simple
+User=openclaw
+ExecStart=/usr/bin/websockify --web=/usr/share/novnc/ --token-plugin ReadOnlyTokenFile --token-source /home/openclaw/.vnc/live-tokens 6080
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
+WSEOF
+
+  # 5. daemon-reload picks up the unit-file changes (BE-13 from plan
+  # — folded here since BE-12 is the only thing that needs it).
+  systemctl daemon-reload || rc=1
+
+  # 6. enable + start all 3 services. Idempotent: enable adds a
+  # symlink if missing (no-op when already symlinked); start is a
+  # no-op when service is already active.
+  for svc in xvfb x11vnc websockify; do
+    systemctl enable "\$svc" 2>/dev/null || rc=1
+    systemctl is-active "\$svc" >/dev/null 2>&1 || systemctl start "\$svc" 2>/dev/null || rc=1
+  done
+
+  # 7. Start openbox window manager as openclaw user on DISPLAY=:99.
+  # Idempotent: pgrep skips if already running. nohup + & detaches
+  # so setup.sh proceeds without waiting.
+  sudo -u openclaw bash -c 'pgrep -x openbox >/dev/null || (DISPLAY=:99 nohup openbox >/dev/null 2>&1 &)' || true
+
+  # 8. ~/.vnc/live-tokens placeholder (websockify reads it; empty =
+  # no VNC connections allowed until a live-session generates one).
+  sudo -u openclaw mkdir -p /home/openclaw/.vnc
+  sudo -u openclaw bash -c '[ -f /home/openclaw/.vnc/live-tokens ] || echo "# live session tokens" > /home/openclaw/.vnc/live-tokens'
+
+  # 9. ufw + iptables for VNC websocket (6080) and dispatch (8765).
+  # Idempotent: ufw allow on existing rule is a no-op; iptables -C
+  # checks presence before -I insert. Errors swallowed because ufw
+  # may not be active on every VM.
+  ufw allow 6080/tcp >/dev/null 2>&1 || true
+  ufw allow 8765/tcp >/dev/null 2>&1 || true
+  iptables -C INPUT -p tcp --dport 6080 -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -p tcp --dport 6080 -j ACCEPT 2>/dev/null || true
+  iptables -C INPUT -p tcp --dport 8765 -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -p tcp --dport 8765 -j ACCEPT 2>/dev/null || true
+
+  # 10. Caddyfile /vnc/ proxy patch. Guarded on Caddyfile existence
+  # — Caddy is installed only when the user adds a custom domain
+  # (via installCaddyTls, not configureOpenClaw). The snapshot does
+  # not include /etc/caddy/Caddyfile. When present, idempotent grep
+  # skips re-add.
+  if [ -f /etc/caddy/Caddyfile ] && ! grep -q "/vnc/" /etc/caddy/Caddyfile 2>/dev/null; then
+    sed -i '/reverse_proxy localhost:18789/i \\  handle /vnc/* {\\n    uri strip_prefix /vnc\\n    reverse_proxy localhost:6080\\n  }' /etc/caddy/Caddyfile || rc=1
+    systemctl reload caddy 2>/dev/null || true
+  fi
+
+  [ "\$rc" = "0" ]
+} || echo "[\$(date -u +%FT%TZ)] WARN: BE-12 (VNC pipeline + ufw/iptables + Caddyfile /vnc/ patch) partial failure — current snapshot has everything in place, so this WARN only fires on snapshot drift. Without it: browser/dispatch mode features (live desktop viewer, VNC streaming) broken. Recovery: SSH and run the BE-12 bash from setup.sh, or wait for stepCaddyUIBlock (if applicable)."
+
+# ════════════════════════════════════════════════════════════════════════
 # §1.16 BEST_EFFORT [BE-9]: configure clawlancer MCP server via mcporter
 # ════════════════════════════════════════════════════════════════════════
 # Wires up the clawlancer MCP server in mcporter's config so the agent
@@ -790,16 +946,17 @@ echo "OPENCLAW_CONFIGURE_DONE"
 # + check-skill-updates.sh + cron), BE-8 (agent-status + clawlancer
 # SKILL.md via repo check-in), BE-9 (mcporter clawlancer config),
 # BE-10 (pip install §17b.2 packages), BE-11 (npm install agentkit-cli
-# + mcporter + usecomputer).
-# Pending: BE-2 (mkdir defenses), BE-3 (privacy wipe), BE-4 (stop pre-
-# existing gateway — under review, likely redundant), BE-6 (@bankr/cli —
-# reconciler heals via stepNpmPinDrift), BE-12 (xvfb/x11vnc/websockify
-# systemd units), BE-13 (daemon-reload — lands with BE-12 since it is a
-# no-op without unit-file changes).
-# All follow the BEST_EFFORT pattern:
+# + mcporter + usecomputer), BE-12+BE-13 (defensive idempotent VNC
+# pipeline — xvfb/x11vnc/websockify units + apt deps + openbox +
+# ufw/iptables + Caddyfile /vnc/ patch + daemon-reload folded).
+# Pending (all skip/cosmetic/redundant): BE-2 (mkdir defenses), BE-3
+# (privacy wipe), BE-4 (stop pre-existing gateway — redundant with
+# §1.32 restart), BE-6 (@bankr/cli — reconciler heals via
+# stepNpmPinDrift).
+# All landed BEST_EFFORT steps follow:
 #   { ... } || echo "[\$(date -u +%FT%TZ)] WARN: BE-N (label) — recovery"
 
-echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 + BE-5 + BE-7 + BE-9 + BE-10 + BE-11)"
+echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 + BE-5 + BE-7 + BE-9 + BE-10 + BE-11 + BE-12)"
 exit 0
 `;
 }
@@ -866,4 +1023,18 @@ export const SETUP_SH_SENTINELS = {
   BE5_CRON_SCHEDULE: "*/30 * * * *",
   /** BE-5: partner-gate via tarball file presence. */
   BE5_PARTNER_GATE: "/tmp/instaclaw-config/overlays/edge-instaclaw-overlay.md",
+  /** BE-12: canonical xvfb systemd unit path. */
+  BE12_XVFB_SERVICE_PATH: "/etc/systemd/system/xvfb.service",
+  /** BE-12: canonical x11vnc systemd unit path. */
+  BE12_X11VNC_SERVICE_PATH: "/etc/systemd/system/x11vnc.service",
+  /** BE-12: canonical websockify systemd unit path. */
+  BE12_WEBSOCKIFY_SERVICE_PATH: "/etc/systemd/system/websockify.service",
+  /** BE-12: VNC websocket port (websockify listens here for /vnc/* requests). */
+  BE12_VNC_PORT: "6080",
+  /** BE-12: canonical display number for Xvfb + openbox + x11vnc. */
+  BE12_DISPLAY: "DISPLAY=:99",
+  /** BE-12: live-tokens path that websockify reads. */
+  BE12_LIVE_TOKENS_PATH: "/home/openclaw/.vnc/live-tokens",
+  /** BE-12: Caddy proxy-block guard (only patch when Caddy is installed). */
+  BE12_CADDY_GUARD: "[ -f /etc/caddy/Caddyfile ]",
 } as const;
