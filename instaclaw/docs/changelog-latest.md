@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-15
 
-Window: `fe9cc049cd931654ea4d83bc443234b91773f94d` → `HEAD` (HEAD = `f21678bb`)
+Window: `f21678bb3c7b5ddca0afbac1ef0d99f285a4abbf` → `HEAD` (HEAD = `5b2e1610`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: f21678bb3c7b5ddca0afbac1ef0d99f285a4abbf -->
+<!-- LAST_GENERATED_SHA: 5b2e16108cffb33e1a3d867a9761480fcd923588 -->
 
 ## Summary
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `f21678bb` 2026-05-15 — chore(reconcile-fleet): bust nft cache after v100 stale-bundle halt [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `7c82e36e` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
+- `5b2e1610` 2026-05-15 — fix(reconcile-fleet): FIX-A timeout headroom + FIX-B bookkeeping bypass (P0 cv=95) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `cd1e5d45` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `f21678bb` 2026-05-15 — chore(reconcile-fleet): bust nft cache after v100 stale-bundle halt [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5b2e1610` 2026-05-15 — fix(reconcile-fleet): FIX-A timeout headroom + FIX-B bookkeeping bypass (P0 cv=95) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `7c82e36e` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
+- `cd1e5d45` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `f21678bb` 2026-05-15 — [reconciler, infrastructure] — chore(reconcile-fleet): bust nft cache after v100 stale-bundle halt
+- `5b2e1610` 2026-05-15 — [reconciler, infrastructure] — fix(reconcile-fleet): FIX-A timeout headroom + FIX-B bookkeeping bypass (P0 cv=95)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `f21678bb` 2026-05-15 — chore(reconcile-fleet): bust nft cache after v100 stale-bundle halt
+- `5b2e1610` 2026-05-15 — fix(reconcile-fleet): FIX-A timeout headroom + FIX-B bookkeeping bypass (P0 cv=95)
 
 ## Appendix — every commit (chronological)
 
-- `7c82e36e` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
-- `f21678bb` 2026-05-15 — chore(reconcile-fleet): bust nft cache after v100 stale-bundle halt [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `cd1e5d45` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
+- `5b2e1610` 2026-05-15 — fix(reconcile-fleet): FIX-A timeout headroom + FIX-B bookkeeping bypass (P0 cv=95) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
