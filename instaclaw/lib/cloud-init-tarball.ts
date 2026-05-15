@@ -1164,27 +1164,59 @@ export type { TarEntry };
 //     but lands identical content.
 //   - check-skill-updates.sh: lib/ssh.ts:6502-6517 (same pattern).
 
-/**
- * Content of ~/scripts/browser-relay-server.js — VM-side WebSocket server
- * the Browser Relay Chrome extension dials into. SSH path classifies its
- * deploy as `recordFailure(critical=true)` per Rule 33; Day 8b relaxes
- * to BEST_EFFORT because a single missed deploy is operator-recoverable
- * (fleet-push), not a broken VM (gateway still serves Telegram).
- */
-const BROWSER_RELAY_SERVER_JS = readFileSync(
-  resolvePath(__dirname, "../scripts/browser-relay-server/browser-relay-server.js"),
-  "utf-8",
-);
+// 2026-05-15 hotfix: lazy-load these scripts instead of reading at module
+// load. Next.js 16 + Turbopack's "Collecting page data" pass instantiates
+// the route module BEFORE `outputFileTracingIncludes` (next.config.ts:14,
+// 37-38) has placed `scripts/**/*` into the serverless bundle. Result:
+// module-load `readFileSync` fails with ENOENT during the build step,
+// crashing the build with `Failed to collect page data for /api/vm/cloud-
+// init-config`. (Day 9-10 introduced the cloud-init-config route which
+// pulled this lib into the route's evaluation graph for the first time;
+// previously only reconciler-side code paths imported it.)
+//
+// Lazy-load + memoize: first call to buildCloudInitTarball() /
+// collectPartialEntries() triggers the read; subsequent calls reuse the
+// cached string. By that point we're at request-handling time and the
+// bundled files are present at the resolved path.
+//
+// Tests run via `npx tsx` from the project root where __dirname resolves
+// to the lib/ source location at runtime — they're unaffected because
+// they invoke the builders (not just import the module).
 
+let _browserRelayServerJs: string | null = null;
 /**
- * Content of ~/scripts/check-skill-updates.sh — daily 3am UTC cron that
- * diffs the manifest.json from GitHub against installed pip versions and
- * upgrades drifted packages.
+ * Lazy accessor for ~/scripts/browser-relay-server.js content — VM-side
+ * WebSocket server the Browser Relay Chrome extension dials into. SSH path
+ * classifies its deploy as `recordFailure(critical=true)` per Rule 33;
+ * Day 8b relaxes to BEST_EFFORT because a single missed deploy is
+ * operator-recoverable (fleet-push), not a broken VM (gateway still
+ * serves Telegram).
  */
-const CHECK_SKILL_UPDATES_SH = readFileSync(
-  resolvePath(__dirname, "../scripts/check-skill-updates.sh"),
-  "utf-8",
-);
+function getBrowserRelayServerJs(): string {
+  if (_browserRelayServerJs == null) {
+    _browserRelayServerJs = readFileSync(
+      resolvePath(__dirname, "../scripts/browser-relay-server/browser-relay-server.js"),
+      "utf-8",
+    );
+  }
+  return _browserRelayServerJs;
+}
+
+let _checkSkillUpdatesSh: string | null = null;
+/**
+ * Lazy accessor for ~/scripts/check-skill-updates.sh content — daily 3am
+ * UTC cron that diffs the manifest.json from GitHub against installed pip
+ * versions and upgrades drifted packages.
+ */
+function getCheckSkillUpdatesSh(): string {
+  if (_checkSkillUpdatesSh == null) {
+    _checkSkillUpdatesSh = readFileSync(
+      resolvePath(__dirname, "../scripts/check-skill-updates.sh"),
+      "utf-8",
+    );
+  }
+  return _checkSkillUpdatesSh;
+}
 
 // ════════════════════════════════════════════════════════════════════════
 // §7. buildCloudInitTarball — assembled entry point
@@ -1277,12 +1309,12 @@ export function buildCloudInitTarball(p: TarballParams): Readable {
   // with mode 0o755 and chown openclaw:openclaw.
   entries.push({
     path: "home/openclaw/scripts/browser-relay-server.js",
-    body: BROWSER_RELAY_SERVER_JS,
+    body: getBrowserRelayServerJs(),
     mode: 0o755,
   });
   entries.push({
     path: "home/openclaw/scripts/check-skill-updates.sh",
-    body: CHECK_SKILL_UPDATES_SH,
+    body: getCheckSkillUpdatesSh(),
     mode: 0o755,
   });
 
