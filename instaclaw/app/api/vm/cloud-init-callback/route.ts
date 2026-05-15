@@ -35,12 +35,25 @@
  *         in depth, same as the cloud-init-config endpoint)
  *   500 — DB write failure after claim
  *
- * ── Retry semantics ──
- * setup.sh §1.38 retries up to 3× (10s timeout each + 5s backoff). The
- * atomic claim means exactly one retry can succeed — subsequent retries
- * with the same token find consumed_at != NULL and get 401, which setup.sh
- * treats as a non-fatal "we already won" signal (CALLBACK_OK=true on the
- * winning attempt; 3 failures = exit 1).
+ * ── Retry semantics + idempotency ──
+ * setup.sh §1.38 retries the POST up to 3× (10s timeout each + 5s backoff).
+ * Three retry-related cases:
+ *   (1) First attempt succeeds end-to-end: setup.sh sees 200, CALLBACK_OK=
+ *       true, proceeds. The token row's consumed_at is now set.
+ *   (2) First attempt commits server-side but its 200 response is lost in
+ *       transit (network blip): setup.sh thinks attempt 1 failed and
+ *       retries. Without idempotency the retry hits 401 (atomic claim
+ *       finds consumed_at != NULL) → setup.sh fails → cloud-init-poll
+ *       30-min sweep wrongly marks a HEALTHY VM `status='failed'`.
+ *       Day 11-12 fix (2026-05-15): retry's claim-fail triggers an
+ *       idempotency-SELECT — if THIS token, for THIS user+vm, already
+ *       has consumed_at set AND status='assigned' AND health_status=
+ *       'healthy' (the post-successful-callback state we'd have written),
+ *       return 200 as if we were the first. Strict (token, user, vm)
+ *       tuple match prevents an attacker from exploiting this path.
+ *   (3) Three consecutive transit-level failures (server unreachable):
+ *       setup.sh exits 1 → /tmp/.instaclaw-failed → cloud-init-poll
+ *       eventually marks `status='failed'`. Correct outcome.
  *
  * ── agentbookAddress handling ──
  * Body may include an EVM address (when a future setup.sh on-VM derivation
@@ -205,9 +218,53 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .single();
 
   if (claimErr || !vm) {
-    // Same four-classes-collapse-to-401 pattern as cloud-init-config:
-    // wrong token / already consumed / user-VM mismatch / state mismatch.
-    // Internal log captures truncated token prefix for correlation.
+    // The atomic claim found 0 matching rows. Four legitimate causes:
+    //   (a) Wrong token         — attacker without the real value
+    //   (b) user/vm-name mismatch — token doesn't belong to this VM
+    //   (c) status != 'provisioning' — already transitioned elsewhere
+    //   (d) consumed_at NOT NULL — already-consumed retry
+    //
+    // Case (d) is BENIGN and EXPECTED: setup.sh §1.38 retries the curl
+    // POST up to 3× with 10s timeout each. If attempt 1's response was
+    // lost between server-commit and client-receipt (network blip), the
+    // DB IS already in the post-success state but the bootstrap thinks
+    // attempt 1 failed and retries. Without idempotency, the retry hits
+    // 401 → setup.sh marks the VM failed → cloud-init-poll wrongly
+    // marks a HEALTHY VM `status='failed'` at the 30-min timeout sweep.
+    //
+    // Idempotency check: if THIS exact token, for THIS user+vm, was
+    // already consumed AND the row is now in the post-callback state
+    // we'd have written (status='assigned' AND health_status='healthy'),
+    // the prior call succeeded — return 200 as if we were the first.
+    // The strict (token, user, vm) tuple match prevents abuse: an
+    // attacker without the real token can never make this SELECT match.
+    const { data: priorVm, error: priorErr } = await supabase
+      .from("instaclaw_vms")
+      .select("id, name, partner, agentbook_wallet_address, cloud_init_callback_consumed_at")
+      .eq("cloud_init_callback_token", callbackToken)
+      .eq("assigned_to", userId)
+      .eq("name", vmName)
+      .eq("status", "assigned")
+      .eq("health_status", "healthy")
+      .not("cloud_init_callback_consumed_at", "is", null)
+      .single();
+
+    if (!priorErr && priorVm) {
+      logger.info("cloud-init-callback: idempotent retry — already healthy/assigned", {
+        route: "vm/cloud-init-callback",
+        userId,
+        vmName,
+        vmId: (priorVm as { id: string }).id,
+        tokenPrefix: callbackToken.slice(0, 8),
+        priorConsumedAt: (priorVm as { cloud_init_callback_consumed_at: string }).cloud_init_callback_consumed_at,
+      });
+      return NextResponse.json({ ok: true, idempotent: true });
+    }
+
+    // Not an idempotent retry — genuine auth failure. Internal log
+    // captures truncated token prefix for correlation; response body
+    // is uniform per the same defense-in-depth pattern as the config
+    // endpoint.
     logger.warn("cloud-init-callback: claim failed", {
       route: "vm/cloud-init-callback",
       userId,
