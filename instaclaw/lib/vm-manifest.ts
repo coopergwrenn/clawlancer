@@ -2115,19 +2115,12 @@ export const VM_MANIFEST = {
     // into the owner's Telegram inbox, which Timour Kosters reported as "5
     // connection requests in 4 hours" on 2026-05-15.
     //
-    // To re-enable:
-    //  1. Restore this entry, OR
-    //  2. Run scripts/_reenable-consensus-pipeline-cron.ts (mirror of the
-    //     disable script — produces this exact cron line).
-    // AND
-    //  3. Remove CONSENSUS_INTRO_FLOW_ENABLED env var from Vercel:
-    //     `npx vercel env rm CONSENSUS_INTRO_FLOW_ENABLED production`
-    //     and redeploy.
-    // AND
-    //  4. (recommended) Fix the retry-path bug in consensus_match_pipeline.py
-    //     — `retry_unacked_outreach` sends XMTP via the local listener
-    //     BEFORE POST'ing phase=retry to the API. Reorder so the API check
-    //     gates the send (consistent with the reserve path).
+    // RE-ENABLE: do not improvise. Follow the runbook from start to finish:
+    //   instaclaw/docs/intent-matchmaking-reenable-runbook.md
+    // The runbook covers the retry-path bug fix (must land FIRST), the
+    // manifest un-comment + version bump, the fleet re-install via
+    // scripts/_reenable-consensus-pipeline-cron.ts, the Vercel env-var
+    // removal, the redeploy, and the single-VM verification.
     //
     // {
     //   schedule: "*/30 * * * *",
