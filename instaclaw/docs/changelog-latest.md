@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-15
 
-Window: `5b2e16108cffb33e1a3d867a9761480fcd923588` → `HEAD` (HEAD = `851e658e`)
+Window: `851e658e482b5da9968006ef8cdcc5471da91583` → `HEAD` (HEAD = `84c355f1`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 851e658e482b5da9968006ef8cdcc5471da91583 -->
+<!-- LAST_GENERATED_SHA: 84c355f1c9bb234b57bef04dea6400613ce04407 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `851e658e` 2026-05-15 — feat(cloud-init): Day 9-10 — /api/vm/cloud-init-config endpoint + on-VM agent key gen [7 files] _(ai-assisted)_
-- `8aa4213b` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
+- `84c355f1` 2026-05-15 — feat(cloud-init): Day 11-12 — /api/vm/cloud-init-callback endpoint + Day 9-10 template fix [5 files] _(ai-assisted)_
+- `10a9ae3c` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `851e658e` 2026-05-15 — feat(cloud-init): Day 9-10 — /api/vm/cloud-init-config endpoint + on-VM agent key gen [7 files] _(ai-assisted)_
+- `84c355f1` 2026-05-15 — feat(cloud-init): Day 11-12 — /api/vm/cloud-init-callback endpoint + Day 9-10 template fix [5 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `8aa4213b` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
+- `10a9ae3c` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `851e658e` 2026-05-15 — feat(cloud-init): Day 9-10 — /api/vm/cloud-init-config endpoint + on-VM agent key gen
+- `84c355f1` 2026-05-15 — feat(cloud-init): Day 11-12 — /api/vm/cloud-init-callback endpoint + Day 9-10 template fix
 
 ## Appendix — every commit (chronological)
 
-- `8aa4213b` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
-- `851e658e` 2026-05-15 — feat(cloud-init): Day 9-10 — /api/vm/cloud-init-config endpoint + on-VM agent key gen [7 files] _(ai-assisted)_
+- `10a9ae3c` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
+- `84c355f1` 2026-05-15 — feat(cloud-init): Day 11-12 — /api/vm/cloud-init-callback endpoint + Day 9-10 template fix [5 files] _(ai-assisted)_
