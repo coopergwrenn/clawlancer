@@ -128,7 +128,15 @@ USER_ID="${p.userId}"
 VM_NAME="${p.vmName}"
 CALLBACK_TOKEN="${p.callbackToken}"
 NEXTAUTH_URL="${nextauthUrl}"
-AGENTBOOK_ADDRESS="${p.agentbookAddress}"
+# 2026-05-15: agentbookAddress is now optional (Day 9-10 — on-VM-gen path
+# omits it). TypeScript template literals render undefined as the literal
+# string "undefined", which would corrupt the bash variable and the
+# callback POST payload ("agentbookAddress":"undefined"). Coerce undefined
+# → empty string here so the bash variable is "" and the callback POST
+# sends "agentbookAddress":"" — which the receiver (Day 11-12 endpoint)
+# skips, leaving instaclaw_vms.agentbook_wallet_address NULL until a
+# future setup.sh on-VM derivation step (or a backfill cron) populates it.
+AGENTBOOK_ADDRESS="${p.agentbookAddress ?? ""}"
 
 echo "[\$(date -u +%FT%TZ)] setup.sh starting (user=\$USER_ID vm=\$VM_NAME)"
 

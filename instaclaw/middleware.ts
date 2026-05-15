@@ -51,6 +51,7 @@ export default auth((req) => {
     "/api/cron",
     "/api/vm/configure",
     "/api/vm/cloud-init-config", // Self-auth via X-Cloud-Init-Config-Token header — one-time-use per-VM token, atomic claim-and-invalidate at the route. Used by cloud-init bootstrap to fetch per-VM tarball. See app/api/vm/cloud-init-config/route.ts + plan §5.
+    "/api/vm/cloud-init-callback", // Self-auth via X-Cloud-Init-Callback-Token header — one-time-use per-VM token (separate from config-token; in tarball, NOT in userdata). Companion to cloud-init-config; called by setup.sh §1.38 to mark VM healthy+assigned. See app/api/vm/cloud-init-callback/route.ts + plan §6.2.
     "/api/vm/resync-token",
     "/api/admin/provision",
     "/api/admin/pool-audit",

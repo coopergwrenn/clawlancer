@@ -3410,6 +3410,33 @@ async function test18_OnVmKeyGeneration() {
     sh.includes(SETUP_SH_SENTINELS.AGENT_KEY_OPENSSL_RAND),
     "setup.sh includes the canonical openssl rand -hex 32 command",
   );
+
+  // ── (8) Day 11-12 coupling: agentbookAddress=undefined renders as
+  //     AGENTBOOK_ADDRESS="" (empty), NOT AGENTBOOK_ADDRESS="undefined".
+  // TypeScript template literals render `undefined` as the literal string
+  // "undefined" by default. The on-VM-gen path omits agentbookAddress, and
+  // without the `?? ""` coalesce in buildSetupSh the callback POST would
+  // ship `"agentbookAddress":"undefined"` — a bogus value the receiver
+  // would either write to instaclaw_vms.agentbook_wallet_address (data
+  // corruption) or reject as a 400 (callback fails, VM auto-fails at
+  // cloud-init-poll 30-min timeout). Either way, broken.
+  assert(
+    sh.includes('AGENTBOOK_ADDRESS=""'),
+    "on-VM-gen path: AGENTBOOK_ADDRESS bash var rendered as empty string (not 'undefined')",
+  );
+  assert(
+    !sh.includes('AGENTBOOK_ADDRESS="undefined"'),
+    "on-VM-gen path: AGENTBOOK_ADDRESS does NOT contain literal 'undefined' string",
+  );
+
+  // ── (9) Regression guard: validParams (with agentbookAddress supplied)
+  //     still renders the correct concrete value, not the empty-string
+  //     fallback.
+  const shWithAddress = buildSetupSh(validParams);
+  assert(
+    shWithAddress.includes(`AGENTBOOK_ADDRESS="${validParams.agentbookAddress}"`),
+    "regression guard: validParams renders AGENTBOOK_ADDRESS with concrete address",
+  );
 }
 
 async function main() {
