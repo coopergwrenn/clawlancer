@@ -1250,6 +1250,44 @@ export const VM_MANIFEST = {
    * other paths (deploys, manual restarts, kernel updates), so the broken-tool_use
    * problem persists until the recovery path lands.
    *
+   * [2026-05-15 follow-up — companion-fix research, before implementing]:
+   * Investigation reveals OpenClaw 2026.4.26 already exports the repair
+   * primitives we would have duplicated. `session-transcript-repair-D9T_omS-.js`
+   * exports `repairToolUseResultPairing`, `makeMissingToolResult`,
+   * `sanitizeToolUseResultPairing`, `stripToolResultDetails`,
+   * `sanitizeToolCallInputs`. `compaction-successor-transcript-CFukhZtt.js`
+   * defines `repairSessionFileIfNeeded(params)` at line 2060 — file-level
+   * repair with atomic tmp+replace — and exports `flushPendingToolResultsAfterIdle`
+   * whose name strongly implies the post-idle hook we'd need on restart.
+   * Default policy is `repairToolUseResultPairing: true` at
+   * compaction-successor-transcript-CFukhZtt.js:2566 and
+   * provider-model-shared-Bqo51Ufw.js:35. The repair is invoked at
+   * compact-B_VybGkN.js:640, compact-B_VybGkN.js:773,
+   * compaction-CciVUU6P.js:245,
+   * compaction-successor-transcript-CFukhZtt.js:2390 (where it persists a
+   * synthetic tool_result via persistToolResult+persistMessage+makeMissingToolResult),
+   * and compaction-successor-transcript-CFukhZtt.js:3500.
+   *
+   * Storage-format clarification: OpenClaw normalizes wire-format `tool_use`
+   * to `toolcall` when persisting to disk (chat-CTjpvvH8.js:126
+   * `block.type = "toolcall"`). A companion script scanning session .jsonl
+   * files must look for `"toolcall"`, not `"tool_use"`.
+   *
+   * Conclusion: the orphan-tool_use repair flagged above is PROBABLY already
+   * handled by OpenClaw internals. Cooper's 8:03 PM and 8:04 PM ET errors
+   * during the SIGTERM window are more likely caused by the gbrain MCP hang
+   * (no Anthropic response within timeout → OpenClaw bubbles "Something went
+   * wrong, use /new") than by orphan tool_use in the session file. The
+   * companion fix may not need to be built at all.
+   *
+   * Repro test required to confirm (tomorrow's task): on a low-stakes VM,
+   * trigger a tool turn (web_search), SIGTERM the gateway while the tool
+   * call is in flight, wait for systemd restart, send a follow-up user
+   * message via Telegram. If the follow-up succeeds, OpenClaw's auto-repair
+   * is working and no further work is needed. If it fails with the same
+   * "Something went wrong" string, the repair path doesn't fire on this
+   * scenario and we identify the missing hook before adding a workaround.
+   *
    * Three-site change (deployed via stepSystemdUnit on reconcile):
    *   - lib/vm-manifest.ts:2126-2127 — manifest template (this file)
    *   - lib/ssh.ts:7297-7298 — configureOpenClaw fresh-VM path
