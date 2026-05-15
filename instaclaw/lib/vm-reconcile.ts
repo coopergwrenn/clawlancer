@@ -4936,6 +4936,15 @@ async function stepSkillDirectories(
  *     if the edge dir exists. This step clones the edge dir so
  *     stepDeployEdgeOverlay can do its work on the NEXT cycle (1-
  *     cycle latency for first overlay application on new VMs).
+ *   - stepNpmPinDrift (commit bb12558d, line 2662) installs mcporter
+ *     binary. This step's mcporter clawlancer config sub-block runs
+ *     LATER in the same reconcile cycle (orchestrator line 623), so
+ *     mcporter should be on PATH by the time we probe.
+ *
+ * BE-9 fleet heal (2026-05-15): the 4th sub-block adds the mcporter
+ * clawlancer config. Presence-only — does NOT remove-then-add (would
+ * wipe an existing user's CLAWLANCER_API_KEY and strand their funds).
+ * Add only if `mcporter config get clawlancer` returns non-zero.
  *
  * Failure classification:
  *   - Bankr SKILL.md absent after stepSkillDirectories ran → result
@@ -5085,6 +5094,84 @@ async function stepExternalSkillHeal(
     }
   } catch (err) {
     result.warnings.push(`consensus-2026 heal: exception: ${String(err).slice(0, 200)}`);
+  }
+
+  // ── mcporter clawlancer config (universal, BE-9 fleet heal) ──────
+  //
+  // Fleet-heal counterpart to cloud-init Day 8b BE-9 (commit 1bac526c).
+  // Wires up the clawlancer MCP server in mcporter's config so the
+  // agent can call `mcporter call clawlancer.<tool>` per the clawlancer
+  // SKILL.md (deployed via stepSkills from instaclaw/skills/clawlancer/
+  // after BE-8 commit d048c5d3).
+  //
+  // Failure mode w/o this: every existing fleet VM has the clawlancer
+  // SKILL.md instructing the agent to use `mcporter call clawlancer.*`,
+  // but the mcporter config has no clawlancer entry → every call
+  // returns "Unknown server 'clawlancer'". This block heals every VM
+  // on the next reconcile cycle.
+  //
+  // Presence-only logic (NOT a remove-then-add like cloud-init BE-9
+  // setup.sh): if the user's agent has already registered with
+  // Clawlancer and populated their CLAWLANCER_API_KEY, the config has
+  // a populated key. Wiping it would force re-registration AND
+  // strand any funds tied to the old wallet. So we add ONLY if the
+  // config is missing. Drift in existing configs (wrong --command,
+  // wrong URL) is NOT healed here — would require an explicit
+  // operator-driven re-config script.
+  //
+  // Prereq: mcporter binary on PATH (via NVM_PREAMBLE). stepNpmPinDrift
+  // (commit bb12558d) installs mcporter on every reconcile cycle, so
+  // by the time this step runs, mcporter should be present. If it
+  // isn't (transient failure), this block surfaces a warning instead
+  // of an error — the next cycle picks up the BE-11 install + this
+  // BE-9 config in sequence.
+  //
+  // Canonical config (matches lib/ssh.ts:5596-5603 + BE-9 setup.sh
+  // byte-parity): npx -y clawlancer-mcp, empty CLAWLANCER_API_KEY,
+  // CLAWLANCER_BASE_URL=https://clawlancer.ai, scope home.
+  try {
+    const probe = await ssh.execCommand(
+      `${NVM_PREAMBLE} && command -v mcporter >/dev/null 2>&1 && echo MCPORTER_OK || echo MCPORTER_MISSING; ` +
+      `${NVM_PREAMBLE} && mcporter config get clawlancer >/dev/null 2>&1 && echo CLAWLANCER_REGISTERED || echo CLAWLANCER_MISSING`,
+    );
+    const mcporterPresent = probe.stdout.includes("MCPORTER_OK");
+    const clawlancerRegistered = probe.stdout.includes("CLAWLANCER_REGISTERED");
+
+    if (!mcporterPresent) {
+      // BE-11 fleet heal (stepNpmPinDrift) should have installed mcporter
+      // earlier in this cycle. If it's still missing, the failure cause
+      // is upstream — surface a warning rather than blocking cv (the
+      // next cycle's stepNpmPinDrift retry will heal both).
+      result.warnings.push("mcporter-clawlancer: mcporter binary missing — BE-11 fleet heal must install it first");
+    } else if (clawlancerRegistered) {
+      result.alreadyCorrect.push("mcporter-clawlancer (registered)");
+    } else if (dryRun) {
+      result.fixed.push("[dry-run] mcporter-clawlancer: would add canonical config");
+    } else {
+      // Add the canonical config. `--scope home` writes to
+      // ~/.mcporter/mcporter.json (not the project-level config, which
+      // would require a project dir we don't necessarily have).
+      const add = await ssh.execCommand(
+        `${NVM_PREAMBLE} && mcporter config add clawlancer ` +
+        `--command "npx -y clawlancer-mcp" ` +
+        `--env CLAWLANCER_API_KEY= ` +
+        `--env CLAWLANCER_BASE_URL=https://clawlancer.ai ` +
+        `--scope home ` +
+        `--description "Clawlancer AI agent marketplace" 2>&1 | tail -5`,
+      );
+      const verify = await ssh.execCommand(
+        `${NVM_PREAMBLE} && mcporter config get clawlancer >/dev/null 2>&1 && echo OK || echo MISSING`,
+      );
+      if (verify.stdout.includes("OK")) {
+        result.fixed.push("mcporter-clawlancer config added");
+      } else {
+        result.errors.push(
+          `mcporter-clawlancer add failed: ${add.stdout.slice(-200)}`,
+        );
+      }
+    }
+  } catch (err) {
+    result.warnings.push(`mcporter-clawlancer heal: exception: ${String(err).slice(0, 200)}`);
   }
 
   // ── Edge-esmeralda clone + cron (partner=edge_city only) ──────────
