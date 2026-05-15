@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-15
 
-Window: `57558518465152f5bf575e3780399f130dfdd4d7` → `HEAD` (HEAD = `653c252e`)
+Window: `653c252e5d8ffe736fc89cdc2e1fa2130b324b28` → `HEAD` (HEAD = `7880738e`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 653c252e5d8ffe736fc89cdc2e1fa2130b324b28 -->
+<!-- LAST_GENERATED_SHA: 7880738e8cbb1b709961ba6691657f6a8b56cf74 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
+- **Reconciler / manifest:** 1
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `e8e97b1c` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
-- `653c252e` 2026-05-15 — docs(CLAUDE.md): freeze pipeline incident + Rules 50/51/52 + runbook [1 files] _(ai-assisted)_
+- `7880738e` 2026-05-15 — docs(consensus-pipeline): re-enable script + turnkey runbook [4 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `1c16f154` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
 
-_(none)_
+- `7880738e` 2026-05-15 — docs(consensus-pipeline): re-enable script + turnkey runbook [4 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -43,18 +43,23 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `e8e97b1c` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
-- `653c252e` 2026-05-15 — docs(CLAUDE.md): freeze pipeline incident + Rules 50/51/52 + runbook [1 files] _(ai-assisted)_
+- `1c16f154` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `7880738e` 2026-05-15 — [reconciler, infrastructure, docs] — docs(consensus-pipeline): re-enable script + turnkey runbook
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `653c252e` 2026-05-15 — docs(CLAUDE.md): freeze pipeline incident + Rules 50/51/52 + runbook
+- `7880738e` 2026-05-15 — docs(consensus-pipeline): re-enable script + turnkey runbook
 
 ## Appendix — every commit (chronological)
 
-- `e8e97b1c` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
-- `653c252e` 2026-05-15 — docs(CLAUDE.md): freeze pipeline incident + Rules 50/51/52 + runbook [1 files] _(ai-assisted)_
+- `1c16f154` 2026-05-15 — chore(changelog): auto-update [skip ci] [2 files]
+- `7880738e` 2026-05-15 — docs(consensus-pipeline): re-enable script + turnkey runbook [4 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
