@@ -2,7 +2,7 @@
 
 **Phase 1 (applied 2026-05-16):** `instaclaw/supabase/migrations/20260516200000_village_dual_channel_broadcast.sql` — `agent_positions` table only. Status: ✅ applied to production via Supabase Studio SQL Editor on 2026-05-16 (build pipeline was blocked by `verify-migrations.ts` until apply; recovery via `vercel redeploy` of last Error deployment).
 
-**Phase 2 (pending):** `instaclaw/supabase/pending_migrations/20260516210000_village_dual_channel_triggers.sql` — village schema, anonymize helper, `village_attendees_public` view, four broadcast trigger functions, four triggers. Status: PARKED in `pending_migrations/` per CLAUDE.md Rule 56. **Owner approval required** before applying to staging or production.
+**Phase 2 (pending):** `instaclaw/supabase/pending_migrations/20260516210000_village_dual_channel_triggers.sql` — village schema, anonymize helper, four broadcast trigger functions, four triggers. Status: PARKED in `pending_migrations/` per CLAUDE.md Rule 56. **Owner approval required** before applying to staging or production. (Originally also included two public views; deferred to Phase 3 — see below.)
 
 > **Why split:** during the Phase 1 commit, all of Phase 2 was bundled into the same file. The build pipeline went down because `agent_positions` didn't exist in prod yet — `verify-migrations.ts` blocked every Vercel build until Cooper hand-pasted the table. To prevent a re-occurrence, Phase 2 was extracted to `pending_migrations/` (excluded from the verify-migrations scan); it can be reviewed and merged without re-triggering the gate.
 
@@ -11,9 +11,7 @@
 Per `edgeclaw-village/docs/village-direction-2026-05-15.md` § A11 and Topic 6 of the village technical research:
 
 1. Creates the `village` schema + `village.anonymize_user_id(uuid) → text` helper.
-2. Creates two anonymized public VIEWs:
-   - `public.village_attendees_public` — anon-readable attendee list. Exposes `agent_id` (anonymized), `description`, `larry_atlas_index`, `home_tile_x`, `home_tile_y`, `spectator_visible`. Filtered `WHERE spectator_visible = true`. Read by `serverGame.ts:loadAttendees()` when `mode === 'spectator'`.
-   - `public.agent_positions_public` — anon-readable position snapshot. Exposes `agent_id` (anonymized), tile/facing/state columns. INNER JOIN with `village_attendees` filters out opted-out users (defense in depth — `user_id` never appears in the view). Read by `serverGame.ts:loadInitialPositions()` when `mode === 'spectator'`.
+2. (DEFERRED to Phase 3 — see below.) The originally-planned `village_attendees_public` and `agent_positions_public` views are not in this migration's scope. They depend on a `public.village_attendees` table that does not exist in production yet (verified via the pre-apply schema check on 2026-05-16). Phase 3 will land the table + both views once the attendee-row schema is decided. Until then, `serverGame.ts:loadAttendees()` and `loadInitialPositions()` gracefully degrade to the 14 hand-scripted ambient NPCs (real-attendee rendering returns to zero — same as today).
 3. Defines four `AFTER INSERT/UPDATE` trigger functions, one per emitter table — each emits TWO `realtime.send()` broadcasts:
    - `village:edge-esmeralda-2026` (private/auth, full identity)
    - `village-public:edge-esmeralda-2026` (public/anon, `agent_NNNN` labels only)
@@ -188,16 +186,19 @@ Phase 2 of D14/D15 dual-channel broadcast. Triggers fire on
 matchpool_outcomes / negotiation_threads / instaclaw_vms / agent_positions
 INSERTs and UPDATEs. Public payloads identity-stripped at the trigger level.
 
-Applied to staging 2026-MM-DD HH:MM UTC. Privacy probe passed.
 Applied to production 2026-MM-DD HH:MM UTC. Post-apply verification:
   - 4/4 trg_*_dual_broadcast triggers present
   - village.anonymize_user_id() returns stable output across 3 calls
-  - village_attendees_public readable to anon role
   - End-to-end privacy probe via Realtime Inspector — payload contained
     only whitelisted fields (no user_id, no scores, no xmtp_address)
+
+Note: no staging Supabase project exists for this app — applied
+directly to production with the privacy probe run against a synthetic
+test row that was deleted post-probe. See conversation log for the
+runbook deviation rationale.
 "
 ```
 
 `verify-migrations.ts` will then scan the file. The only `CREATE` statements it parses are `CREATE TABLE` and `ALTER TABLE ... ADD COLUMN` — the file contains neither. Build passes.
 
-If the file's `CREATE VIEW` ever expands to include a `CREATE TABLE` (e.g., the `village_attendees_public` view is replaced with a materialized table), the promotion sequence MUST re-verify the schema is in prod before moving the file. Rule 56 again.
+When Phase 3 (the deferred `village_attendees` table + `village_attendees_public` / `agent_positions_public` views) ships, the promotion sequence MUST verify `village_attendees` is in prod BEFORE moving its migration file into `migrations/`. Rule 56 again — the table CREATE is what verify-migrations gates on; the views are not parsed.

@@ -41,12 +41,12 @@
 -- The verbose form is the point.
 --
 -- VERIFY-MIGRATIONS COMPATIBILITY: this file contains no CREATE TABLE and
--- no ALTER TABLE ADD COLUMN. The view (`village_attendees_public`) IS
--- `CREATE VIEW` which verify-migrations does not parse — its regex only
--- matches `CREATE TABLE`. So once promoted to `migrations/`, this file
--- will not trigger any verify-migrations check. The functions live in the
--- `village` schema and are bypassed by the non-public-schema skip at
--- `scripts/verify-migrations.ts:189-193`.
+-- no ALTER TABLE ADD COLUMN. The trigger functions live in the `village`
+-- schema and are bypassed by the non-public-schema skip at
+-- `scripts/verify-migrations.ts:189-193`. Triggers on public tables are
+-- not parsed by verify-migrations (only CREATE TABLE / ALTER TABLE ADD
+-- COLUMN are). So once promoted to `migrations/`, this file does not
+-- trigger any verify-migrations check.
 
 -- ─── Schema setup ────────────────────────────────────────────────────────
 CREATE SCHEMA IF NOT EXISTS village;
@@ -78,87 +78,37 @@ AS $$
   );
 $$;
 
--- ─── Public attendee view ────────────────────────────────────────────────
+-- ─── Public views: DEFERRED to Phase 3 ──────────────────────────────────
 --
--- `village_attendees_public` is the spectator-channel-side view of the
--- attendee roster. It maps real user_ids to anonymous agent labels and
--- exposes ONLY the visual fields (character sprite, description) — no
--- name, email, telegram handle, or PII.
+-- This migration originally contained two `CREATE OR REPLACE VIEW`
+-- statements:
+--   - `public.village_attendees_public` — anonymized attendee roster
+--   - `public.agent_positions_public`   — anonymized position snapshot
 --
--- The Vite client at `src/hooks/serverGame.ts:loadAttendees()` reads this
--- view when `mode === 'spectator'` (vs. `village_attendees` when
--- authenticated). Without this view, the spectator route's attendee load
--- returns PGRST205 ("could not find the table") and the village renders
--- with only the 14 hand-scripted ambient NPCs from
--- `data/ambient-routines.ts` (still functional — just no real attendees).
+-- Both views select from `public.village_attendees`. **That table does
+-- not exist in production yet** — verified via the runbook's pre-apply
+-- schema check on 2026-05-16 (PGRST205 "Could not find the table
+-- 'public.village_attendees' in the schema cache"). No migration anywhere
+-- in `supabase/migrations/` defines it. Creating the views would throw on
+-- apply and leave partial state.
 --
--- Filters on `spectator_visible = true` (the Q65 opt-out toggle, default
--- TRUE per attendee schema). Users who opt out of the public render are
--- still visible to authenticated viewers via `village_attendees`.
+-- Rather than block this entire migration on a product-decision-pending
+-- `village_attendees` table schema (where do attendees come from? FK to
+-- instaclaw_users? Edge-City API import? in-app reg form?), the views
+-- are deferred to a separate Phase 3 migration that lands AFTER:
 --
--- DEPENDS ON: `public.village_attendees` table existing with at least the
--- columns referenced below. If that table's schema differs, this view will
--- error on apply — verify column names before promoting.
-CREATE OR REPLACE VIEW public.village_attendees_public AS
-  SELECT
-    village.anonymize_user_id(user_id) AS agent_id,
-    description,
-    larry_atlas_index,
-    home_tile_x,           -- spatial defaults — non-PII spawn coords
-    home_tile_y,
-    spectator_visible
-  FROM public.village_attendees
-  WHERE spectator_visible = true;
-
--- Grant SELECT on the view to the anon role so the public channel client
--- (which uses only the anon key, no JWT) can read it.
-GRANT SELECT ON public.village_attendees_public TO anon, authenticated;
-
--- ─── Public position view ────────────────────────────────────────────────
+--   1. Cooper decides what an `attendee` row is (FK source, opt-in
+--      mechanism, lifecycle).
+--   2. A `village_attendees` table + RLS migration ships and is applied.
 --
--- `agent_positions_public` is the spectator-channel mirror of
--- `agent_positions`. Same spatial columns (tile_x/y/facing/state) — only
--- the identity column is swapped: real `user_id` → anonymized `agent_id`.
--- Filtered through `village_attendees.spectator_visible` so opted-out
--- users don't appear at all in the public render.
+-- The village frontend's `serverGame.ts:loadAttendees()` already handles
+-- this gracefully — `PGRST205` from the missing public view returns
+-- `attendees: []` (warning log only), and the spectator render falls
+-- back to the 14 hand-scripted ambient NPCs. Authenticated mode degrades
+-- the same way. Neither mode crashes; both stay renderable.
 --
--- Why a separate view instead of relaxing RLS on `agent_positions`:
--- `agent_positions.user_id` IS the leak vector. Even a strict RLS policy
--- that "anon can SELECT" would expose real UUIDs in the row. The view
--- has the leak-capable column stripped at the schema level — anonymized
--- columns only. Defense in depth (Rule 22 / Rule 30): the public render
--- is incapable of leaking identity, even if a future code path tries.
---
--- The serverGame.ts client at `loadInitialPositions()` reads from this
--- view when `mode === 'spectator'`. Without it, the spectator path
--- gets RLS-denied on `agent_positions` and all real attendees spawn at
--- their `home_tile_x/y` defaults (still functional — but stale, since
--- live walk events would correct positions over time but reconnects
--- would re-spawn at home).
-CREATE OR REPLACE VIEW public.agent_positions_public AS
-  SELECT
-    village.anonymize_user_id(p.user_id) AS agent_id,
-    p.tile_x,
-    p.tile_y,
-    p.facing_dx,
-    p.facing_dy,
-    p.is_moving,
-    p.is_thinking,
-    p.is_speaking,
-    p.activity_emoji,
-    p.activity_until,
-    p.updated_at
-  FROM public.agent_positions p
-  -- Filter on village_attendees.spectator_visible — opted-out users
-  -- don't appear in the public render. INNER JOIN means users without
-  -- a village_attendees row also don't appear (defense in depth — a
-  -- VM might write an agent_positions row before its village_attendees
-  -- entry exists, and we shouldn't broadcast position data for an
-  -- attendee whose opt-in we haven't recorded yet).
-  INNER JOIN public.village_attendees v ON v.user_id = p.user_id
-  WHERE v.spectator_visible = true;
-
-GRANT SELECT ON public.agent_positions_public TO anon, authenticated;
+-- This migration's scope is now triggers-only, matching the runbook's
+-- original Phase 2 specification.
 
 -- ─── Trigger: matchpool_outcomes → dual broadcast ────────────────────────
 --
@@ -422,11 +372,11 @@ CREATE TRIGGER trg_agent_positions_dual_broadcast
 -- 2) Anonymization deterministic — run 3×, output MUST be identical:
 --     SELECT village.anonymize_user_id('00000000-0000-0000-0000-000000000001');
 --
--- 3) View readable to anon role:
---     SET ROLE anon;
---     SELECT count(*) FROM public.village_attendees_public;
---     RESET ROLE;
---    Should return a number, not "permission denied".
+-- 3) (Deferred to Phase 3) View readability — `village_attendees_public`
+--    and `agent_positions_public` are not in this migration's scope, so
+--    no view-readability check applies. When Phase 3 lands those views,
+--    add their `SET ROLE anon; SELECT count(*) FROM <view>; RESET ROLE;`
+--    checks back here.
 --
 -- 4) End-to-end privacy probe — see
 --    `instaclaw/docs/village-dual-channel-migration-apply.md` § "Post-apply
