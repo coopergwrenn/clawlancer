@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-16
 
-Window: `d6d1558efe11ff5ad0048718b422fb6c24d6d727` → `HEAD` (HEAD = `f0f1d6c4`)
+Window: `f0f1d6c4d8630869fc7b78d6d26d6f87188cf98a` → `HEAD` (HEAD = `76560166`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: f0f1d6c4d8630869fc7b78d6d26d6f87188cf98a -->
+<!-- LAST_GENERATED_SHA: 765601664d1d04445d7eda1e3f2afc81dea084b8 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `f0f1d6c4` 2026-05-16 — fix(repro-orphan): v2.1 — exclude rotation-archive filenames [1 files] _(ai-assisted)_
-- `37a4db16` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `c53834d6` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `76560166` 2026-05-16 — docs(incident): 2026-05-16 stale-bundle 23h cron halt postmortem [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `f0f1d6c4` 2026-05-16 — fix(repro-orphan): v2.1 — exclude rotation-archive filenames [1 files] _(ai-assisted)_
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -43,17 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `37a4db16` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `c53834d6` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `76560166` 2026-05-16 — docs(incident): 2026-05-16 stale-bundle 23h cron halt postmortem [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `f0f1d6c4` 2026-05-16 — fix(repro-orphan): v2.1 — exclude rotation-archive filenames
+- `76560166` 2026-05-16 — docs(incident): 2026-05-16 stale-bundle 23h cron halt postmortem
 
 ## Appendix — every commit (chronological)
 
-- `37a4db16` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `f0f1d6c4` 2026-05-16 — fix(repro-orphan): v2.1 — exclude rotation-archive filenames [1 files] _(ai-assisted)_
+- `c53834d6` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `76560166` 2026-05-16 — docs(incident): 2026-05-16 stale-bundle 23h cron halt postmortem [1 files] _(ai-assisted)_
