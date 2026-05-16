@@ -302,7 +302,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .eq("name", vmName)
     .eq("status", "provisioning")
     .is("cloud_init_callback_consumed_at", null)
-    .select("id, name, partner, agentbook_wallet_address, gateway_url")
+    // telegram_bot_username included so we can feed it to sendVMReadyEmail
+    // in the after() block below without an extra round-trip. Always-set by
+    // createUserVM Phase A INSERT (telegram_bot_token is a required field for
+    // the cloud-init signup path; the username is paired with it).
+    .select("id, name, partner, agentbook_wallet_address, gateway_url, telegram_bot_username")
     .single();
 
   if (claimErr || !vm) {
@@ -438,32 +442,66 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
   }
 
-  // ── 6. Background TLS upgrade (runs after response is sent) ──
+  // ── 6. Fetch email for VM-ready notification (best-effort, sync) ──
   //
-  // Mirrors the pool path's TLS hook at app/api/vm/configure/route.ts:681:
+  // Captures the user's email synchronously before scheduling after() so
+  // the closure has it in scope without an extra round-trip from background.
+  // We do this OUTSIDE after() because:
+  //   - The query is cheap (~50ms PostgREST GET by primary key)
+  //   - If email lookup fails, we log + continue (email send is best-effort)
+  //   - Having the value captured pre-after() means the after() closure stays
+  //     side-effect-free re. the supabase client lifecycle
+  let userEmailForNotify: string | undefined;
+  try {
+    const { data: userRowEmail, error: userEmailErr } = await supabase
+      .from("instaclaw_users")
+      .select("email")
+      .eq("id", userId)
+      .maybeSingle();
+    if (userEmailErr) {
+      logger.warn("cloud-init-callback: failed to fetch user email for VM-ready notify (non-fatal)", {
+        route: "vm/cloud-init-callback",
+        userId,
+        vmId: (vm as { id: string }).id,
+        error: userEmailErr.message,
+      });
+    } else {
+      userEmailForNotify = (userRowEmail as { email?: string | null } | null)?.email ?? undefined;
+    }
+  } catch (e) {
+    logger.warn("cloud-init-callback: user email fetch threw (non-fatal)", {
+      route: "vm/cloud-init-callback",
+      userId,
+      vmId: (vm as { id: string }).id,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
+  // ── 7. Background: VM-ready email + TLS upgrade (after() block) ──
   //
-  //     const tlsHostname = `${vm.id}.vm.instaclaw.io`;
-  //     after(async () => {
-  //       await setupTLSBackground(vm, tlsHostname);
-  //     });
+  // Mirrors the pool path's two background tasks:
+  //   - process-pending Pass 1 line 432-437: sendVMReadyEmail after configure
+  //   - configure/route.ts:681: setupTLSBackground for HTTPS upgrade
   //
-  // Without this block, cloud-init VMs stay on `http://{ip}:18789` indefinitely
-  // (the URL the callback wrote in step 4). setupTLSBackground is the SOLE
-  // TLS trigger in the codebase (no TLS cron exists) — without invoking it
-  // from the cloud-init flow, cloud-init VMs would NEVER upgrade to HTTPS.
+  // Both run in the same after() block (Next.js fires them post-response so
+  // the user's setup.sh sees the 200 immediately, no latency tax). Email runs
+  // first because it's fast (~200ms); TLS install can take 30-120s.
   //
-  // Failure semantics: setupTLSBackground NEVER throws (lib/ssh.ts:9746-9753
-  // wraps everything in try/catch and logs on failure). On TLS failure the VM
-  // stays on HTTP — functional, just not encrypted. Idempotent: the fast-path
-  // skip at lib/ssh.ts:9691 detects already-Caddied VMs and only updates the
-  // DB to HTTPS without re-running the install. Safe to invoke multiple times
-  // (e.g., setup.sh callback retries) without duplicating work.
+  // Failure semantics:
+  //   - Email: sendVMReadyEmail has built-in 24h dedup (lib/email.ts:229-247)
+  //     and Resend error handling. If it throws here we log + continue to TLS.
+  //   - TLS: setupTLSBackground NEVER throws (lib/ssh.ts:9746-9753 wraps in
+  //     try/catch). On TLS failure VM stays on HTTP — functional. Idempotent
+  //     fast-path skip at lib/ssh.ts:9691 makes retries safe.
   //
-  // Dynamic import to keep lib/ssh.ts (9700+ lines, pulls node-ssh, ssh2)
-  // out of the callback route's cold-start bundle. The import only happens
-  // when after() fires (post-response), so the user-facing response latency
-  // is unaffected. Pattern matches the existing `await import("@/lib/security")`
-  // style for validateMiniAppToken in adjacent route files.
+  // Dynamic imports keep lib/ssh.ts (9700+ lines, pulls node-ssh) and
+  // lib/email.ts (pulls Resend SDK) out of the callback route's cold-start
+  // bundle. They only load when after() fires.
+  //
+  // try/catch around after() itself is a test-compat shim: Next's after()
+  // throws "called outside a request scope" when invoked synthetically. In
+  // production every invocation IS inside a request scope so the catch never
+  // hits; the only effect is that integration tests work without crashing.
   const vmRecord = {
     id: (vm as { id: string }).id,
     ip_address: ipAddress, // from §3 pre-claim peek
@@ -472,19 +510,40 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     assigned_to: userId, // from §4 atomic claim WHERE clause
   };
   const tlsHostname = `${(vm as { id: string }).id}.vm.instaclaw.io`;
-  // try/catch around after() is a test-compat shim — Next's after() throws
-  // "called outside a request scope" when invoked synthetically (integration
-  // tests calling POST directly without Next.js's AsyncLocalStorage context).
-  // In production, every invocation IS inside a request scope so this catch
-  // is never hit; the only effect is that integration tests can verify the
-  // rest of the response flow without the TLS background block crashing.
+  const tgBotUsername = (vm as { telegram_bot_username?: string | null }).telegram_bot_username ?? undefined;
+  const dashboardUrl = `${process.env.NEXTAUTH_URL}/dashboard`;
   try {
     after(async () => {
+      // ─ Email (fast, ~200ms with Resend) ─
+      if (userEmailForNotify) {
+        try {
+          const { sendVMReadyEmail } = await import("@/lib/email");
+          await sendVMReadyEmail(userEmailForNotify, dashboardUrl, tgBotUsername);
+          logger.info("cloud-init-callback: VM-ready email sent", {
+            route: "vm/cloud-init-callback",
+            vmId: vmRecord.id,
+            emailPrefix: userEmailForNotify.slice(0, 3) + "***",
+          });
+        } catch (e) {
+          logger.warn("cloud-init-callback: VM-ready email failed (non-fatal — TLS continues)", {
+            route: "vm/cloud-init-callback",
+            vmId: vmRecord.id,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      } else {
+        logger.warn("cloud-init-callback: skipping VM-ready email (no email available)", {
+          route: "vm/cloud-init-callback",
+          vmId: vmRecord.id,
+          userId,
+        });
+      }
+      // ─ TLS (slow, 30-120s for Caddy install) ─
       const { setupTLSBackground } = await import("@/lib/ssh");
       await setupTLSBackground(vmRecord, tlsHostname);
     });
   } catch (e) {
-    logger.warn("cloud-init-callback: after() unavailable — TLS upgrade skipped this invocation", {
+    logger.warn("cloud-init-callback: after() unavailable — VM-ready email + TLS upgrade skipped this invocation", {
       route: "vm/cloud-init-callback",
       vmId: vmRecord.id,
       hostname: tlsHostname,
@@ -492,7 +551,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
   }
 
-  // ── 7. Success — VM is now healthy + assigned + user onboarded ──
+  // ── 8. Success — VM is now healthy + assigned + user onboarded ──
   // The DB state transition is committed. Any downstream consumer (admin
   // dashboard, reconciler eligibility query, billing, etc.) sees the VM as
   // a live, healthy, user-assigned VM from this moment on. The user

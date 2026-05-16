@@ -205,15 +205,17 @@ async function test_happyPath_emptyAgentbookAddress(): Promise<void> {
 
   // Program: pre-claim peek returns ip_address
   mock.program("instaclaw_vms:select", { data: { ip_address: IP }, error: null });
-  // Program: atomic claim returns the post-claim row
+  // Program: atomic claim returns the post-claim row (now includes telegram_bot_username)
   mock.program("instaclaw_vms:update", {
-    data: { id: VM_ID, name: VM_NAME, partner: null, agentbook_wallet_address: null, gateway_url: EXPECTED_GATEWAY_URL },
+    data: { id: VM_ID, name: VM_NAME, partner: null, agentbook_wallet_address: null, gateway_url: EXPECTED_GATEWAY_URL, telegram_bot_username: "test_agent_bot" },
     error: null,
   });
   // Program: instaclaw_users update success
   mock.program("instaclaw_users:update", { data: null, error: null });
   // Program: instaclaw_pending_users update success
   mock.program("instaclaw_pending_users:update", { data: null, error: null });
+  // Program: instaclaw_users select for email (sendVMReadyEmail prep)
+  mock.program("instaclaw_users:select", { data: { email: "test+integration@instaclaw.io" }, error: null });
 
   const res = await POST(makeReq({
     token: TOKEN,
@@ -291,6 +293,18 @@ async function test_happyPath_emptyAgentbookAddress(): Promise<void> {
     assert(eqOps.some((o) => o.args[0] === "name" && o.args[1] === VM_NAME), "claim filters by vmName");
     assert(eqOps.some((o) => o.args[0] === "status" && o.args[1] === "provisioning"), "claim filters status='provisioning'");
     assert(isOps.some((o) => o.args[0] === "cloud_init_callback_consumed_at" && o.args[1] === null), "claim filters consumed_at IS NULL");
+  }
+
+  // ── Assert sendVMReadyEmail prep: instaclaw_users select for email ──
+  // (the email itself is sent in after(), which is unreachable in synthetic tests)
+  const emailSelectQuery = mock.recordedQueries.find((q) =>
+    q.table === "instaclaw_users" &&
+    q.ops.some((o) => o.m === "select" && (o.args[0] as string)?.includes("email")),
+  );
+  assert(!!emailSelectQuery, "instaclaw_users.select('email') was called for VM-ready notification");
+  if (emailSelectQuery) {
+    const eqOp = emailSelectQuery.ops.find((o) => o.m === "eq");
+    assert(eqOp?.args[0] === "id" && eqOp?.args[1] === USER_ID, "email select WHERE id = userId");
   }
 
   __setSupabaseForTests(null);

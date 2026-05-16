@@ -54,9 +54,10 @@ export async function GET() {
       bankr_token_symbol: string | null;
       bankr_token_image_url: string | null;
       tokenization_platform: string | null;
+      created_via: string | null;
     }>(supabase, session.user.id, {
       columns:
-        "id, ip_address, gateway_url, control_ui_url, gateway_token, status, health_status, last_health_check, assigned_at, telegram_bot_username, configure_attempts, default_model, api_mode, system_prompt, channels_enabled, discord_bot_token, brave_api_key, agdp_enabled, bankr_wallet_id, bankr_evm_address, bankr_token_address, bankr_token_symbol, bankr_token_image_url, tokenization_platform",
+        "id, ip_address, gateway_url, control_ui_url, gateway_token, status, health_status, last_health_check, assigned_at, telegram_bot_username, configure_attempts, default_model, api_mode, system_prompt, channels_enabled, discord_bot_token, brave_api_key, agdp_enabled, bankr_wallet_id, bankr_evm_address, bankr_token_address, bankr_token_symbol, bankr_token_image_url, tokenization_platform, created_via",
     });
 
     if (vm) {
@@ -180,6 +181,10 @@ export async function GET() {
           bankrTokenSymbol: liveTokenSymbol ?? null,
           bankrTokenImageUrl: vm.bankr_token_image_url ?? null,
           tokenizationPlatform: liveTokenizationPlatform ?? null,
+          // 2026-05-16: surfaces the cloud-init discriminator so the deploying
+          // page can apply cloud-init-aware thresholds (longer soft-timeout
+          // window because setup.sh runs T+2-8min, vs pool-path's <60s).
+          createdVia: vm.created_via ?? null,
         },
         billing,
         freshLaunch,

@@ -22,12 +22,37 @@ export async function POST() {
       health_status: string | null;
       configure_attempts: number | null;
       gateway_url: string | null;
+      created_via: string | null;
     }>(supabase, session.user.id, {
-      columns: "id, health_status, configure_attempts, gateway_url",
+      columns: "id, health_status, configure_attempts, gateway_url, created_via",
     });
 
     if (!vm) {
       return NextResponse.json({ error: "No VM assigned" }, { status: 404 });
+    }
+
+    // ── Cloud-init guard (2026-05-16) ──
+    // Cloud-init VMs (created_via='on_demand') handle configure ON-VM via
+    // setup.sh, which runs T+2-8min after Linode boot and fires the
+    // /api/vm/cloud-init-callback endpoint when done. Invoking the
+    // pool-path /api/vm/configure here would SSH to the VM and clobber
+    // setup.sh's in-progress writes (~/.openclaw/openclaw.json, .env,
+    // restart gateway). The deploying page's auto-retry at T+60s would
+    // otherwise trigger this race on every cloud-init signup.
+    //
+    // Return 200 with retried:false so the caller (page or operator)
+    // understands the retry was deliberately skipped, not a 4xx error.
+    if (vm.created_via === "on_demand") {
+      logger.info("retry-configure: skipped (cloud-init VM — configure runs on-VM via setup.sh)", {
+        route: "vm/retry-configure",
+        vmId: vm.id,
+        userId: session.user.id,
+      });
+      return NextResponse.json({
+        retried: false,
+        reason: "cloud-init-on-vm",
+        message: "Cloud-init VMs configure on-VM via setup.sh; retry is not applicable.",
+      });
     }
 
     // Allow retry from failed, configuring, or unknown states.

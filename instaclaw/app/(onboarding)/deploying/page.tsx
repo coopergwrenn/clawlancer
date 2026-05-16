@@ -18,6 +18,13 @@ const MID_CHECK_THRESHOLD = 90; // Check for issues at 90s
 const SOFT_TIMEOUT_THRESHOLD = 180; // Show recovery UI at 3 min
 const CHECK_ANYWAY_THRESHOLD = 60; // Show "check anyway" button at 60s
 
+// Cloud-init thresholds (created_via='on_demand') — setup.sh runs T+2-8min
+// on the VM itself, so pool-path thresholds (90s soft-timeout, 60s auto-
+// retry, 10min max-poll) would fire false alarms on every cloud-init signup.
+// Detected from vm.createdVia in the /api/vm/status response.
+const CLOUD_INIT_MAX_POLL_ATTEMPTS = 900;     // 15 min
+const CLOUD_INIT_SOFT_TIMEOUT_THRESHOLD = 600; // 10 min — beyond expected 8-min callback
+
 /** Safely parse JSON from a fetch response. Returns null if response is not JSON
  *  (e.g. Vercel timeout returning HTML). Prevents "Unexpected token" crashes. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -166,6 +173,12 @@ function DeployingPageContent() {
   const configuredRef = useRef(false);
   const configuredAtPoll = useRef<number | null>(null); // poll count when gateway_url first seen
   const softTimeoutFired = useRef(false);
+  // 2026-05-16: cloud-init VMs (created_via='on_demand') have a longer
+  // expected provisioning window (T+2-8min vs pool path <60s) because
+  // setup.sh runs on-VM. We extend SOFT_TIMEOUT and MAX_POLL accordingly
+  // and skip the auto-retry-configure (which would clobber setup.sh's
+  // in-progress writes — see /api/vm/retry-configure's cloud-init guard).
+  const isCloudInitRef = useRef(false);
   const [softTimeout, setSoftTimeout] = useState(false);
   const [recoveryChecking, setRecoveryChecking] = useState(false);
   const [showCheckAnyway, setShowCheckAnyway] = useState(false);
@@ -297,7 +310,10 @@ function DeployingPageContent() {
         // Timeout after MAX_POLL_ATTEMPTS — but NOT if config already
         // succeeded (gateway URL present). In that case the health check
         // cron will mark it healthy shortly.
-        if (next >= MAX_POLL_ATTEMPTS && !configuredRef.current) {
+        // Cloud-init VMs use a longer cap (15min vs 10min) because
+        // setup.sh's bootstrap window is naturally longer.
+        const effectiveMaxPoll = isCloudInitRef.current ? CLOUD_INIT_MAX_POLL_ATTEMPTS : MAX_POLL_ATTEMPTS;
+        if (next >= effectiveMaxPoll && !configuredRef.current) {
           setPolling(false);
           setConfigureFailed(true);
           setErrorType("timeout");
@@ -354,6 +370,14 @@ function DeployingPageContent() {
         }
 
         if (data.status === "assigned" && data.vm) {
+          // ── Cloud-init discriminator ──
+          // Latch the ref the first time we see the field. Stays true for
+          // the rest of the polling lifetime — the createdVia column never
+          // changes for a given VM row.
+          if (data.vm.createdVia === "on_demand" && !isCloudInitRef.current) {
+            isCloudInitRef.current = true;
+          }
+
           updateStep("assign", "done");
 
           if (data.vm.healthStatus === "configure_failed") {
@@ -401,7 +425,13 @@ function DeployingPageContent() {
             // produced a gateway_url after 60 polls (~60s at 1s interval).
             // This handles the case where the fire-and-forget from
             // the webhook never reached the configure endpoint.
-            if (pollCount >= 60 && !autoRetryFired.current) {
+            //
+            // SKIP for cloud-init VMs: setup.sh runs T+2-8min on-VM and
+            // /api/vm/retry-configure would invoke pool-path configureOpenClaw
+            // → SSH clobber of setup.sh's in-progress writes. The retry-
+            // configure endpoint itself also short-circuits cloud-init VMs
+            // (defense-in-depth), but skipping the fetch saves the round-trip.
+            if (!isCloudInitRef.current && pollCount >= 60 && !autoRetryFired.current) {
               autoRetryFired.current = true;
               fetch("/api/vm/retry-configure", { method: "POST" }).catch(
                 () => {}
@@ -414,8 +444,13 @@ function DeployingPageContent() {
             setShowCheckAnyway(true);
           }
 
-          // ── Soft timeout at 90s: show recovery UI ──
-          if (pollCount >= SOFT_TIMEOUT_THRESHOLD && !softTimeoutFired.current && data.vm?.healthStatus !== "healthy") {
+          // ── Soft timeout: show recovery UI ──
+          // Pool path: 180s. Cloud-init: 600s (setup.sh runs T+2-8min, so
+          // the pool threshold would false-alarm on every cloud-init signup).
+          const effectiveSoftTimeout = isCloudInitRef.current
+            ? CLOUD_INIT_SOFT_TIMEOUT_THRESHOLD
+            : SOFT_TIMEOUT_THRESHOLD;
+          if (pollCount >= effectiveSoftTimeout && !softTimeoutFired.current && data.vm?.healthStatus !== "healthy") {
             softTimeoutFired.current = true;
             setSoftTimeout(true);
 
