@@ -1,9 +1,35 @@
 # PRD: Archive-Based Freeze/Thaw (v2)
 
-**Status:** Draft (2026-05-16)
+**Status:** Draft (2026-05-16, revised 2026-05-16-PM)
 **Author:** Claude Opus 4.7 + Cooper Wrenn
 **Replaces:** `lib/vm-freeze-thaw.ts` Linode-image-based freeze (commit 2ce729f1, Rules 50/51/52)
 **Resolves:** Freeze-pipeline $1,450/mo leak; zero successful freezes in system history; 6,144 MB Linode image cap blocks every production-aged VM
+
+---
+
+> **REVISION 2026-05-16-PM — Path 2 pivot.** Empirical PGLite verification on
+> vm-050 invalidated §6.2's stop+restart-based archival assumption. gbrain
+> v0.35.0.0 + PGLite-WASM does not survive a SIGTERM-mediated graceful
+> shutdown — the post-stop data dir fails to re-open ("PGLite failed to
+> initialize its WASM runtime"). Counterintuitively, SIGKILL (used by
+> install-gbrain.sh:340) produces a recoverable backup; SIGTERM does not.
+> This is an upstream gbrain bug, not a config problem; no amount of
+> ExecStop tuning fixes it.
+>
+> **Path 2 (online backup) is now the canonical design.** PGLite has a
+> native `engine.db.dumpDataDir("gzip")` method (visible in
+> `gbrain/scripts/build-pglite-snapshot.ts:53`) that produces a hot
+> snapshot from a running engine — no stop, no checkpoint pragma, no
+> downtime. The archive flow calls this via a new gbrain MCP `snapshot`
+> tool. The rest of the user state (workspace, sessions, .env, wallet)
+> remains a regular tar — those files don't have the WAL/data-dir
+> recovery problem.
+>
+> The original §6.2 (stop → tar → restart) is **preserved below for
+> historical context**. **§15 is the canonical design.** §16 records the
+> locked design decisions including the refined Q5 retention policy.
+
+---
 
 ## 1. Problem
 
@@ -684,6 +710,313 @@ Total time from sign-off to clean fleet: **~3 weeks** to fully drain the backlog
 - Not building user-facing "I want a backup of my agent now" UX. Server-side cron-driven only.
 - Not building a multi-tenant key management system. One key per environment (production, staging) is enough.
 - Not migrating active healthy VMs. Only suspended/hibernating cohort enters the freeze pipeline.
+
+---
+
+## 15. CANONICAL ARCHITECTURE — Path 2 (dumpDataDir-based, revised 2026-05-16-PM)
+
+This section supersedes §6.2 (brain.pglite stop-and-tar handling) and the §6.5/§6.7 SSH-dependent control flow. Where this section conflicts with anything above, **this section wins.**
+
+### 15.1 Empirical foundation — why path 2 is mandatory
+
+vm-050 verification on 2026-05-16, fully documented in the session log:
+
+1. gbrain v0.35.0.0 ran cleanly for 15h.
+2. `systemctl --user stop gbrain` completed in 75ms (clean exit, code 0). The shutdown code path (`serve.ts:beginShutdown` → `engine.disconnect()` → `db.close()` → `releaseLock()`) is well-formed; it does the right things.
+3. Despite a textbook-clean graceful shutdown, the resulting on-disk PGLite data dir **could not be re-opened** by the next gbrain start. WASM init aborted with "PGLite failed to initialize its WASM runtime" / `Aborted()`.
+4. Removing `postmaster.pid` did not help. Removing `.gbrain-lock/lock` did not help. The binary itself works on an empty data dir (proven with `HOME=/tmp/empty gbrain serve`). The corruption is in the post-shutdown data state.
+5. `install-gbrain.sh:340` uses `pkill -KILL -f 'gbrain.*serve'` (SIGKILL). The resulting PRE-WIPE backup tarballs from yesterday's canary loaded cleanly when restored. Conclusion: **SIGKILL produces recoverable state; SIGTERM-with-graceful-cleanup does not.**
+
+This is an upstream gbrain/PGLite bug. We do not own a fix for it. **The stop-and-tar architecture is dead.** Any design that requires gracefully stopping gbrain to take a backup is structurally broken.
+
+### 15.2 New primitive — `dumpDataDir()`
+
+PGLite exposes a native hot-backup method on the live engine:
+
+```typescript
+// From electric-sql/pglite — operates on a RUNNING engine, no stop needed
+const dump: Blob = await db.dumpDataDir("gzip");  // also "none" | "auto"
+const buffer = Buffer.from(await dump.arrayBuffer());
+// buffer is a complete, consistent tar of the data dir
+```
+
+It's already used by gbrain's own `scripts/build-pglite-snapshot.ts:53` to produce test fixtures. The semantics: read-only iteration over the data dir from inside the engine's WAL-aware view, producing a consistent snapshot. No SIGTERM. No locks dropped. No service interruption.
+
+The catch: PGLite exposes this on the JS engine object — there's no MCP tool, no HTTP endpoint. **gbrain needs a small feature to expose it.**
+
+### 15.3 gbrain dependency — `snapshot` MCP tool
+
+**Required gbrain feature for freeze-v2:** an authenticated `snapshot` MCP tool (or admin HTTP endpoint) on the running gbrain server that returns the output of `engine.db.dumpDataDir("gzip")` as a binary blob.
+
+Two acceptable shapes (gbrain terminal picks):
+
+**A. MCP tool** — fits the existing tool-registration pattern:
+```typescript
+{
+  name: "snapshot_brain",
+  description: "Hot snapshot of PGLite data dir. Returns base64-encoded gzipped tar. " +
+               "No service interruption. Bearer-token auth (same as other write tools).",
+  inputSchema: { type: "object", properties: { compression: { type: "string", enum: ["none","gzip","auto"], default: "gzip" } } },
+  handler: async (args, ctx) => {
+    const dump = await ctx.engine.db.dumpDataDir(args.compression ?? "gzip");
+    const buffer = Buffer.from(await dump.arrayBuffer());
+    return { content: [{ type: "resource", mimeType: "application/gzip", blob: buffer.toString("base64") }] };
+  }
+}
+```
+
+**B. Admin HTTP endpoint** — leaner for our cron, but a new route shape gbrain may not want:
+```typescript
+// GET /admin/snapshot.tar.gz with Authorization: Bearer ...
+// Streams gzipped tar directly. No base64 wrapping.
+```
+
+**My recommendation: A.** MCP tool fits the existing patterns, doesn't introduce a new auth surface, and gbrain already has the bearer-token middleware for tool calls. The base64 overhead (~33% size inflation) is trivial at our scale (5-50 MB raw → 7-67 MB transit). Tool response shape may need adjustment if MCP can't carry binary cleanly — gbrain terminal decides.
+
+**If neither A nor B ships:** freeze-v2 is BLOCKED. We cannot work around this from our side. There is no other PGLite hot-backup mechanism available without modifying gbrain.
+
+### 15.4 Archive bundle composition (REVISED)
+
+A complete archive bundle is now TWO tarballs combined, not one:
+
+| Component | How produced | Size (typ) | Source |
+|---|---|---|---|
+| **PGLite snapshot** (`brain.pglite.tar.gz`) | gbrain MCP `snapshot_brain` tool returning `dumpDataDir("gzip")` | 5-50 MB | Hot, from running engine |
+| **User state tarball** (`user-state.tar.gz`) | Regular `tar czf` via SSH (these files don't have the WAL recovery problem — they're regular files, not databases) | 1-15 MB | Tar over the live VM, no service stop |
+
+User-state tarball contents (from the original §6.1 tarball manifest, MINUS the PGLite dir):
+- `~/.openclaw/wallet/`
+- `~/.openclaw/workspace/MEMORY.md`, `~/.openclaw/workspace/memory/`, `~/.openclaw/workspace/SOUL.md`
+- `~/.openclaw/agents/main/agent/auth-profiles.json`
+- `~/.openclaw/.env`
+- `~/.openclaw/openclaw.json`
+- `~/.openclaw/agents/main/sessions/*.jsonl` + `sessions.json`
+- `~/.gbrain/openclaw-bearer-token.txt` (the gbrain MCP token — restored alongside the PGLite data so token-hash match is preserved)
+
+The two tarballs are combined into a single outer tar with a `manifest.json` at the root (the encryption wrapper described in §6.4 applies to the outer tar):
+
+```
+archive-bundle.tar
+├── manifest.json                      # version, vm_id, generated_at, both inner sha256s, sizes
+├── brain.pglite.tar.gz                # produced by dumpDataDir
+└── user-state.tar.gz                  # produced by tar over live filesystem
+```
+
+The outer tar is then encrypted (AES-256-GCM, per §6.4) and uploaded to R2.
+
+### 15.5 Continuous archival cron — REVISED flow
+
+`/api/cron/vm-archive-snapshot`, schedule `0 */6 * * *` (every 6h). For each candidate VM (suspended/hibernating, archive missing OR older than 24h):
+
+1. Acquire `instaclaw_cron_locks` key `freeze-thaw:<vm-id>` (TTL 30 min).
+2. Set `freeze_state = 'archiving'`.
+3. SSH connect to VM.
+4. **HTTP call to gbrain's MCP `snapshot_brain` tool over localhost:3131** with bearer token from `~/.gbrain/openclaw-bearer-token.txt`. Receive base64-encoded gzipped tar of brain.pglite.
+5. Decode base64 → `brain.pglite.tar.gz` in VM `/tmp`.
+6. `tar czf /tmp/user-state.tar.gz` over the user-state file list (NOT touching brain.pglite, which is in the other tarball).
+7. Produce `/tmp/archive-bundle.tar` combining both inner tarballs + manifest.json.
+8. scp the bundle to cron `/tmp`.
+9. Cron encrypts with AES-256-GCM, uploads to R2 at `<vm-id>/<unix-ts>-<sha256-prefix>.tar.enc`.
+10. DB update: `frozen_archive_path`, `frozen_archive_sha256`, `frozen_archive_size_kb`, `frozen_archive_manifest`, `frozen_archive_taken_at`, `freeze_state = 'archived'`.
+11. Release lock.
+12. Retention sweep: keep last 3 archives per VM in R2; delete older.
+
+**Crucial property: gbrain is NEVER STOPPED.** The MCP `snapshot_brain` call returns within seconds and the engine continues serving traffic. The user-state tarball captures regular files that don't need quiescence.
+
+**Concurrency cap:** `MAX_ARCHIVES_PER_RUN = 5`. Same as original PRD. Probably bumpable now that we removed the most expensive step (graceful stop/restart cycle).
+
+**Crash safety:** if the cron dies mid-archive, `freeze_state = 'archiving'` remains. Lock auto-expires after 30 min, next cron tick retries from scratch. PGLite state is unaffected by our crash because we never touched it (just read via MCP). Worst case: a wasted `dumpDataDir` call on the VM, ~5 GB of throwaway bytes.
+
+### 15.6 Freeze (Pass 1 v3) — REVISED, simpler
+
+For each candidate VM at grace expiration:
+
+1. **Precondition:** `frozen_archive_taken_at` exists AND ≤ 48h old.
+   - If no archive: skip; archive cron will catch up.
+   - If archive stale: skip; force a fresh archive first.
+2. Acquire lock `freeze-thaw:<vm-id>`.
+3. Re-read VM row inside lock. Conditional check: if `freeze_state` is NOT `'archived'` (e.g., webhook flipped to `'thawed_pending'` between archive and freeze), **abort cleanly**. Don't destroy. Release lock. Game-server-pattern resub race is handled here.
+4. DB write: `freeze_state = 'destroying'`. (Conditional UPDATE: `WHERE freeze_state = 'archived' AND id = ?`. If 0 rows match, abort.)
+5. **Linode DELETE** the instance directly. No SSH at freeze time. No graceful gbrain stop. The instance is going away anyway; no recovery path is needed because there's no in-flight failure mode that produces a zombie.
+6. DB write: `status = 'frozen'`, `health_status = 'frozen'`, `frozen_at = now()`, `freeze_state = 'frozen'`, `provider_server_id = null`, `ip_address = null`. Single conditional UPDATE.
+7. Release lock.
+
+**No `cleanupDiskForFreeze` step** (the Rule 51 6 GB gate no longer applies — we're not creating a Linode image). **No `recoverInstanceAfterFailedFreeze` step** (Rule 52 doesn't apply — there's no in-flight imagize to recover from). The freeze path is now ~15 lines of code. The original PRD's failure-mode matrix collapses correspondingly.
+
+### 15.7 Thaw — REVISED, archive-before-first-start
+
+Trigger: Stripe webhook `subscription.created|updated|resumed`, OR `/api/admin/thaw-vm`.
+
+Synchronous webhook side (idempotent, fast):
+1. Verify Stripe sub is live.
+2. Acquire lock `freeze-thaw:<vm-id>`.
+3. Verify `freeze_state IN ('frozen', 'archived')`.
+4. Set `freeze_state = 'thawing'`, `thaw_requested_at = now()`. Release lock.
+5. Return 200 to Stripe.
+
+Async cron side (`/api/cron/vm-thaw-rewire`, every 5 min):
+
+1. Acquire lock.
+2. **Provision new Linode** from `LINODE_SNAPSHOT_ID` (base snapshot). NEW provider_server_id, NEW IP. DB row updated to point at new instance.
+3. Wait for cloud-init callback (existing mechanism — `cloud_init_callback_consumed_at` gets set).
+4. Set `freeze_state = 'thawing_provisioned'`.
+5. SSH to new VM.
+6. **CRITICAL ORDERING — archive layered BEFORE first gbrain start:**
+   - `systemctl --user stop gbrain` (stops the freshly-provisioned-but-empty gbrain). Safe because there's no user data to lose — the data dir is the base-snapshot template (or empty).
+   - Download archive from R2 to VM `/tmp` via scp from cron.
+   - Decrypt the outer tar (AES-256-GCM, key from Vercel env). Verify sha256.
+   - Extract outer tar → `brain.pglite.tar.gz` + `user-state.tar.gz` + `manifest.json`.
+   - Validate manifest.json (sha256 of each inner tar matches manifest).
+   - `rm -rf ~/.gbrain/brain.pglite` (delete the base-snapshot's empty/template version).
+   - Extract `brain.pglite.tar.gz` → fresh, complete `~/.gbrain/brain.pglite/` (this is what `dumpDataDir` produced; PGLite knows how to reload it).
+   - Extract `user-state.tar.gz` → restores `~/.openclaw/...` and `~/.gbrain/openclaw-bearer-token.txt`.
+7. `systemctl --user start gbrain`. Poll `/health=200` (≤60s).
+8. Verify with authenticated put_page + get_page MCP round-trip (Cooper's standard from Item 1/2 — non-negotiable).
+9. **Manifest-version-aware rewire** (Q8 refined; see §16):
+   - Compute `version_gap = VM_MANIFEST.version - archive.manifest.source_manifest_version`.
+   - `gap ≤ 10`: stepFiles only + restart gateway. Fast thaw (~30s).
+   - `10 < gap ≤ 30`: stepFiles + stepConfigSettings + stepGatewayRestart. Medium thaw (~90s).
+   - `gap > 30`: full reconcile path (stepSystemPackages + stepFiles + stepConfigSettings + stepSkills + stepGatewayRestart). Slow thaw (~5 min). Treat the archived VM as effectively fresh-provisioned + with user data layered on top.
+10. Update DB: `status = 'assigned'`, `health_status = 'healthy'`, `freeze_state = 'idle'`, `frozen_at = null`. **DO NOT clear** `frozen_archive_path` — archive stays in R2 for 30 days post-thaw as recovery (Q2).
+11. Release lock.
+
+**Crucial property:** the archive is layered onto an empty PGLite data dir BEFORE the first start. PGLite never has to recover from a graceful-shutdown state (the gbrain bug). It's loading a fresh `dumpDataDir` output, which is exactly the input format it knows how to load.
+
+### 15.8 Failure modes — REVISED matrix
+
+The archive flow is simpler now; the failure surface shrinks. Only the deltas from §7:
+
+| New / changed failure | Detection | Recovery |
+|---|---|---|
+| gbrain MCP `snapshot_brain` tool returns error (engine busy, dumpDataDir crashes) | non-2xx from MCP call | Mark `freeze_state = 'archive_pending'`, retry next cron. Three failures → alert ("gbrain snapshot tool failing on vm-X — investigate"). |
+| `dumpDataDir` output is too large (PGLite has accumulated >100 MB of pages) | size check on received blob | Cap at 200 MB raw; alert and skip if exceeded. Unlikely at our scale (typical brain is < 50 MB) but defends against runaway. |
+| Bearer-token auth fails to MCP (token rotated, file out of sync) | 401 from gbrain | Read freshly from `~/.gbrain/openclaw-bearer-token.txt` (don't cache in cron memory). If still 401: alert; need to re-mint. |
+| Thaw extract fails (corrupt archive, sha256 mismatch) | sha256 check | Try N-1 generation. If all generations fail: P0 alert, manual investigation. |
+| Thaw: `dumpDataDir` extracted output won't open in fresh PGLite | gbrain logs WASM error after `systemctl start gbrain` | Same as freeze-time WASM bug — but here the input is fresh-from-dumpDataDir which IS gbrain's canonical reload format. If this fails, gbrain has a more serious bug. Alert P0; freeze-v2 is blocked. |
+
+**Deleted failure modes (no longer relevant):**
+- ENOSPC during shutdown checkpoint (no shutdown)
+- WAL replay failure on restart (no restart)
+- Cleanup whitelist incomplete (no cleanup; full archive captured by dumpDataDir)
+- imagize size cap exceeded (no imagize)
+- offline-billing zombie from boot-recovery failure (no boot recovery; no Linode delete-before-archive)
+
+### 15.9 What changes from the original §6.1 manifest
+
+The "Tier 1 / Tier 2 / Excluded" file lists in §6.1 are still right for the **user-state tarball**. The PGLite tarball replaces what `~/.openclaw/brain.pglite/` would have been in §6.1 (and it's actually at `~/.gbrain/brain.pglite/` per empirical inspection — §6.1's path was wrong; updated below).
+
+**Corrected path (replaces §6.1 row for brain.pglite):**
+- Old `~/.openclaw/brain.pglite/` (from §6.1) → **`~/.gbrain/brain.pglite/`** (correct path; from vm-050 empirical inspection 2026-05-16). Now archived via dumpDataDir tool, not file-system tar.
+
+### 15.10 gbrain dependency timeline
+
+This PRD blocks on the gbrain terminal shipping the `snapshot_brain` MCP tool. Phasing:
+
+- **Day 0 (today): coordinate with gbrain terminal.** Cooper relays this PRD to that terminal. They estimate effort + acceptable shape (MCP tool vs admin HTTP).
+- **Day 1-3: gbrain terminal ships the snapshot tool** to a canary VM. Tested manually against vm-050 (or a sister VM with comparable data).
+- **Day 3-4: I ship Phase 1 (R2 + migration + encryption + smoke test) in parallel.** None of this needs the snapshot tool yet — it's substrate.
+- **Day 4-5: Phase 2 (archive cron) once snapshot tool is on the fleet.**
+- **Day 5-7: Phase 3 (freeze v3) one-VM canary.**
+- **Day 7-10: Phase 4 (thaw v2) end-to-end on a canary user.**
+- **Day 10-17: Phase 5 (fleet rollout) — drain the 51-VM backlog.**
+
+If gbrain terminal can't ship the snapshot tool in 1-3 days, the freeze-v2 timeline pushes by however long they need.
+
+### 15.11 What survives from §6.2 (the original)
+
+The encryption (§6.4), R2 storage (§6.3), DB schema (§6.9), lock semantics (§6.8), and the lifecycle log / lifecycle_locked_at fields are **all unchanged**. Path 2 changes only the snapshot mechanism + the freeze/thaw control flow. Substrate stays.
+
+---
+
+## 16. LOCKED DESIGN DECISIONS — 3-year scale-debt audit
+
+Cooper's 8 questions from §12, with refinements after the empirical PGLite test and the 1000-VM-3-year-out lens. Where this section differs from §12, **this section is canonical.**
+
+### 16.1 Q1 — R2 vs Supabase Storage → **R2** (locked)
+
+Cooper's override: clean separation of concerns (storage ≠ database). S3-compatible SDK preserves swap-out path. $0 egress matters more at scale than I initially estimated.
+
+**3-year scale check (1000 VMs, 200 frozen):** total storage ~30 GB. R2 free tier covers 10 GB; remaining 20 GB at $0.015/GB-month = $0.30/mo. Egress $0. Operational debt: R2 dashboard to monitor (low), API tokens to rotate annually (low). **No scaling concerns.**
+
+### 16.2 Q2 — Post-thaw archive retention → **30 days, auto-delete** (locked)
+
+**3-year scale check:** 1000 thaws/year × 30 MB × 30d retention = 2.5 GB peak. Trivial. The 30-day window covers (a) disaster-recovery rollback if a thaw was botched, (b) 30 days of support investigation. After 30 days, the user is actively using the new VM and the archive is stale.
+
+**One refinement:** the post-thaw archive auto-delete is **per-archive-generation**, not per-VM. We keep the latest pre-thaw archive for 30 days but older generations (from earlier archive-snapshot cron runs) can be deleted earlier. Storage savings minor but operationally clean.
+
+### 16.3 Q3 — Archive healthy VMs too → **No** (locked)
+
+**3-year scale check:** At 1000 healthy VMs, archiving all of them would cost 4 archives/day × 1000 = 4000 archives/day. Even at 5 seconds each (via dumpDataDir, much faster than the old stop/tar/restart), that's 5.5 hours of cron compute per day. Multiple parallel workers required. Big cron complexity.
+
+Marginal value: disaster-recovery snapshot for healthy VMs. We've operated without it for years. If we need it, build it as a separate "essential-data backup" feature with different cadence (daily, not 6h) and different retention (last 1, not 3). Don't conflate with freeze-archive.
+
+### 16.4 Q4 — Encrypt manifest.json beyond outer tar → **No** (locked)
+
+The outer tar is AES-256-GCM encrypted. manifest.json lives INSIDE that. No additional encryption needed. **3-year scale: unchanged.** No reason to revisit.
+
+### 16.5 Q5 — Long-dormant retention → **Indefinite v1, but schema-prepared for v2** (refined)
+
+Cooper's call: indefinite retention for v1 as a trust signal ("we never lose your data"). Skip auto-delete cron.
+
+**My refinement (additive, no behavior change to v1):** add **`frozen_retention_policy TEXT` column** to `instaclaw_vms` in the v1 migration. Default NULL (= indefinite). When we ship v2's auto-delete cron in 6-18 months, the column already exists and can be populated:
+
+- `NULL` (default) — indefinite retention. v1 behavior.
+- `'standard'` — 24-month retention with 18mo + 23mo email warnings (matches Google's pattern).
+- `'vip'` — indefinite retention (carveout: bankr token launchers, paid >12mo lifetime, partner-tagged users).
+- `'compliance_delete'` — pending GDPR deletion; cron runs the 30-day wait + delete within a week.
+
+The auto-delete cron filters on `frozen_retention_policy = 'standard'` only when it ships. NULL rows are skipped. VIP rows are preserved indefinitely.
+
+**3-year scale check:** at 1000 frozen users, indefinite retention = 30 GB storage = $0.30/mo. **Cost is not the problem.** Real concerns:
+- GDPR Article 17 — we MUST be able to delete an individual user's archive on request. Build a `/api/admin/delete-user-archives/<userId>` endpoint NOW; it's a 20-line handler and unblocks compliance forever.
+- Security blast radius — 1000 wallet keys (encrypted) sitting in cold storage. Encryption key rotation is the lever; we should rotate `FREEZE_ARCHIVE_KEY` annually. Build the key-versioning in v1's encryption (key_id in manifest.json) so rotation doesn't require re-encrypting old archives.
+- Operational visibility — at 1000 frozen archives, a "where is my data" support query needs a fast lookup. The DB row's `frozen_archive_path` provides this; just need to make sure we DON'T null it on delete (until we actually delete the R2 object).
+
+**v1 deliverables for this question (all small):**
+1. Schema column `frozen_retention_policy TEXT` (NULL default).
+2. Admin endpoint `POST /api/admin/delete-user-archives/<userId>` for GDPR.
+3. Key-versioning in the encryption helper (`key_id: "v1"` in manifest.json).
+4. **No auto-delete cron in v1.** Defer.
+
+**Confidence: 85%.** Cooper might want a stricter v1 (e.g., 24mo standard retention as default). The above is the most generous reasonable v1 that unblocks v2 without operational debt.
+
+### 16.6 Q6 — PGLite hot snapshot → **OBSOLETED by §15** (locked)
+
+The original Q6 asked whether `wal_checkpoint(TRUNCATE)` is safe with gbrain running. Empirically: irrelevant. PGLite isn't SQLite — it's Postgres-WASM — and the WAL behavior wasn't the bug anyway. The new design uses `dumpDataDir` which is hot by design and bypasses all the shutdown/checkpoint concerns.
+
+**Phase 1 PGLite verification gate: PASSED with negative result.** The gate proved Path 1 doesn't work, motivating Path 2. Phase 1 implementation can now proceed without re-running the original verification (it would just reconfirm the bug).
+
+### 16.7 Q7 — Cloud-init callback reuse → **Yes, reuse** (locked)
+
+**3-year scale check:** thaw rate at 1000 VMs / 5% monthly cancellation × 50% return rate = ~25 thaws/mo. Polling overhead trivial. Cloud-init callback has been load-bearing for years. No issues. ✓
+
+### 16.8 Q8 — Rewire scope → **Version-gap-aware** (refined)
+
+Original recommendation: stepFiles + start for thaw critical path.
+
+**Refinement for 3-year scale:** archives can be very old (manifest version 100 today; in 3 years, manifest could be at 200+). A 3-year-old archive thawing into the current fleet has a 100+ version gap. stepFiles alone won't be enough — config keys, system packages, plugin runtime deps may have all drifted.
+
+Tiered rewire (locked in §15.7):
+- **gap ≤ 10** — stepFiles + start (~30s thaw). Most thaws.
+- **10 < gap ≤ 30** — stepFiles + stepConfigSettings + stepGatewayRestart (~90s).
+- **gap > 30** — full reconcile path (~5 min). Treat as fresh-provision + user-data layer.
+
+**Confidence: 70%.** Thresholds need empirical tuning after 3-5 real thaws. The shape (tiered) is right; the boundaries are guesses.
+
+### 16.9 Cross-cutting scale-debt summary
+
+| Concern | At 1000 VMs / 200 frozen / 3 yrs | Mitigation in v1 |
+|---|---|---|
+| R2 storage cost | $0.30/mo | None needed |
+| GDPR compliance | Right-to-erasure requests | Admin delete endpoint in v1 (§16.5) |
+| Encryption key rotation | Annual best practice | key_id versioning in v1 (§16.5) |
+| Long-dormant data hoarding | 1000s of wallet keys in cold storage | `frozen_retention_policy` column unblocks v2 auto-delete (§16.5) |
+| Cron throughput | 5 archives/run × 4 runs/day = 20/day; backlog drain ~3 days | Bump `MAX_ARCHIVES_PER_RUN` to 10 once empirically validated |
+| Storage observability | "where is my archive" support queries | DB column `frozen_archive_path` + `frozen_archive_taken_at` answer this directly |
+| R2 vendor lock-in | S3-compatible SDK | Swap to S3 or Supabase Storage via env var change if R2 ever degrades |
+| gbrain `snapshot_brain` tool dependency | Single point of feature dependence | Acceptable — gbrain is core infrastructure already; if it breaks, freeze is the least of our problems |
+
+**No scaling bottleneck identified.** No undue operational debt. The architecture is bounded and operates within R2 free tier (or near-free) for the foreseeable future.
 
 ---
 
