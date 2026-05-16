@@ -28,7 +28,22 @@ NEVER use old snapshots (private/36895419, private/38069990, private/38111101 (v
 - Branch: main
 - Dev server: `npm run dev` from instaclaw/, runs on port 3001
 - Production: https://instaclaw.io
-- Admin email: coop@valtlabs.com
+- Admin email (Stripe / billing / app admin): coop@valtlabs.com
+
+### Owner account identities
+
+These three exist; mixing them up has broken deploys at least once (2026-05-16
+edgeclaw-village deploy went to the wrong Vercel team because the CLI was
+authed as the GitHub-account login, not the Vercel team-owner email).
+
+| Where | Identifier | Notes |
+|---|---|---|
+| Vercel team owner (use for `vercel login`) | **coopergrantwrenn@gmail.com** | Owns the `cooper-wrenns-projects` Vercel scope — every project (instaclaw, edgeclaw-village, etc.) lives under this. |
+| GitHub username | **coopergwrenn** | Repo owner. Both `clawlancer` (instaclaw monorepo) and `edgeclaw-village` live under this user. |
+| GitHub login email | cooperwrenn@gmail.com (legacy / GitHub-personal) | NOT the Vercel email. Was the default `vercel whoami` after the 2026-05-16 mix-up. |
+| Stripe / billing / app-admin email | coop@valtlabs.com | Used for InstaClaw admin auth + Stripe customer record. NOT the Vercel email. |
+
+**When running `vercel login` for ANY deploy**: use `coopergrantwrenn@gmail.com`. After login, `vercel whoami` should report the team-owner username (varies by Vercel UI — confirm by `vercel teams ls` if uncertain).
 
 ## Mandatory Rules
 
@@ -1080,6 +1095,16 @@ Implications:
 - For freeze-thaw archival, use PGLite's native `engine.db.dumpDataDir("gzip")` for HOT backup without stopping (IR finding) — exposed as an MCP/admin endpoint would be ideal but doesn't exist yet upstream.
 - Any future code that does stop+restart WITHOUT wipe MUST use SIGKILL.
 - File upstream issue with @electric-sql/pglite when bandwidth allows: `db.close()` corrupts the data directory; reproducible on v0.4.5 against gbrain v0.35.0.0.
+
+#### Version-bump preservation gap (P1 followup)
+
+Bumping `GBRAIN_PINNED_VERSION` / `GBRAIN_PINNED_COMMIT` in `lib/vm-reconcile.ts` today **wipes every edge_city VM's brain.pglite** because the reconciler re-runs `stepGbrain` on every cv-stale VM, and Phase E2 of `install-gbrain.sh` unconditionally wipes PGLite before fresh init.
+
+**This is fine for the initial fleet rollout** (brains are empty until users save memories) **and for Esmeralda** (we pin v0.35.0.0 at the May 23 snapshot bake and don't bump during the conference). It is **NOT fine post-Esmeralda** when paying users have accumulated meaningful memories.
+
+The gate for future memory-preserving version bumps: upstream gbrain must expose `engine.db.dumpDataDir("gzip")` as MCP tool `snapshot_brain` (per IR's freeze-thaw v2 PRD §15.3; primitive already exists at `gbrain/scripts/build-pglite-snapshot.ts:53`). With that tool: per-VM upgrade flow becomes (a) call snapshot_brain → tarball, (b) `install-gbrain.sh` wipe + reinstall at new version, (c) `gbrain restore` (or equivalent) on the tarball, (d) new schema migrations run on imported data → memory preserved through upgrade.
+
+Until `snapshot_brain` ships upstream and we wire it into stepGbrain, **DO NOT bump GBRAIN_PINNED_VERSION on production VMs that have non-empty PGLite**. The reconciler will silently destroy customer memories. P1 tracking: file upstream issue + write the import flow into stepGbrain when the tool lands.
 
 ---
 
