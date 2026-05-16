@@ -21,9 +21,10 @@
  *   3. Drift summary: how many sampled VMs have each key missing, broken
  *                    down by current vs stale prefix.
  *
- * SECRET_ENV_VAR_SOURCES is re-declared below because the canonical version
- * at `lib/vm-reconcile.ts` is not exported. **If the canonical list changes,
- * mirror the change here.** A future cleanup is to export the canonical list.
+ * SECRET_ENV_VAR_SOURCES + SECRET_VERSION are imported from the canonical
+ * `lib/vm-reconcile.ts` (exported there 2026-05-16, same commit as this
+ * tool's follow-up). No re-declaration, no manual-sync risk: the tool
+ * follows whatever the reconciler ships.
  *
  * Usage:
  *   npx tsx instaclaw/scripts/_coverage-secret-env-vars.ts
@@ -34,6 +35,7 @@
 
 import { readFileSync } from "fs";
 import { Client } from "ssh2";
+import { SECRET_VERSION, SECRET_ENV_VAR_SOURCES, type SecretEnvVarSource } from "../lib/vm-reconcile";
 
 // ── Rule 18: load both env files ─────────────────────────────────────────────
 for (const f of [
@@ -57,19 +59,9 @@ if (!process.env.SSH_PRIVATE_KEY_B64 || !process.env.SUPABASE_SERVICE_ROLE_KEY) 
 const SSH_KEY = Buffer.from(process.env.SSH_PRIVATE_KEY_B64!, "base64").toString("utf-8");
 const SUPABASE_URL = "https://qvrnuyzfqjrsjljcqbub.supabase.co";
 
-// ── Canonical version: keep in sync with lib/vm-reconcile.ts ─────────────────
-const SECRET_VERSION = 2;
-interface SecretEnvVarSource {
-  envKey: string;
-  vercelKey?: string;
-  label: string;
-  partnerGate?: string;
-}
-const SECRET_ENV_VAR_SOURCES: SecretEnvVarSource[] = [
-  { envKey: "GBRAIN_ANTHROPIC_API_KEY", label: "gbrain Anthropic project key" },
-  { envKey: "EDGEOS_BEARER_TOKEN", label: "EdgeOS attendee directory JWT", partnerGate: "edge_city" },
-  { envKey: "BRAVE_API_KEY", vercelKey: "BRAVE_SEARCH_API_KEY", label: "Brave Search API key" },
-];
+// SECRET_VERSION + SECRET_ENV_VAR_SOURCES come from lib/vm-reconcile.ts.
+// This script will automatically follow any future changes to the canonical
+// list. The local `SecretEnvVarSource` import above re-uses the canonical type.
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 interface Args { sample: number; vmName: string | null; jsonOnly: boolean; }

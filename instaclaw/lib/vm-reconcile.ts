@@ -1102,7 +1102,7 @@ async function stepWorkspaceIntegrity(
  * Empirically verified on vm-050 (2026-05-12): all 4 paths (no-op, append,
  * re-apply, replace) pass via `scripts/_test-stepenvvarpush.ts`.
  */
-interface SecretEnvVarSource {
+export interface SecretEnvVarSource {
   /**
    * Key name on the VM side — appears in `~/.openclaw/.env` and is what the
    * agent reads at runtime. Also used as the Vercel-side name UNLESS
@@ -1133,7 +1133,7 @@ interface SecretEnvVarSource {
   partnerGate?: string;
 }
 
-const SECRET_ENV_VAR_SOURCES: SecretEnvVarSource[] = [
+export const SECRET_ENV_VAR_SOURCES: SecretEnvVarSource[] = [
   { envKey: "GBRAIN_ANTHROPIC_API_KEY", label: "gbrain Anthropic project key" },
   // 2026-05-14: the attendee-directory endpoint at
   // api-citizen-portal.simplefi.tech requires a JWT (eyJ...), but Vercel held
