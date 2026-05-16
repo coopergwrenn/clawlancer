@@ -2715,7 +2715,10 @@ async function stepRemotionDeps(
     `test -d ${templateDir}/node_modules/remotion && echo YES || echo NO`
   );
   if (verify.stdout.trim() !== 'YES') {
-    result.errors.push(`remotion deps install failed: ${install.stderr?.slice(0, 200) || install.stdout?.slice(-200)}`);
+    // Rule 39: Remotion (motion-graphics) is opt-in. Failure breaks that one
+    // skill only; gateway + other workflows unaffected. Warning so cv-bump
+    // proceeds; persistent failure remains visible in admin_alert_log.
+    recordHealWarning(result, `remotion deps install failed: ${install.stderr?.slice(0, 200) || install.stdout?.slice(-200)}`);
     return;
   }
 
@@ -3570,7 +3573,11 @@ async function stepSystemPackages(
       if (install.stdout.includes('INSTALLED')) {
         result.fixed.push(`${pkg} (installed)`);
       } else {
-        result.errors.push(`${pkg}: install skipped (no sudo or apt-get failed)`);
+        // Rule 39: per-package install skipped. Outer catch (below) stays
+        // HARD for whole-try throws. A single non-critical package (jq,
+        // build-essential, etc.) shouldn't block cv on everything that DID
+        // succeed in this cycle.
+        recordHealWarning(result, `${pkg}: install skipped (no sudo or apt-get failed)`);
       }
     }
   } catch (err) {
@@ -3690,7 +3697,10 @@ async function stepPythonPackages(
       if (verify === CRAWLEE_PINNED_VERSION) {
         result.fixed.push(`python: crawlee ${crawleeCurr || "missing"} → ${CRAWLEE_PINNED_VERSION}`);
       } else {
-        result.errors.push(
+        // Rule 39: crawlee is used by web-scraping skill (partner-gated /
+        // opt-in). PyPI / Chromium download flap is a known transient.
+        // Warning so cv-bump proceeds; cron retries naturally next cycle.
+        recordHealWarning(result,
           `python: crawlee install failed: was=${crawleeCurr || "missing"} got=${verify || "(empty)"} pip-tail=${(install.stdout + install.stderr).slice(-200)}`,
         );
       }
@@ -3719,7 +3729,12 @@ async function stepPythonPackages(
       if (verify.stdout.includes("OK")) {
         result.fixed.push(`python: ${pkg} (installed)`);
       } else {
-        result.errors.push(
+        // Rule 39: BE-10 unpinned packages (httpx, etc.) are partner-script
+        // dependencies. On non-partner VMs they have zero customer impact;
+        // on partner VMs the scripts fail gracefully at script-run time. The
+        // 2026-05-16 vm-356 case: cv held at 99 over an httpx pip flap,
+        // blocking v100 RuntimeMaxSec removal that DOES affect every VM.
+        recordHealWarning(result,
           `python: ${pkg} install failed: pip-tail=${(install.stdout + install.stderr).slice(-200)}`,
         );
       }
@@ -4352,7 +4367,10 @@ async function stepSSHDProtection(
   if (deployResult.code === 0) {
     result.fixed.push("sshd OOM protection: deployed drop-in (OOMScoreAdjust=-900)");
   } else {
-    result.errors.push(`sshd OOM protection failed: ${deployResult.stderr}`);
+    // Rule 39: sshd OOM-protection drop-in is defense-in-depth. Failure
+    // leaves sshd at the same oom-killer risk it had before this step ran
+    // — zero regression vs current state. Warning so cv-bump proceeds.
+    recordHealWarning(result, `sshd OOM protection failed: ${deployResult.stderr}`);
   }
 }
 
@@ -4416,7 +4434,9 @@ async function stepCleanStaleMemory(
   if (cleanResult.code === 0) {
     result.fixed.push(`memory: cleaned ${staleCount} stale lines`);
   } else {
-    result.errors.push(`memory cleanup failed: ${cleanResult.stderr}`);
+    // Rule 39: legacy pre-V2 memory-layout cleanup. No-op on most VMs.
+    // Failure = a few KB of stale files persist. Zero customer impact.
+    recordHealWarning(result, `memory cleanup failed: ${cleanResult.stderr}`);
   }
 }
 
@@ -4460,7 +4480,10 @@ async function stepCaddyUIBlock(
   // cohort and exposed downstream stepCaddyUIBlock failures.
   const hostnameMatch = catResult.stdout.match(/^([a-zA-Z0-9][a-zA-Z0-9.\-]+(?::\d+)?)\s*\{/m);
   if (!hostnameMatch) {
-    result.errors.push("caddy: could not parse hostname from Caddyfile");
+    // Rule 39: Caddy UI redirect (vm-public-hostname → instaclaw.io/dashboard).
+    // NOT the customer message-path (gateway:18789 is separate). Failure =
+    // visitor sees legacy Block Control UI instead of the redirect.
+    recordHealWarning(result, "caddy: could not parse hostname from Caddyfile");
     return;
   }
   const hostname = hostnameMatch[1];
@@ -4500,14 +4523,16 @@ async function stepCaddyUIBlock(
     `echo '${b64}' | base64 -d | sudo tee /etc/caddy/Caddyfile > /dev/null`,
   );
   if (writeResult.code !== 0) {
-    result.errors.push(`caddy: failed to write Caddyfile: ${writeResult.stderr}`);
+    // Rule 39: UI-only redirect. See note above on stepCaddyUIBlock failure mode.
+    recordHealWarning(result, `caddy: failed to write Caddyfile: ${writeResult.stderr}`);
     return;
   }
 
   // Reload Caddy (zero downtime)
   const reloadResult = await ssh.execCommand("sudo systemctl reload caddy 2>/dev/null");
   if (reloadResult.code !== 0) {
-    result.errors.push(`caddy: reload failed: ${reloadResult.stderr}`);
+    // Rule 39: UI-only redirect. See note above on stepCaddyUIBlock failure mode.
+    recordHealWarning(result, `caddy: reload failed: ${reloadResult.stderr}`);
     return;
   }
 
