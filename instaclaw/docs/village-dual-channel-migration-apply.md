@@ -1,15 +1,17 @@
 # D14/D15 — Village Dual-Channel Migration Apply
 
-**Migration:** `instaclaw/supabase/migrations/20260516200000_village_dual_channel_broadcast.sql`
-**Status:** Written, NOT applied to any Supabase project.
-**Owner approval required** before applying to staging or production.
+**Phase 1 (applied 2026-05-16):** `instaclaw/supabase/migrations/20260516200000_village_dual_channel_broadcast.sql` — `agent_positions` table only. Status: ✅ applied to production via Supabase Studio SQL Editor on 2026-05-16 (build pipeline was blocked by `verify-migrations.ts` until apply; recovery via `vercel redeploy` of last Error deployment).
 
-## What it does
+**Phase 2 (pending):** `instaclaw/supabase/pending_migrations/20260516210000_village_dual_channel_triggers.sql` — village schema, anonymize helper, `village_attendees_public` view, four broadcast trigger functions, four triggers. Status: PARKED in `pending_migrations/` per CLAUDE.md Rule 56. **Owner approval required** before applying to staging or production.
+
+> **Why split:** during the Phase 1 commit, all of Phase 2 was bundled into the same file. The build pipeline went down because `agent_positions` didn't exist in prod yet — `verify-migrations.ts` blocked every Vercel build until Cooper hand-pasted the table. To prevent a re-occurrence, Phase 2 was extracted to `pending_migrations/` (excluded from the verify-migrations scan); it can be reviewed and merged without re-triggering the gate.
+
+## What Phase 2 does
 
 Per `edgeclaw-village/docs/village-direction-2026-05-15.md` § A11 and Topic 6 of the village technical research:
 
 1. Creates the `village` schema + `village.anonymize_user_id(uuid) → text` helper.
-2. Creates the `public.agent_positions` table (NEW — referenced by `serverGame.ts` for resync after walks).
+2. Creates the `public.village_attendees_public` view (NEW — referenced by `serverGame.ts:loadAttendees()` when `mode === 'spectator'`). Filters on `spectator_visible = true`, maps `user_id` → `agent_id` via the anonymize helper, exposes only visual columns (`description`, `larry_atlas_index`).
 3. Defines four `AFTER INSERT/UPDATE` trigger functions, one per emitter table — each emits TWO `realtime.send()` broadcasts:
    - `village:edge-esmeralda-2026` (private/auth, full identity)
    - `village-public:edge-esmeralda-2026` (public/anon, `agent_NNNN` labels only)
@@ -168,3 +170,32 @@ DROP FUNCTION IF EXISTS village.anonymize_user_id(uuid);
 ## Approval
 
 Reply `apply to staging` to get the staging deploy. After staging is clean for 24h and the privacy probe passes, reply `apply to prod` for production.
+
+## Promotion after apply
+
+Once Phase 2 is applied (in BOTH staging and production), promote the file per Rule 56:
+
+```bash
+git mv instaclaw/supabase/pending_migrations/20260516210000_village_dual_channel_triggers.sql \
+       instaclaw/supabase/migrations/20260516210000_village_dual_channel_triggers.sql
+
+# Commit with apply-evidence:
+git commit -m "db: promote village dual-channel triggers after apply to prod 2026-MM-DD
+
+Phase 2 of D14/D15 dual-channel broadcast. Triggers fire on
+matchpool_outcomes / negotiation_threads / instaclaw_vms / agent_positions
+INSERTs and UPDATEs. Public payloads identity-stripped at the trigger level.
+
+Applied to staging 2026-MM-DD HH:MM UTC. Privacy probe passed.
+Applied to production 2026-MM-DD HH:MM UTC. Post-apply verification:
+  - 4/4 trg_*_dual_broadcast triggers present
+  - village.anonymize_user_id() returns stable output across 3 calls
+  - village_attendees_public readable to anon role
+  - End-to-end privacy probe via Realtime Inspector — payload contained
+    only whitelisted fields (no user_id, no scores, no xmtp_address)
+"
+```
+
+`verify-migrations.ts` will then scan the file. The only `CREATE` statements it parses are `CREATE TABLE` and `ALTER TABLE ... ADD COLUMN` — the file contains neither. Build passes.
+
+If the file's `CREATE VIEW` ever expands to include a `CREATE TABLE` (e.g., the `village_attendees_public` view is replaced with a materialized table), the promotion sequence MUST re-verify the schema is in prod before moving the file. Rule 56 again.
