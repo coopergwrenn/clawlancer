@@ -1,5 +1,7 @@
 # D14/D15 — Village Dual-Channel Migration Apply
 
+> **Privacy probe:** see [`village-dual-channel-privacy-probe.md`](./village-dual-channel-privacy-probe.md) — paste-ready SQL for post-apply verification.
+
 **Phase 1 (applied 2026-05-16):** `instaclaw/supabase/migrations/20260516200000_village_dual_channel_broadcast.sql` — `agent_positions` table only. Status: ✅ applied to production via Supabase Studio SQL Editor on 2026-05-16 (build pipeline was blocked by `verify-migrations.ts` until apply; recovery via `vercel redeploy` of last Error deployment).
 
 **Phase 2 (pending):** `instaclaw/supabase/pending_migrations/20260516210000_village_dual_channel_triggers.sql` — village schema, anonymize helper, four broadcast trigger functions, four triggers. Status: PARKED in `pending_migrations/` per CLAUDE.md Rule 56. **Owner approval required** before applying to staging or production. (Originally also included two public views; deferred to Phase 3 — see below.)
