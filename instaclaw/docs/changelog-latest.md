@@ -1,34 +1,35 @@
 # Changelog — generated 2026-05-16
 
-Window: `3c51ffb85336c7c757cb4019ee4e460b0f4b0ee8` → `HEAD` (HEAD = `ec8255be`)
+Window: `ec8255bea0621f2c50aa623cdbe57122ca7f980d` → `HEAD` (HEAD = `6263ca0d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: ec8255bea0621f2c50aa623cdbe57122ca7f980d -->
+<!-- LAST_GENERATED_SHA: 6263ca0d03ae0e4d9be5c5446b8bcfc62d455b46 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
+- **Reconciler / manifest:** 1
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
-- **Edge City partner:** 1
+- **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-- `ec8255be` 2026-05-16 — chore(migrations): promote gbrain coverage schema to migrations/ (applied 2026-05-16) [2 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `e3cdd5f0` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `6263ca0d` 2026-05-16 — docs(rule-39): step classification audit — 87 push sites, 9 conversions proposed [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `36a3ae96` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
 
-_(none)_
+- `6263ca0d` 2026-05-16 — docs(rule-39): step classification audit — 87 push sites, 9 conversions proposed [1 files] _(multi: [reconciler, docs]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -38,21 +39,27 @@ _(none)_
 
 _(none)_
 
-### Edge City partner (1)
+### Edge City partner (0)
 
-- `ec8255be` 2026-05-16 — chore(migrations): promote gbrain coverage schema to migrations/ (applied 2026-05-16) [2 files] _(ai-assisted)_
+_(none)_
 
 ### Docs / PRD only (1)
 
-- `e3cdd5f0` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `36a3ae96` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `6263ca0d` 2026-05-16 — [reconciler, docs] — docs(rule-39): step classification audit — 87 push sites, 9 conversions proposed
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `ec8255be` 2026-05-16 — chore(migrations): promote gbrain coverage schema to migrations/ (applied 2026-05-16)
+- `6263ca0d` 2026-05-16 — docs(rule-39): step classification audit — 87 push sites, 9 conversions proposed
 
 ## Appendix — every commit (chronological)
 
-- `e3cdd5f0` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `ec8255be` 2026-05-16 — chore(migrations): promote gbrain coverage schema to migrations/ (applied 2026-05-16) [2 files] _(ai-assisted)_
+- `36a3ae96` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `6263ca0d` 2026-05-16 — docs(rule-39): step classification audit — 87 push sites, 9 conversions proposed [1 files] _(multi: [reconciler, docs]; ai-assisted)_
