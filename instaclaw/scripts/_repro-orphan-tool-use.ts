@@ -436,20 +436,40 @@ function findLastUserMessageIdx(events: SessionEvent[]): number {
 const SESSIONS_DIR = "~/.openclaw/agents/main/sessions";
 
 /**
- * Capture sizes of ALL session jsonls in one cheap SSH call. Excludes the
- * `.trajectory.jsonl` and `.checkpoint.*.jsonl` shapes — those are trace logs
- * and rotation snapshots, not the live message log.
+ * Capture sizes of ALL session jsonls in one cheap SSH call. Excludes:
+ *   - `.trajectory.jsonl`         — trace log, not message log
+ *   - `.checkpoint.*.jsonl`       — compaction checkpoint snapshots
+ *   - `<ISO-timestamp>_*.jsonl`   — v2.1: rotation archives (see below)
  *
- * Single `find -printf` is constant cost regardless of how many session files
- * exist. On vm-050 (~30 files) this is ~1s. Replaces the v1 `ls -t | head -1`
- * heuristic that picked stale files when many jsonls were touched by
- * background crons.
+ * v2.1 fix (2026-05-16, 3rd Gate 0 attempt): exclude timestamp-prefixed
+ * rotation archives. When OpenClaw rotates a session, it creates a new
+ * file `<ISO-timestamp>_<uuid>.jsonl` and bulk-copies the preserved old
+ * conversation into it. v2's findActiveSessionByGrowth would happily
+ * match this archive because it appeared "new" at baseline AND contained
+ * user messages (from the copied-in history) — but it's not the live
+ * session. Live sessions use plain `<uuid>.jsonl` names.
+ *
+ * Observed rotation cadence on vm-050 was 4 rotations in 35 min, so this
+ * exclusion is critical — the rotation file is often the most-recently
+ * touched, which is exactly what the heuristic falsely picks up.
+ *
+ * Single `find -printf` is constant cost regardless of how many session
+ * files exist. On vm-050 (~60 files including history) this is ~1s.
  */
 async function captureJsonlSizes(ssh: Client): Promise<Map<string, number>> {
   const r = await sshExec(
     ssh,
     `find ${SESSIONS_DIR} -maxdepth 1 -name '*.jsonl' ` +
       `-not -name '*.trajectory.jsonl' -not -name '*.checkpoint.*.jsonl' ` +
+      // v2.1: exclude rotation archives. Pattern matches files starting with
+      // an ISO-8601 datetime stamp (year-month-dayTHH-MM-SS-ms_Z_): exactly
+      // "????-??-??T??-??-??-???Z_*". Live session filenames never start
+      // with a digit (they're UUIDs whose first char is a hex digit, but
+      // glob ???? requires 4 literal chars and UUID first 4 chars are
+      // alphanumeric — could overlap with year). Safer exclusion: any file
+      // whose name starts with "2026-" or "2027-" etc. — i.e., a 4-digit
+      // year followed by a dash. We use shell glob via find's -name.
+      `-not -name '2026-*' -not -name '2027-*' -not -name '2028-*' ` +
       `-printf '%s %p\\n' 2>/dev/null`,
     10_000,
   );
