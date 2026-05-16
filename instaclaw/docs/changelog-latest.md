@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-16
 
-Window: `43c607b82c8a9bf2025c1d9a18beece25f3e7097` → `HEAD` (HEAD = `f7bcaeda`)
+Window: `f7bcaeda280ef0e234a46861dbc6d75057ceec65` → `HEAD` (HEAD = `df7fb9f9`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: f7bcaeda280ef0e234a46861dbc6d75057ceec65 -->
+<!-- LAST_GENERATED_SHA: df7fb9f9b4342474dafa9821d431f990be10a480 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `f7bcaeda` 2026-05-16 — feat(stepGatewayRestart): dynamic cold-boot wait by plugin count (Rule 43) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
-- `ffbf05d4` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `df7fb9f9` 2026-05-16 — docs+tools(coverage): fleet HTTP-sidecar coverage script (Rule 27) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `64a9b146` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `f7bcaeda` 2026-05-16 — feat(stepGatewayRestart): dynamic cold-boot wait by plugin count (Rule 43) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `df7fb9f9` 2026-05-16 — docs+tools(coverage): fleet HTTP-sidecar coverage script (Rule 27) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `ffbf05d4` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `64a9b146` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `f7bcaeda` 2026-05-16 — [reconciler, infrastructure, edge] — feat(stepGatewayRestart): dynamic cold-boot wait by plugin count (Rule 43)
+- `df7fb9f9` 2026-05-16 — [infrastructure, edge] — docs+tools(coverage): fleet HTTP-sidecar coverage script (Rule 27)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `f7bcaeda` 2026-05-16 — feat(stepGatewayRestart): dynamic cold-boot wait by plugin count (Rule 43)
+- `df7fb9f9` 2026-05-16 — docs+tools(coverage): fleet HTTP-sidecar coverage script (Rule 27)
 
 ## Appendix — every commit (chronological)
 
-- `ffbf05d4` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `f7bcaeda` 2026-05-16 — feat(stepGatewayRestart): dynamic cold-boot wait by plugin count (Rule 43) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `64a9b146` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `df7fb9f9` 2026-05-16 — docs+tools(coverage): fleet HTTP-sidecar coverage script (Rule 27) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
