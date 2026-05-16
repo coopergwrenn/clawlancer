@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-16
 
-Window: `5d69baeb18a2f0f95fcbfc08644259a81bb54218` → `HEAD` (HEAD = `588a45b9`)
+Window: `588a45b9a26f1b9786b18a505add2385d02ac0d9` → `HEAD` (HEAD = `4c57b204`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 588a45b9a26f1b9786b18a505add2385d02ac0d9 -->
+<!-- LAST_GENERATED_SHA: 4c57b20491dc40d50aa78c3e78a389d6c9524552 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `621549f0` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `588a45b9` 2026-05-16 — feat(playbook): viral-copy-playbook + Rule 55 + /viral activation system [3 files] _(ai-assisted)_
+- `4c57b204` 2026-05-16 — fix(cloud-init): 3 P0s blocking self-test — gateway_url, gateway_token, onboarding_complete [3 files] _(ai-assisted)_
+- `b3cb5362` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `4c57b204` 2026-05-16 — fix(cloud-init): 3 P0s blocking self-test — gateway_url, gateway_token, onboarding_complete [3 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -43,18 +43,17 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `621549f0` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `588a45b9` 2026-05-16 — feat(playbook): viral-copy-playbook + Rule 55 + /viral activation system [3 files] _(ai-assisted)_
+- `b3cb5362` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `588a45b9` 2026-05-16 — feat(playbook): viral-copy-playbook + Rule 55 + /viral activation system
+- `4c57b204` 2026-05-16 — fix(cloud-init): 3 P0s blocking self-test — gateway_url, gateway_token, onboarding_complete
 
 ## Appendix — every commit (chronological)
 
-- `621549f0` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `588a45b9` 2026-05-16 — feat(playbook): viral-copy-playbook + Rule 55 + /viral activation system [3 files] _(ai-assisted)_
+- `b3cb5362` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `4c57b204` 2026-05-16 — fix(cloud-init): 3 P0s blocking self-test — gateway_url, gateway_token, onboarding_complete [3 files] _(ai-assisted)_
