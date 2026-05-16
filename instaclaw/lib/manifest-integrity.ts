@@ -294,18 +294,86 @@ function parseRecordBody(body: string): {
 }
 
 /**
+ * Strip JS comments — both line comments and slash-star block comments —
+ * from a source slice, while preserving the contents of string and template
+ * literals. Required because
+ * `parseCronMarkers` and other regex-based extractors below can otherwise
+ * pick up `marker: "..."` text inside commented-out template entries (e.g.,
+ * a documentation block showing how to re-enable a disabled cron job).
+ *
+ * The 2026-05-16 stale_bundle outage: a commented-out cronJobs entry in
+ * vm-manifest.ts contained `// marker: "consensus_match_pipeline.py",`.
+ * The runtime in-memory walk saw 9 cronJobs[].marker values; the source
+ * parser saw 10 (extra: the commented one). Mismatch tripped the integrity
+ * gate's stale_bundle halt every 3 min for ~23 hours, blocking the
+ * reconcile-fleet cron entirely and stranding vm-356 (cv=99), vm-948/950/953
+ * (cv=0, two paying customers).
+ *
+ * Hand-rolled state machine because the manifest contains `//` inside
+ * command-string literals (URLs in curl invocations, etc.) — a naive
+ * `/\/\/.*$/m`-style strip would corrupt those.
+ */
+function stripJsComments(src: string): string {
+  let out = "";
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    const n = src[i + 1];
+    // Block comment: skip past closing */ (or to EOF if unclosed).
+    if (c === "/" && n === "*") {
+      const end = src.indexOf("*/", i + 2);
+      i = end < 0 ? src.length : end + 2;
+      continue;
+    }
+    // Line comment: skip to end of line (preserve the newline).
+    if (c === "/" && n === "/") {
+      const end = src.indexOf("\n", i + 2);
+      i = end < 0 ? src.length : end;
+      continue;
+    }
+    // String / template literal: copy verbatim until matching closing quote,
+    // respecting backslash escapes. (Template-literal `${...}` interpolation
+    // is treated as opaque — we don't recurse into it, which is fine for
+    // our parser since we never read `marker:` from inside interpolations.)
+    if (c === '"' || c === "'" || c === "`") {
+      const quote = c;
+      out += c;
+      i++;
+      while (i < src.length) {
+        const cc = src[i];
+        if (cc === "\\") {
+          out += cc + (src[i + 1] ?? "");
+          i += 2;
+          continue;
+        }
+        out += cc;
+        i++;
+        if (cc === quote) break;
+      }
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/**
  * Extract `marker: "..."` literals from a cronJobs array body. Skips
- * comments and dynamic markers (treated as "missing" — same fail-soft
- * principle as dynamic configSettings keys; if drift in dynamic markers
- * matters, convert them to literals).
+ * comments (line + block) and dynamic markers (treated as "missing" —
+ * same fail-soft principle as dynamic configSettings keys; if drift in
+ * dynamic markers matters, convert them to literals).
  */
 function parseCronMarkers(body: string): string[] {
   const markers: string[] = [];
-  // Match `marker: "value"` anywhere in the body (across object literals).
-  // The `g` flag yields all matches.
+  // Strip comments BEFORE matching — see stripJsComments docstring for the
+  // 2026-05-16 stale_bundle outage that made this load-bearing.
+  const cleaned = stripJsComments(body);
+  // Match `marker: "value"` anywhere in the cleaned body. The `g` flag
+  // yields all matches.
   const re = /marker:\s*"([^"]+)"/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(body)) !== null) {
+  while ((m = re.exec(cleaned)) !== null) {
     markers.push(m[1]);
   }
   return markers;
