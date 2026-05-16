@@ -1,28 +1,29 @@
 # Changelog — generated 2026-05-16
 
-Window: `dd76894734943485437b1143f6eb5bc3e30d3c48` → `HEAD` (HEAD = `7305c6b6`)
+Window: `7305c6b6f6146a47514c21cc6857f695090f9ed5` → `HEAD` (HEAD = `43c607b8`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 7305c6b6f6146a47514c21cc6857f695090f9ed5 -->
+<!-- LAST_GENERATED_SHA: 43c607b82c8a9bf2025c1d9a18beece25f3e7097 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
-- **Edge City partner:** 1
+- **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-- `7305c6b6` 2026-05-16 — docs(upstream): draft snapshot_brain MCP tool issue for garrytan/gbrain [1 files] _(multi: [edge, docs]; ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `ba1eba1b` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `43c607b8` 2026-05-16 — feat(health-check): disk 80% early-warning alert (Rule 46 phase 1) [1 files] _(ai-assisted)_
+- `9794cc39` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -30,35 +31,29 @@ Total commits: 2
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `43c607b8` 2026-05-16 — feat(health-check): disk 80% early-warning alert (Rule 46 phase 1) [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
 _(none)_
 
-### Edge City partner (1)
+### Edge City partner (0)
 
-- `7305c6b6` 2026-05-16 — docs(upstream): draft snapshot_brain MCP tool issue for garrytan/gbrain [1 files] _(multi: [edge, docs]; ai-assisted)_
+_(none)_
 
 ### Docs / PRD only (1)
 
-- `ba1eba1b` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `7305c6b6` 2026-05-16 — [edge, docs] — docs(upstream): draft snapshot_brain MCP tool issue for garrytan/gbrain
+- `9794cc39` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `7305c6b6` 2026-05-16 — docs(upstream): draft snapshot_brain MCP tool issue for garrytan/gbrain
+- `43c607b8` 2026-05-16 — feat(health-check): disk 80% early-warning alert (Rule 46 phase 1)
 
 ## Appendix — every commit (chronological)
 
-- `ba1eba1b` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `7305c6b6` 2026-05-16 — docs(upstream): draft snapshot_brain MCP tool issue for garrytan/gbrain [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `9794cc39` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `43c607b8` 2026-05-16 — feat(health-check): disk 80% early-warning alert (Rule 46 phase 1) [1 files] _(ai-assisted)_
