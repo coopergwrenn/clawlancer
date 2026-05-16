@@ -62,6 +62,7 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 const COVERAGE_ALLOWLIST: string[] = ["edge_city"];
 
 type CoverageStatus = "gbrained" | "missing_key" | "missing_gbrain" | "partial" | "ssh_err";
+type Architecture = "http-sidecar" | "stdio" | "none" | "unknown";
 
 interface VmCoverage {
   vmId: string;
@@ -69,8 +70,19 @@ interface VmCoverage {
   partner: string;
   status: CoverageStatus;
   gbrainVersion: string | null;
+  /** stdio architecture: bin path appears in `openclaw mcp show gbrain` output. */
   mcpRegistered: boolean;
+  /** HTTP sidecar architecture (Rule 35): mcp.servers.gbrain.transport === 'streamable-http'. */
+  transportHttp: boolean;
+  /** Sidecar systemd service is active (HTTP arch only). Observation-only signal —
+   *  not gated on for the "gbrained" verdict because transient flaps would noise-spam. */
+  serviceActive: boolean;
+  /** 127.0.0.1:3131 is listening (HTTP arch only). Observation-only, same reasoning. */
+  portBound: boolean;
+  /** GBRAIN_ANTHROPIC_API_KEY present in ~/.openclaw/.env (legacy stdio contract;
+   *  for HTTP sidecar this lives in the systemd unit's Environment= instead). */
   envKeyPresent: boolean;
+  architecture: Architecture;
   error?: string;
 }
 
@@ -82,41 +94,100 @@ async function probeOne(vm: any): Promise<VmCoverage> {
     status: "ssh_err",
     gbrainVersion: null,
     mcpRegistered: false,
+    transportHttp: false,
+    serviceActive: false,
+    portBound: false,
     envKeyPresent: false,
+    architecture: "unknown",
   };
   let ssh;
   try {
     ssh = await connectSSH(vm);
-    // Single SSH command: produces a one-line summary parseable client-side.
-    // KEY_LEN check uses wc -c which counts bytes (incl. trailing newline if any).
+    // Single SSH command emitting one parseable summary line. Probes BOTH the
+    // legacy stdio install (M) and the new HTTP sidecar install (T/S/P) so the
+    // cron correctly classifies VMs across the Rule 35 migration window.
+    //
+    // KEY_LEN uses wc -c — counts bytes including a trailing newline if present.
+    // XDG_RUNTIME_DIR is set explicitly because the SSH session's environment
+    // doesn't always inherit PAM's runtime dir; without it, `systemctl --user`
+    // can fail to find the user manager socket.
     const probe = await ssh.execCommand(
       'source ~/.nvm/nvm.sh 2>/dev/null; ' +
-      'export PATH="$HOME/.bun/bin:$PATH"; ' +
-      'V=$(gbrain --version 2>/dev/null | head -1 | grep -oE "[0-9]+\\.[0-9]+\\.[0-9]+"); ' +
+      'export PATH="$HOME/.bun/bin:/usr/sbin:/usr/bin:/bin:$PATH"; ' +
+      'export XDG_RUNTIME_DIR="/run/user/$(id -u)" 2>/dev/null; ' +
+      // V — gbrain binary version (any 2+ segment dotted decimal)
+      'V=$(gbrain --version 2>/dev/null | head -1 | grep -oE "[0-9]+(\\.[0-9]+)+"); ' +
+      // T — HTTP sidecar transport set in openclaw.json (Rule 35)
+      'T=$(jq -r ".mcp.servers.gbrain.transport // \\"absent\\"" "$HOME/.openclaw/openclaw.json" 2>/dev/null); ' +
+      // S — sidecar systemd service state
+      'S=$(systemctl --user is-active gbrain.service 2>/dev/null | head -1); ' +
+      // P — loopback port 3131 bound
+      'P=$(ss -lnpt 2>/dev/null | grep -c "127\\.0\\.0\\.1:3131"); ' +
+      // M — legacy stdio bin path in openclaw mcp show output
       'M=$(openclaw mcp show gbrain 2>/dev/null | grep -c "/home/openclaw/.bun/bin/gbrain"); ' +
+      // K — legacy GBRAIN_ANTHROPIC_API_KEY in ~/.openclaw/.env (stdio contract)
       'K=$(grep "^GBRAIN_ANTHROPIC_API_KEY=" "$HOME/.openclaw/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d \'"\' | wc -c); ' +
-      'echo "GBRAIN_PROBE V=${V:-missing} M=${M:-0} K=${K:-0}"',
+      'echo "GBRAIN_PROBE V=${V:-missing} T=${T:-absent} S=${S:-inactive} P=${P:-0} M=${M:-0} K=${K:-0}"',
       { execOptions: { timeout: 10_000 } } as any,
     );
     const line = (probe.stdout || "").split("\n").find((l: string) => l.startsWith("GBRAIN_PROBE")) ?? "";
-    const m = line.match(/V=(\S+) M=(\d+) K=(\d+)/);
-    if (!m) {
+    // Capture all six fields. Backward-compat path: if the probe somehow
+    // returns the OLD 3-field format (shouldn't happen after this PR lands but
+    // defense in depth), fall back to the old regex.
+    let parsed: { version: string; transport: string; service: string; portStr: string; mcpStr: string; keyLenStr: string } | null = null;
+    const mNew = line.match(/V=(\S+) T=(\S+) S=(\S+) P=(\d+) M=(\d+) K=(\d+)/);
+    if (mNew) {
+      parsed = { version: mNew[1], transport: mNew[2], service: mNew[3], portStr: mNew[4], mcpStr: mNew[5], keyLenStr: mNew[6] };
+    } else {
+      const mOld = line.match(/V=(\S+) M=(\d+) K=(\d+)/);
+      if (mOld) {
+        parsed = { version: mOld[1], transport: "absent", service: "inactive", portStr: "0", mcpStr: mOld[2], keyLenStr: mOld[3] };
+      }
+    }
+    if (!parsed) {
       result.error = `parse_fail stdout=${(probe.stdout || "").slice(0, 200)}`;
       return result;
     }
-    const [, version, mcpStr, keyLenStr] = m;
-    result.gbrainVersion = version === "missing" ? null : version;
-    result.mcpRegistered = parseInt(mcpStr, 10) > 0;
-    result.envKeyPresent = parseInt(keyLenStr, 10) > 20;
+    result.gbrainVersion = parsed.version === "missing" ? null : parsed.version;
+    result.transportHttp = parsed.transport === "streamable-http";
+    result.serviceActive = parsed.service === "active";
+    result.portBound = parseInt(parsed.portStr, 10) > 0;
+    result.mcpRegistered = parseInt(parsed.mcpStr, 10) > 0;
+    result.envKeyPresent = parseInt(parsed.keyLenStr, 10) > 20;
 
-    if (result.gbrainVersion && result.mcpRegistered) {
+    // Architecture detection (independent of status — useful for dashboards even
+    // when status is partial or missing).
+    if (result.transportHttp && !result.mcpRegistered) result.architecture = "http-sidecar";
+    else if (result.mcpRegistered && !result.transportHttp) result.architecture = "stdio";
+    else if (result.transportHttp && result.mcpRegistered) result.architecture = "unknown"; // hybrid — shouldn't happen
+    else result.architecture = "none";
+
+    // Classification — preserve priority order to keep alert semantics stable:
+    //   gbrained > missing_key > missing_gbrain > partial > ssh_err
+    //
+    // "Installed" now accepts EITHER architecture:
+    //   - HTTP sidecar: gbrain binary + transport=streamable-http in openclaw.json
+    //   - Legacy stdio: gbrain binary + bin path in `openclaw mcp show gbrain`
+    //
+    // Service-active / port-bound are deliberately NOT gated on here — they're
+    // observed and surfaced for diagnostics but don't decide the verdict. A
+    // momentary sidecar restart should NOT flip a VM from gbrained→partial and
+    // fire a P2 email; that's the deep-check cron's job (with consecutive-fail
+    // escalation thresholds for noise suppression).
+    const installed = !!result.gbrainVersion && (result.transportHttp || result.mcpRegistered);
+    if (installed) {
       result.status = "gbrained";
     } else if (!result.envKeyPresent) {
+      // Legacy signal: GBRAIN_ANTHROPIC_API_KEY missing from ~/.openclaw/.env.
+      // For HTTP-sidecar VMs, this key lives in the systemd unit's Environment=
+      // instead, so this signal becomes less meaningful post-migration. Tracked
+      // separately in P3 followup; preserved as-is for stdio compat.
       result.status = "missing_key";
-    } else if (!result.gbrainVersion && !result.mcpRegistered) {
+    } else if (!result.gbrainVersion && !result.transportHttp && !result.mcpRegistered) {
       result.status = "missing_gbrain";
     } else {
-      // Partial install — version present but MCP not registered, or vice versa
+      // Partial: gbrain binary present but neither transport set up, OR
+      // transport set up but binary missing (extreme rare), etc.
       result.status = "partial";
     }
   } catch (e: unknown) {
@@ -194,6 +265,15 @@ export async function GET(req: NextRequest) {
     const coveragePct = total === 0 ? 100 : Math.round((gbrained / total) * 100);
 
     const elapsedMs = Date.now() - startedAt;
+    // Architecture rollout tracking — counts VMs in each install mode. Used both
+    // for the snapshot log line ("http-sidecar=12 stdio=3 none=2" at a glance
+    // during the Rule 35 migration) and the JSON response further below.
+    const archCounts: Record<Architecture, number> = {
+      "http-sidecar": 0, "stdio": 0, "none": 0, "unknown": 0,
+    };
+    for (const p of probes) {
+      if (p.status !== "ssh_err") archCounts[p.architecture]++;
+    }
     logger.info("gbrain-coverage-check: snapshot", {
       route: `cron/${CRON_NAME}`,
       operational_mode: operationalMode,
@@ -204,6 +284,10 @@ export async function GET(req: NextRequest) {
       missing_key: byStatus.missing_key.length,
       partial: byStatus.partial.length,
       ssh_err: byStatus.ssh_err.length,
+      arch_http_sidecar: archCounts["http-sidecar"],
+      arch_stdio: archCounts["stdio"],
+      arch_none: archCounts["none"],
+      arch_unknown: archCounts["unknown"],
       coverage_pct: coveragePct,
       elapsed_ms: elapsedMs,
     });
@@ -246,8 +330,15 @@ export async function GET(req: NextRequest) {
             `Coverage: ${gbrained}/${total} (${coveragePct}%)`,
             ``,
             `Affected VMs (missing_gbrain + partial):`,
-            ...byStatus.missing_gbrain.map((v) => `  ✗ ${v.vmName} (${v.partner}) — no gbrain, no MCP`),
-            ...byStatus.partial.map((v) => `  ⚠ ${v.vmName} (${v.partner}) — partial: version=${v.gbrainVersion ?? "?"} mcp=${v.mcpRegistered}`),
+            ...byStatus.missing_gbrain.map((v) => `  ✗ ${v.vmName} (${v.partner}) — no binary, no transport, no stdio MCP`),
+            ...byStatus.partial.map((v) =>
+              `  ⚠ ${v.vmName} (${v.partner}) — partial: V=${v.gbrainVersion ?? "?"} ` +
+              `T=${v.transportHttp ? "streamable-http" : "absent"} ` +
+              `S=${v.serviceActive ? "active" : "inactive"} ` +
+              `P=${v.portBound ? "bound" : "0"} ` +
+              `M=${v.mcpRegistered ? "stdio" : "0"} ` +
+              `arch=${v.architecture}`,
+            ),
             ``,
             `Diagnostics for the most-affected VMs:`,
             `  npx tsx scripts/_phase4-edge-city-readiness.ts   # full readiness dump`,
@@ -315,11 +406,20 @@ export async function GET(req: NextRequest) {
       total,
       gbrained,
       coverage_pct: coveragePct,
+      architecture_counts: archCounts,
       by_status: {
-        gbrained: byStatus.gbrained.map((v) => v.vmName),
+        gbrained: byStatus.gbrained.map((v) => ({ name: v.vmName, architecture: v.architecture, version: v.gbrainVersion })),
         missing_key: byStatus.missing_key.map((v) => v.vmName),
         missing_gbrain: byStatus.missing_gbrain.map((v) => v.vmName),
-        partial: byStatus.partial.map((v) => ({ name: v.vmName, version: v.gbrainVersion, mcp: v.mcpRegistered })),
+        partial: byStatus.partial.map((v) => ({
+          name: v.vmName,
+          version: v.gbrainVersion,
+          transport_http: v.transportHttp,
+          service_active: v.serviceActive,
+          port_bound: v.portBound,
+          mcp_stdio: v.mcpRegistered,
+          architecture: v.architecture,
+        })),
         ssh_err: byStatus.ssh_err.map((v) => ({ name: v.vmName, error: v.error })),
       },
       elapsed_ms: elapsedMs,
