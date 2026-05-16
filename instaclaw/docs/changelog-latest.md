@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-16
 
-Window: `7180cf3b6e06946a6ebdb6ace1b7a143022b2a2e` → `HEAD` (HEAD = `51a700fa`)
+Window: `51a700fa7d07c8a5ba824b2803c6a5ed048ab6bd` → `HEAD` (HEAD = `6a4eafdb`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 51a700fa7d07c8a5ba824b2803c6a5ed048ab6bd -->
+<!-- LAST_GENERATED_SHA: 6a4eafdbef9c349dbefd2146c39f4af46f62d330 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `51a700fa` 2026-05-16 — fix(cloud-init): TLS hook in callback + happy-path integration test [3 files] _(ai-assisted)_
-- `07f9c168` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `6a4eafdb` 2026-05-16 — fix(gbrain-coverage-check): detect HTTP-sidecar VMs (Rule 35 followup) [1 files] _(ai-assisted)_
+- `b75ce81a` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `51a700fa` 2026-05-16 — fix(cloud-init): TLS hook in callback + happy-path integration test [3 files] _(ai-assisted)_
+- `6a4eafdb` 2026-05-16 — fix(gbrain-coverage-check): detect HTTP-sidecar VMs (Rule 35 followup) [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `07f9c168` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `b75ce81a` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `51a700fa` 2026-05-16 — fix(cloud-init): TLS hook in callback + happy-path integration test
+- `6a4eafdb` 2026-05-16 — fix(gbrain-coverage-check): detect HTTP-sidecar VMs (Rule 35 followup)
 
 ## Appendix — every commit (chronological)
 
-- `07f9c168` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `51a700fa` 2026-05-16 — fix(cloud-init): TLS hook in callback + happy-path integration test [3 files] _(ai-assisted)_
+- `b75ce81a` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `6a4eafdb` 2026-05-16 — fix(gbrain-coverage-check): detect HTTP-sidecar VMs (Rule 35 followup) [1 files] _(ai-assisted)_
