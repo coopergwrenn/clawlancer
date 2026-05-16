@@ -202,9 +202,19 @@ export async function GET(req: NextRequest) {
       // Either no archive yet OR stale archive.
       .or(`frozen_archive_taken_at.is.null,frozen_archive_taken_at.lt.${freshnessCutoff}`)
       // Don't pick VMs that are mid-freeze or mid-thaw — only idle ones, or
-      // ones explicitly in archive_pending/archived where we know freeze
-      // hasn't started yet.
-      .or("freeze_state.is.null,freeze_state.eq.archive_pending,freeze_state.eq.archived")
+      // ones explicitly in archive_pending / archived / archiving where the
+      // archive flow is the owner. 'archiving' inclusion is a STUCK-STATE
+      // RECOVERY: if a prior cron tick crashed mid-archive (Vercel timeout,
+      // OOM) the row gets left at 'archiving' with the per-VM lock held.
+      // The lock TTL is 30 min — after that, a new cron tick can re-acquire
+      // and re-run the archive flow from scratch. Without 'archiving' in
+      // this list, those rows would be stuck forever (candidate query
+      // excludes them).
+      //
+      // Per-VM lock is the safety net: a live cron's lock blocks a new
+      // cron from picking up its row. Only AFTER the lock expires (cron is
+      // dead) can the new cron take over.
+      .or("freeze_state.is.null,freeze_state.eq.archive_pending,freeze_state.eq.archived,freeze_state.eq.archiving")
       .order("frozen_archive_taken_at", { ascending: true, nullsFirst: true })
       .limit(MAX_ARCHIVES_PER_RUN * 3); // grab extra; some may be skipped by lock
 

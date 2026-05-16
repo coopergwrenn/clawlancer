@@ -174,6 +174,48 @@ export async function GET(req: NextRequest) {
   };
 
   try {
+    // ── Stuck-state recovery pass: rows left at 'destroying' ──
+    //
+    // If a previous cron tick crashed AFTER the CAS to 'destroying' but
+    // BEFORE the terminal DB write to 'frozen', the row is stuck in
+    // 'destroying'. The normal candidate query (freeze_state='archived')
+    // won't pick it up. Worse: the reverse-zombie alert only fires if
+    // the function reaches the if(termErr) branch — a Vercel function
+    // hard-kill (OOM, timeout) skips that path entirely.
+    //
+    // Recovery: query rows at 'destroying' older than the lock TTL (10
+    // min). For each, probe Linode for the instance. If 404 → instance
+    // is gone (Linode delete succeeded); complete the terminal DB write.
+    // If exists → freeze was aborted before delete; revert to 'archived'
+    // so the normal flow retries.
+    //
+    // Probing Linode is the load-bearing safety check — without it, we'd
+    // either (a) skip rows that should be finished, leaving permanent
+    // zombies, or (b) revert rows whose instance is already gone,
+    // making the DB-row→Linode pointer permanently lying.
+    const stuckCutoff = new Date(
+      Date.now() - PER_VM_LOCK_TTL_SECONDS * 1000,
+    ).toISOString();
+    const { data: stuckRows } = await supabase
+      .from("instaclaw_vms")
+      .select(
+        "id, name, provider_server_id, frozen_archive_path, frozen_at",
+      )
+      .eq("freeze_state", "destroying")
+      .lt("updated_at", stuckCutoff)
+      .limit(5);
+
+    for (const row of stuckRows ?? []) {
+      const recovered = await recoverStuckDestroying(supabase, row, runId);
+      summary.results.push(recovered);
+      if (recovered.outcome === "frozen") summary.frozen++;
+      else if (recovered.outcome === "error" || recovered.outcome === "linode_delete_failed" || recovered.outcome === "db_terminal_failed") {
+        summary.failed++;
+      } else {
+        summary.skipped++;
+      }
+    }
+
     // ── Candidate query ──
     //
     // Eligible: freeze_state='archived', archive fresh (≤48h old),
@@ -502,6 +544,153 @@ async function linodeDeleteInstance(instanceId: string): Promise<void> {
   throw new Error(
     `Linode DELETE /linode/instances/${instanceId} → HTTP ${res.status}: ${body.slice(0, 200)}`,
   );
+}
+
+// ─── Stuck-'destroying' recovery ─────────────────────────────────────────
+
+/**
+ * Recover a row left at freeze_state='destroying'. Cause: a previous cron
+ * tick crashed between the CAS-to-destroying and the terminal write.
+ * Recovery: probe Linode for the instance.
+ *   - 404 → Linode deleted; complete the terminal DB write (mark frozen).
+ *   - exists → DELETE never fired; revert to 'archived' so normal flow retries.
+ *   - error → log + leave row alone; next cron tick retries.
+ *
+ * The per-VM lock is acquired first to prevent racing with another freeze
+ * cron tick that might be in flight (though unlikely — that's exactly the
+ * scenario we're recovering from).
+ */
+async function recoverStuckDestroying(
+  supabase: ReturnType<typeof getSupabase>,
+  row: { id: string; name: string | null; provider_server_id: string | null; frozen_archive_path: string | null; frozen_at: string | null },
+  runId: string,
+): Promise<FreezeOneResult> {
+  const base: Pick<FreezeOneResult, "vm_id" | "vm_name"> = {
+    vm_id: row.id,
+    vm_name: row.name,
+  };
+  const lockKey = `freeze-thaw:${row.id}`;
+  const acquired = await tryAcquireCronLock(
+    lockKey,
+    PER_VM_LOCK_TTL_SECONDS,
+    `vm-freeze-recovery/${runId}`,
+  );
+  if (!acquired) {
+    return { ...base, outcome: "skipped_lock", detail: "another op holds the lock" };
+  }
+
+  try {
+    // Re-read inside lock — state may have advanced since the stuck-row query.
+    const { data: fresh } = await supabase
+      .from("instaclaw_vms")
+      .select("freeze_state, provider_server_id, frozen_archive_path")
+      .eq("id", row.id)
+      .single();
+    if (!fresh || fresh.freeze_state !== "destroying") {
+      return { ...base, outcome: "state_changed", detail: `state is now '${fresh?.freeze_state ?? "<missing>"}'` };
+    }
+    if (!fresh.provider_server_id) {
+      // Already cleared — terminal write half-completed; finish it.
+      // (Unlikely but handle for completeness.)
+      const { error: termErr } = await supabase
+        .from("instaclaw_vms")
+        .update({
+          status: "frozen",
+          health_status: "frozen",
+          freeze_state: "frozen",
+          frozen_at: row.frozen_at ?? new Date().toISOString(),
+        })
+        .eq("id", row.id)
+        .eq("freeze_state", "destroying");
+      if (termErr) {
+        return { ...base, outcome: "db_terminal_failed", detail: `recovery terminal write: ${termErr.message}` };
+      }
+      return { ...base, outcome: "frozen", detail: "recovery: provider_server_id was null; completed terminal write" };
+    }
+
+    // Probe Linode. 404 = instance gone (DELETE succeeded). 2xx = still there.
+    let linodeAlive: boolean;
+    try {
+      const res = await fetch(
+        `https://api.linode.com/v4/linode/instances/${fresh.provider_server_id}`,
+        { headers: { Authorization: `Bearer ${process.env.LINODE_API_TOKEN}` } },
+      );
+      if (res.status === 404) {
+        linodeAlive = false;
+      } else if (res.ok) {
+        linodeAlive = true;
+      } else {
+        // Transient Linode error. Leave row alone; next cron retries.
+        return {
+          ...base,
+          outcome: "error",
+          detail: `recovery: Linode probe HTTP ${res.status}; will retry next cron`,
+        };
+      }
+    } catch (err) {
+      return {
+        ...base,
+        outcome: "error",
+        detail: `recovery: Linode probe threw: ${String(err).slice(0, 150)}`,
+      };
+    }
+
+    if (linodeAlive) {
+      // Linode still exists → DELETE never fired. Revert state to 'archived'
+      // so the normal freeze flow retries cleanly.
+      const { error: revErr } = await supabase
+        .from("instaclaw_vms")
+        .update({ freeze_state: "archived" })
+        .eq("id", row.id)
+        .eq("freeze_state", "destroying");
+      if (revErr) {
+        return { ...base, outcome: "error", detail: `recovery revert UPDATE failed: ${revErr.message}` };
+      }
+      logger.info("vm-freeze: stuck-destroying recovered (reverted to archived)", {
+        runId,
+        vmId: row.id,
+        linodeId: fresh.provider_server_id,
+      });
+      return { ...base, outcome: "state_changed", detail: "recovery: Linode alive; reverted to 'archived'" };
+    }
+
+    // Linode 404 → instance is gone. Complete the terminal DB write.
+    const nowIso = new Date().toISOString();
+    const { error: termErr } = await supabase
+      .from("instaclaw_vms")
+      .update({
+        status: "frozen",
+        health_status: "frozen",
+        freeze_state: "frozen",
+        provider_server_id: null,
+        ip_address: null,
+        frozen_at: row.frozen_at ?? nowIso,
+      })
+      .eq("id", row.id)
+      .eq("freeze_state", "destroying");
+    if (termErr) {
+      return { ...base, outcome: "db_terminal_failed", detail: `recovery terminal write failed: ${termErr.message}` };
+    }
+    logger.info("vm-freeze: stuck-destroying recovered (completed to frozen)", {
+      runId,
+      vmId: row.id,
+      archivePath: fresh.frozen_archive_path,
+    });
+    await logLifecycle(
+      supabase,
+      { id: row.id, name: row.name },
+      "frozen",
+      `RECOVERY from stuck-destroying: Linode 404 confirmed instance gone; archive=${fresh.frozen_archive_path}`,
+      runId,
+    );
+    return {
+      ...base,
+      outcome: "frozen",
+      detail: "recovery: Linode 404; completed terminal write",
+    };
+  } finally {
+    await releaseCronLock(lockKey);
+  }
 }
 
 // ─── Lifecycle log ───────────────────────────────────────────────────────

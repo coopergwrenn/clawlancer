@@ -8,6 +8,7 @@ import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialE
 import { logger } from "@/lib/logger";
 import { provisionBankrWallet } from "@/lib/bankr-provision";
 import { thawVM } from "@/lib/vm-freeze-thaw";
+import { markThawPendingForV2User } from "@/lib/freeze-v2-thaw-entry";
 import { wakeIfHibernating } from "@/lib/wake-vm";
 import { clearStaleAuthCacheForUser } from "@/lib/auth-cache";
 import { randomUUID } from "node:crypto";
@@ -796,6 +797,19 @@ async function processEvent(event: any) {
             error: err instanceof Error ? err.message : String(err),
           });
         }
+
+        // freeze-v2 Phase 4 entry point: mark any freeze-v2-frozen VM for thaw.
+        // Async — just flips freeze_state to 'thaw_pending' + sets
+        // thaw_requested_at. The Phase 4 thaw cron (not yet built) picks
+        // these up at its own cadence. Non-throwing per helper contract.
+        // Sister to the v1 thawVM block above; both run because v1 + v2
+        // never coexist on the same VM (only one freeze model is active
+        // at a time per VM).
+        await markThawPendingForV2User(
+          supabase,
+          user.id,
+          "billing/webhook:subscription.created",
+        );
       }
 
       break;
@@ -950,6 +964,31 @@ async function processEvent(event: any) {
           }
         } catch (err) {
           logger.error("billing/webhook: auto-thaw threw", {
+            route: "billing/webhook",
+            customerId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+
+        // freeze-v2 Phase 4 entry point: mark any freeze-v2-frozen VM for
+        // thaw. Sister to the v1 thawVM block above; both run because v1
+        // and v2 never coexist on the same VM. Async — the thaw cron
+        // (not yet built) picks these up. Non-throwing.
+        try {
+          const { data: subRowForV2 } = await supabase
+            .from("instaclaw_subscriptions")
+            .select("user_id")
+            .eq("stripe_customer_id", customerId)
+            .single();
+          if (subRowForV2?.user_id) {
+            await markThawPendingForV2User(
+              supabase,
+              subRowForV2.user_id,
+              "billing/webhook:subscription.updated",
+            );
+          }
+        } catch (err) {
+          logger.error("billing/webhook: freeze-v2 thaw mark threw", {
             route: "billing/webhook",
             customerId,
             error: err instanceof Error ? err.message : String(err),
