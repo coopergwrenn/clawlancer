@@ -2855,11 +2855,38 @@ else:
 
       metricsCollected++;
 
+      // Two-stage disk alerting per Rule 46:
+      //   >90% → VM Disk Critical (P0-equivalent — gateway crash imminent).
+      //   >80% → VM Disk Warning  (early-warning, 5-15 days lead time at
+      //          typical growth rates) — actionable BEFORE customer impact.
+      // Sample real-data growth rates from the 2026-05-14 incident:
+      //   vm-788 reached 100% over ~21 days of session-backup accumulation.
+      //   The 80% threshold catches that VM at day ~17 — 4 days of slack
+      //   before customer impact, vs the 90% threshold which gave ~12h.
+      //
+      // Same alerts.add() path → AlertCollector batches by subject and
+      // dedups over a cooldown window, so a single VM crossing 80% won't
+      // spam the inbox every 2 min (the health-check tick rate). Different
+      // subject strings ("Critical" vs "Warning") dedup independently so a
+      // VM climbing 80→90 fires both bands once each, not once total.
       if (status.diskPct > 90) {
         alerts.add(
           "VM Disk Critical",
           vm.name ?? vm.id,
           `Disk: ${status.diskPct}%\nRAM: ${status.ramPct}%\nChrome: ${status.chromeCount}\nGateway healthy: ${status.gatewayHealthy}`
+        );
+      } else if (status.diskPct > 80) {
+        alerts.add(
+          "VM Disk Warning",
+          vm.name ?? vm.id,
+          `Disk: ${status.diskPct}%\nRAM: ${status.ramPct}%\nChrome: ${status.chromeCount}\nGateway healthy: ${status.gatewayHealthy}\n\n` +
+          `Early-warning — investigate before hitting 90% (gateway crash).\n` +
+          `Common culprits:\n` +
+          `  ~/.openclaw/session-backups/    (Rule 45 cooldown caps this at ~300 MB; if larger, check the cooldown fix landed)\n` +
+          `  ~/.openclaw/agents/main/sessions/   (active session jsonl bloat; strip-thinking.py compacts hourly)\n` +
+          `  /var/log/journal                (sudo journalctl --vacuum-time=2d typically reclaims 1-3 GB)\n` +
+          `  ~/.cache, ~/.npm/_cacache       (one-time cleanup if growing)\n\n` +
+          `Diagnose: ssh openclaw@${vm.ip_address} 'du -sh ~/.openclaw/* /var/log/journal 2>/dev/null | sort -h | tail -10'`
         );
       }
 
