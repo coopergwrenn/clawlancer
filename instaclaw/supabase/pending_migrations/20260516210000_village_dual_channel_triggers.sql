@@ -104,6 +104,8 @@ CREATE OR REPLACE VIEW public.village_attendees_public AS
     village.anonymize_user_id(user_id) AS agent_id,
     description,
     larry_atlas_index,
+    home_tile_x,           -- spatial defaults — non-PII spawn coords
+    home_tile_y,
     spectator_visible
   FROM public.village_attendees
   WHERE spectator_visible = true;
@@ -111,6 +113,52 @@ CREATE OR REPLACE VIEW public.village_attendees_public AS
 -- Grant SELECT on the view to the anon role so the public channel client
 -- (which uses only the anon key, no JWT) can read it.
 GRANT SELECT ON public.village_attendees_public TO anon, authenticated;
+
+-- ─── Public position view ────────────────────────────────────────────────
+--
+-- `agent_positions_public` is the spectator-channel mirror of
+-- `agent_positions`. Same spatial columns (tile_x/y/facing/state) — only
+-- the identity column is swapped: real `user_id` → anonymized `agent_id`.
+-- Filtered through `village_attendees.spectator_visible` so opted-out
+-- users don't appear at all in the public render.
+--
+-- Why a separate view instead of relaxing RLS on `agent_positions`:
+-- `agent_positions.user_id` IS the leak vector. Even a strict RLS policy
+-- that "anon can SELECT" would expose real UUIDs in the row. The view
+-- has the leak-capable column stripped at the schema level — anonymized
+-- columns only. Defense in depth (Rule 22 / Rule 30): the public render
+-- is incapable of leaking identity, even if a future code path tries.
+--
+-- The serverGame.ts client at `loadInitialPositions()` reads from this
+-- view when `mode === 'spectator'`. Without it, the spectator path
+-- gets RLS-denied on `agent_positions` and all real attendees spawn at
+-- their `home_tile_x/y` defaults (still functional — but stale, since
+-- live walk events would correct positions over time but reconnects
+-- would re-spawn at home).
+CREATE OR REPLACE VIEW public.agent_positions_public AS
+  SELECT
+    village.anonymize_user_id(p.user_id) AS agent_id,
+    p.tile_x,
+    p.tile_y,
+    p.facing_dx,
+    p.facing_dy,
+    p.is_moving,
+    p.is_thinking,
+    p.is_speaking,
+    p.activity_emoji,
+    p.activity_until,
+    p.updated_at
+  FROM public.agent_positions p
+  -- Filter on village_attendees.spectator_visible — opted-out users
+  -- don't appear in the public render. INNER JOIN means users without
+  -- a village_attendees row also don't appear (defense in depth — a
+  -- VM might write an agent_positions row before its village_attendees
+  -- entry exists, and we shouldn't broadcast position data for an
+  -- attendee whose opt-in we haven't recorded yet).
+  INNER JOIN public.village_attendees v ON v.user_id = p.user_id
+  WHERE v.spectator_visible = true;
+
+GRANT SELECT ON public.agent_positions_public TO anon, authenticated;
 
 -- ─── Trigger: matchpool_outcomes → dual broadcast ────────────────────────
 --

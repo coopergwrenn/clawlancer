@@ -11,7 +11,9 @@
 Per `edgeclaw-village/docs/village-direction-2026-05-15.md` § A11 and Topic 6 of the village technical research:
 
 1. Creates the `village` schema + `village.anonymize_user_id(uuid) → text` helper.
-2. Creates the `public.village_attendees_public` view (NEW — referenced by `serverGame.ts:loadAttendees()` when `mode === 'spectator'`). Filters on `spectator_visible = true`, maps `user_id` → `agent_id` via the anonymize helper, exposes only visual columns (`description`, `larry_atlas_index`).
+2. Creates two anonymized public VIEWs:
+   - `public.village_attendees_public` — anon-readable attendee list. Exposes `agent_id` (anonymized), `description`, `larry_atlas_index`, `home_tile_x`, `home_tile_y`, `spectator_visible`. Filtered `WHERE spectator_visible = true`. Read by `serverGame.ts:loadAttendees()` when `mode === 'spectator'`.
+   - `public.agent_positions_public` — anon-readable position snapshot. Exposes `agent_id` (anonymized), tile/facing/state columns. INNER JOIN with `village_attendees` filters out opted-out users (defense in depth — `user_id` never appears in the view). Read by `serverGame.ts:loadInitialPositions()` when `mode === 'spectator'`.
 3. Defines four `AFTER INSERT/UPDATE` trigger functions, one per emitter table — each emits TWO `realtime.send()` broadcasts:
    - `village:edge-esmeralda-2026` (private/auth, full identity)
    - `village-public:edge-esmeralda-2026` (public/anon, `agent_NNNN` labels only)
