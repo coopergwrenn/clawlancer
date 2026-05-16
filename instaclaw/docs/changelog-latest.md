@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-16
 
-Window: `51a700fa7d07c8a5ba824b2803c6a5ed048ab6bd` → `HEAD` (HEAD = `6a4eafdb`)
+Window: `6a4eafdbef9c349dbefd2146c39f4af46f62d330` → `HEAD` (HEAD = `899b1ea7`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 6a4eafdbef9c349dbefd2146c39f4af46f62d330 -->
+<!-- LAST_GENERATED_SHA: 899b1ea70d17c6fad94db7b3c6c9ea7ba90e5632 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `6a4eafdb` 2026-05-16 — fix(gbrain-coverage-check): detect HTTP-sidecar VMs (Rule 35 followup) [1 files] _(ai-assisted)_
-- `b75ce81a` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `899b1ea7` 2026-05-16 — feat(freeze-v2): Phase 4 thaw cron — the capstone [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `25d54d9d` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `6a4eafdb` 2026-05-16 — fix(gbrain-coverage-check): detect HTTP-sidecar VMs (Rule 35 followup) [1 files] _(ai-assisted)_
+- `899b1ea7` 2026-05-16 — feat(freeze-v2): Phase 4 thaw cron — the capstone [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `b75ce81a` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `25d54d9d` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `899b1ea7` 2026-05-16 — [infrastructure, docs] — feat(freeze-v2): Phase 4 thaw cron — the capstone
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `6a4eafdb` 2026-05-16 — fix(gbrain-coverage-check): detect HTTP-sidecar VMs (Rule 35 followup)
+- `899b1ea7` 2026-05-16 — feat(freeze-v2): Phase 4 thaw cron — the capstone
 
 ## Appendix — every commit (chronological)
 
-- `b75ce81a` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `6a4eafdb` 2026-05-16 — fix(gbrain-coverage-check): detect HTTP-sidecar VMs (Rule 35 followup) [1 files] _(ai-assisted)_
+- `25d54d9d` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `899b1ea7` 2026-05-16 — feat(freeze-v2): Phase 4 thaw cron — the capstone [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
