@@ -1314,8 +1314,78 @@ export const VM_MANIFEST = {
    *
    * Rollback: revert this commit. Reconciler re-adds the two lines on next
    * cycle. 24h scheduled restart resumes for the cohort.
+   *
+   * v101 (2026-05-16): startup orphan tool_use repair.
+   *
+   * Companion fix to v100. Even with RuntimeMaxSec gone, gateways still
+   * SIGTERM on other paths (manifest deploys, manual restarts, kernel
+   * updates, watchdog kicks). When SIGTERM lands during an in-flight
+   * tool_use turn — i.e., between the assistant writing a toolCall and
+   * the matching toolResult being persisted — the session jsonl is left
+   * with an orphan toolCall. Anthropic's API rejects subsequent turns
+   * with 400 "tool_use_id: did not find matching tool_use_id", which
+   * OpenClaw's error path surfaces to the user as the generic
+   * "Something went wrong, use /new" Telegram message.
+   *
+   * OpenClaw 2026.4.26 has a runtime repair (`repairToolUseResultPairing`
+   * at session-transcript-repair-D9T_omS-.js:266) that COULD synthesize
+   * the missing toolResult via `makeMissingToolResult` — but it has a
+   * bypass branch at the same file that SKIPS synthesis when
+   * `assistant.stopReason === "aborted"`, which is exactly the state
+   * SIGTERM produces. The orphan therefore reaches the API.
+   *
+   * v101 adds a startup-time repair as systemd ExecStartPre on
+   * openclaw-gateway.service. Pre-applies the synthesis on disk BEFORE
+   * the gateway loads the session, sidestepping the runtime's aborted-
+   * bypass entirely. Implementation in STRIP_THINKING_SCRIPT
+   * (lib/ssh.ts) under `run_startup_orphan_repair` /
+   * `_run_startup_repair_all_active`. Synthetic event shape verified
+   * against vm-050 raw jsonl on 2026-05-16:
+   *   - message.toolCallId   (camelCase, on message level — NOT in content)
+   *   - message.toolName
+   *   - message.content      ([{type:"text", text:"..."}])
+   *   - message.isError      (camelCase boolean)
+   *   - event.id / parentId / timestamp (ISO + unix-ms)
+   *
+   * Idempotent (no-op if no orphans). Atomic (tmp + os.replace). Backed
+   * up to ~/.openclaw/session-backups (shared 7-day retention with
+   * daily-hygiene backups). Safety cap: skips files >50 MB. Wrapped in
+   * `|| true` in the systemd override so the gateway never fails to
+   * start due to a repair error.
+   *
+   * Verified BY:
+   *   - Gate 0 live-SIGTERM repro parked (the orphan window between
+   *     toolCall-write and toolResult-write is sub-2-seconds on this
+   *     gateway's web_search; our SSH-poll architecture has ~800ms-1s
+   *     timing precision — can't reliably land mid-window). See
+   *     instaclaw/scripts/_repro-orphan-tool-use.ts forensic record.
+   *   - Synthetic-fixture test via scripts/_test-orphan-repair.ts —
+   *     7 fixture matrix + idempotency, all pass against the in-memory
+   *     STRIP_THINKING_SCRIPT extracted to a tmp file.
+   *
+   * Production validation: count `GENERIC_EXTERNAL_RUN_FAILURE_TEXT`
+   * occurrences in fleet gateway journals before/after. If the fix
+   * works, the count drops fleet-wide. Future Cooper / production
+   * telemetry confirms by absence.
+   *
+   * Three-site change (deployed via stepSystemdUnit + stepFiles on reconcile):
+   *   - lib/ssh.ts:STRIP_THINKING_SCRIPT — new repair functions + CLI dispatch
+   *   - lib/vm-manifest.ts — Rule 23 sentinels + ExecStartPre + this entry
+   *   - scripts/_test-orphan-repair.ts — synthetic fixture validation
+   *
+   * Detection note: after rollout, journal-grep
+   *   `journalctl --user -u openclaw-gateway | grep ORPHAN_REPAIR`
+   * Non-zero counts indicate the fix is doing real work. Zero counts
+   * fleet-wide could mean (a) no orphans ever happen, or (b) the
+   * sentinel didn't deploy (Rule 23 check failed silently); the
+   * scan-complete log line distinguishes.
+   *
+   * Rollback: revert this commit. Reconciler rewrites override.conf
+   * without the new ExecStartPre invocation on next cycle. Existing
+   * synthetic toolResult events on disk remain (harmless — they're
+   * valid Anthropic-shape events; the runtime accepts them as real).
    */
-  version: 100,
+  version: 101,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -1758,6 +1828,18 @@ export const VM_MANIFEST = {
       //     tool-cache/<sha>.txt and replaced with a short reference,
       //     stopping browser screenshots / polymarket dumps /
       //     hyperliquid orderbooks from stuffing the active context.
+      //
+      //   run_startup_orphan_repair / ORPHAN_REPAIR:
+      //     The 2026-05-16 v101 ship — startup-side synthetic toolResult
+      //     for SIGTERM-mid-tool_use orphans. Invoked via systemd
+      //     ExecStartPre on openclaw-gateway.service. Walks the latest
+      //     turn of each session jsonl, appends synthetic toolResult
+      //     events (matching OpenClaw's on-disk shape verified via raw
+      //     jsonl 2026-05-16) for any toolCall lacking a matching
+      //     toolResult by message.toolCallId. Idempotent + atomic +
+      //     backed up. Original incident: vm-050 2026-05-14 00:01:34 UTC
+      //     "Something went wrong, use /new" after gateway SIGTERM
+      //     during mid-tool-call gbrain MCP hang.
       requiredSentinels: [
         "def trim_failed_turns",
         "SESSION TRIMMED:",
@@ -1769,6 +1851,8 @@ export const VM_MANIFEST = {
         "SESSION COMPACTED:",
         "def _extract_large_tool_results_to_cache",
         "LAYER3_EXTRACTED:",
+        "def run_startup_orphan_repair",
+        "ORPHAN_REPAIR:",
       ],
     },
     {
@@ -2207,7 +2291,18 @@ export const VM_MANIFEST = {
     // but workspace/memory/MEMORY.md.bak has real content, restore from
     // backup + log to memory/restore.log. Safety guards prevent overwriting
     // a non-empty live file. See agent-intelligence.ts MEMORY_SNAPSHOT_SCRIPT.
-    "ExecStartPre": "/bin/bash -c 'find /tmp/openclaw/ -name \"*.log\" -mmin +60 -delete 2>/dev/null; find /tmp/openclaw/ -name \"*.log.bak\" -mtime +3 -delete 2>/dev/null; pkill -9 -f \"[c]hrome.*remote-debugging-port\" 2>/dev/null || true; bash /home/openclaw/.openclaw/scripts/memory-snapshot.sh restore 2>/dev/null || true'",
+    // v101 (2026-05-16): appended `--startup-repair-active` invocation of
+    // strip-thinking.py. Runs synchronously before gateway start. Walks all
+    // session jsonls and appends a synthetic toolResult for any orphan
+    // toolCall (assistant toolCall with no matching toolResult by
+    // message.toolCallId). Idempotent. Output goes to the gateway's journal
+    // under the ORPHAN_REPAIR: prefix so operators can grep. Wrapped in
+    // `|| true` so the gateway start is never blocked by a repair failure.
+    // Original incident: vm-050 2026-05-14 00:01:34 UTC SIGTERM-mid-tool
+    // → orphan tool_use → "Something went wrong, use /new". See
+    // run_startup_orphan_repair in STRIP_THINKING_SCRIPT (ssh.ts) +
+    // CLAUDE.md v101 changelog.
+    "ExecStartPre": "/bin/bash -c 'find /tmp/openclaw/ -name \"*.log\" -mmin +60 -delete 2>/dev/null; find /tmp/openclaw/ -name \"*.log.bak\" -mtime +3 -delete 2>/dev/null; pkill -9 -f \"[c]hrome.*remote-debugging-port\" 2>/dev/null || true; bash /home/openclaw/.openclaw/scripts/memory-snapshot.sh restore 2>/dev/null || true; python3 /home/openclaw/.openclaw/scripts/strip-thinking.py --startup-repair-active 2>&1 || true'",
     // v73: ExecStopPost runs after every gateway shutdown. Snapshots
     // MEMORY.md → workspace/memory/MEMORY.md.bak so the restore path above
     // has something to recover from. Runs once per stop event (clean OR

@@ -256,6 +256,7 @@ export const STRIP_THINKING_SCRIPT = `#!/usr/bin/env python3
 Uses atomic write (write to .tmp then os.replace) which is safe even if the
 gateway is actively appending to the file."""
 import json, os, glob, subprocess, fcntl, time, shutil
+import sys, hashlib  # v101 (2026-05-16): startup orphan-repair mode
 from datetime import datetime, timezone
 
 SESSIONS_DIR = os.path.expanduser("~/.openclaw/agents/main/sessions")
@@ -312,6 +313,14 @@ BROWSER_CACHE_MAX_MB = 500
 GATEWAY_LOG_MAX_MB = 10
 GATEWAY_LOG_KEEP_LINES = 1000
 MEDIA_MAX_AGE_DAYS = 14
+
+# Orphan tool_use startup repair (v101, 2026-05-16) — see run_startup_orphan_repair
+ORPHAN_REPAIR_MAX_FILE_BYTES = 50 * 1024 * 1024  # 50 MB: skip files larger than this
+ORPHAN_SYNTHETIC_TEXT = (
+    "Tool execution interrupted by service restart. The previous request "
+    "did not complete and its result is not available. Acknowledge briefly "
+    "and ask the user if they would like to retry."
+)
 
 # MEMORY.md injection markers
 MEM_URGENT_START = "<!-- INSTACLAW:MEMORY_WRITE_URGENT:START -->"
@@ -1619,6 +1628,294 @@ def _ensure_recent_summary_before_archive(jsonl_file, session_id):
         log_telemetry("PRE_ARCHIVE_SUMMARY_V1: saved summary before archiving " + session_id)
     except Exception as e:
         log_telemetry("PRE_ARCHIVE_SUMMARY_V1: error: " + str(e))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v101 (2026-05-16): startup orphan-repair functions.
+#
+# When the gateway SIGTERMs during an in-flight tool_use turn, the session
+# jsonl is left with an orphan toolCall — assistant message with toolCall
+# block(s) and no matching toolResult event. Anthropic's API rejects the
+# next turn with 400 "tool_use_id: did not find matching tool_use_id",
+# which OpenClaw's error path surfaces as "Something went wrong, use /new".
+# OpenClaw's runtime repair (repairToolUseResultPairing in the dist) has
+# an "aborted" stopReason bypass that SKIPS synthesis for exactly this
+# case — see CLAUDE.md v101 entry for full context.
+#
+# These functions run BEFORE the gateway starts (via systemd ExecStartPre)
+# and pre-apply repair on disk: for each orphan toolCall in the latest turn
+# of any session jsonl, append a synthetic toolResult event matching
+# OpenClaw's exact on-disk shape (verified vm-050 raw jsonl 2026-05-16):
+#   message.toolCallId      ← link field (NOT in content blocks)
+#   message.toolName        ← tool name
+#   message.content[].type  ← "text" (NOT "tool_result")
+#   message.isError         ← camelCase boolean
+#   event.id, event.parentId, event.timestamp (ISO + unix-ms variants)
+#
+# Idempotent: re-runs no-op when no orphans found. Atomic: tmp + os.replace.
+# Backed up to SESSION_BACKUP_DIR before any write (shares 7-day retention).
+# Safety cap: skips files > 50 MB to bound boot-time cost.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _orphan_repair_backup(jsonl_path):
+    """One-shot backup before repair. Shares SESSION_BACKUP_DIR (7d retention)
+    with the daily-hygiene backups. Returns backup path, or None on failure."""
+    try:
+        os.makedirs(SESSION_BACKUP_DIR, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        basename = os.path.basename(jsonl_path)
+        backup_path = os.path.join(
+            SESSION_BACKUP_DIR, ts + "-orphan-repair-" + basename
+        )
+        shutil.copy(jsonl_path, backup_path)
+        return backup_path
+    except Exception as e:
+        print("ORPHAN_REPAIR: backup failed for " + jsonl_path + ": " + str(e), flush=True)
+        return None
+
+
+def _find_session_last_turn_orphans(jsonl_path):
+    """Walk events backward from EOF to first user message. Return list of
+    (tool_use_id, tool_name, assistant_event_id) for toolCalls in that turn
+    with no matching toolResult (matched by message.toolCallId).
+
+    Returns [] on file-missing / parse-empty / no-user-message / no-orphans.
+    Never raises — caller doesn't need a try/except."""
+    try:
+        with open(jsonl_path, "r") as fh:
+            raw_lines = fh.readlines()
+    except (OSError, IOError):
+        return []
+
+    events = []
+    for line in raw_lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            # Skip malformed lines — never abort the whole scan on noise.
+            continue
+
+    if not events:
+        return []
+
+    # Find the index of the latest user message — bounds the "current turn"
+    last_user_idx = -1
+    for i in range(len(events) - 1, -1, -1):
+        e = events[i]
+        if isinstance(e, dict) and e.get("type") == "message":
+            msg = e.get("message") or {}
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                last_user_idx = i
+                break
+    if last_user_idx < 0:
+        return []
+
+    # Collect toolCalls and tool_call_ids of toolResults in this turn
+    tool_calls = []        # list of (tool_use_id, tool_name, assistant_event_id)
+    tool_result_ids = set()
+    for e in events[last_user_idx:]:
+        if not isinstance(e, dict) or e.get("type") != "message":
+            continue
+        msg = e.get("message") or {}
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role")
+        if role == "assistant":
+            event_id = e.get("id")
+            content = msg.get("content") or []
+            if isinstance(content, list):
+                for b in content:
+                    if isinstance(b, dict) and b.get("type") == "toolCall":
+                        tid = b.get("id")
+                        tname = b.get("name", "unknown")
+                        if isinstance(tid, str) and tid:
+                            tool_calls.append((tid, tname, event_id))
+        elif role == "toolResult":
+            # toolCallId lives on the message, NOT in content blocks
+            # (verified against vm-050 raw jsonl 2026-05-16)
+            tcid = msg.get("toolCallId")
+            if isinstance(tcid, str) and tcid:
+                tool_result_ids.add(tcid)
+
+    return [(tid, tname, pid) for (tid, tname, pid) in tool_calls if tid not in tool_result_ids]
+
+
+def _build_synthetic_tool_result_event(tool_use_id, tool_name, parent_event_id):
+    """Construct a toolResult event matching OpenClaw's exact on-disk shape.
+    Field locations verified against vm-050 raw jsonl 2026-05-16:
+      message.toolCallId — link (NOT in content blocks)
+      message.toolName   — tool name
+      message.content[]  — type:"text", text:"..."
+      message.isError    — camelCase boolean
+      event.id, event.parentId, event.timestamp (ISO + unix-ms)
+
+    Top-level _orphanRepair marker + nested _orphanRepairSynthetic marker
+    provide forensic identification. Neither reaches the Anthropic API
+    (the gateway strips unknown top-level fields when constructing the
+    request)."""
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    now_ms = int(time.time() * 1000)
+    # OpenClaw uses 8 hex chars for event ids — generate a stable synthetic.
+    synth_id = hashlib.sha1(
+        ("orphan-repair-" + tool_use_id + "-" + str(now_ms)).encode("utf-8")
+    ).hexdigest()[:8]
+    return {
+        "type": "message",
+        "id": synth_id,
+        "parentId": parent_event_id,
+        "timestamp": now_iso,
+        "message": {
+            "role": "toolResult",
+            "toolCallId": tool_use_id,
+            "toolName": tool_name,
+            "content": [{"type": "text", "text": ORPHAN_SYNTHETIC_TEXT}],
+            "isError": True,
+            "timestamp": now_ms,
+            "_orphanRepairSynthetic": True,
+        },
+        "_orphanRepair": {
+            "synthesizedAt": now_iso,
+            "toolUseId": tool_use_id,
+            "toolName": tool_name,
+            "version": 1,
+        },
+    }
+
+
+def run_startup_orphan_repair(jsonl_path):
+    """Pre-apply tool_use/tool_result pairing repair to one session jsonl.
+    Idempotent: no-op if no orphans found. Atomic: tmp + os.replace.
+    Backup before write (Rule 22). Returns dict with summary.
+
+    Designed for systemd ExecStartPre — never raises, always exits cleanly."""
+    if not os.path.exists(jsonl_path):
+        return {"orphans_found": 0, "repaired": False, "backup_path": None, "error": None}
+
+    try:
+        size = os.path.getsize(jsonl_path)
+    except OSError as e:
+        return {"orphans_found": 0, "repaired": False, "backup_path": None, "error": "stat failed: " + str(e)}
+
+    if size > ORPHAN_REPAIR_MAX_FILE_BYTES:
+        print(
+            "ORPHAN_REPAIR: skipping " + jsonl_path +
+            " (size " + str(size) + " > " + str(ORPHAN_REPAIR_MAX_FILE_BYTES) + ")",
+            flush=True,
+        )
+        return {"orphans_found": 0, "repaired": False, "backup_path": None, "error": "file too large"}
+
+    orphans = _find_session_last_turn_orphans(jsonl_path)
+    if not orphans:
+        return {"orphans_found": 0, "repaired": False, "backup_path": None, "error": None}
+
+    backup_path = _orphan_repair_backup(jsonl_path)
+    if backup_path is None:
+        return {"orphans_found": len(orphans), "repaired": False, "backup_path": None, "error": "backup failed"}
+
+    synthetic_events = [
+        _build_synthetic_tool_result_event(tid, tname, pid)
+        for (tid, tname, pid) in orphans
+    ]
+
+    tmp_path = jsonl_path + ".orphan-repair.tmp"
+    try:
+        with open(jsonl_path, "rb") as src:
+            existing = src.read()
+        # Ensure trailing newline before appending — defensive against
+        # mid-flush captures where the last byte may not be a newline byte.
+        if existing and not existing.endswith(b"\\n"):
+            existing += b"\\n"
+        synthetic_bytes = b"".join(
+            (json.dumps(ev) + "\\n").encode("utf-8") for ev in synthetic_events
+        )
+        with open(tmp_path, "wb") as dst:
+            dst.write(existing)
+            dst.write(synthetic_bytes)
+        os.replace(tmp_path, jsonl_path)
+    except OSError as e:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        return {"orphans_found": len(orphans), "repaired": False, "backup_path": backup_path, "error": str(e)}
+
+    ids_for_log = ", ".join(
+        tname + "(..." + tid[-8:] + ")" for (tid, tname, _) in orphans
+    )
+    print(
+        "ORPHAN_REPAIR: synthesized " + str(len(orphans)) +
+        " tool_result event(s) in " + jsonl_path +
+        "; orphans=[" + ids_for_log + "]; backup=" + backup_path,
+        flush=True,
+    )
+    return {
+        "orphans_found": len(orphans),
+        "repaired": True,
+        "backup_path": backup_path,
+        "error": None,
+    }
+
+
+def _run_startup_repair_all_active():
+    """Iterate all session jsonls in SESSIONS_DIR, repair each. Idempotent
+    per-file (no-op if no orphans). Never raises — defends against per-file
+    errors so systemd ExecStartPre never blocks gateway start."""
+    if not os.path.isdir(SESSIONS_DIR):
+        print("ORPHAN_REPAIR: sessions dir does not exist: " + SESSIONS_DIR, flush=True)
+        return
+
+    files_scanned = 0
+    files_with_orphans = 0
+    total_orphans = 0
+
+    try:
+        all_entries = sorted(os.listdir(SESSIONS_DIR))
+    except OSError as e:
+        print("ORPHAN_REPAIR: cannot list sessions dir: " + str(e), flush=True)
+        return
+
+    for fname in all_entries:
+        if not fname.endswith(".jsonl"):
+            continue
+        if ".trajectory." in fname or ".checkpoint." in fname:
+            continue
+        path = os.path.join(SESSIONS_DIR, fname)
+        files_scanned += 1
+        try:
+            result = run_startup_orphan_repair(path)
+            if result.get("orphans_found", 0) > 0:
+                files_with_orphans += 1
+                total_orphans += result["orphans_found"]
+        except Exception as e:
+            # Defensive — per-file error logs but never aborts the sweep
+            print("ORPHAN_REPAIR: unexpected error on " + path + ": " + str(e), flush=True)
+
+    print(
+        "ORPHAN_REPAIR: scan complete — " + str(files_scanned) + " file(s) scanned, " +
+        str(files_with_orphans) + " file(s) had orphans, " +
+        str(total_orphans) + " total tool_result event(s) synthesized",
+        flush=True,
+    )
+
+
+# ── CLI dispatch (v101) ──────────────────────────────────────────────────────
+# Must come BEFORE the daily-hygiene flow below. ExecStartPre invokes us with
+# --startup-repair-active for synchronous gateway-prestart orphan repair.
+# We do NOT acquire the daily-hygiene fcntl lock in this mode (separate
+# concern; repair runs at boot, hygiene runs from cron). Always exits 0 so
+# ExecStartPre never blocks gateway start.
+if len(sys.argv) > 1:
+    if sys.argv[1] == "--startup-repair-active":
+        _run_startup_repair_all_active()
+        sys.exit(0)
+    if sys.argv[1] == "--startup-repair" and len(sys.argv) > 2:
+        run_startup_orphan_repair(sys.argv[2])
+        sys.exit(0)
+    # Unknown flag — log and fall through (safer than failing boot).
+    print("ORPHAN_REPAIR: unknown arg(s) " + repr(sys.argv[1:]) + " — falling through to daily-hygiene", flush=True)
 
 
 total_stripped = 0
