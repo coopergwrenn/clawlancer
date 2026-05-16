@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-16
 
-Window: `e47051c0aa1f0040ad2ab1479823cfb9ced7d1b6` → `HEAD` (HEAD = `a14f772f`)
+Window: `a14f772f3f17c812e4788d7bccb0ac5d175676fb` → `HEAD` (HEAD = `f49b4e68`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: a14f772f3f17c812e4788d7bccb0ac5d175676fb -->
+<!-- LAST_GENERATED_SHA: f49b4e68da195117d8815921f8f7285601e9d489 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `a14f772f` 2026-05-16 — fix(cloud-init): VM-ready email + /deploying cloud-init-aware thresholds [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
-- `ae2f7b58` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `f49b4e68` 2026-05-16 — fix(manifest-integrity): strip JS comments before parsing cronMarkers [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d1ef8b2a` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `f49b4e68` 2026-05-16 — fix(manifest-integrity): strip JS comments before parsing cronMarkers [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `a14f772f` 2026-05-16 — fix(cloud-init): VM-ready email + /deploying cloud-init-aware thresholds [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `ae2f7b58` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `d1ef8b2a` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `a14f772f` 2026-05-16 — [infrastructure, feature] — fix(cloud-init): VM-ready email + /deploying cloud-init-aware thresholds
+- `f49b4e68` 2026-05-16 — [reconciler, infrastructure] — fix(manifest-integrity): strip JS comments before parsing cronMarkers
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `a14f772f` 2026-05-16 — fix(cloud-init): VM-ready email + /deploying cloud-init-aware thresholds
+- `f49b4e68` 2026-05-16 — fix(manifest-integrity): strip JS comments before parsing cronMarkers
 
 ## Appendix — every commit (chronological)
 
-- `ae2f7b58` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `a14f772f` 2026-05-16 — fix(cloud-init): VM-ready email + /deploying cloud-init-aware thresholds [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `d1ef8b2a` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `f49b4e68` 2026-05-16 — fix(manifest-integrity): strip JS comments before parsing cronMarkers [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
