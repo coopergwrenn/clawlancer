@@ -100,6 +100,29 @@ FROM instaclaw_vms WHERE assigned_to = '<user_id>';
 
 ---
 
+## §3.5. Byte-parity audit (G2 gate from Phase 1C scope)
+
+After Q1–Q5 pass, run the on-disk byte-comparison script to verify setup.sh's outputs match what configureOpenClaw would have produced. Pick any cv=100 healthy pool VM as the baseline (run `SELECT name FROM instaclaw_vms WHERE status='assigned' AND health_status='healthy' AND created_via IS NULL AND config_version=100 LIMIT 1` to grab one).
+
+```bash
+cd instaclaw
+npx tsx scripts/_compare-old-vs-new-path.ts \
+  --new=<your-test-vm-name> \
+  --old=<baseline-pool-vm-name> \
+  --report=/tmp/byte-parity.md
+```
+
+The script SSHes to both VMs read-only and diffs 12 sections (A through L): openclaw.json keys, .env vars, workspace files, agent dir, openclaw scripts, outer scripts, skills, crontab, systemd units, npm globals, pip packages, service health.
+
+Verdicts per diff:
+- **EXPECTED** — per-user content that SHOULD differ (MEMORY.md, agent.key, IDs). Ignore.
+- **WARNING** — acceptable variance (skill-pull commit SHA within 2 of each other). Glance, ignore.
+- **BUG** — should be byte-identical. **ANY BUG = Phase 1C halt + fix.**
+
+Script exits 0 if BUGS=0, exits 1 otherwise. Skim the report at /tmp/byte-parity.md for the full diff list.
+
+---
+
 ## §4. End-user test
 
 1. Open `https://instaclaw.io/dashboard` while signed in.

@@ -148,6 +148,10 @@
     {
       "path": "/api/cron/gbrain-deep-check",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/tls-retry",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
