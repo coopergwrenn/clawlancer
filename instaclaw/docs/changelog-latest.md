@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-16
 
-Window: `ec8255bea0621f2c50aa623cdbe57122ca7f980d` → `HEAD` (HEAD = `6263ca0d`)
+Window: `6263ca0d03ae0e4d9be5c5446b8bcfc62d455b46` → `HEAD` (HEAD = `e47051c0`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 6263ca0d03ae0e4d9be5c5446b8bcfc62d455b46 -->
+<!-- LAST_GENERATED_SHA: e47051c0aa1f0040ad2ab1479823cfb9ced7d1b6 -->
 
 ## Summary
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `6263ca0d` 2026-05-16 — docs(rule-39): step classification audit — 87 push sites, 9 conversions proposed [1 files] _(multi: [reconciler, docs]; ai-assisted)_
-- `36a3ae96` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `e47051c0` 2026-05-16 — feat(reconciler): Rule 39 — convert 9 non-critical step failures to warnings [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `18797d21` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `6263ca0d` 2026-05-16 — docs(rule-39): step classification audit — 87 push sites, 9 conversions proposed [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `e47051c0` 2026-05-16 — feat(reconciler): Rule 39 — convert 9 non-critical step failures to warnings [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `36a3ae96` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `18797d21` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `6263ca0d` 2026-05-16 — [reconciler, docs] — docs(rule-39): step classification audit — 87 push sites, 9 conversions proposed
+- `e47051c0` 2026-05-16 — [reconciler, infrastructure] — feat(reconciler): Rule 39 — convert 9 non-critical step failures to warnings
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `6263ca0d` 2026-05-16 — docs(rule-39): step classification audit — 87 push sites, 9 conversions proposed
+- `e47051c0` 2026-05-16 — feat(reconciler): Rule 39 — convert 9 non-critical step failures to warnings
 
 ## Appendix — every commit (chronological)
 
-- `36a3ae96` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `6263ca0d` 2026-05-16 — docs(rule-39): step classification audit — 87 push sites, 9 conversions proposed [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `18797d21` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `e47051c0` 2026-05-16 — feat(reconciler): Rule 39 — convert 9 non-critical step failures to warnings [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
