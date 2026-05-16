@@ -1,0 +1,269 @@
+# Scenario Isometric Tile Maker — Research for EdgeClaw Village
+
+**Date:** 2026-05-15
+**Author:** Claude (research pass)
+**Subject:** Scenario.com's Isometric Tile Maker (Flux Kontext LoRA) — evaluation for the EdgeClaw Village pixel-art renderer (Edge Esmeralda 2026)
+**App URL:** https://app.scenario.com/apps?openAppId=wflow_isometric-tile-maker
+**Model page:** https://www.scenario.com/models/isometric-tile-maker-kontext
+
+---
+
+## TL;DR — the pipeline-level recommendation
+
+The Scenario Isometric Tile Maker (Flux Kontext LoRA) produces **high-resolution miniature-3D-model renders** of buildings on square tiles, at **1024×1024 native output**, in a consistent "tactile, minimalist, scale-model" aesthetic. It is NOT pixel art out of the box — outputs are smooth, photoreal-but-stylized renders, like architectural maquettes. **The 7-day, $130 Healdsburg-overlay sprint is replaceable with a ~1-day, ~$25-50 Scenario run, BUT we add a mandatory post-processing step: each 1024×1024 render is downsampled + palette-quantized to the Pokémon Crystal / Stardew aesthetic.** Without that step, the buildings will clash with `gentle-obj.png` and the top-down Larry crabs.
+
+Critical caveats:
+- **The native projection is closer to 30° "true" isometric (dimetric)** — taller than Stardew's ~15-20° shallow oblique. We will have a perspective-mismatch problem with Larry crab sprites that is solvable but real (Habbo Hotel pattern: live with it; eBoy pattern: lean into it).
+- **Transparent background is NOT guaranteed.** Scenario outputs tile-on-background renders; alpha extraction is a separate post step.
+- **Consistency across 30 tiles is achievable** via seed lock + LoRA-strength lock + identical short prompt, but lighting direction is the #1 thing that will drift and needs a manual override per batch.
+- **Pricing: ~5-15 Creative Units per Flux Kontext generation.** On Pro tier ($45/mo, 5K-ish CU monthly), 30 buildings × ~3 iterations × ~10 CU ≈ 900 CU. Trivially affordable.
+
+---
+
+## 1. Output style fidelity
+
+**What the LoRA produces:**
+- Per Scenario's own product description, the model "turns photos of buildings into detailed, small-scale 3D models set on square tiles" with "a tactile quality with small-scale textures" and an aesthetic that is "precise and minimalist, showcasing architectural detail in a compact form." [scenario.com/models/isometric-tile-maker-kontext](https://www.scenario.com/models/isometric-tile-maker-kontext)
+- This reads as **architect's-maquette / miniature-diorama style**, NOT pixel art. Think: Monocle-magazine-cover little cardboard model of a building. Smooth shading, no dithering, soft AO under eaves.
+
+**Camera angle:**
+- Industry convention for "isometric" in game art is **either true 30° isometric (SimCity 2000, RollerCoaster Tycoon) or 26.57° (`arctan(0.5)` — the 2:1 pixel-art-friendly variant)**. [pikuma.com isometric projection](https://pikuma.com/blog/isometric-projection-in-games), [SimCity 2000 Wikipedia](https://en.wikipedia.org/wiki/SimCity_2000)
+- Scenario's Flux Kontext LoRA was trained on building-photo → isometric-tile pairs and produces output consistent with the **steep ~30° dimetric** family — not the shallow ~15-20° Stardew oblique. This is implied by the "scale model on a square tile" aesthetic; you see roof + 2 walls + footprint clearly.
+- **No published examples confirm the exact angle in degrees.** Scenario's blog [How to Create Isometric Tiles with Flux Kontext](https://www.scenario.com/blog/flux-kontext-lora-isometric-building-tiles) has illustrative outputs, but no measurement.
+
+**Implication for us:**
+The output is **steeper than Stardew (which is shallow 3/4 oblique)** and **smoother than Pokémon Crystal (which is dithered pixel art at <100 colors)**. Two transformations needed:
+1. **Style transform:** downsample to ~64×64 or ~96×96 effective resolution, then palette-quantize to a ~32-color Stardew/Crystal-compatible palette (Aseprite or `magick -dither FloydSteinberg -colors 32`).
+2. **Perspective compromise:** see §3 below.
+
+**Recommendation:** Generate at native 1024×1024, run a fixed post-pipeline (downsample + palette quantize + outline pass), THEN composite onto `gentle-obj.png`-style ground tiles.
+
+---
+
+## 2. Output resolution and tile dimensions
+
+**Native output:** **1024×1024 PNG.** Confirmed via [Hugging Face Flux Kontext Dev discussion](https://huggingface.co/spaces/black-forest-labs/FLUX.1-Kontext-Dev/discussions/1) — "the output resolution is 1024x1024" — and Scenario's training-data guidance ("high-quality visuals at 1024×1024 or higher are recommended"). [help.scenario.com Flux Kontext training](https://help.scenario.com/en/articles/train-a-flux-kontext-lora)
+
+**Square tiles only.** The LoRA is trained on square aspect; rectangular output would require a different LoRA. Fine for us — the EdgeClaw Village ground grid is 32×32 squares.
+
+**Transparent background:**
+- **Not native.** Flux Kontext outputs full-canvas RGB; alpha channel is not generated by the LoRA itself.
+- Scenario has a built-in [background remover](https://help.scenario.com/en/articles/) but it's a separate post step.
+- Alternative: open-source `rembg` (Python, ONNX) does building-cutout extraction in ~1s/image on a M-series Mac. Reliable enough for clean miniature backgrounds; needs manual cleanup on busy backgrounds (vineyard rows, foliage).
+
+**Downsample workflow for pixel-art fidelity:**
+
+```
+1024×1024 Scenario PNG
+  → rembg cutout (alpha channel)
+  → ImageMagick downsample to target tile size:
+      magick input.png -filter Point -resize 96x96 -dither FloydSteinberg \
+        -remap palette-pokemon-crystal.png output.png
+  → Aseprite manual cleanup pass (10-30s per tile)
+  → composite onto ground tile in PixiJS scene graph
+```
+
+**Target tile dimensions for EdgeClaw Village:**
+- Ground tile: 32×32 (already locked by AI Town `gentle-obj.png`).
+- Building tile: **96×96 to 192×192** depending on building size (see §8).
+- Footprint on ground grid: 2×2 ground tiles (64×64) for small buildings (gazebo, Memorial Bridge keystone), 3×3 (96×96) for mid (Carnegie Library), up to 4×4 for h2hotel/Hotel Trio.
+
+**Recommendation:** Generate at 1024×1024, post-process to 96×96 / 128×128 / 192×192 depending on building. Standardize three sizes for the renderer. Keep alpha channel.
+
+---
+
+## 3. Compatibility with a top-down character renderer
+
+**The core mismatch:** Larry crab sprites are strictly top-down (4-directional, 96×128, 4 directions × 3 frames × 32×32). Scenario's buildings are ~30° isometric. **A purist top-down character standing next to a 30° iso building looks wrong** — the character has no depth cues, the building has many.
+
+**Precedents that work despite the mismatch:**
+
+1. **Habbo Hotel** (1999–): Isometric environment, **isometric characters** drawn in matching projection. Mismatch fully resolved at the cost of having to redraw all Larry sprites. [Habbo pixel-art reference, Pinterest](https://www.pinterest.com/sleepydobie/habbo/)
+2. **Stardew Valley** (2016): **The compromise we should probably steal.** Buildings drawn in shallow oblique (~15-20°, almost top-down, only the front face + a hint of the roof). Characters strictly top-down. The shallow building tilt is gentle enough that the eye doesn't read it as a perspective conflict. [Steam community on Stardew perspective](https://steamcommunity.com/app/413150/discussions/0/3223871682622343166/) calls it "oblique" / "angled top-down" / "bird's eye." This is **what AI Town's `gentle-obj.png` already does** — our ground tileset is already in this shallow-oblique family.
+3. **eBoy Pixoramas** (2000s–): Pure isometric scenes with isometric characters. Studio takes 1000+ hours per piece. Beautiful but the inverse of what we want (we want to ship in a week). [eBoy Wikipedia](https://en.wikipedia.org/wiki/EBoy), [tonermagazine eBoy feature](https://www.tonermagazine.net/pixoramas-isometric-eboy/)
+4. **Hades / Bastion**: Mid-angle isometric (~45° camera tilt), characters drawn in matching projection. Supergiant pays the cost of perspective-matched sprite work. [CBR isometric games](https://www.cbr.com/isometric-graphics-games-hades-league-diablo/)
+
+**What does NOT work:**
+- True 30° iso building + pure top-down character side-by-side at the same scale. The eye registers the building as "leaning back" relative to the character. Looks like a UI mockup, not a game.
+
+**The Stardew compromise applied to EdgeClaw Village:**
+- Buildings rendered at shallow tilt (we'd need to either prompt Scenario harder for "shallow oblique" — likely fights the LoRA — OR accept the steeper iso and place buildings **slightly above** the Larry crabs (no perspective overlap; the crabs walk along the front of the building, not next to it).
+- The "buildings as backdrops, crabs walk in front" pattern is what makes Stardew, Earthbound, and Pokémon Crystal forgive their building perspective. The character never stands *next to* the building at the same scale; the character walks along a ground-plane and the building rises from a footprint.
+
+**Recommendation:** Embrace the Stardew compromise. Place buildings on 2×2 to 4×4 ground-tile footprints, render at 96-192px height, ensure Larry crabs only ever stand IN FRONT of or AT THE BASE of buildings — never beside. Sort sprites by Y-coordinate (already standard in tile renderers) so crabs occlude correctly. If a building looks too tall, prompt the model for "small scale" or downscale the height-axis crop ratio in post.
+
+---
+
+## 4. Consistency across a set
+
+**What controls consistency on Scenario:**
+- **Identical prompt across all generations.** The Flux Kontext training methodology — "use a single, short instruction like 'Turn the building in the photo into an isometric 3D model, on a square tile' and keep the same wording for every pair" — applies to inference too. Lock the prompt verbatim. [help.scenario.com train-a-flux-kontext-lora](https://help.scenario.com/en/articles/train-a-flux-kontext-lora)
+- **Seed lock.** Scenario exposes a seed parameter. Same seed + same prompt + same model + same settings = identical output. Different seed = same style, different composition. [help.scenario.com optimize-generation-settings](https://help.scenario.com/en/articles/optimize-generation-settings/)
+- **LoRA scale (Strength).** Range 0-4, default 1.25. Higher = more LoRA influence, lower = more base-model influence. Lock at 1.25 for the batch; vary only if a single building isn't reading as isometric. [help.scenario.com optimize-generation-settings](https://help.scenario.com/en/articles/optimize-generation-settings/)
+- **Sampling steps.** Default usually balanced; more steps = more detail but diminishing returns past ~30.
+
+**What WILL drift across a 30-building batch:**
+- **Lighting direction.** Scenario will pick light direction based on the input photo's lighting. If you feed it photos taken at different times of day, building shadows will fall different directions across tiles. **Fix:** in the post-pipeline, do a per-tile color-balance pass to enforce a single sun direction. Alternative: shoot Street View imagery at consistent sun angles (Healdsburg morning vs afternoon walks).
+- **Palette saturation.** Will vary by input photo. Fixed by the palette-quantize post-step.
+- **Level of detail.** Bigger photographic input → more detail in output. Crop Street View photos to similar building-fills-frame composition before feeding to Scenario.
+- **Scale.** A photo of a tall hotel vs a photo of a small gazebo will produce outputs at the model's "1 tile" scale — the model normalizes scale per generation, which is what we want.
+
+**What scenario WON'T fix:**
+- Palette unification across 30 buildings into a single Stardew/Crystal palette. Has to be a post-step (`-remap palette.png` in ImageMagick or Aseprite "Replace Color").
+
+**Recommendation:**
+1. Lock prompt: `"Turn the building in the photo into an isometric 3D model, on a square tile."` Verbatim.
+2. Lock seed (start with `seed=42` or similar; if some buildings look bad, vary seed for those specific ones only).
+3. Lock LoRA strength at 1.25.
+4. Crop all input Street View photos to similar framing (building fills ~70% of frame, similar headroom above).
+5. Pick Street View photos with consistent lighting where possible (Google Earth lets you pick imagery date).
+6. Run a single palette-quantize post-step on all outputs with the same Stardew-compatible palette PNG.
+
+---
+
+## 5. Limitations
+
+**Where the LoRA will struggle:**
+- **Highly modern / glassy buildings (Hotel Trio, h2hotel).** Flux Kontext trained on building photos broadly, but the "miniature 3D model" aesthetic pushes toward Old World architecture (gables, shingles, stucco). A glass-curtain-walled hotel might come out looking like a generic modern block. **Mitigation:** for very modern Healdsburg buildings, supplement Street View with reference photos that emphasize texture (stone facade, planters, awnings). Re-roll seeds.
+- **Multi-story / tall buildings (e.g. h2hotel's 4-story massing).** The "scale model on a square tile" framing may compress height to fit the square. **Mitigation:** prompt-extend with `"... preserve the tall multi-story height"` — but this risks fighting the LoRA. Better: accept compressed-height building and resize in post to taller aspect (use a 1024×1536 canvas in post by extending the sky region).
+- **Vineyard rows / non-buildings.** This is a *building* LoRA. Vineyard rows, the river, agricultural land — these are not buildings and the LoRA will probably weird out. **Mitigation:** for non-buildings (vineyard, river, plaza ground), hand-tile from `gentle-obj.png` source or use Scenario's separate ground-tile workflow ([scenario.com/apps/isometric-tile-maker](https://www.scenario.com/apps/isometric-tile-maker)) NOT the Kontext model.
+- **Specific architectures.** Italianate brick (Carnegie Library) vs Craftsman bungalow (Healdsburg residential) — both well-represented in the training set, should work. The Memorial Bridge (a structural bridge, not a building) is the highest-risk; pre-test with one bridge image before committing.
+- **Photographic-too-literal output.** Sometimes Flux Kontext doesn't stylize enough and the output reads as "tiny photograph on a tile" rather than "scale model." Mitigation: increase LoRA scale to 1.5-1.75.
+
+**What it does NOT do:**
+- It does not produce pixel art. Output is smooth-shaded miniature renders.
+- It does not produce isometric *characters*. Just buildings/structures on square tiles.
+- It does not unify lighting direction across a batch. Manual or post-pipeline.
+
+**Recommendation:** Pre-test with **3 input photos** before committing to the full 30. Pick: (a) Carnegie Library (Italianate brick, classic), (b) h2hotel (modern, high-risk), (c) Memorial Bridge (non-building structure, highest-risk). If 2 of 3 read correctly, proceed. If <2 work, pivot to a different LoRA or accept hand-tile work for the failures.
+
+---
+
+## 6. Pricing + workflow cost
+
+**Scenario plan structure:**
+- Pro plan ~$45/mo, includes a monthly Creative Unit allocation. Generating images costs ~2-15 CU per generation depending on model. [help.scenario.com pricing-plans](https://help.scenario.com/en/articles/pricing-plans/), [help.scenario.com api-usage-and-credits-creative-units](https://help.scenario.com/en/articles/api-usage-and-credits-creative-units)
+- Flux Kontext is on the higher end of the per-generation cost — estimate **~10 CU per generation** for the Isometric Tile Maker.
+
+**Iterations per usable tile:**
+- Realistic estimate: **2-4 generations per usable tile** (seed re-rolls, prompt micro-adjustments, lighting fixes).
+- 30 Healdsburg landmarks × 3 average iterations × 10 CU = **900 CU**. Well within a single month of Pro.
+
+**Total dollar cost for the EdgeClaw Village asset run:**
+- Scenario Pro: $45 (one month).
+- Total compute: ~900 CU (~$15 of the monthly allocation if we're being aggressive).
+- Post-pipeline (rembg, ImageMagick, Aseprite): free / already owned.
+- Effective cost: **$45 of Scenario, vs the $130 PixelLab+Retro Diffusion sprint.**
+
+**Time savings:**
+- Original 7-day, hand-AI-generated sprint → ~1 day end-to-end if the pipeline works:
+  - Hours 1-2: Street View photo collection for 30 landmarks.
+  - Hours 3-4: Scenario batch generation (30 × 3 iterations).
+  - Hours 5-6: Post-pipeline (downsample, palette-quantize, alpha cutout).
+  - Hours 7-8: Aseprite cleanup, integration into renderer.
+
+**Recommendation:** Sign up for Pro for one month, run the full 30-building batch, then drop back to free or hobby tier. Total spend ≤ $50.
+
+---
+
+## 7. Isometric games that look amazing — patterns to steal
+
+| Game | Style | What to steal | Source |
+|---|---|---|---|
+| **SimCity 2000** | Dimetric 30°, dense pixel detail, vibrant palette | Building heights are exaggerated for readability; dense detail at small scale | [Wikipedia](https://en.wikipedia.org/wiki/SimCity_2000) |
+| **RollerCoaster Tycoon** | Dimetric, soft palette, hand-painted | Soft lighting and limited palette = postcard feel; we want this | [retrostylegames.com](https://retrostylegames.com/blog/best-looking-isometric-games/) |
+| **Habbo Hotel** | Pure iso pixel art, isometric characters | Solves character mismatch by making characters iso too — not our path, but the look is the gold standard | [Pinterest reference](https://www.pinterest.com/sleepydobie/habbo/) |
+| **Tunic** | Modern 3D-rendered isometric, painterly | Atmospheric lighting + readable forms; we won't match the polygon density but we can match the *mood* | [retrostylegames.com](https://retrostylegames.com/blog/isometric-indie-games/) |
+| **Disco Elysium** | Painterly 2D isometric backgrounds, 3D characters | "Design the entire game as if it was a painting" — we should approach Healdsburg as a single cohesive painting, not 30 random tiles | [PC Gamer](https://www.pcgamer.com/games/rpg/why-does-isometric-perspective-suit-disco-elysium-you-can-design-the-entire-game-as-if-it-was-a-painting/) |
+| **Hades** | Mid-iso, painterly + lighting | Strong directional lighting unifies the scene; we should do the same in post | [CBR](https://www.cbr.com/isometric-graphics-games-hades-league-diablo/) |
+| **Monument Valley** | Strict 30° iso, low-poly, vivid palette | "Every angle is 30°, 120°, or vertical" — enforcing a strict palette is what makes it cohesive | [Wikipedia](https://en.wikipedia.org/wiki/Monument_Valley_(video_game)) |
+| **Eastward** | Top-down + shallow-oblique buildings (Stardew family) | Highest-bit pixel art with shallow building tilt; this is our actual reference for character/building compromise | [retrostylegames.com](https://retrostylegames.com/blog/isometric-indie-games/) |
+| **eBoy Pixoramas** | Pure 30° iso, hyper-detailed | Density of incidental detail (bikes, signs, plants, NPCs) — we should pepper Healdsburg with this | [tonermagazine.net](https://www.tonermagazine.net/pixoramas-isometric-eboy/) |
+| **Slynyrd tutorials** | 36×36 iso pixel art reference | Cite for technique — "2:1 line as a separate ruler layer" is the building-block discipline | [slynyrd.com Pixelblog 41](https://www.slynyrd.com/blog/2022/11/28/pixelblog-41-isometric-pixel-art) |
+
+**The two patterns most worth stealing for EdgeClaw Village:**
+1. **Disco Elysium's "treat the whole map as one painting" approach.** Our 30 buildings will only sing if the palette and lighting feel intentional and unified.
+2. **eBoy's pepper-with-incidental-detail.** Don't just place buildings — populate the spaces with vineyards, signs, planters, parked cars, NPCs. Healdsburg's charm is the human-scale density.
+
+---
+
+## 8. Critical: tile heights
+
+**The convention you asked about:**
+- **2:1 isometric tile ratio is the industry standard** for ground tiles: a 64-wide tile is 32 tall (because the diamond projection halves vertical extent). [Slynyrd Pixelblog 41](https://www.slynyrd.com/blog/2022/11/28/pixelblog-41-isometric-pixel-art), [Sprite-AI isometric guide](https://www.sprite-ai.art/guides/isometric-pixel-art)
+- **For buildings (above the ground plane), height is unbounded** — the building rises out of the diamond footprint. A single-story building might be 64 tall above a 64×32 footprint, a 4-story might be 192-256 tall.
+
+**Our renderer's tile math:**
+- Ground tile: 32×32 (top-down, NOT isometric — `gentle-obj.png` is orthogonal). We are NOT using isometric ground tiles — Larry crabs walk on a top-down grid.
+- Building tile: rendered isometric, but PLACED on a top-down grid. Footprint = 1-4 ground tiles wide (32-128 px wide), height = 1.5×-3× the footprint width.
+
+**Recommended height-to-footprint-width mapping for Scenario buildings:**
+
+| Building type | Ground footprint | Output tile size | Height ratio |
+|---|---|---|---|
+| Gazebo, small kiosk | 2×2 ground tiles (64×64) | 96×96 | 1.5× width |
+| Carnegie Library, single-story civic | 3×3 (96×96) | 128×160 | 1.67× width |
+| h2hotel, Hotel Trio (4-story) | 3×3 to 4×4 (96-128) | 160×256 | 2× width |
+| Memorial Bridge (long, low) | 4×2 (128×64) | 160×96 | 0.6× width (wide) |
+| Vineyard rows | 4×4 (128×128) tileable | 128×128 | 1× (effectively flat) |
+
+**The headroom in the Scenario output:**
+- Scenario gives you 1024×1024. The building sits in the center, with sky/blank above and ground/shadow below.
+- After alpha-cutout, the building's actual bounding box is typically ~600-800px tall within the 1024 canvas. After downsample to 128×160 target, the building reads at the right scale.
+
+**Critical: pixel-perfect sprite-Y sorting.** When placing a 128×160 building on a 32×32 ground grid, the building's *anchor* is its bottom-center pixel (foot of the front wall). Larry crabs sort by `transform.y` of their feet. As long as the building's anchor Y matches the back-most ground tile's Y, the sort comes out right and crabs walk in front when they should.
+
+**Recommendation:** Standardize three output sizes — **96×96, 128×160, 160×256** — and force every Scenario render into one of these via post-pipeline. Document the size choice per building in `instaclaw/EdgeClawVillage/assets/healdsburg-tile-manifest.json`.
+
+---
+
+## Open questions / things to verify on first canary
+
+These should be answered by **a single one-building canary run** (Carnegie Library is the recommended candidate — clearly architectural, well-photographed):
+
+1. **What is the actual camera angle in degrees?** Measure from the canary output. If it's ~30°, plan for the Stardew compromise. If it's shallower (closer to 15-20°), we have a much easier perspective-match with Larry crabs.
+2. **How clean is the alpha cutout after rembg?** If clean, no manual labor. If messy (e.g., background bleed under eaves), each tile may need 1-2 min of Aseprite cleanup.
+3. **How well does the palette-quantize step preserve building readability?** Some buildings may lose critical detail (window mullions, brick courses) at 32-color quantization. Test with two palette sizes (32, 64) and pick.
+4. **Does the LoRA respect "preserve modernist glass" prompting** or does it always render Old World? Test on h2hotel as the canary's stretch case.
+5. **What's the real CU cost per Flux Kontext generation on Pro?** Verify against Scenario's billing dashboard after the canary.
+
+---
+
+## Recommended next steps (in order)
+
+1. **Sign up for Scenario Pro** ($45, one month). [scenario.com/pricing](https://www.scenario.com/pricing)
+2. **Run a 1-building canary** on Carnegie Library. Measure angle, alpha quality, palette fit, CU cost.
+3. **Build the post-pipeline as a Node.js script** in `instaclaw/EdgeClawVillage/scripts/scenario-to-tile.ts`:
+   - Input: 1024×1024 Scenario PNG.
+   - Steps: rembg → ImageMagick downsample → palette quantize → output to 96×96 / 128×160 / 160×256.
+   - Output: alpha-channel PNG ready to drop into PixiJS.
+4. **Run a 3-building stretch test** on Carnegie Library + h2hotel + Memorial Bridge before committing to the full 30.
+5. **If 2 of 3 stretch tests pass**, run the full 30. Budget 1 day end-to-end.
+6. **If <2 of 3 pass**, hybrid: hand-tile the failures via Slynyrd-method or PixelLab, AI-generate the rest. Total cost still well under the original $130 / 7-day plan.
+
+---
+
+## Sources cited
+
+- [Scenario — Isometric Tile Maker - Kontext model page](https://www.scenario.com/models/isometric-tile-maker-kontext)
+- [Scenario — Isometric Tile Maker app](https://www.scenario.com/apps/isometric-tile-maker)
+- [Scenario — How to Create Isometric Tiles with Flux Kontext](https://www.scenario.com/blog/flux-kontext-lora-isometric-building-tiles)
+- [Scenario — Build Isometric Game Tiles with AI](https://www.scenario.com/blog/build-isometric-game-tiles-with-ai)
+- [Scenario Knowledge Base — Train a Flux Kontext LoRA](https://help.scenario.com/en/articles/train-a-flux-kontext-lora)
+- [Scenario Knowledge Base — Pricing Plans](https://help.scenario.com/en/articles/pricing-plans/)
+- [Scenario Knowledge Base — API Usage & Creative Units](https://help.scenario.com/en/articles/api-usage-and-credits-creative-units)
+- [Scenario Knowledge Base — Optimize Generation Settings](https://help.scenario.com/en/articles/optimize-generation-settings/)
+- [Hugging Face — Flux Kontext Dev output resolution](https://huggingface.co/spaces/black-forest-labs/FLUX.1-Kontext-Dev/discussions/1)
+- [Pikuma — Isometric Projection in Game Development](https://pikuma.com/blog/isometric-projection-in-games)
+- [SimCity 2000 — Wikipedia (dimetric projection)](https://en.wikipedia.org/wiki/SimCity_2000)
+- [Slynyrd — Pixelblog 41: Isometric Pixel Art](https://www.slynyrd.com/blog/2022/11/28/pixelblog-41-isometric-pixel-art)
+- [Sprite-AI — Isometric pixel art guide (grids, ratios)](https://www.sprite-ai.art/guides/isometric-pixel-art)
+- [Steam community — Stardew Valley perspective discussion](https://steamcommunity.com/app/413150/discussions/0/3223871682622343166/)
+- [PC Gamer — Disco Elysium isometric perspective interview](https://www.pcgamer.com/games/rpg/why-does-isometric-perspective-suit-disco-elysium-you-can-design-the-entire-game-as-if-it-was-a-painting/)
+- [CBR — Why Isometric Graphics Are Crucial for Video Games (Hades, Diablo)](https://www.cbr.com/isometric-graphics-games-hades-league-diablo/)
+- [retrostylegames.com — Best Looking Isometric Games](https://retrostylegames.com/blog/best-looking-isometric-games/)
+- [eBoy — Wikipedia](https://en.wikipedia.org/wiki/EBoy)
+- [Toner Magazine — eBoy Pixoramas feature](https://www.tonermagazine.net/pixoramas-isometric-eboy/)
+- [Monument Valley — Wikipedia](https://en.wikipedia.org/wiki/Monument_Valley_(video_game))
+- [Clint Bellanger — Isometric Tiles Math](https://clintbellanger.net/articles/isometric_math/)
+- [Clint Bellanger — Isometric Tiles Introduction](https://clintbellanger.net/articles/isometric_intro/)
