@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-16
 
-Window: `0a187c4e834b2161e8373ba847c59fc71c0f2d55` → `HEAD` (HEAD = `5d69baeb`)
-Total commits: 5
+Window: `5d69baeb18a2f0f95fcbfc08644259a81bb54218` → `HEAD` (HEAD = `588a45b9`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 5d69baeb18a2f0f95fcbfc08644259a81bb54218 -->
+<!-- LAST_GENERATED_SHA: 588a45b9a26f1b9786b18a505add2385d02ac0d9 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 3
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,23 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `5d69baeb` 2026-05-16 — feat(gbrain): HTTP sidecar architecture (Rule 35) — fleet rewrite [10 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
-- `c3eb0046` 2026-05-16 — chore: trigger redeploy after freeze-v2 migration applied [0 files]
-- `5de247d3` 2026-05-16 — chore: trigger redeploy after agent_positions migration applied [0 files]
-- `f817915b` 2026-05-16 — chore: trigger redeploy after agent_positions migration applied [0 files]
-- `83a7b225` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `621549f0` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `588a45b9` 2026-05-16 — feat(playbook): viral-copy-playbook + Rule 55 + /viral activation system [3 files] _(ai-assisted)_
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `5d69baeb` 2026-05-16 — feat(gbrain): HTTP sidecar architecture (Rule 35) — fleet rewrite [10 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+_(none)_
 
-### Infrastructure (3)
+### Infrastructure (0)
 
-- `c3eb0046` 2026-05-16 — chore: trigger redeploy after freeze-v2 migration applied [0 files]
-- `5de247d3` 2026-05-16 — chore: trigger redeploy after agent_positions migration applied [0 files]
-- `f817915b` 2026-05-16 — chore: trigger redeploy after agent_positions migration applied [0 files]
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -48,26 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `83a7b225` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `5d69baeb` 2026-05-16 — [reconciler, infrastructure, edge, docs] — feat(gbrain): HTTP sidecar architecture (Rule 35) — fleet rewrite
+- `621549f0` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `588a45b9` 2026-05-16 — feat(playbook): viral-copy-playbook + Rule 55 + /viral activation system [3 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `5d69baeb` 2026-05-16 — feat(gbrain): HTTP sidecar architecture (Rule 35) — fleet rewrite
+- `588a45b9` 2026-05-16 — feat(playbook): viral-copy-playbook + Rule 55 + /viral activation system
 
 ## Appendix — every commit (chronological)
 
-- `83a7b225` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `c3eb0046` 2026-05-16 — chore: trigger redeploy after freeze-v2 migration applied [0 files]
-- `5de247d3` 2026-05-16 — chore: trigger redeploy after agent_positions migration applied [0 files]
-- `f817915b` 2026-05-16 — chore: trigger redeploy after agent_positions migration applied [0 files]
-- `5d69baeb` 2026-05-16 — feat(gbrain): HTTP sidecar architecture (Rule 35) — fleet rewrite [10 files] _(multi: [reconciler, infrastructure, edge, docs]; ai-assisted)_
+- `621549f0` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `588a45b9` 2026-05-16 — feat(playbook): viral-copy-playbook + Rule 55 + /viral activation system [3 files] _(ai-assisted)_
