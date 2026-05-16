@@ -418,6 +418,16 @@ export async function GET(req: NextRequest) {
       // RECONCILE_QUARANTINE_THRESHOLD constant below.
       .is("reconcile_quarantined_at", null)
       .order("config_version", { ascending: true, nullsFirst: true })
+      // Secondary sort: within the same cv-tier, prioritize the
+      // most-overdue secret_version first. Added 2026-05-16 to unstick
+      // edge_city — all 7 edge_city VMs sat at cv=100 sv=0 at
+      // queue-position 14+ behind ~13 non-partner cv=100 sv=1 VMs
+      // because the previous single-key cv-ASC sort had no tiebreaker
+      // and PostgREST default-ordered ties by insertion. Adding sv ASC
+      // here surfaces edge_city naturally (and benefits any other
+      // sv=0 cohort waiting behind sv=1 peers) without harming the
+      // cv<100 cohort which still sorts first.
+      .order("secret_version", { ascending: true, nullsFirst: true })
       .limit(CONFIG_AUDIT_BATCH_SIZE);
 
     if (queryErr) {
