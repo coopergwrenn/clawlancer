@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-16
 
-Window: `f0f1d6c4d8630869fc7b78d6d26d6f87188cf98a` → `HEAD` (HEAD = `76560166`)
+Window: `765601664d1d04445d7eda1e3f2afc81dea084b8` → `HEAD` (HEAD = `674bbfd4`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 765601664d1d04445d7eda1e3f2afc81dea084b8 -->
+<!-- LAST_GENERATED_SHA: 674bbfd44b6dceb51751611323161056f9bc9dd0 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `c53834d6` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `76560166` 2026-05-16 — docs(incident): 2026-05-16 stale-bundle 23h cron halt postmortem [1 files] _(ai-assisted)_
+- `674bbfd4` 2026-05-16 — fix(reconcile-fleet): stale-bundle dedup 6h → 30min (incident A) [1 files] _(ai-assisted)_
+- `b344f1c7` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `674bbfd4` 2026-05-16 — fix(reconcile-fleet): stale-bundle dedup 6h → 30min (incident A) [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -43,18 +43,17 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `c53834d6` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `76560166` 2026-05-16 — docs(incident): 2026-05-16 stale-bundle 23h cron halt postmortem [1 files] _(ai-assisted)_
+- `b344f1c7` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `76560166` 2026-05-16 — docs(incident): 2026-05-16 stale-bundle 23h cron halt postmortem
+- `674bbfd4` 2026-05-16 — fix(reconcile-fleet): stale-bundle dedup 6h → 30min (incident A)
 
 ## Appendix — every commit (chronological)
 
-- `c53834d6` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `76560166` 2026-05-16 — docs(incident): 2026-05-16 stale-bundle 23h cron halt postmortem [1 files] _(ai-assisted)_
+- `b344f1c7` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `674bbfd4` 2026-05-16 — fix(reconcile-fleet): stale-bundle dedup 6h → 30min (incident A) [1 files] _(ai-assisted)_
