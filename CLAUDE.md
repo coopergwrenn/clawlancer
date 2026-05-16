@@ -2550,6 +2550,69 @@ Counterintuitively, `pkill -KILL -f 'gbrain.*serve'` (SIGKILL, used by `instacla
 
 **Exit.** Cooper exits copy mode via `/done` or by switching topics. The terminal must confirm exit: "exiting copy mode. saved draft: [path]." After exit, normal terminal behavior resumes.
 
+### Rule 56 — Never commit a migration to `migrations/` before its schema is applied to prod
+
+`instaclaw/scripts/verify-migrations.ts` runs as the first command of `npm run build` (wired in `package.json:build`). It parses every `*.sql` under `instaclaw/supabase/migrations/`, extracts every `CREATE TABLE` and `ALTER TABLE ... ADD COLUMN` statement, queries the production Supabase for each object, and exits with code 1 if any are missing. **A migration file committed to `migrations/` is, from the moment of that commit, a hard pre-build gate** — every subsequent Vercel build of the instaclaw project will refuse to start `next build` until the prod schema catches up. This is by design (it protects against shipping app code that references columns that don't exist yet), but it has a cost: the wrong commit order takes the entire fleet's deploy pipeline offline until the schema is applied.
+
+#### The 2026-05-16 incident
+
+Two terminals shipped migration files to `instaclaw/supabase/migrations/` within ~30 minutes of each other, both *before* applying the SQL to production:
+
+1. **IR's `20260516180000_freeze_v2_columns.sql`** — added 8 NULLABLE columns to `instaclaw_vms`. Idempotent (`IF NOT EXISTS`), safe to apply, but not yet applied.
+2. **My `20260516200000_village_dual_channel_broadcast.sql`** — created `public.agent_positions` (NEW table) + village schema + 4 triggers. Committed during the village build-out. Not yet applied.
+
+Result: every Vercel deploy from 16:30 UTC onward failed at the verify-migrations step with `MISSING table: agent_positions  (from 20260516200000_village_dual_channel_broadcast.sql)` (and additionally for the freeze_v2 columns). Five separate deploys hit Error status. `instaclaw.io` kept serving the last Ready build (56 minutes old), but the pipeline was frozen — any unrelated hotfix (billing webhook fix, partner-tag fix, reconciler change) committed during that window would have been blocked too.
+
+Recovery required: (a) Cooper hand-pasting just the `CREATE TABLE agent_positions` and freeze_v2 column-adds into Supabase Studio, (b) forcing a redeploy via `vercel redeploy` (an empty commit was correctly skipped by `vercel.json:ignoreCommand` since it didn't touch `instaclaw/`). Total impact: ~1 hour of pipeline downtime, several Error-status deploys polluting the history.
+
+This is the same shape of failure as Rule 47 (template change without manifest bump): a change committed to main that the production system isn't yet ready for. Rule 47 is about template files reaching VMs; Rule 55 is about migration files reaching the build gate.
+
+#### Why this trap is structural, not "operator carelessness"
+
+- `verify-migrations.ts` is BLOCKING by design — it catches the worse failure mode of "app references a column that doesn't exist." That trade-off is correct; the issue is that it gates on file presence in `migrations/`, not on a separate "ready to gate" marker.
+- The Supabase CLI's `db push` workflow assumes you control timing of file-add vs. apply. Our team doesn't use `supabase db push` for production — Cooper pastes SQL into the Studio Editor. The migration files in `migrations/` exist primarily for verify-migrations and for forensic history.
+- Concurrent terminals don't see each other's migrations until git syncs, so coordination is fragile. The two-terminal pile-up on 2026-05-16 wasn't unique to today — any two parallel work streams that both touch schema have the same race.
+
+#### Required pattern
+
+For any new migration that adds a `CREATE TABLE` or `ALTER TABLE ... ADD COLUMN` (the two statement shapes verify-migrations gates on):
+
+1. **Write the migration to `instaclaw/supabase/pending_migrations/<timestamp>_<name>.sql`** — NOT `migrations/`. This directory is excluded from the verify-migrations scan (it scans `migrations/` only). Committing here is safe.
+2. **When ready to apply**: paste the SQL into Supabase Studio against the target environment (staging first, then prod per the standard runbook). Verify success via the standard checks (table exists, column exists, RLS policy attached, etc.).
+3. **THEN move the file** from `pending_migrations/` to `migrations/` in the same commit that promotes the migration. The order of operations in that commit:
+   - `git mv instaclaw/supabase/pending_migrations/<file>.sql instaclaw/supabase/migrations/<file>.sql`
+   - (Optionally update any companion `*.md` apply doc to reflect the apply date.)
+   - Push. Verify-migrations now sees the migration; the schema is already there; PASS.
+4. **Trigger/function-only migrations** (no `CREATE TABLE`, no `ALTER TABLE ... ADD COLUMN`) can go directly into `migrations/` — verify-migrations doesn't parse those object types, and the non-public schema bypass at `scripts/verify-migrations.ts:189-193` covers `CREATE FUNCTION village.X()`-style cases anyway. Document this in the file header so future maintainers don't second-guess.
+
+#### Banned patterns
+
+- Committing `instaclaw/supabase/migrations/<file>.sql` that contains a `CREATE TABLE` or `ALTER TABLE ... ADD COLUMN` for a table/column that doesn't exist in prod yet. Even with the file's intent fully correct, the build pipeline goes down the moment the commit lands on main.
+- Pre-staging migrations in `migrations/` and "remembering to apply them later." There is no later in a multi-terminal world — someone else's unrelated commit will trigger a build before you remember, and the build will fail. The contract is: a file in `migrations/` is a promise that the schema is already in prod.
+- Skipping verify-migrations to push the build through ("it's just a missing trigger function, the app doesn't reference it"). Rule 10 / Rule 23 / Rule 34 are the rules that fire when you bypass the verify-after-write discipline; this one is its build-gate counterpart. The pipeline is the canary; if it's down, that's the signal — paper over it and you'll regress to lying-DB-style drift.
+- Pasting "the whole migration file" into Supabase Studio for a file that mixes new tables + triggers + functions, when only the table is needed right now. Apply piece by piece, and ensure the `migrations/` file content matches what's actually live.
+
+#### Detection rule
+
+PR review checklist for any change under `instaclaw/supabase/`:
+
+1. Does the new file contain `CREATE TABLE` or `ALTER TABLE ... ADD COLUMN`? If yes:
+   - Was the schema applied to prod before this PR landed on main? Answer must be **yes**, with evidence (Cooper's "applied" message, Supabase Studio screenshot, `psql` verification output).
+   - If no: the file MUST be under `pending_migrations/`, not `migrations/`.
+2. If the file is moving from `pending_migrations/` → `migrations/`, the PR description must include the apply-evidence (date applied, environment, who applied).
+3. If multiple terminals have schema work in flight, the second-to-commit MUST rebase against the first's apply state before adding their own migration to `migrations/`.
+
+#### Operator emergency runbook (build pipeline is down due to this)
+
+If verify-migrations is blocking builds RIGHT NOW because a migration was committed without apply:
+
+1. Read the migration file. Extract the minimum SQL required to satisfy verify-migrations (just the `CREATE TABLE` / `ALTER TABLE ADD COLUMN` statements — leave triggers/functions out if they have unmet dependencies).
+2. Paste into Supabase Studio SQL Editor against production.
+3. Run a real (non-empty) Vercel redeploy — `npx vercel redeploy <last-failed-deployment-url>` works without needing a new commit, and the rebuild now finds the schema in prod.
+4. Post-recovery: file a PR moving the over-eager content out of `migrations/` and back to `pending_migrations/` if any triggers/functions weren't applied — keep the file content matched to prod reality.
+
+The 2026-05-16 timeline above is the canonical reference for what this looks like; the agent_positions paste sequence Cooper used is in the conversation log.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
