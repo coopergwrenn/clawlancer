@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-16
 
-Window: `2b586409157ae6f37d92e1f1ad84453db4bef71f` → `HEAD` (HEAD = `7180cf3b`)
+Window: `7180cf3b6e06946a6ebdb6ace1b7a143022b2a2e` → `HEAD` (HEAD = `51a700fa`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 7180cf3b6e06946a6ebdb6ace1b7a143022b2a2e -->
+<!-- LAST_GENERATED_SHA: 51a700fa7d07c8a5ba824b2803c6a5ed048ab6bd -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `7180cf3b` 2026-05-16 — fix(freeze-v2): Phase 4 entry point + stuck-state recovery (audit fixes) [4 files] _(ai-assisted)_
-- `0daaed02` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `51a700fa` 2026-05-16 — fix(cloud-init): TLS hook in callback + happy-path integration test [3 files] _(ai-assisted)_
+- `07f9c168` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `7180cf3b` 2026-05-16 — fix(freeze-v2): Phase 4 entry point + stuck-state recovery (audit fixes) [4 files] _(ai-assisted)_
+- `51a700fa` 2026-05-16 — fix(cloud-init): TLS hook in callback + happy-path integration test [3 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `0daaed02` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `07f9c168` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `7180cf3b` 2026-05-16 — fix(freeze-v2): Phase 4 entry point + stuck-state recovery (audit fixes)
+- `51a700fa` 2026-05-16 — fix(cloud-init): TLS hook in callback + happy-path integration test
 
 ## Appendix — every commit (chronological)
 
-- `0daaed02` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `7180cf3b` 2026-05-16 — fix(freeze-v2): Phase 4 entry point + stuck-state recovery (audit fixes) [4 files] _(ai-assisted)_
+- `07f9c168` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `51a700fa` 2026-05-16 — fix(cloud-init): TLS hook in callback + happy-path integration test [3 files] _(ai-assisted)_
