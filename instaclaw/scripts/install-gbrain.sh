@@ -303,9 +303,16 @@ if ! command -v gbrain > /dev/null 2>&1; then
   exit 7
 fi
 
-# Verify version matches pinning. Strict 4-segment regex per Cooper's
-# 2026-05-16 tightening — anchored, exact match, no partial-acceptance.
-GBRAIN_INSTALLED_VERSION=$(gbrain --version 2>&1 | head -1 | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || echo missing)
+# Verify version matches pinning. 4-segment regex (Garry's convention:
+# 0.35.0.0, 0.31.4.1) but NOT line-anchored — `gbrain --version` outputs
+# "gbrain 0.35.0.0" with the binary name prefix, so a line-anchored
+# `^[0-9]+...` would not match. The `(\.[0-9]+){3}` requires exactly 3
+# trailing dot-segments, so it still rejects 3-segment legacy versions
+# like "0.28.1". (Bug caught on 2026-05-16 live install of vm-354 —
+# anchored regex matched zero and FATAL_VERSION_MISMATCH'd despite a
+# successful install.)
+GBRAIN_INSTALLED_VERSION=$(gbrain --version 2>&1 | head -1 | grep -oE '[0-9]+(\.[0-9]+){3}' | head -1)
+[ -z "$GBRAIN_INSTALLED_VERSION" ] && GBRAIN_INSTALLED_VERSION="missing"
 if [ "$GBRAIN_INSTALLED_VERSION" != "$GBRAIN_PINNED_VERSION" ]; then
   echo "FATAL_VERSION_MISMATCH installed=$GBRAIN_INSTALLED_VERSION expected=$GBRAIN_PINNED_VERSION"
   exit 8
@@ -746,8 +753,15 @@ fi
 # Even if F1-F3 passed via loopback, the port could be ALSO bound publicly
 # (dual-stack misconfig). Test by opening a TCP connection to the VM's
 # external IP. Should REFUSE (firewall) or RESET (unbound interface).
+#
+# CRITICAL: stderr MUST be redirected to /dev/null. Without `2>/dev/null`,
+# bash's "bash: connect: Connection refused" error messages get captured
+# into EXT_TEST (multi-line string), and the comparison `[ "$EXT_TEST" !=
+# "REFUSED" ]` then compares a multi-line stderr-blob to "REFUSED" — never
+# equal → false-positive FATAL_SIDECAR_BOUND_PUBLIC. (Bug caught on
+# 2026-05-16 vm-354 retry install.)
 EXT_IP=$(hostname -I | awk '{print $1}')
-EXT_TEST=$(timeout 3 bash -c "</dev/tcp/$EXT_IP/3131" 2>&1 && echo OPEN || echo REFUSED)
+EXT_TEST=$(timeout 3 bash -c "</dev/tcp/$EXT_IP/3131" 2>/dev/null && echo OPEN || echo REFUSED)
 if [ "$EXT_TEST" != "REFUSED" ]; then
   echo "FATAL_SIDECAR_BOUND_PUBLIC external_test=$EXT_TEST ext_ip=$EXT_IP"
   systemctl --user stop gbrain.service 2>/dev/null
