@@ -502,7 +502,7 @@ const burnSources = [
   {
     icon: CreditCard,
     title: "The Silent Engine",
-    timeline: "Coming Soon",
+    timeline: "Active",
     tagline: "Every payment burns. Users never know.",
     short:
       "10% of every subscription payment and every WLD credit purchase automatically buys and burns $INSTACLAW. Users never touch crypto. They never see a wallet. The burn is invisible. And with the World Mini App launching soon, InstaClaw is opening up to 17+ million verified humans and growing fast.",
@@ -848,10 +848,11 @@ function TheMath() {
           </p>
           <p className="text-sm mt-3" style={{ color: "var(--muted)" }}>
             Every active user generates $120+ per year in automatic
-            buy-and-burn pressure from subscriptions alone. Agent
-            tokenization, trading volume, and skill usage all stack on top.
-            With only 28.2% of supply in circulation, every burn hits ~3.5x
-            harder.
+            buy-and-burn pressure when all four engines are firing —
+            subscriptions, agent token launches, $INSTACLAW trading fees, and
+            the skill marketplace. Subscriptions are live today. The other
+            three engines come online over the next 30 days. With only 28.2%
+            of supply in circulation, every burn hits ~3.5x harder.
           </p>
         </motion.div>
 
@@ -879,7 +880,7 @@ function TheMath() {
                 color: "var(--accent)",
               }}
             >
-              Coming May 2026
+              Coming Soon
             </p>
             <p
               className="text-sm max-w-sm mx-auto"
@@ -1490,31 +1491,31 @@ function TokenDetails() {
 
 const milestones = [
   {
-    date: "May 2026",
-    title: "First On-Chain Burn",
+    date: "Active",
+    title: "First On-Chain Burns",
     description: "Smart contract infrastructure deployed. First $INSTACLAW permanently removed from supply.",
     active: true,
   },
   {
-    date: "Q2 2026",
+    date: "Q3 2026",
     title: "Agent Economy Loop",
     description: "Agent tokenization and trading fee burns go live via major partnerships.",
     active: false,
   },
   {
-    date: "Q2 2026",
+    date: "Q3 2026",
     title: "Trading Loop",
     description: "10% of $INSTACLAW trading fees automatically route to buy-and-burn.",
     active: false,
   },
   {
-    date: "Q2\u2013Q3 2026",
+    date: "Active",
     title: "Silent Engine",
     description: "Subscription and WLD credit purchases begin automatically burning.",
-    active: false,
+    active: true,
   },
   {
-    date: "Q2 2026",
+    date: "Q3 2026",
     title: "Burn Dashboard",
     description: "Real-time public dashboard tracking every burn transaction on BaseScan.",
     active: false,
