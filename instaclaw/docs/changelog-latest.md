@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-16
 
-Window: `899b1ea70d17c6fad94db7b3c6c9ea7ba90e5632` → `HEAD` (HEAD = `dd768947`)
+Window: `dd76894734943485437b1143f6eb5bc3e30d3c48` → `HEAD` (HEAD = `7305c6b6`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: dd76894734943485437b1143f6eb5bc3e30d3c48 -->
+<!-- LAST_GENERATED_SHA: 7305c6b6f6146a47514c21cc6857f695090f9ed5 -->
 
 ## Summary
 
@@ -11,19 +11,18 @@ Total commits: 2
 - **Reconciler / manifest:** 0
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
-- **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Edge City partner:** 1
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-_None in this window._
+- `7305c6b6` 2026-05-16 — docs(upstream): draft snapshot_brain MCP tool issue for garrytan/gbrain [1 files] _(multi: [edge, docs]; ai-assisted)_
 
 ## What changed under the hood
 
-- `b0338146` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `dd768947` 2026-05-16 — docs(cloud-init): self-test runbook for 2026-05-17 10AM dry-run [1 files] _(ai-assisted)_
+- `ba1eba1b` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -39,22 +38,27 @@ _(none)_
 
 _(none)_
 
-### Edge City partner (0)
+### Edge City partner (1)
 
-_(none)_
+- `7305c6b6` 2026-05-16 — docs(upstream): draft snapshot_brain MCP tool issue for garrytan/gbrain [1 files] _(multi: [edge, docs]; ai-assisted)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `b0338146` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `dd768947` 2026-05-16 — docs(cloud-init): self-test runbook for 2026-05-17 10AM dry-run [1 files] _(ai-assisted)_
+- `ba1eba1b` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `7305c6b6` 2026-05-16 — [edge, docs] — docs(upstream): draft snapshot_brain MCP tool issue for garrytan/gbrain
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `dd768947` 2026-05-16 — docs(cloud-init): self-test runbook for 2026-05-17 10AM dry-run
+- `7305c6b6` 2026-05-16 — docs(upstream): draft snapshot_brain MCP tool issue for garrytan/gbrain
 
 ## Appendix — every commit (chronological)
 
-- `b0338146` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `dd768947` 2026-05-16 — docs(cloud-init): self-test runbook for 2026-05-17 10AM dry-run [1 files] _(ai-assisted)_
+- `ba1eba1b` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `7305c6b6` 2026-05-16 — docs(upstream): draft snapshot_brain MCP tool issue for garrytan/gbrain [1 files] _(multi: [edge, docs]; ai-assisted)_
