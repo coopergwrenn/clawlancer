@@ -1021,3 +1021,175 @@ Tiered rewire (locked in §15.7):
 ---
 
 **Ready for Cooper review.** Open questions in Section 12 need decisions before Phase 1 can ship. Recommended decisions (my picks) in each Q's body. After sign-off, Phase 1 is ~1 day of work.
+
+---
+
+## 17. PHASE 4 — Thaw cron implementation design (2026-05-16-PM)
+
+The inverse of Phase 3. Picks up `freeze_state='thaw_pending'` rows (set by the billing webhook hook in commit `7180cf3b`), provisions a fresh Linode via cloud-init, layers the user's archive on top, marks the row healthy. The capstone of freeze-v2.
+
+### 17.1 Trigger
+
+`freeze_state='thaw_pending'` set by `markThawPendingForV2User()` in `lib/freeze-v2-thaw-entry.ts`, called from:
+- `app/api/billing/webhook/route.ts` on `customer.subscription.created`
+- `app/api/billing/webhook/route.ts` on `customer.subscription.updated`
+
+Both cases set `thaw_requested_at = now()` and flip state via CAS (only flips if state was `'frozen'` AND `frozen_archive_path IS NOT NULL`). Idempotent on re-fires.
+
+### 17.2 Candidate query
+
+Rows are eligible when:
+- `freeze_state = 'thaw_pending'` (entry point)
+- `frozen_archive_path IS NOT NULL` (we have something to restore from)
+- `provider_server_id IS NULL` (no Linode yet — we provision a new one)
+- `assigned_to IS NOT NULL` (defensive — orphaned thaw-pending rows skip)
+
+Ordered by `thaw_requested_at ASC` so oldest wait gets served first (FIFO is the right UX for "user resubscribed N minutes ago, I want my agent").
+
+### 17.3 Per-VM flow
+
+This is the load-bearing logic. Stages and their state transitions:
+
+```
+thaw_pending → thawing → thawing_provisioned → idle
+```
+
+Each transition is a conditional CAS UPDATE. State at the start of each function call is verified — any mismatch aborts the function (the row was advanced or reverted by another process).
+
+**Stage 1: thaw_pending → thawing** (mark intent + provision)
+1. Acquire `freeze-thaw:<vm-id>` lock (30 min TTL).
+2. Re-read row inside lock. Verify `freeze_state='thaw_pending'`.
+3. CAS UPDATE: `freeze_state='thawing'` WHERE `freeze_state='thaw_pending'`.
+4. Mint fresh cloud-init tokens (config + callback) — same pattern as `createUserVM`. The OLD tokens from the original VM provisioning are stale; the new cloud-init flow needs fresh ones.
+5. UPDATE row: `cloud_init_config_token`, `cloud_init_callback_token`, status='provisioning'.
+6. Call `linodeProvider.createInstance()` with cloud-init userdata pointing at our config endpoint. **Same path as new VMs** — Cooper's design directive.
+7. On success: UPDATE row with `provider_server_id`, `ip_address`. State stays `'thawing'`.
+8. On failure: UPDATE row `freeze_state='thaw_pending'` (revert), release lock. Next tick retries.
+9. Release lock. Return — cloud-init runs async.
+
+**Stage 2: thawing → thawing_provisioned** (cloud-init done; ready for restore)
+1. Polled by cron each tick. Condition: `freeze_state='thawing'` AND `cloud_init_callback_consumed_at > thaw_requested_at`. The cloud-init callback handler is unchanged (`app/api/vm/cloud-init-callback/route.ts`) — it sets `cloud_init_callback_consumed_at` regardless of fresh-provision vs thaw context.
+2. Acquire lock.
+3. Re-read. Verify `freeze_state='thawing'`. Verify cloud-init callback timestamp.
+4. CAS UPDATE: `freeze_state='thawing_provisioned'`.
+5. Release lock. (Restore in the next stage.)
+
+**Stage 3: thawing_provisioned → idle** (restore archive + verify)
+1. Acquire lock.
+2. Re-read. Verify `freeze_state='thawing_provisioned'`.
+3. SSH connect to new VM.
+4. `systemctl --user stop gbrain` (safe — fresh VM has empty PGLite from base snapshot).
+5. `rm -rf ~/.gbrain/brain.pglite` (delete base-snapshot's empty version).
+6. Download `frozen_archive_path` from R2.
+7. Decrypt outer tar via `lib/freeze-encryption:decrypt(buffer, manifest.encryption_key_id)`.
+8. Parse outer tar (ustar): manifest.json, brain.pglite.tar.gz, user-state.tar.gz.
+9. Verify sha256 of each inner blob against `manifest.inner.{brain_pglite_sha256, user_state_sha256}`. Mismatch → P0 alert, halt.
+10. scp brain.pglite.tar.gz to VM. `tar xzf` over `~/.gbrain/`. [STUB: actual gbrain auto-detect of restored data dir is unverified until snapshot_brain ships and produces a real archive — see §17.7.]
+11. scp user-state.tar.gz to VM. `tar xzf -C $HOME`. Regular files (workspace, sessions, .env, wallet) — no special handling.
+12. `systemctl --user start gbrain`. Poll `/health=200` for up to 60s.
+13. Verify with authenticated `put_page` + `get_page` MCP round-trip (Cooper's standard for any brain operation).
+14. Version-gap-aware rewire (§17.4) — bring config + system state to current.
+15. CAS UPDATE: `status='assigned'`, `health_status='healthy'`, `freeze_state='idle'` (NULL also acceptable; treat as semantically equivalent), `frozen_at=null`. **Do NOT clear `frozen_archive_path`** — keep for 30-day post-thaw retention (Q2).
+16. Lifecycle log entry: `action='thawed'`, `reason='archive_path=<...>; gap=<N>; rewire=<scope>'`.
+17. Release lock.
+
+### 17.4 Version-gap-aware rewire (Q8 PRD §15.7 step 9)
+
+Computed once at the top of Stage 3:
+```
+version_gap = VM_MANIFEST.version - frozen_archive_manifest.source_manifest_version
+```
+
+Three tiers (locked Q8):
+- `gap ≤ 10`: stepFiles + stepGatewayRestart (~30s).
+- `10 < gap ≤ 30`: stepFiles + stepConfigSettings + stepGatewayRestart (~90s).
+- `gap > 30`: full reconcile path — stepSystemPackages + stepFiles + stepConfigSettings + stepSkills + stepGatewayRestart (~5 min).
+
+If `source_manifest_version` is missing (e.g., older archive predates the field), treat as gap=∞ → full reconcile.
+
+### 17.5 Stuck-state recovery (mirrors Phase 3 pattern)
+
+Two mid-states can be stranded:
+
+**Stuck `thawing`** — a previous cron tick provisioned Linode but didn't reach `thawing_provisioned`. Or didn't provision at all (network failure mid-call).
+Recovery (top of GET, before normal candidate query):
+- Query: `freeze_state='thawing' AND updated_at < now() - lock_TTL`.
+- If `provider_server_id IS NULL`: never provisioned. Revert to `'thaw_pending'`. Next tick retries from Stage 1.
+- If `provider_server_id IS NOT NULL`: probe Linode.
+  - Linode 404: instance gone. Revert to `'thaw_pending'` AND clear `provider_server_id`. Retry from Stage 1.
+  - Linode running + cloud-init callback already consumed: advance to `'thawing_provisioned'` (next tick will do Stage 3).
+  - Linode running + no callback yet: leave alone; cloud-init may still be in flight.
+  - Linode in transient error state (`other`, 5xx): leave alone, retry next tick.
+
+**Stuck `thawing_provisioned`** — restore step failed mid-flight (SSH crashed, sha256 mismatch, gbrain wouldn't start).
+Recovery:
+- Query: `freeze_state='thawing_provisioned' AND updated_at < now() - lock_TTL`.
+- Acquire lock.
+- SSH probe. If reachable, re-run Stage 3 from scratch (extracts overwrite). If unreachable for 3 consecutive retries, P0 alert ("thaw blocked on unreachable VM").
+
+### 17.6 Resub-mid-thaw race
+
+The thaw cron holds the per-VM lock during each stage. If the user cancels their sub mid-thaw:
+- Stripe webhook for `subscription.deleted` tries to update the row, but doesn't need the lock (it's just metadata writes).
+- The downstream cron (`vm-lifecycle` past_due Pass 3 in 7-day grace) eventually sets `health_status='suspended'`.
+- Then the archive cron archives the new VM (which has just-restored data).
+- Then the freeze cron freezes again after 3-day grace.
+
+Net: the user gets a brief active VM, then gets re-frozen along the normal path. **No mid-thaw abort logic needed.** The cost is ~5 days of Linode billing for a paid-then-immediately-cancelled customer. Bounded and rare; not worth the complexity of aborting in-flight.
+
+### 17.7 Stubs (gbrain-dependent verifications)
+
+Three places where the Phase 4 cron has "code that will need verification once snapshot_brain ships":
+
+1. **brain.pglite tar extract** (Stage 3, step 10). The extract is a standard `tar xzf` — code works. But verifying that gbrain correctly auto-loads the restored data dir requires a real archive produced by `snapshot_brain` (not yet shipped). Until then, the extract code path is correct-by-construction but unverified end-to-end.
+2. **`put_page` + `get_page` round-trip** (Stage 3, step 13). Cooper's standard verification. Will work the moment gbrain MCP responds — already-proven mechanism from our 2026-05-16 vm-050 work.
+3. **`source_manifest_version` defaulting** (§17.4 gap calc). Manifest.json schema includes the field, but if an archive was produced by a future gbrain `snapshot_brain` that doesn't populate it, we fall back to "treat as gap=∞ → full reconcile." Defensive.
+
+These are NOT throw-stubs (like Phase 2's `callSnapshotBrain`). They're code that runs, but Cooper's directive "stub it like Phase 2 stubs" applies to the brain-specific verification — we don't ASSERT that gbrain loaded the data successfully, just that it responded to `/health=200`. The full snapshot_brain↔restore round-trip verification (write data, snapshot, restore, read same data) is a post-Esmeralda integration test.
+
+### 17.8 Failure mode matrix (new for thaw)
+
+| Failure | Detection | Recovery |
+|---|---|---|
+| Linode provision fails | linodeProvider throws | Revert state to `thaw_pending`. Next tick retries. Alert after 3 consecutive failures (operator investigates Linode account quota / region capacity). |
+| Cloud-init never callbacks | `cloud_init_callback_consumed_at` stays null for >20 min after `thaw_requested_at` | Stuck-state recovery (§17.5) catches via timestamp comparison. Eventually times out → P0 alert. |
+| R2 download fails | `getObject` throws | Stage 3 aborts; lock released; state stays `thawing_provisioned`; next tick retries. After 3 failures, P0 alert (R2 outage or corrupted archive). |
+| Decryption fails (sha256 mismatch or auth-tag failure) | `decrypt` throws `DecryptError`; sha256 verify fails on inner blobs | P0 alert ("archive corrupt for user X"). Halt this row. Do NOT auto-retry — corrupt archive can't be auto-fixed. Operator investigates: maybe an older generation in R2 (we keep 3) is valid; thaw from there. |
+| Outer tar parse fails | `buildOuterTar` inverse fails | Same as decryption fail. P0 alert. |
+| gbrain won't start after restore | `/health` never returns 200 within 60s poll | Try journal grep for the underlying error. Revert state to `'thawing_provisioned'` for re-attempt. After 3 attempts: P0 alert. |
+| Terminal CAS UPDATE fails | Supabase write error | This IS reverse-zombie territory like freeze — Linode + restored data are correct, DB still says `thawing_provisioned`. P0 alert with manual-fix SQL embedded. |
+
+### 17.9 Cron schedule + concurrency
+
+**Schedule**: `*/5 * * * *` (every 5 min). Latency from webhook to active VM: ~5-10 min worst case.
+
+**Concurrency caps**:
+- `MAX_THAW_PROVISIONS_PER_RUN = 1` — provisioning is the slow step (~3-5 min). One per cron tick keeps function under maxDuration. Higher throughput available by lowering the cron interval.
+- `MAX_THAW_RESTORES_PER_RUN = 2` — restore is fast (~30s); can do a couple per run.
+- Both bounded so a run completes in ≤120s wall-clock even under worst-case Linode latency.
+
+`maxDuration = 800` (Vercel Pro cap). Allows one slow provision + a couple restores + recovery passes.
+
+### 17.10 vercel.json entry
+
+Adding to the schedule list:
+
+```json
+{
+  "path": "/api/cron/vm-thaw",
+  "schedule": "*/5 * * * *"
+}
+```
+
+Until archives exist (which requires gbrain shipping `snapshot_brain`), the candidate query returns empty and every cron tick is a no-op. Safe to wire from day one — no destructive operations gate on data we don't have.
+
+### 17.11 What this completes
+
+After Phase 4 ships and gbrain ships `snapshot_brain`:
+- Full freeze→thaw lifecycle: archive (every 6h) → freeze (eligible after grace) → thaw (on resub).
+- `$1,479/mo leak` from 2026-05-15 is structurally closed.
+- New cancellations enter the pipeline → fresh archives → frozen → resub thaws back.
+
+The vm-freeze-v2 build-out is complete.
+
+---
