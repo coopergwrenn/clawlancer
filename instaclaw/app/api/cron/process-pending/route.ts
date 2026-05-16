@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { assignVMWithSSHCheck } from "@/lib/ssh";
+import { assignOrProvisionUserVm } from "@/lib/createUserVM";
 import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -273,56 +273,85 @@ export async function GET(req: NextRequest) {
         .update({ deployment_lock_at: null })
         .eq("id", o.user_id);
 
-      const vm = await assignVMWithSSHCheck(o.user_id);
-      if (!vm) break; // pool empty — bail, retry next cycle
-
+      // ── Phase 1B-1: wrapper gates on CLOUD_INIT_ONDEMAND_ENABLED ──
+      // Throws on permanent errors (missing pending_users / missing
+      // telegram_bot_*) and transient errors (Linode rate-limit). Caller's
+      // try/catch normalizes both to "no result this cycle, retry next".
+      let assignResult: Awaited<ReturnType<typeof assignOrProvisionUserVm>> = null;
       try {
-        const configRes = await fetch(
-          `${process.env.NEXTAUTH_URL}/api/vm/configure`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
-            },
-            body: JSON.stringify({ userId: o.user_id }),
-          }
-        );
-        if (configRes.ok) {
-          pass0Recovered++;
-          logger.info("Pass 0: orphan recovered", {
-            route: "cron/process-pending",
-            userId: o.user_id,
-            vmId: vm.id,
-          });
-          if (email !== "(unknown)") {
-            try {
-              await sendVMReadyEmail(
-                email,
-                `${process.env.NEXTAUTH_URL}/dashboard`
-              );
-            } catch (emailErr) {
-              logger.warn("Pass 0: VM ready email failed (non-fatal)", {
-                route: "cron/process-pending",
-                userId: o.user_id,
-                error: String(emailErr),
-              });
-            }
-          }
-        } else {
-          logger.error("Pass 0: configure returned non-OK", {
-            route: "cron/process-pending",
-            userId: o.user_id,
-            vmId: vm.id,
-            status: configRes.status,
-          });
-        }
-      } catch (err) {
-        logger.error("Pass 0: configure call threw", {
-          error: String(err),
+        assignResult = await assignOrProvisionUserVm(o.user_id, { supabase });
+      } catch (assignErr) {
+        logger.error("Pass 0: assignOrProvisionUserVm threw — skipping this orphan, retry next cycle", {
           route: "cron/process-pending",
           userId: o.user_id,
-          vmId: vm.id,
+          error: assignErr instanceof Error ? assignErr.message : String(assignErr),
+        });
+        continue;
+      }
+      if (!assignResult) break; // pool empty — bail, retry next cycle
+
+      if (assignResult.path === "pool") {
+        // Pool path: call /api/vm/configure to SSH-personalize the VM.
+        try {
+          const configRes = await fetch(
+            `${process.env.NEXTAUTH_URL}/api/vm/configure`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+              },
+              body: JSON.stringify({ userId: o.user_id }),
+            }
+          );
+          if (configRes.ok) {
+            pass0Recovered++;
+            logger.info("Pass 0: orphan recovered (pool path)", {
+              route: "cron/process-pending",
+              userId: o.user_id,
+              vmId: assignResult.vmId,
+            });
+            if (email !== "(unknown)") {
+              try {
+                await sendVMReadyEmail(
+                  email,
+                  `${process.env.NEXTAUTH_URL}/dashboard`
+                );
+              } catch (emailErr) {
+                logger.warn("Pass 0: VM ready email failed (non-fatal)", {
+                  route: "cron/process-pending",
+                  userId: o.user_id,
+                  error: String(emailErr),
+                });
+              }
+            }
+          } else {
+            logger.error("Pass 0: configure returned non-OK", {
+              route: "cron/process-pending",
+              userId: o.user_id,
+              vmId: assignResult.vmId,
+              status: configRes.status,
+            });
+          }
+        } catch (err) {
+          logger.error("Pass 0: configure call threw", {
+            error: String(err),
+            route: "cron/process-pending",
+            userId: o.user_id,
+            vmId: assignResult.vmId,
+          });
+        }
+      } else {
+        // Cloud-init path: setup.sh handles configure on-VM; cloud-init-callback
+        // marks the row healthy when done. No fetch /api/vm/configure here.
+        // VM-ready email deferred until the cloud-init-callback email enhancement
+        // ships (Phase 1B-1 follow-up).
+        pass0Recovered++;
+        logger.info("Pass 0: orphan recovered (cloud-init path — provisioning)", {
+          route: "cron/process-pending",
+          userId: o.user_id,
+          vmId: assignResult.vmId,
+          ipAddress: assignResult.ipAddress,
         });
       }
     }
@@ -367,41 +396,60 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      // Try to assign a VM (with SSH pre-check to avoid dead VMs)
-      const vm = await assignVMWithSSHCheck(p.user_id);
-
-      if (!vm) break; // No more VMs available
-
-      // Trigger VM configuration
+      // ── Phase 1B-1: wrapper gates on CLOUD_INIT_ONDEMAND_ENABLED ──
+      let assignResult: Awaited<ReturnType<typeof assignOrProvisionUserVm>> = null;
       try {
-        const configRes = await fetch(
-          `${process.env.NEXTAUTH_URL}/api/vm/configure`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
-            },
-            body: JSON.stringify({ userId: p.user_id }),
-          }
-        );
+        assignResult = await assignOrProvisionUserVm(p.user_id, { supabase });
+      } catch (assignErr) {
+        logger.error("Pass 1: assignOrProvisionUserVm threw — skipping this user, retry next cycle", {
+          route: "cron/process-pending",
+          userId: p.user_id,
+          error: assignErr instanceof Error ? assignErr.message : String(assignErr),
+        });
+        continue;
+      }
+      if (!assignResult) break; // No more VMs available (pool empty)
 
-        if (configRes.ok) {
-          // Send notification email
-          const userEmail = (p as Record<string, unknown>).instaclaw_users as {
-            email: string;
-          };
-          if (userEmail?.email) {
-            await sendVMReadyEmail(
-              userEmail.email,
-              `${process.env.NEXTAUTH_URL}/dashboard`,
-              p.telegram_bot_username ?? undefined
-            );
+      if (assignResult.path === "pool") {
+        // Pool path: trigger configure + send VM-ready email
+        try {
+          const configRes = await fetch(
+            `${process.env.NEXTAUTH_URL}/api/vm/configure`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+              },
+              body: JSON.stringify({ userId: p.user_id }),
+            }
+          );
+          if (configRes.ok) {
+            const userEmail = (p as Record<string, unknown>).instaclaw_users as {
+              email: string;
+            };
+            if (userEmail?.email) {
+              await sendVMReadyEmail(
+                userEmail.email,
+                `${process.env.NEXTAUTH_URL}/dashboard`,
+                p.telegram_bot_username ?? undefined
+              );
+            }
+            assigned++;
           }
-          assigned++;
+        } catch (err) {
+          logger.error("Failed to configure VM for user", { error: String(err), route: "cron/process-pending", userId: p.user_id });
         }
-      } catch (err) {
-        logger.error("Failed to configure VM for user", { error: String(err), route: "cron/process-pending", userId: p.user_id });
+      } else {
+        // Cloud-init path: setup.sh handles configure on-VM. VM-ready email
+        // deferred to cloud-init-callback enhancement (Phase 1B-1 follow-up).
+        assigned++;
+        logger.info("Pass 1: VM provisioning via cloud-init", {
+          route: "cron/process-pending",
+          userId: p.user_id,
+          vmId: assignResult.vmId,
+          ipAddress: assignResult.ipAddress,
+        });
       }
     }
   }

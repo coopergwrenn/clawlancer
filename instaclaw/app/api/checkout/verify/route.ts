@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getStripe } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
-import { assignVMWithSSHCheck } from "@/lib/ssh";
+import { assignOrProvisionUserVm } from "@/lib/createUserVM";
 import { logger } from "@/lib/logger";
 
 // Configure now runs inline (not via after()) so we need enough time
@@ -109,10 +109,23 @@ export async function POST(req: NextRequest) {
       .update({ deployment_lock_at: new Date().toISOString() })
       .eq("id", userId);
 
-    // Try to assign a VM (with SSH pre-check to avoid dead VMs)
-    const vm = await assignVMWithSSHCheck(userId);
+    // ── Phase 1B-1: assignment goes through assignOrProvisionUserVm. ──
+    // See lib/createUserVM.ts for the flag-gated branching contract. Throws
+    // on permanent (missing pending_users) and transient (Linode rate-limit)
+    // errors; caller's try/catch normalizes both to "no_vms" outcome.
+    let assignResult: Awaited<ReturnType<typeof assignOrProvisionUserVm>> = null;
+    try {
+      assignResult = await assignOrProvisionUserVm(userId, { supabase });
+    } catch (assignErr) {
+      logger.error("checkout/verify: assignOrProvisionUserVm threw", {
+        route: "checkout/verify",
+        userId,
+        error: assignErr instanceof Error ? assignErr.message : String(assignErr),
+      });
+      // assignResult stays null → returns vmAssigned:false below.
+    }
 
-    if (!vm) {
+    if (!assignResult) {
       logger.warn("No VMs available", {
         route: "checkout/verify",
         userId,
@@ -125,47 +138,63 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // VM assigned — trigger configuration inline (NOT via after()).
-    // Using after() was the root cause of stuck deployments: Vercel can
-    // freeze/kill the function before after() executes, leaving the user
-    // permanently stuck. The configure endpoint has its own 180s maxDuration
-    // and idempotency guards, so calling it inline is safe.
+    // Path-specific post-assign:
+    //   - pool: trigger /api/vm/configure inline (per pre-Phase-1B-1 behavior)
+    //   - cloud-init: setup.sh handles configure on-VM; just log success.
+    //     UI polls /api/vm/status for gateway_url; ~3-5 min until ready.
     let configured = false;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const configRes = await fetch(`${process.env.NEXTAUTH_URL}/api/vm/configure`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
-          },
-          body: JSON.stringify({ userId }),
-        });
-        if (configRes.ok) {
-          configured = true;
-          break;
+    if (assignResult.path === "pool") {
+      // Pool path — same retry pattern as before.
+      // Using after() was the root cause of stuck deployments: Vercel can
+      // freeze/kill the function before after() executes, leaving the user
+      // permanently stuck. The configure endpoint has its own 180s maxDuration
+      // and idempotency guards, so calling it inline is safe.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const configRes = await fetch(`${process.env.NEXTAUTH_URL}/api/vm/configure`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+            },
+            body: JSON.stringify({ userId }),
+          });
+          if (configRes.ok) {
+            configured = true;
+            break;
+          }
+          logger.warn("VM configure returned non-OK, retrying", {
+            route: "checkout/verify",
+            userId,
+            attempt,
+            status: configRes.status,
+          });
+        } catch (err) {
+          logger.error("VM configure failed", {
+            error: String(err),
+            route: "checkout/verify",
+            userId,
+            attempt,
+          });
         }
-        logger.warn("VM configure returned non-OK, retrying", {
-          route: "checkout/verify",
-          userId,
-          attempt,
-          status: configRes.status,
-        });
-      } catch (err) {
-        logger.error("VM configure failed", {
-          error: String(err),
-          route: "checkout/verify",
-          userId,
-          attempt,
-        });
+        if (attempt < 2) await new Promise(r => setTimeout(r, 5000));
       }
-      if (attempt < 2) await new Promise(r => setTimeout(r, 5000));
+    } else {
+      // cloud-init path: setup.sh runs on the VM (~3-5 min). No /api/vm/configure
+      // call here. UI's /deploying page polls /api/vm/status for gateway_url.
+      configured = false; // configure hasn't completed yet — that's expected
+      logger.info("checkout/verify: cloud-init VM provisioning (configure deferred to setup.sh)", {
+        route: "checkout/verify",
+        userId,
+        vmId: assignResult.vmId,
+      });
     }
 
     logger.info("Checkout verified and VM assigned", {
       route: "checkout/verify",
       userId,
-      vmId: vm.id,
+      vmId: assignResult.vmId,
+      path: assignResult.path,
       tier,
       apiMode,
       configured,
@@ -175,7 +204,7 @@ export async function POST(req: NextRequest) {
       verified: true,
       status: "paid",
       vmAssigned: true,
-      vmId: vm.id,
+      vmId: assignResult.vmId,
     });
   } catch (err) {
     logger.error("Checkout verification error", {

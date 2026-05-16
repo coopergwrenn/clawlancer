@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getStripe, tierFromPriceId } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
-import { assignVMWithSSHCheck, checkDuplicateIP, wipeVMForNextUser, stopGateway, restartGateway, auditVMConfig } from "@/lib/ssh";
+import { checkDuplicateIP, wipeVMForNextUser, stopGateway, restartGateway, auditVMConfig } from "@/lib/ssh";
+import { assignOrProvisionUserVm } from "@/lib/createUserVM";
 import { VM_MANIFEST } from "@/lib/vm-manifest";
 import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialEndingEmail, sendAdminAlertEmail, sendVMReadyEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
@@ -465,95 +466,150 @@ async function processEvent(event: any) {
       // Letting the webhook proceed as a safety net ensures users don't get stuck
       // if the verify endpoint's configure call fails silently.
 
-      // Try to assign a VM (with SSH pre-check to avoid dead VMs)
-      const vm = await assignVMWithSSHCheck(userId);
+      // ── Phase 1B-1 (2026-05-15): assignment goes through assignOrProvisionUserVm. ──
+      // Gated by env CLOUD_INIT_ONDEMAND_ENABLED:
+      //   - off (default): pool path — assignVMWithSSHCheck claims a status='ready'
+      //     pool VM, then we call /api/vm/configure to SSH-personalize it. Same as
+      //     pre-Phase-1B-1 behavior.
+      //   - on:             cloud-init path — createUserVM provisions a fresh per-
+      //     user VM via the cloud-init bootstrap+fetch path. setup.sh on the VM
+      //     handles configure (no fetch call here); cloud-init-callback marks
+      //     the row 'assigned'+'healthy' when done (~3-5 min later). UI's
+      //     /deploying page polls /api/vm/status for gateway_url as today.
+      //
+      // Wrapper throws on permanent errors (missing pending_users / missing
+      // telegram_bot_*) and on transient errors (Linode rate-limit). Caller's
+      // try/catch normalizes both to "treat as no-VM" → sendPendingEmail. The
+      // log message preserves the root cause for operator forensics.
+      let assignResult: Awaited<ReturnType<typeof assignOrProvisionUserVm>> = null;
+      try {
+        assignResult = await assignOrProvisionUserVm(userId, { supabase });
+      } catch (assignErr) {
+        logger.error("assignOrProvisionUserVm threw — falling back to pending email", {
+          route: "billing/webhook",
+          userId,
+          error: assignErr instanceof Error ? assignErr.message : String(assignErr),
+        });
+        // assignResult stays null → falls through to the pending-email path below.
+      }
 
-      if (vm) {
-        // Post-assignment verification: confirm the VM is actually assigned to this user.
-        // Guards against race conditions where two webhooks assign concurrently.
-        const { data: assignedVm } = await supabase
-          .from("instaclaw_vms")
-          .select("assigned_to")
-          .eq("id", vm.id)
-          .single();
-
-        if (assignedVm?.assigned_to !== userId) {
-          logger.error("CRITICAL: VM ownership mismatch after assignment — aborting configure", {
-            route: "billing/webhook",
-            userId,
-            vmId: vm.id,
-            actualOwner: assignedVm?.assigned_to,
-          });
-          sendAdminAlertEmail(
-            "CRITICAL: VM Assignment Race Condition in Webhook",
-            `VM ${vm.id} was assigned to user ${userId} but is now owned by ${assignedVm?.assigned_to}.\n\nConfigure was NOT triggered. User ${userId} needs manual intervention.`
-          ).catch(() => {});
-          break;
+      if (assignResult) {
+        // Pool-path race-condition guard: re-fetch and confirm assigned_to=userId.
+        // Cloud-init path doesn't need this guard — Phase A of createUserVM does
+        // an atomic INSERT with assigned_to=userId; there's no later writer that
+        // could change ownership.
+        if (assignResult.path === "pool") {
+          const { data: assignedVm } = await supabase
+            .from("instaclaw_vms")
+            .select("assigned_to")
+            .eq("id", assignResult.vmId)
+            .single();
+          if (assignedVm?.assigned_to !== userId) {
+            logger.error("CRITICAL: VM ownership mismatch after assignment — aborting configure", {
+              route: "billing/webhook",
+              userId,
+              vmId: assignResult.vmId,
+              actualOwner: assignedVm?.assigned_to,
+            });
+            sendAdminAlertEmail(
+              "CRITICAL: VM Assignment Race Condition in Webhook",
+              `VM ${assignResult.vmId} was assigned to user ${userId} but is now owned by ${assignedVm?.assigned_to}.\n\nConfigure was NOT triggered. User ${userId} needs manual intervention.`
+            ).catch(() => {});
+            break;
+          }
         }
 
         // Provision Bankr wallet for the agent (non-fatal — agent works without it).
+        // Both paths: IP is known at this point so Bankr wallet creation works.
         // Idempotency key `instaclaw_user_${userId}` means webhook retries return
         // the SAME wallet rather than minting duplicates.
         await provisionBankrWallet({
-          vmId: vm.id,
+          vmId: assignResult.vmId,
           userId,
-          vmIp: vm.ip_address,
+          vmIp: assignResult.ipAddress,
           idempotencyKey: `instaclaw_user_${userId}`,
         });
 
-        // VM assigned — trigger configuration with retry.
-        // This runs inside after() so the Stripe response is already sent.
-        // Retry up to 2 times (3 attempts total) with 5s backoff to handle
-        // transient fetch failures that would otherwise leave the user stuck.
-        let configured = false;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            const configRes = await fetch(
-              `${process.env.NEXTAUTH_URL}/api/vm/configure`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
-                },
-                body: JSON.stringify({ userId }),
+        if (assignResult.path === "pool") {
+          // ── Pool path: synchronous configure via SSH ──
+          // This runs inside after() so the Stripe response is already sent.
+          // Retry up to 2 times (3 attempts total) with 5s backoff to handle
+          // transient fetch failures that would otherwise leave the user stuck.
+          let configured = false;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              const configRes = await fetch(
+                `${process.env.NEXTAUTH_URL}/api/vm/configure`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "X-Admin-Key": process.env.ADMIN_API_KEY ?? "",
+                  },
+                  body: JSON.stringify({ userId }),
+                }
+              );
+              if (configRes.ok) {
+                configured = true;
+                break;
               }
-            );
-            if (configRes.ok) {
-              configured = true;
-              break;
+              logger.warn("VM configure returned non-OK, retrying", {
+                route: "billing/webhook",
+                userId,
+                attempt,
+                status: configRes.status,
+              });
+            } catch (err) {
+              logger.error("VM configure call failed", {
+                error: String(err),
+                route: "billing/webhook",
+                userId,
+                attempt,
+              });
             }
-            logger.warn("VM configure returned non-OK, retrying", {
-              route: "billing/webhook",
-              userId,
-              attempt,
-              status: configRes.status,
-            });
-          } catch (err) {
-            logger.error("VM configure call failed", {
-              error: String(err),
-              route: "billing/webhook",
-              userId,
-              attempt,
-            });
+            if (attempt < 2) await new Promise(r => setTimeout(r, 5000));
           }
-          if (attempt < 2) await new Promise(r => setTimeout(r, 5000));
-        }
-        if (!configured) {
-          logger.error("VM configure failed after 3 attempts — process-pending cron will retry", {
+          if (!configured) {
+            logger.error("VM configure failed after 3 attempts — process-pending cron will retry", {
+              route: "billing/webhook",
+              userId,
+              vmId: assignResult.vmId,
+            });
+            // Alert admin so they can investigate
+            sendAdminAlertEmail(
+              "VM Configure Failed After Checkout",
+              `VM ${assignResult.vmId} (user: ${userId}) failed to configure after 3 webhook attempts.\n\nThe process-pending cron will retry automatically, but this may indicate an infrastructure issue.`
+            ).catch(() => {});
+          }
+        } else {
+          // ── Cloud-init path: setup.sh on the VM handles configure. ──
+          // No fetch /api/vm/configure call. The cloud-init bootstrap will:
+          //   1. curl /api/vm/cloud-init-config for the per-user tarball
+          //   2. extract + run setup.sh (which writes openclaw.json, .env,
+          //      auth-profiles.json, workspace files, partner overlays,
+          //      starts gateway)
+          //   3. POST /api/vm/cloud-init-callback to mark status='assigned'+
+          //      health_status='healthy'
+          // Total time: ~3-5 min from now. The UI's /deploying page polls
+          // /api/vm/status for gateway_url and lands the user on the
+          // dashboard automatically when it appears.
+          //
+          // sendVMReadyEmail is intentionally NOT called here — the email
+          // should fire from the cloud-init-callback when the VM is actually
+          // ready. That email enhancement is a follow-up; for Phase 1B-1
+          // Cooper-self-test, polling the dashboard is sufficient.
+          logger.info("cloud-init: VM provisioning, no configure call", {
             route: "billing/webhook",
             userId,
-            vmId: vm.id,
+            vmId: assignResult.vmId,
+            ipAddress: assignResult.ipAddress,
           });
-          // Alert admin so they can investigate
-          sendAdminAlertEmail(
-            "VM Configure Failed After Checkout",
-            `VM ${vm.id} (user: ${userId}) failed to configure after 3 webhook attempts.\n\nThe process-pending cron will retry automatically, but this may indicate an infrastructure issue.`
-          ).catch(() => {});
         }
       }
-      // If no VM available, send pending email
-      if (!vm) {
+      // If no VM provisioned (pool empty OR wrapper threw OR cloud-init failed),
+      // send pending email so the user knows we'll retry. process-pending cron
+      // handles the retry every 10 min.
+      if (!assignResult) {
         const { data: user } = await supabase
           .from("instaclaw_users")
           .select("email")

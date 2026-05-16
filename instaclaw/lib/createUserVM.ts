@@ -41,6 +41,7 @@ import { getSupabase } from "./supabase";
 import { linodeProvider } from "./providers/linode";
 import { buildCloudInitUserdata } from "./cloud-init-userdata";
 import { getNextVmNumber, formatVmName } from "./hetzner";
+import { assignVMWithSSHCheck } from "./ssh";
 import { logger } from "./logger";
 import type { CloudProvider, ServerResult } from "./providers/types";
 
@@ -402,5 +403,207 @@ export async function createUserVM(
     ipAddress: ready.ip,
     configToken,
     callbackToken,
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// §6. assignOrProvisionUserVm — the wire-up wrapper (Phase 1B-1)
+// ════════════════════════════════════════════════════════════════════════
+//
+// Single switch between the legacy pool path (assignVMWithSSHCheck) and
+// the new cloud-init path (createUserVM). Gated by the env-var
+// CLOUD_INIT_ONDEMAND_ENABLED. Three callsites use this wrapper:
+//   - app/api/billing/webhook/route.ts:469 (Stripe checkout-completed)
+//   - app/api/cron/process-pending/route.ts:276 (Pass 0 orphan recovery)
+//   - app/api/cron/process-pending/route.ts:371 (Pass 1 pending retry)
+//
+// Both paths return a uniform shape; callers branch on `path` to decide
+// whether to call /api/vm/configure (pool) or skip (cloud-init —
+// setup.sh handles configure on-VM).
+//
+// Error semantics (Cooper's directive 2026-05-15):
+//   - Pool empty                 → return null (existing contract).
+//   - Cloud-init config errors   → THROW clear error (missing
+//     pending_users, missing telegram_bot_*). Caller wraps in try/catch;
+//     log it loudly, treat as "send pending email + retry next cycle".
+//   - Cloud-init transient errors (Linode rate-limit, etc.) → THROW.
+//     Same caller treatment.
+//
+// The throw vs null split is deliberate: null is the "no VM, try later"
+// signal that callers' existing fallback path already handles. Throws
+// signal "something is wrong upstream" and surface in logs for operator
+// attention — but the caller's try/catch keeps the webhook/cron from
+// crashing on permanent state corruption.
+
+/**
+ * Subset of the pool-VM row shape returned by `assignVMWithSSHCheck`'s
+ * underlying RPC. Cloud-init path constructs an equivalent partial in
+ * memory so callers can use the same `result.vm.*` field access.
+ */
+export interface AssignedVmShape {
+  id: string;
+  ip_address: string;
+  /** Optional — present when known; SSH-side bot username for VM-ready emails. */
+  telegram_bot_username?: string;
+  /** Pool RPC may include other columns; permissive to avoid coupling. */
+  [key: string]: unknown;
+}
+
+export interface AssignOrProvisionResult {
+  vmId: string;
+  ipAddress: string;
+  /** Discriminator. Callers branch to decide whether to run /api/vm/configure. */
+  path: "pool" | "cloud-init";
+  /** Partial row. Always includes id + ip_address; pool path includes everything
+   *  the underlying RPC returned; cloud-init includes telegram_bot_username. */
+  vm: AssignedVmShape;
+}
+
+export interface AssignOrProvisionDeps {
+  supabase?: SupabaseLike;
+  /** Inject for tests: substitute the pool-assign function. */
+  poolAssignFn?: (userId: string) => Promise<AssignedVmShape | null>;
+  /** Inject for tests: substitute createUserVM. */
+  createUserVMFn?: typeof createUserVM;
+  /** Inject for tests: override the env-var flag value. When undefined,
+   *  reads process.env.CLOUD_INIT_ONDEMAND_ENABLED at call time. */
+  flagOverride?: string;
+  /** Override the canonical NEXTAUTH_URL source (passed through to
+   *  createUserVM when cloud-init path takes over). */
+  nextauthUrl?: string;
+}
+
+export async function assignOrProvisionUserVm(
+  userId: string,
+  deps: AssignOrProvisionDeps = {},
+): Promise<AssignOrProvisionResult | null> {
+  const supabase = deps.supabase ?? getSupabase();
+  const poolAssignFn = deps.poolAssignFn ?? assignVMWithSSHCheck;
+  const createUserVMFn = deps.createUserVMFn ?? createUserVM;
+  const flag = deps.flagOverride ?? process.env.CLOUD_INIT_ONDEMAND_ENABLED ?? "";
+  const useCloudInit = flag === "true";
+
+  if (!useCloudInit) {
+    // ── Pool path (legacy, default) ─────────────────────────────────
+    // assignVMWithSSHCheck atomically claims a status='ready' VM via the
+    // `instaclaw_assign_vm` Postgres RPC. Returns null when pool is empty
+    // — caller falls back to sendPendingEmail + process-pending retries.
+    const vm = await poolAssignFn(userId);
+    if (!vm) return null;
+    return {
+      vmId: String(vm.id),
+      ipAddress: String(vm.ip_address),
+      path: "pool",
+      vm,
+    };
+  }
+
+  // ── Cloud-init path (Phase 1B-1) ─────────────────────────────────────
+  //
+  // Reads per-user config from pending_users + instaclaw_users, mirrors
+  // the fallback chain at /api/vm/configure:206-217, calls createUserVM.
+  //
+  // Validation errors (missing pending_users row, missing telegram_bot_*)
+  // throw with a clear pointer to the upstream signup-flow bug. Linode/DB
+  // errors inside createUserVM also throw — caller's try/catch normalizes
+  // both classes to a "send pending email + retry" outcome.
+  const { data: pending, error: pendingErr } = await supabase
+    .from("instaclaw_pending_users")
+    .select(
+      "tier, api_mode, api_key, default_model, telegram_bot_token, telegram_bot_username, discord_bot_token",
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (pendingErr) {
+    throw new Error(
+      `assignOrProvisionUserVm: pending_users lookup failed for userId=${userId}: ` +
+        pendingErr.message,
+    );
+  }
+  if (!pending) {
+    throw new Error(
+      `assignOrProvisionUserVm: no pending_users row for userId=${userId}. ` +
+        "User reached the VM-provision trigger (Stripe webhook or process-pending) " +
+        "but pending_users was never populated. Check /api/onboarding/save and " +
+        "the signup wizard's bot-capture step. process-pending will retry next cycle.",
+    );
+  }
+
+  // Cooper directive 2026-05-15: telegram_bot_* are user-supplied and have
+  // no sane fallback. Throw a clear error rather than silently provisioning
+  // a VM that won't work. process-pending's next cycle retries — by then
+  // the user has hopefully completed the signup wizard's bot-capture step.
+  if (!pending.telegram_bot_token) {
+    throw new Error(
+      `assignOrProvisionUserVm: pending_users.telegram_bot_token NULL for userId=${userId}. ` +
+        "No sane fallback. User must complete bot-token capture (signup wizard step). " +
+        "process-pending will retry next cycle once the value is persisted.",
+    );
+  }
+  if (!pending.telegram_bot_username) {
+    throw new Error(
+      `assignOrProvisionUserVm: pending_users.telegram_bot_username NULL for userId=${userId}.`,
+    );
+  }
+
+  const { data: user, error: userErr } = await supabase
+    .from("instaclaw_users")
+    .select("partner, user_timezone")
+    .eq("id", userId)
+    .maybeSingle();
+  if (userErr) {
+    // Soft failure — log + continue with undefined partner/timezone.
+    // user row should always exist by the time we reach here (signup
+    // creates it before checkout), but defensive against a transient
+    // PostgREST error.
+    logger.warn("assignOrProvisionUserVm: instaclaw_users lookup error (proceeding with nulls)", {
+      route: "lib/createUserVM",
+      userId,
+      error: userErr.message,
+    });
+  }
+
+  // Fallback chain mirrors /api/vm/configure:206-217 byte-for-byte.
+  const tier = pending.tier ?? "starter";
+  const apiMode = (pending.api_mode ?? "all_inclusive") as "all_inclusive" | "byok";
+  const defaultModel = pending.default_model ?? "anthropic/claude-sonnet-4-6";
+
+  logger.info("assignOrProvisionUserVm: cloud-init path", {
+    route: "lib/createUserVM",
+    userId,
+    tier,
+    apiMode,
+    partner: user?.partner ?? null,
+    hasDiscord: !!pending.discord_bot_token,
+  });
+
+  const result = await createUserVMFn(
+    {
+      userId,
+      tier,
+      apiMode,
+      apiKey: pending.api_key,
+      defaultModel,
+      telegramBotToken: pending.telegram_bot_token,
+      telegramBotUsername: pending.telegram_bot_username,
+      discordBotToken: pending.discord_bot_token,
+      partner: user?.partner ?? null,
+      userTimezone: user?.user_timezone ?? null,
+    },
+    deps.nextauthUrl ? { nextauthUrl: deps.nextauthUrl } : undefined,
+  );
+
+  return {
+    vmId: result.vmId,
+    ipAddress: result.ipAddress,
+    path: "cloud-init",
+    vm: {
+      id: result.vmId,
+      ip_address: result.ipAddress,
+      telegram_bot_username: pending.telegram_bot_username,
+    },
   };
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import { assignVMWithSSHCheck } from "@/lib/ssh";
+import { assignOrProvisionUserVm } from "@/lib/createUserVM";
 import { logger } from "@/lib/logger";
 import { logOnboardingEvent } from "@/lib/onboarding-events";
 import { provisionBankrWallet } from "@/lib/bankr-provision";
@@ -114,15 +114,34 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Try to assign (with SSH pre-check to avoid dead VMs)
-    const vm = await assignVMWithSSHCheck(targetUserId);
+    // ── Phase 1B-1: assignment goes through assignOrProvisionUserVm. ──
+    // Flag-gated branch between pool path (legacy) and cloud-init path
+    // (per CLOUD_INIT_ONDEMAND_ENABLED). Throws on permanent / transient
+    // errors; caller's try/catch normalizes both to "no VMs available".
+    let assignResult: Awaited<ReturnType<typeof assignOrProvisionUserVm>> = null;
+    try {
+      assignResult = await assignOrProvisionUserVm(targetUserId, { supabase });
+    } catch (assignErr) {
+      logger.error("vm/assign: assignOrProvisionUserVm threw — returning queued response", {
+        route: "vm/assign",
+        userId: targetUserId,
+        error: assignErr instanceof Error ? assignErr.message : String(assignErr),
+      });
+      // assignResult stays null → returns assigned:false below.
+    }
 
-    if (!vm) {
+    if (!assignResult) {
       return NextResponse.json({
         assigned: false,
         message: "No VMs available. You've been added to the queue.",
       });
     }
+
+    // Keep the `vm` name alive for the downstream code that references it
+    // (initial credits, onboarding event, Bankr provision). The compatibility
+    // shim is intentional — minimizes the diff and risk in this load-bearing
+    // WLD mini-app path.
+    const vm = assignResult.vm;
 
     // Set initial credits if provided (from WLD delegation) — use RPC for audit trail
     try {
