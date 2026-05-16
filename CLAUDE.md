@@ -2512,6 +2512,44 @@ Counterintuitively, `pkill -KILL -f 'gbrain.*serve'` (SIGKILL, used by `instacla
 
 **Detection rule**: grep for `systemctl.*stop.*gbrain` and `stopGateway` in any PR diff. Each callsite must have a code comment explaining why the post-stop state is acceptable (e.g., "wipe is the next step; corrupted state will be deleted anyway"). Empirical-test: vm-050 with the BROKEN preserved tarball at `~/.gbrain/brain.pglite.BROKEN-20260516T152817/` is the reference repro if anyone doubts this.
 
+### Rule 55 — Marketing Copy Must Pass the Viral Copy Playbook
+
+**Keyword activation (non-negotiable).** When Cooper types any of these in any terminal — reconciler, changelog, ops, edge, this one, any other:
+
+- `/viral`
+- `/launch`
+- `/post`
+
+…the terminal MUST immediately:
+
+1. Read `instaclaw/docs/viral-copy-playbook.md` end-to-end (all 15 sections). No skimming. No partial loads.
+2. Load §9 Receipts Library into active context.
+3. Enter "copy mode" per the playbook's §0.1 protocol.
+4. Ask Cooper the three setup questions (what / which account / goal).
+5. Generate 3-5 hook candidates with bold claims and weapons-check scores BEFORE writing a full post.
+6. Score every line of the eventual draft on §4 weapons check (invention novelty 1-10 + copy intensity 1-10; cut any line below 6/6).
+7. Run §10 banned-phrase scan. Any hit is a hard reject.
+8. Present the final post + a "cut notes" section listing rejected candidates and why.
+9. Exit copy mode only when Cooper says `/done` or switches topics.
+
+**Banned in copy mode (and generally):**
+
+- Posting copy that has not been scored against the weapons check.
+- Posting copy that contains §10 banned phrases (`powerful`, `seamless`, `intelligent`, `excited to announce`, `introducing`, `stay tuned`, `TL;DR`, `🚀🎉✨🔥💪`, hashtags, "we built a platform", "save time / streamline workflows", "next-gen / enterprise-grade", etc.).
+- Generating any post longer than 1 tweet without an explicit bold claim in line 1 that passes the §3.1 three-question test (what / why matters / why has this never existed before).
+- Voice-first iteration ("does this sound like Cooper?") before positioning-first iteration ("does this make a claim nobody else could make?").
+- Skipping the §9 receipts-library citation. Every public claim must trace to a §9 entry or be explicitly flagged as aspirational.
+
+**Cross-terminal applicability.** This rule applies to ANY terminal in the repo, not just one that normally writes copy. If a reconciler terminal sees Cooper type `/viral`, it pauses reconciler work and routes through this rule. If a changelog terminal sees `/launch`, same. The playbook contains all the context any terminal needs to deliver world-class copy without prior calibration.
+
+**Identity-strip test.** If a draft post can be screenshotted with `@instaclaws`, `@coopwrenn`, and `instaclaw.io` removed and the copy still reads as plausibly about ANY AI agent product, the copy is generic. Reject and rewrite from §3.
+
+**Why this rule exists.** Between 2026-05-13 and 2026-05-15, ~7 post drafts cycled through workshopping with Cooper before one landed. Every failure had the same root cause: voice-first iteration without the playbook's three-question test, weapons check, or counter-positioning. The playbook short-circuits that — expected iteration count with copy mode is **1-2**; without it, **7+**.
+
+**Detection.** A marketing draft surfaced to Cooper that fails any of the above checks is a Rule 55 violation. Cooper can reject without explanation; the draft goes back through the checklist. Repeat violations from the same terminal suggest the playbook wasn't read — re-read from §0.
+
+**Exit.** Cooper exits copy mode via `/done` or by switching topics. The terminal must confirm exit: "exiting copy mode. saved draft: [path]." After exit, normal terminal behavior resumes.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
