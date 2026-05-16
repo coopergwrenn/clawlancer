@@ -1,6 +1,6 @@
 # Multi-Terminal Git Worktree Setup
 
-**Status:** Recommended workflow (proposed 2026-05-16-PM)
+**Status:** **TESTED 2026-05-16-EOD** — empirical verification on this machine passed every step. See §11 for findings. Setup script at `instaclaw/scripts/setup-worktree.sh`.
 **Motivated by:** 2026-05-16 incident where multiple Claude Code terminals operating in the same working tree caused commit cross-contamination — IR's Phase 2 freeze-v2 files (route.ts + middleware.ts) were swept into the gbrain terminal's `fix(install-gbrain.sh)` commit because both terminals shared the same `.git/index` and the staging state interleaved unpredictably.
 
 ## 1. The problem in one paragraph
@@ -221,3 +221,86 @@ If a session breaks the rule and the agent realizes mid-work, the agent should r
 4. **For "/loop" or autonomous Claude Code sessions running on cron — should they get their own dedicated worktrees too?** If they only run a few minutes and never concurrently with humans, sharing main might be acceptable. If they overlap with active human-driven terminals, they need isolation.
 
 These are answerable when the basic worktree pattern is in steady use for a week.
+
+## 11. Empirical verification — 2026-05-16-EOD
+
+This session created a real worktree at `/Users/cooperwrenn/wild-west-bots-freeze-v2-test/` (branch `feat/worktree-setup-test-2026-05-16`) and tested every step end-to-end.
+
+### 11.1 `git worktree add` — works as documented
+
+```
+git worktree add /Users/cooperwrenn/wild-west-bots-freeze-v2-test \
+  -b feat/worktree-setup-test-2026-05-16 origin/main
+```
+
+Created the worktree on a new branch tracking origin/main. `git worktree list` shows it correctly. Sub-second.
+
+### 11.2 Code visibility — all Phase 1-4 files visible
+
+The new worktree sees every file from origin/main, including the freeze-v2 substrate that landed today:
+- `app/api/cron/vm-archive-snapshot/route.ts` (28 KB)
+- `app/api/cron/vm-freeze/route.ts` (27 KB)
+- `app/api/cron/vm-thaw/route.ts` (35 KB)
+- `lib/freeze-encryption.ts`, `lib/r2-storage.ts`, `lib/freeze-v2-thaw-entry.ts`
+
+`.husky/pre-commit` is also tracked in git (`.husky` is `040000 tree` under HEAD), so each worktree has its own copy at `<worktree>/.husky/pre-commit`.
+
+### 11.3 Env files — copy works as documented
+
+```
+cp .env.local .env.ssh-key  # from main, into new worktree's instaclaw/
+chmod 600 .env.ssh-key
+```
+
+File perms preserved. **Note:** copy creates a SNAPSHOT — if main's `.env.local` updates after this, the worktree's copy is stale. Symlinks are a future improvement (open question §10 + setup script `--symlink-env` flag).
+
+### 11.4 `npm install` — fast in practice
+
+Wall-clock: **16 seconds** for 1055 packages. `node_modules` size: **943 MB**. Faster than the doc's earlier estimate of 30 seconds because npm's content-addressable cache at `~/.npm/_cacache/` is warm from the main worktree's earlier installs.
+
+### 11.5 `tsc --noEmit` — clean
+
+11 seconds, zero errors. The full TypeScript project compiles correctly from the worktree, confirming `node_modules` + `tsconfig.json` resolution work as expected.
+
+### 11.6 Encryption self-test — works end-to-end
+
+```
+selfTest OK key_id=v1
+10MB roundtrip: OK (overhead=28 bytes)
+```
+
+`lib/freeze-encryption.ts` round-trip + `crypto` module + Node ESM imports all resolve correctly. The freeze-v2 substrate works from a worktree.
+
+### 11.7 Git hook firing — **WORKS from worktrees** (corrects mid-audit panic)
+
+Initial reading of git internals suggested hooks would NOT fire from worktrees: `$GIT_DIR` for a worktree is `.git/worktrees/<name>/`, which doesn't have its own `hooks/` subdir.
+
+**Empirical reality: `git rev-parse --git-path hooks` from a worktree returns the SHARED main repo's `.git/hooks/` directory.** So hooks DO fire from worktrees. The shared `.git/hooks/` lookup is the fallback when the worktree-specific GIT_DIR doesn't have hooks/.
+
+Proof: committed a synthetic whitespace change to `lib/vm-manifest.ts` from the test worktree. The husky pre-commit hook (gated on `vm-manifest.ts` in `git diff --cached`) FIRED, auto-touched `instaclaw/app/api/cron/reconcile-fleet/route.ts` (per its design), and the commit succeeded with both files modified. Test commit was reset after verification.
+
+Lesson: §7.7 in this doc was correct. Hooks share via the main repo's `.git/hooks/`. Worktree commits get full hook coverage automatically.
+
+### 11.8 Index isolation — verified
+
+`git status` from the new worktree shows only the new worktree's working-tree state. The main worktree's pending edits are invisible. The whole motivation for this setup is empirically confirmed.
+
+### 11.9 Setup script
+
+Steps 1–5 of §3 are now codified in `instaclaw/scripts/setup-worktree.sh`. Usage:
+
+```
+bash instaclaw/scripts/setup-worktree.sh <terminal-name>
+```
+
+Creates `/Users/cooperwrenn/wild-west-bots-<terminal-name>/` on branch `feat/<terminal-name>-<date>`, copies env files, runs `npm install`, prints next-steps. Idempotent: refuses to re-create if dir exists. Vercel-link is offered as a manual follow-up (interactive auth required for first run on a worktree).
+
+### 11.10 Cleanup of the test worktree
+
+After verification this session removes the test worktree:
+```
+git worktree remove /Users/cooperwrenn/wild-west-bots-freeze-v2-test --force
+git branch -d feat/worktree-setup-test-2026-05-16  # safe — never pushed
+```
+
+**The pattern is production-ready. Next Claude Code sessions for non-trivial work should start with `bash instaclaw/scripts/setup-worktree.sh <name>` instead of `cd /Users/cooperwrenn/wild-west-bots/`.**
