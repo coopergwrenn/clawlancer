@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-16
 
-Window: `7305c6b6f6146a47514c21cc6857f695090f9ed5` → `HEAD` (HEAD = `43c607b8`)
+Window: `43c607b82c8a9bf2025c1d9a18beece25f3e7097` → `HEAD` (HEAD = `f7bcaeda`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 43c607b82c8a9bf2025c1d9a18beece25f3e7097 -->
+<!-- LAST_GENERATED_SHA: f7bcaeda280ef0e234a46861dbc6d75057ceec65 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `43c607b8` 2026-05-16 — feat(health-check): disk 80% early-warning alert (Rule 46 phase 1) [1 files] _(ai-assisted)_
-- `9794cc39` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `f7bcaeda` 2026-05-16 — feat(stepGatewayRestart): dynamic cold-boot wait by plugin count (Rule 43) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `ffbf05d4` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `f7bcaeda` 2026-05-16 — feat(stepGatewayRestart): dynamic cold-boot wait by plugin count (Rule 43) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `43c607b8` 2026-05-16 — feat(health-check): disk 80% early-warning alert (Rule 46 phase 1) [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `9794cc39` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `ffbf05d4` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `f7bcaeda` 2026-05-16 — [reconciler, infrastructure, edge] — feat(stepGatewayRestart): dynamic cold-boot wait by plugin count (Rule 43)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `43c607b8` 2026-05-16 — feat(health-check): disk 80% early-warning alert (Rule 46 phase 1)
+- `f7bcaeda` 2026-05-16 — feat(stepGatewayRestart): dynamic cold-boot wait by plugin count (Rule 43)
 
 ## Appendix — every commit (chronological)
 
-- `9794cc39` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `43c607b8` 2026-05-16 — feat(health-check): disk 80% early-warning alert (Rule 46 phase 1) [1 files] _(ai-assisted)_
+- `ffbf05d4` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `f7bcaeda` 2026-05-16 — feat(stepGatewayRestart): dynamic cold-boot wait by plugin count (Rule 43) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
