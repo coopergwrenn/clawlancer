@@ -4070,13 +4070,57 @@ async function stepGatewayRestart(
     await ssh.execCommand(`${DBUS_PREFIX} && systemctl --user start openclaw-gateway`);
   }
 
-  // Verify gateway comes back healthy (up to 120s — wave 1 of the v66→v67
-  // power+pro+starter pass on 2026-04-29 had vm-568 reach "active" + /health
-  // 200 within ~80s and vm-858 even later. 60s caused false-fail PUSH-FAILEDs
-  // on the slower starter-tier VMs even when the underlying upgrade was
-  // healthy. 24 attempts × 5s = 120s.
+  // Rule 43 — Dynamic cold-boot wait scales with plugin count.
+  //
+  // The fixed 120s budget (24 × 5s) was set on 2026-04-29 for the v66→v67
+  // starter/pro/power pass, where vm-568 + vm-858 reached "active" + /health
+  // 200 within ~80s. That budget is sufficient for typical 2-4 plugin VMs but
+  // can false-negative on edge_city VMs with more plugins — vm-901 (~8
+  // plugins) was a documented case where the gateway came up shortly after
+  // the 120s timeout and the cv was held with a "gateway restart failed"
+  // error even though everything actually worked.
+  //
+  // Empirical sample from vm-354 (edge_city, soaked 2026-05-16): 4 plugins
+  // enabled (telegram, brave, anthropic, browser). Other partner cohorts
+  // (matchpool, consensus, dgclaw) may push higher. Formula:
+  //   wait = clamp(120, 30 + plugins * 15, 180)
+  //   - 4 plugins → 120s (24 iter)  — current behavior preserved
+  //   - 6 plugins → 120s (24 iter)
+  //   - 8 plugins → 150s (30 iter)
+  //   - 10+ plugins → 180s (36 iter) — capped to leave headroom inside the
+  //     strict-mode 180s deadline (STRICT_DEADLINE_MS at line 184) and below
+  //     Vercel's 300s function-timeout ceiling.
+  //
+  // Failure mode: if the plugin-count probe fails (jq missing, JSON
+  // malformed, SSH transient), fall back to 24 iterations — exactly the old
+  // behavior. Never worse than what we had.
+  let healthAttempts = 24; // 120s default — matches pre-Rule-43 behavior
+  let pluginCount = 0;
+  try {
+    const pluginRes = await ssh.execCommand(
+      `${DBUS_PREFIX} && jq '[.plugins.entries[]? | select(.enabled == true)] | length' ~/.openclaw/openclaw.json 2>/dev/null`,
+      { execOptions: { timeout: 5_000 } } as any,
+    );
+    const parsed = parseInt((pluginRes.stdout || "0").trim(), 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      pluginCount = parsed;
+      const waitSeconds = Math.min(180, Math.max(120, 30 + pluginCount * 15));
+      healthAttempts = Math.ceil(waitSeconds / 5);
+    }
+  } catch { /* fall back to 24 */ }
+  const waitBudgetSeconds = healthAttempts * 5;
+
+  if (pluginCount > 0) {
+    logger.info("stepGatewayRestart: dynamic wait budget", {
+      route: "reconcileVM",
+      vmId: vm.id,
+      pluginCount,
+      waitBudgetSeconds,
+    });
+  }
+
   let healthy = false;
-  for (let attempt = 0; attempt < 24; attempt++) {
+  for (let attempt = 0; attempt < healthAttempts; attempt++) {
     await new Promise((r) => setTimeout(r, 5000));
     const healthCheck = await ssh.execCommand('curl -sf http://localhost:18789/health 2>/dev/null');
     if (healthCheck.code === 0) {
@@ -4088,13 +4132,19 @@ async function stepGatewayRestart(
   result.gatewayHealthy = healthy;
 
   if (healthy) {
-    result.fixed.push('gateway restarted (verified healthy)');
+    result.fixed.push(
+      pluginCount > 0
+        ? `gateway restarted (verified healthy; budget=${waitBudgetSeconds}s for ${pluginCount} plugins)`
+        : 'gateway restarted (verified healthy)'
+    );
   } else {
     logger.error("Gateway not healthy after reconcile restart — health cron will handle recovery", {
       route: "reconcileVM",
       vmId: vm.id,
+      waitBudgetSeconds,
+      pluginCount,
     });
-    result.errors.push('gateway restart failed: not healthy after 120s');
+    result.errors.push(`gateway restart failed: not healthy after ${waitBudgetSeconds}s (plugins=${pluginCount})`);
   }
 }
 
