@@ -2529,7 +2529,7 @@ Counterintuitively, `pkill -KILL -f 'gbrain.*serve'` (SIGKILL, used by `instacla
 
 **Detection rule**: grep for `systemctl.*stop.*gbrain` and `stopGateway` in any PR diff. Each callsite must have a code comment explaining why the post-stop state is acceptable (e.g., "wipe is the next step; corrupted state will be deleted anyway"). Empirical-test: vm-050 with the BROKEN preserved tarball at `~/.gbrain/brain.pglite.BROKEN-20260516T152817/` is the reference repro if anyone doubts this.
 
-### Rule 55 — Marketing Copy Must Pass the Viral Copy Playbook
+### Rule 55 — Marketing Copy & Launches Must Pass the Viral Playbooks
 
 **Keyword activation (non-negotiable).** When Cooper types any of these in any terminal — reconciler, changelog, ops, edge, this one, any other:
 
@@ -2539,13 +2539,13 @@ Counterintuitively, `pkill -KILL -f 'gbrain.*serve'` (SIGKILL, used by `instacla
 
 …the terminal MUST immediately:
 
-1. Read `instaclaw/docs/viral-copy-playbook.md` end-to-end (all 15 sections). No skimming. No partial loads.
-2. Load §9 Receipts Library into active context.
-3. Enter "copy mode" per the playbook's §0.1 protocol.
+1. Read `instaclaw/docs/viral-copy-playbook.md` end-to-end (all 15 sections) AND `instaclaw/docs/viral-launch-playbook.md` end-to-end (all 10 numbered sections plus §11 maintenance notes). **Both, not either.** No skimming. No partial loads. The Copy Playbook owns LANGUAGE (what you write); the Launch Playbook owns MECHANICS (how you ship). Skipping the Launch Playbook on launch-class posts is the failure mode this two-doc system exists to prevent.
+2. Load Copy Playbook §9 Receipts Library AND Launch Playbook §3.4 Category Library + §5.4 CTA Library into active context. Every claim must trace to a receipt; every category framing must trace to the library or be deliberately appended; every CTA destination must be in the CTA library or deliberately added.
+3. Enter "copy mode" per the Copy Playbook's §0.1 protocol.
 4. Ask Cooper the three setup questions (what / which account / goal).
 5. Generate 3-5 hook candidates with bold claims and weapons-check scores BEFORE writing a full post.
 6. Score every line of the eventual draft on §4 weapons check (invention novelty 1-10 + copy intensity 1-10; cut any line below 6/6).
-7. Run §10 banned-phrase scan. Any hit is a hard reject.
+7. Run Copy Playbook §10 banned-phrase scan. Any hit is a hard reject. **If the request involves shipping a launch** (product launch, partnership, token milestone, major manifest event — any creative artifact involving video or a coordinated first-hour rollout), additionally walk Launch Playbook §9 Launch Readiness Checklist. Any unchecked box delays the launch. Ship-weak is worse than ship-late — a launch that dies at 50K views burns the topic for future attempts.
 8. Present the final post + a "cut notes" section listing rejected candidates and why.
 9. Exit copy mode only when Cooper says `/done` or switches topics.
 
