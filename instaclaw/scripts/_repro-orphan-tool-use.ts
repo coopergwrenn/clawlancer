@@ -1,6 +1,41 @@
 /**
  * Gate 0 repro test for the orphan tool_use session-recovery bug.
  *
+ * ── 2026-05-16 v2 bug fix — session-resolver rewrite ────────────────────────
+ * First run on 2026-05-16 at 21:57 UTC FAILED at "waiting for trigger message"
+ * because the v1 pre-flight used `ls -t ~/.openclaw/agents/main/sessions/
+ * *.jsonl | head -1` to pick the "active" session — i.e., most-recently-
+ * modified file. That heuristic is wrong on a real OpenClaw VM: many jsonls
+ * get touched by background activity (strip-thinking.py, periodic compaction,
+ * checkpointing) without being the live conversation. v1 selected a stale
+ * May-12 session (`e83ad08e-...jsonl`) and watched it for growth. Cooper's
+ * trigger message actually routed to a different (live Telegram-keyed)
+ * session jsonl that v1 was NOT watching, so the 180s timeout fired and the
+ * script crashed before reaching SIGTERM.
+ *
+ * Approach 2 fix: don't pin a single file at pre-flight. Instead:
+ *   1. Capture `baselineSizes: Map<path, bytes>` for ALL jsonls at pre-flight
+ *      (one `find -printf '%s %p\n'` call, cheap).
+ *   2. When the operator sends a message, poll every ~800ms and find any
+ *      file that has grown OR that didn't exist at baseline (rotation).
+ *   3. For each grown/new file, read ONLY the new bytes via `tail -c +N`
+ *      and check for a `role: "user"` event. If found, that's the active
+ *      session — pin to it for the SIGTERM + watch phases.
+ *   4. Repeat at follow-up: re-capture baseline sizes just before prompting
+ *      for the follow-up, then re-discover. This handles OpenClaw rotating
+ *      the session during the SIGTERM-and-restart window (also observed
+ *      tonight: a new file `2026-05-16T22-01-32-398Z_c607cf0c-...jsonl`
+ *      appeared during the failure window).
+ *
+ * Residual limitations:
+ *   - Multiple simultaneous Telegram channels could race; the first growth
+ *     wins. Recoverable by re-running.
+ *   - If the agent rotates BETWEEN the user trigger message and the
+ *     subsequent toolCall write (unusual; OpenClaw writes both in the same
+ *     turn), we pin to the trigger file and miss the toolCall in the new
+ *     file. Recoverable by re-running.
+ *
+ * ── Original purpose ─────────────────────────────────────────────────────────
  * Determines whether OpenClaw 2026.4.26's existing transcript repair
  * (`repairSessionFileIfNeeded` at compaction-successor-transcript-CFukhZtt.js:2060,
  * `repairToolUseResultPairing` at session-transcript-repair-D9T_omS-.js:266)
@@ -398,7 +433,39 @@ function findLastUserMessageIdx(events: SessionEvent[]): number {
 }
 
 // ── Phase helpers ────────────────────────────────────────────────────────────
-async function preflight(ssh: Client, vm: VMState, args: Args): Promise<{ pid: number; jsonlPath: string; preEvents: SessionEvent[]; gbrainActive: boolean }> {
+const SESSIONS_DIR = "~/.openclaw/agents/main/sessions";
+
+/**
+ * Capture sizes of ALL session jsonls in one cheap SSH call. Excludes the
+ * `.trajectory.jsonl` and `.checkpoint.*.jsonl` shapes — those are trace logs
+ * and rotation snapshots, not the live message log.
+ *
+ * Single `find -printf` is constant cost regardless of how many session files
+ * exist. On vm-050 (~30 files) this is ~1s. Replaces the v1 `ls -t | head -1`
+ * heuristic that picked stale files when many jsonls were touched by
+ * background crons.
+ */
+async function captureJsonlSizes(ssh: Client): Promise<Map<string, number>> {
+  const r = await sshExec(
+    ssh,
+    `find ${SESSIONS_DIR} -maxdepth 1 -name '*.jsonl' ` +
+      `-not -name '*.trajectory.jsonl' -not -name '*.checkpoint.*.jsonl' ` +
+      `-printf '%s %p\\n' 2>/dev/null`,
+    10_000,
+  );
+  const sizes = new Map<string, number>();
+  for (const line of r.stdout.split("\n")) {
+    const m = line.match(/^(\d+)\s+(.+)$/);
+    if (m) sizes.set(m[2], parseInt(m[1], 10));
+  }
+  return sizes;
+}
+
+async function preflight(
+  ssh: Client,
+  vm: VMState,
+  args: Args,
+): Promise<{ pid: number; baselineSizes: Map<string, number>; gbrainActive: boolean }> {
   logEvent("preflight.start", `vm=${vm.name} ip=${vm.ip_address}`);
 
   // 1. Gateway active + healthy
@@ -433,42 +500,107 @@ async function preflight(ssh: Client, vm: VMState, args: Args): Promise<{ pid: n
   if (!pid || Number.isNaN(pid)) throw new Error(`Pre-flight failed: invalid gateway PID "${pidOut}"`);
   log(`  gateway PID=${pid}`);
 
-  // 5. Active session jsonl (most recently modified, excluding .trajectory.jsonl)
-  const jsonlLs = (
-    await sshExec(
-      ssh,
-      "ls -t ~/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | grep -v trajectory | head -1",
-    )
-  ).stdout.trim();
-  if (!jsonlLs) throw new Error(`Pre-flight failed: no session jsonl files in ~/.openclaw/agents/main/sessions/`);
-  const jsonlPath = jsonlLs;
-  log(`  active session jsonl=${jsonlPath}`);
+  // 5. Capture baseline sizes for ALL session jsonls (v2 fix: replaces the
+  //    broken "most-recently-modified" single-file pin from v1).
+  const baselineSizes = await captureJsonlSizes(ssh);
+  if (baselineSizes.size === 0) {
+    throw new Error(`Pre-flight failed: no session jsonl files in ${SESSIONS_DIR}/`);
+  }
+  log(`  baseline captured: ${baselineSizes.size} session jsonl(s) (total ` +
+      `${[...baselineSizes.values()].reduce((a, b) => a + b, 0)} bytes)`);
 
-  // 6. Snapshot the jsonl (last 200 lines is plenty for context)
-  const jsonlTail = (await sshExec(ssh, `tail -n 200 "${jsonlPath}"`)).stdout;
-  const preEvents = parseEvents(jsonlTail);
-  log(`  pre-test event count (last 200 lines)=${preEvents.length}`);
-
-  // 7. Snapshot to local artifacts
+  // 6. Snapshot to local artifacts
   saveArtifact("pre-state.json", JSON.stringify({
     vm,
     pid,
-    jsonlPath,
-    preEventCount: preEvents.length,
+    sessionJsonlCount: baselineSizes.size,
+    sessionJsonlPaths: [...baselineSizes.keys()],
     activeStatus: active,
     gbrainActive,
     runMode: args.mode,
     runTimestamp: TS_RUN,
   }, null, 2));
-  saveArtifact("pre-jsonl-tail-200.jsonl", jsonlTail);
+  saveArtifact("pre-baseline-sizes.json", JSON.stringify(
+    Object.fromEntries(baselineSizes),
+    null,
+    2,
+  ));
 
   logEvent("preflight.done");
-  return { pid, jsonlPath, preEvents, gbrainActive };
+  return { pid, baselineSizes, gbrainActive };
 }
 
 async function pollFileSize(ssh: Client, path: string): Promise<number> {
   const r = await sshExec(ssh, `stat -c %s "${path}" 2>/dev/null || echo 0`, 5_000);
   return parseInt(r.stdout.trim(), 10) || 0;
+}
+
+/**
+ * Find the active session by watching ALL jsonls for growth (v2 approach 2).
+ *
+ * Polls every ~800ms. A session is "active" if either:
+ *   (a) An existing jsonl (in baselineSizes) grew, AND the new bytes contain
+ *       a `role: "user"` message event.
+ *   (b) A jsonl appeared that didn't exist at baseline (rotation), AND its
+ *       tail contains a `role: "user"` message event.
+ *
+ * Returns the path + the full last-200-events of that file once detected.
+ *
+ * Bandwidth note: per-tick cost is 1 `find -printf` (one SSH round-trip,
+ * cheap) plus 1 `tail -c +N` per grown file (only the NEW bytes — typically
+ * a few KB per turn). Vastly cheaper than reading every file in full.
+ */
+async function findActiveSessionByGrowth(
+  ssh: Client,
+  baselineSizes: Map<string, number>,
+  timeoutMs: number,
+  label: string,
+): Promise<{ jsonlPath: string; events: SessionEvent[] }> {
+  const t0 = Date.now();
+  let pollCount = 0;
+  while (Date.now() - t0 < timeoutMs) {
+    pollCount++;
+    const current = await captureJsonlSizes(ssh);
+
+    // Build candidate list: every file that grew OR is new.
+    const candidates: Array<{ path: string; sizeNow: number; sizeBaseline: number; isNew: boolean }> = [];
+    for (const [path, sizeNow] of current) {
+      const baseline = baselineSizes.get(path);
+      if (baseline === undefined) {
+        candidates.push({ path, sizeNow, sizeBaseline: 0, isNew: true });
+      } else if (sizeNow > baseline) {
+        candidates.push({ path, sizeNow, sizeBaseline: baseline, isNew: false });
+      }
+    }
+
+    // For each candidate, fetch the NEW bytes only (tail -c +(baseline+1))
+    // and parse for a user-role message.
+    for (const c of candidates) {
+      const offset = c.sizeBaseline + 1; // tail -c +N is 1-indexed
+      const newPortion = (
+        await sshExec(ssh, `tail -c +${offset} "${c.path}" 2>/dev/null`, 8_000)
+      ).stdout;
+      const newEvents = parseEvents(newPortion);
+      const hasUserMessage = newEvents.some(
+        (e) => e.type === "message" && e.message?.role === "user",
+      );
+      if (hasUserMessage) {
+        const newOrGrew = c.isNew ? "NEW file" : `grew from ${c.sizeBaseline} to ${c.sizeNow} bytes`;
+        log(`  active session resolved (${label}): ${c.path} (${newOrGrew}, poll #${pollCount})`);
+        const fullTail = (await sshExec(ssh, `tail -n 200 "${c.path}"`, 12_000)).stdout;
+        return { jsonlPath: c.path, events: parseEvents(fullTail) };
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, 800));
+  }
+  throw new Error(
+    `Timeout (${timeoutMs}ms) waiting for ${label}: no session jsonl grew with ` +
+      `a new user message. Either the operator didn't send the message, the ` +
+      `bot is misrouted, or the gateway isn't connected to Telegram. Check ` +
+      `~/.openclaw/openclaw.json channels.telegram.enabled and journalctl for ` +
+      `telegram connection state.`,
+  );
 }
 
 async function waitForJsonlGrowth(
@@ -561,12 +693,20 @@ function classifyResponse(text: string | null, journalText: string): Pick<Verdic
 }
 
 // ── Phase: simulate mode (inject orphan, no SIGTERM) ─────────────────────────
-async function runSimulateMode(ssh: Client, vm: VMState, jsonlPath: string, preEvents: SessionEvent[]): Promise<void> {
-  log("--mode=simulate: not running SIGTERM. Will inject a synthetic orphan into a COPY of the jsonl.");
+async function runSimulateMode(ssh: Client, vm: VMState, baselineSizes: Map<string, number>): Promise<void> {
+  log("--mode=simulate: not running SIGTERM. Will inject a synthetic orphan into a COPY of an existing jsonl.");
   const copyPath = `/tmp/repro-orphan-sim-${TS_RUN}.jsonl`;
 
+  // For simulate mode we just need a representative jsonl to copy. Pick the
+  // largest one from baseline (most content = best parser smoke test). No
+  // need to find the "active" session — simulate mode doesn't touch the VM.
+  const sourceJsonl = [...baselineSizes.entries()]
+    .sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (!sourceJsonl) throw new Error("simulate mode: no jsonl files found to copy");
+  log(`  using ${sourceJsonl} as the simulation source (largest existing jsonl)`);
+
   // Copy the jsonl down locally
-  const fullJsonl = (await sshExec(ssh, `cat "${jsonlPath}"`, 30_000)).stdout;
+  const fullJsonl = (await sshExec(ssh, `cat "${sourceJsonl}"`, 30_000)).stdout;
   writeFileSync(copyPath, fullJsonl);
 
   // Inject a synthetic user → assistant(toolCall) tail
@@ -614,16 +754,20 @@ async function runSimulateMode(ssh: Client, vm: VMState, jsonlPath: string, preE
 }
 
 // ── Phase: dry-run mode (pre-flight only) ────────────────────────────────────
-function runDryRunMode(vm: VMState, jsonlPath: string): void {
+function runDryRunMode(vm: VMState, baselineSizes: Map<string, number>): void {
   log("--mode=dry-run: pre-flight only. No destructive operations.");
   log("");
   log("If --mode=real were used, the script would:");
   log(`  1. Prompt operator to send to @${vm.telegram_bot_username || "<bot>"}: "${SUGGESTED_TRIGGER_MESSAGE}"`);
-  log(`  2. Watch ${jsonlPath} for a new user message → assistant(toolCall) sequence`);
-  log(`  3. SIGTERM the gateway upon toolCall detection`);
-  log(`  4. Wait up to ${TIMEOUTS.gatewayRestart / 1000}s for systemd restart + /health=200`);
-  log(`  5. Prompt operator to send: "${SUGGESTED_FOLLOWUP_MESSAGE}"`);
-  log(`  6. Watch for the next assistant response, classify against bug markers`);
+  log(`  2. Watch ALL ${baselineSizes.size} session jsonl(s) for growth + a new user message`);
+  log(`     (v2 fix: replaces the broken "most-recently-modified" heuristic of v1)`);
+  log(`  3. Once active jsonl is identified, wait for assistant toolCall block to appear`);
+  log(`  4. SIGTERM the gateway upon toolCall detection`);
+  log(`  5. Wait up to ${TIMEOUTS.gatewayRestart / 1000}s for systemd restart + /health=200`);
+  log(`  6. Re-capture jsonl baseline (handles rotation during restart window)`);
+  log(`  7. Prompt operator to send: "${SUGGESTED_FOLLOWUP_MESSAGE}"`);
+  log(`  8. Re-discover active jsonl via growth (may be same file, may be a new rotation)`);
+  log(`  9. Wait for the next assistant response, classify against bug markers`);
   log("");
   log("Pre-flight passed. Re-run with --mode=real --i-understand-this-sigterms-the-gateway when ready.");
 
@@ -644,7 +788,12 @@ function runDryRunMode(vm: VMState, jsonlPath: string): void {
 }
 
 // ── Phase: real mode (the actual gate test) ──────────────────────────────────
-async function runRealMode(ssh: Client, vm: VMState, pid: number, jsonlPath: string, preEvents: SessionEvent[]): Promise<void> {
+async function runRealMode(
+  ssh: Client,
+  vm: VMState,
+  pid: number,
+  baselineSizes: Map<string, number>,
+): Promise<void> {
   log("--mode=real: will SIGTERM the gateway. Forensics will be saved regardless of outcome.");
 
   // Capture journal cursor for post-test diff
@@ -658,24 +807,27 @@ async function runRealMode(ssh: Client, vm: VMState, pid: number, jsonlPath: str
   log(`  journal cursor (post-test diff anchor): ${journalCursor ? "captured" : "NOT captured — full-journal fallback"}`);
 
   // ── Phase A: operator sends initial trigger ──
+  // v2 fix: don't pin to a single jsonl up front. Watch ALL jsonls for growth
+  // and let the operator's actual Telegram message dictate which jsonl is
+  // "active" for this test. This handles the multi-channel routing case AND
+  // the "stale-file picked by ls -t" failure mode of v1.
   operatorPrompt(
     `Send the following message via Telegram to @${vm.telegram_bot_username || "<bot>"}:\n\n` +
       `    ${SUGGESTED_TRIGGER_MESSAGE}\n\n` +
-      `Send it now. The script will wait up to ${TIMEOUTS.initialMessageWait / 1000}s and watch the session jsonl.`,
+      `Send it now. The script will wait up to ${TIMEOUTS.initialMessageWait / 1000}s, ` +
+      `watching ALL ${baselineSizes.size} session jsonl(s) for growth.`,
   );
   logEvent("waiting-for-trigger-message");
 
-  // Watch for a NEW user message after preEvents
-  const baselineUserCount = preEvents.filter((e) => e.type === "message" && e.message?.role === "user").length;
-  const eventsAfterUser = await waitForJsonlGrowth(
+  // v2 resolver: find the active session by watching all jsonls for growth.
+  const { jsonlPath, events: eventsAfterUser } = await findActiveSessionByGrowth(
     ssh,
-    jsonlPath,
-    await pollFileSize(ssh, jsonlPath),
+    baselineSizes,
     TIMEOUTS.initialMessageWait,
-    (events) => events.filter((e) => e.type === "message" && e.message?.role === "user").length > baselineUserCount,
-    "new user message",
+    "trigger user message",
   );
-  logEvent("trigger-message-received");
+  logEvent("trigger-message-received", `active jsonl=${jsonlPath}`);
+  saveArtifact("active-jsonl-trigger.json", JSON.stringify({ jsonlPath, eventCount: eventsAfterUser.length }, null, 2));
 
   // ── Phase B: wait for toolCall to appear ──
   log(`  waiting up to ${TIMEOUTS.toolCallAppear / 1000}s for OpenClaw to start tool execution...`);
@@ -721,40 +873,61 @@ async function runRealMode(ssh: Client, vm: VMState, pid: number, jsonlPath: str
   log(`  restart journal captured (${restartJournal.length} bytes). Repair markers seen: [${repairMarkerHits.join(", ") || "none"}]`);
 
   // ── Phase E: operator sends follow-up ──
+  // v2 fix: recapture jsonl baseline NOW (post-restart). OpenClaw can rotate
+  // the session during the SIGTERM-and-restart window (observed 2026-05-16
+  // failure: new file `2026-05-16T22-01-32-398Z_...jsonl` appeared during
+  // the same window). Re-discovering the active session via growth handles
+  // both cases:
+  //   - no rotation → same jsonlPath as Phase A
+  //   - rotation    → a NEW jsonl appears + receives the follow-up
+  const postRestartBaseline = await captureJsonlSizes(ssh);
+  log(`  post-restart baseline captured: ${postRestartBaseline.size} session jsonl(s)`);
+  saveArtifact("post-restart-baseline-sizes.json", JSON.stringify(
+    Object.fromEntries(postRestartBaseline),
+    null,
+    2,
+  ));
+
   operatorPrompt(
     `Gateway is back up. Send a follow-up message via Telegram to @${vm.telegram_bot_username || "<bot>"}:\n\n` +
       `    ${SUGGESTED_FOLLOWUP_MESSAGE}\n\n` +
-      `Any short message works. The script will wait up to ${TIMEOUTS.followupMessageWait / 1000}s and look for the bot's reply in the session jsonl.`,
+      `Any short message works. The script will wait up to ${TIMEOUTS.followupMessageWait / 1000}s ` +
+      `and re-discover the active jsonl by growth (handles session rotations).`,
   );
   logEvent("waiting-for-followup-message");
 
-  const sizeAtFollowupStart = await pollFileSize(ssh, jsonlPath);
-  const followupSeenEvents = await waitForJsonlGrowth(
+  const { jsonlPath: followupJsonlPath, events: followupSeenEvents } = await findActiveSessionByGrowth(
     ssh,
-    jsonlPath,
-    sizeAtFollowupStart,
+    postRestartBaseline,
     TIMEOUTS.followupMessageWait,
-    (events) => {
-      const lastUserIdx = findLastUserMessageIdx(events);
-      // Need a NEW user message we haven't seen before
-      return lastUserIdx > -1 && events.length > eventsAfterToolCall.length;
-    },
     "follow-up user message",
   );
-  logEvent("followup-message-received");
+  const rotated = followupJsonlPath !== jsonlPath;
+  logEvent(
+    "followup-message-received",
+    rotated
+      ? `ROTATED: new jsonl=${followupJsonlPath} (was ${jsonlPath})`
+      : `same jsonl=${followupJsonlPath}`,
+  );
+  saveArtifact("active-jsonl-followup.json", JSON.stringify({
+    followupJsonlPath,
+    triggerJsonlPath: jsonlPath,
+    rotated,
+  }, null, 2));
   const followupUserIdx = findLastUserMessageIdx(followupSeenEvents);
 
   // ── Phase F: wait for assistant response ──
-  log(`  waiting up to ${TIMEOUTS.responseAppear / 1000}s for the assistant response...`);
+  // Watch the post-restart jsonl (which may differ from the pre-SIGTERM one
+  // if rotation happened). The assistant response will land in THIS file.
+  log(`  waiting up to ${TIMEOUTS.responseAppear / 1000}s for the assistant response on ${followupJsonlPath}...`);
   const responseEvents = await waitForJsonlGrowth(
     ssh,
-    jsonlPath,
-    await pollFileSize(ssh, jsonlPath),
+    followupJsonlPath,
+    await pollFileSize(ssh, followupJsonlPath),
     TIMEOUTS.responseAppear,
     (events) => {
       const idx = findLastUserMessageIdx(events);
       if (idx <= followupUserIdx) return false;
-      // OR — same user idx but assistant followed
       return findAssistantTextResponse(events, followupUserIdx) != null;
     },
     "assistant response",
@@ -763,8 +936,12 @@ async function runRealMode(ssh: Client, vm: VMState, pid: number, jsonlPath: str
     return null;
   });
 
-  // Snapshot final jsonl
-  saveArtifact("post-restart-jsonl-tail-200.jsonl", (await sshExec(ssh, `tail -n 200 "${jsonlPath}"`, 15_000)).stdout);
+  // Snapshot final jsonl (both pre-SIGTERM and post-restart files, in case
+  // rotation happened — we want forensics on both).
+  saveArtifact("post-restart-jsonl-tail-200.jsonl", (await sshExec(ssh, `tail -n 200 "${followupJsonlPath}"`, 15_000)).stdout);
+  if (rotated) {
+    saveArtifact("pre-rotation-jsonl-tail-200.jsonl", (await sshExec(ssh, `tail -n 200 "${jsonlPath}"`, 15_000)).stdout);
+  }
 
   const responseText = responseEvents ? findAssistantTextResponse(responseEvents, followupUserIdx) : null;
   logEvent("response-captured", responseText ? `${responseText.length} chars` : "NONE");
@@ -865,18 +1042,18 @@ async function main(): Promise<void> {
 
   const ssh = await sshConnect(vm.ip_address);
   try {
-    const { pid, jsonlPath, preEvents } = await preflight(ssh, vm, args);
+    const { pid, baselineSizes } = await preflight(ssh, vm, args);
 
     if (args.mode === "dry-run") {
-      runDryRunMode(vm, jsonlPath);
+      runDryRunMode(vm, baselineSizes);
       return;
     }
     if (args.mode === "simulate") {
-      await runSimulateMode(ssh, vm, jsonlPath, preEvents);
+      await runSimulateMode(ssh, vm, baselineSizes);
       return;
     }
     if (args.mode === "real") {
-      await runRealMode(ssh, vm, pid, jsonlPath, preEvents);
+      await runRealMode(ssh, vm, pid, baselineSizes);
       return;
     }
   } finally {
