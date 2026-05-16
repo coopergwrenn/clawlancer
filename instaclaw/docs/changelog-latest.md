@@ -1,34 +1,20 @@
 # Changelog — generated 2026-05-16
 
-Window: `4ca1860d22b38e0e1671aa81012a59a8bc7f8f26` → `HEAD` (HEAD = `48af5075`)
+Window: `48af5075f23662c3da55edb04dfe56371196ae0e` → `HEAD` (HEAD = `f933a96e`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 48af5075f23662c3da55edb04dfe56371196ae0e -->
+<!-- LAST_GENERATED_SHA: f933a96e3bf799367eb62cc870ce426ac679ecd5 -->
 
 ## Summary
 
-- **Manifest version bumps:** 1
-  - Range: v101 → v101
-- **Reconciler / manifest:** 1
+- **Manifest version bumps:** 0
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
-
-## Manifest version timeline
-
-### v101 — 2026-05-16 — `48af5075`
-
-feat(v101): startup orphan tool_use repair — companion fix to v100
-
-> When SIGTERM lands during an in-flight tool_use turn — between the
-> assistant writing a toolCall and the matching toolResult being persisted
-> — the session jsonl is left with an orphan toolCall. Anthropic's API
-> rejects the next turn with 400 "tool_use_id: did not find matching
-> tool_use_id", which OpenClaw's error path surfaces as
-> "Something went wrong, use /new" to the customer.
 
 ## What changed for users
 
@@ -36,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `48af5075` 2026-05-16 — feat(v101): startup orphan tool_use repair — companion fix to v100 [5 files] _(**MANIFEST v101**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `5a0c19dd` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `d421deb8` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `f933a96e` 2026-05-16 — feat(viral-playbooks): add Launch Playbook + update Rule 55 to load both [2 files] _(ai-assisted)_
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `48af5075` 2026-05-16 — feat(v101): startup orphan tool_use repair — companion fix to v100 [5 files] _(**MANIFEST v101**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+_(none)_
 
 ### Infrastructure (0)
 
@@ -57,23 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `5a0c19dd` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `48af5075` 2026-05-16 — [reconciler, infrastructure, docs] — feat(v101): startup orphan tool_use repair — companion fix to v100
+- `d421deb8` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `f933a96e` 2026-05-16 — feat(viral-playbooks): add Launch Playbook + update Rule 55 to load both [2 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `48af5075` 2026-05-16 — feat(v101): startup orphan tool_use repair — companion fix to v100
+- `f933a96e` 2026-05-16 — feat(viral-playbooks): add Launch Playbook + update Rule 55 to load both
 
 ## Appendix — every commit (chronological)
 
-- `5a0c19dd` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `48af5075` 2026-05-16 — feat(v101): startup orphan tool_use repair — companion fix to v100 [5 files] _(**MANIFEST v101**; multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `d421deb8` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `f933a96e` 2026-05-16 — feat(viral-playbooks): add Launch Playbook + update Rule 55 to load both [2 files] _(ai-assisted)_
