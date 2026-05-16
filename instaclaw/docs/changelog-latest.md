@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-16
 
-Window: `d0c88022a92e2bf41d5104b00c94083b5c7e588e` → `HEAD` (HEAD = `11cb741f`)
+Window: `11cb741f70fd38b5b344d3d534235610704f4452` → `HEAD` (HEAD = `224086ff`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 11cb741f70fd38b5b344d3d534235610704f4452 -->
+<!-- LAST_GENERATED_SHA: 224086ff4f019dc7e337cfdd654f492b278c8b2d -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `4bb26328` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `11cb741f` 2026-05-16 — docs(prd): freeze-v2 pivot to Path 2 (dumpDataDir-based hot snapshot) [1 files] _(ai-assisted)_
+- `224086ff` 2026-05-16 — feat(freeze-v2): Phase 1 substrate — migration + R2 + AES-GCM encryption [7 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `688d4db2` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `224086ff` 2026-05-16 — feat(freeze-v2): Phase 1 substrate — migration + R2 + AES-GCM encryption [7 files] _(multi: [infrastructure, docs]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -43,18 +43,23 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `4bb26328` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `11cb741f` 2026-05-16 — docs(prd): freeze-v2 pivot to Path 2 (dumpDataDir-based hot snapshot) [1 files] _(ai-assisted)_
+- `688d4db2` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `224086ff` 2026-05-16 — [infrastructure, docs] — feat(freeze-v2): Phase 1 substrate — migration + R2 + AES-GCM encryption
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `11cb741f` 2026-05-16 — docs(prd): freeze-v2 pivot to Path 2 (dumpDataDir-based hot snapshot)
+- `224086ff` 2026-05-16 — feat(freeze-v2): Phase 1 substrate — migration + R2 + AES-GCM encryption
 
 ## Appendix — every commit (chronological)
 
-- `4bb26328` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `11cb741f` 2026-05-16 — docs(prd): freeze-v2 pivot to Path 2 (dumpDataDir-based hot snapshot) [1 files] _(ai-assisted)_
+- `688d4db2` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `224086ff` 2026-05-16 — feat(freeze-v2): Phase 1 substrate — migration + R2 + AES-GCM encryption [7 files] _(multi: [infrastructure, docs]; ai-assisted)_
