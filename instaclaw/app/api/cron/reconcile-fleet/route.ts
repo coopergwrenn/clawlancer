@@ -1021,17 +1021,24 @@ const PERSISTENT_HOLD_THRESHOLD = 5;
  *
  * Dedup key: `stale_bundle:${remote_sha}`. Keyed on the GitHub-raw SHA
  * (not the runtime SHA, not a timestamp) so a single bad deploy fires
- * exactly one email regardless of how many cron ticks observe the same
- * stale bundle. A NEW deploy that produces a different remote SHA will
- * fire a fresh alert if it's also stale.
+ * one email per dedup-window regardless of how many cron ticks observe
+ * the same stale bundle. A NEW deploy that produces a different remote
+ * SHA will fire a fresh alert if it's also stale.
  *
- * 6h cooldown matches Rule 37 / Rule 49 — long enough to suppress the
- * cron-tick spam, short enough that a stale-bundle situation lasting
- * past a working-day boundary will re-alert.
+ * 30-min cooldown (was 6h, narrowed 2026-05-16). Background: the
+ * 2026-05-16 INC-stale-bundle outage ran ~23h with only 3 deduped
+ * alerts (5:54, 11:57, 19:27 UTC) — they got drowned in baseline
+ * heartbeat_staleness_sweep volume (~28/day) and went unnoticed
+ * overnight. Structural failures don't auto-resolve and deserve a
+ * sustaining drumbeat: 30min ⇒ ~10 alerts per 5h outage window, hard
+ * to ignore. Per docs/incidents/2026-05-16-stale-bundle-23h-cron-halt.md
+ * §7 Option A. Cost: ~10 emails per outage (extremely rare event class
+ * — 2 documented occurrences in fleet history).
  *
  * Fire-and-forget; all DB writes wrapped in try/catch so a transient
  * supabase hiccup never blocks the halt path.
  */
+const STALE_BUNDLE_DEDUP_WINDOW_MS = 30 * 60 * 1000; // 30 min — see docstring above
 async function sendStaleBundleAlertDeduped(verdict: {
   runtime_version: number;
   remote_version: number | null;
@@ -1041,7 +1048,7 @@ async function sendStaleBundleAlertDeduped(verdict: {
 }): Promise<void> {
   const supabase = getSupabase();
   const alertKey = `stale_bundle:${verdict.remote_sha.slice(0, 16)}`;
-  const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+  const cutoffIso = new Date(Date.now() - STALE_BUNDLE_DEDUP_WINDOW_MS).toISOString();
 
   // Dedup check
   let recentlySent = false;
@@ -1050,7 +1057,7 @@ async function sendStaleBundleAlertDeduped(verdict: {
       .from("instaclaw_admin_alert_log")
       .select("id")
       .eq("alert_key", alertKey)
-      .gte("sent_at", sixHoursAgo)
+      .gte("sent_at", cutoffIso)
       .limit(1);
     recentlySent = (data?.length ?? 0) > 0;
   } catch {
@@ -1058,7 +1065,7 @@ async function sendStaleBundleAlertDeduped(verdict: {
     // (better to over-alert than miss the first signal).
   }
   if (recentlySent) {
-    logger.info("stale-bundle alert suppressed (6h dedup)", {
+    logger.info("stale-bundle alert suppressed (30-min dedup)", {
       route: "cron/reconcile-fleet",
       remote_sha: verdict.remote_sha.slice(0, 16),
     });
