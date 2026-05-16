@@ -1,16 +1,16 @@
 # Changelog — generated 2026-05-16
 
-Window: `f7bcaeda280ef0e234a46861dbc6d75057ceec65` → `HEAD` (HEAD = `df7fb9f9`)
+Window: `df7fb9f9b4342474dafa9821d431f990be10a480` → `HEAD` (HEAD = `3c51ffb8`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: df7fb9f9b4342474dafa9821d431f990be10a480 -->
+<!-- LAST_GENERATED_SHA: 3c51ffb85336c7c757cb4019ee4e460b0f4b0ee8 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
-- **Feature (user-facing):** 0
+- **Infrastructure:** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,12 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-_None in this window._
+- `3c51ffb8` 2026-05-16 — fix(/token): align page claims with tokenomics thread before launch [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `df7fb9f9` 2026-05-16 — docs+tools(coverage): fleet HTTP-sidecar coverage script (Rule 27) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `64a9b146` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `d9bd77f9` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,13 +30,13 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
-
-- `df7fb9f9` 2026-05-16 — docs+tools(coverage): fleet HTTP-sidecar coverage script (Rule 27) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
-
-### Feature (user-facing) (0)
+### Infrastructure (0)
 
 _(none)_
+
+### Feature (user-facing) (1)
+
+- `3c51ffb8` 2026-05-16 — fix(/token): align page claims with tokenomics thread before launch [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,21 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `64a9b146` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `df7fb9f9` 2026-05-16 — [infrastructure, edge] — docs+tools(coverage): fleet HTTP-sidecar coverage script (Rule 27)
+- `d9bd77f9` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `df7fb9f9` 2026-05-16 — docs+tools(coverage): fleet HTTP-sidecar coverage script (Rule 27)
+- `3c51ffb8` 2026-05-16 — fix(/token): align page claims with tokenomics thread before launch
 
 ## Appendix — every commit (chronological)
 
-- `64a9b146` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `df7fb9f9` 2026-05-16 — docs+tools(coverage): fleet HTTP-sidecar coverage script (Rule 27) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `d9bd77f9` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `3c51ffb8` 2026-05-16 — fix(/token): align page claims with tokenomics thread before launch [1 files] _(ai-assisted)_
