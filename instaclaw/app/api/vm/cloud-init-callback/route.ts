@@ -175,7 +175,53 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const supabase = getSupabase();
 
-  // ── 3. Atomic claim-and-invalidate + state transition ──
+  // ── 3. Pre-claim read for ip_address (immutable post-Phase-C) ──
+  //
+  // The atomic UPDATE below sets `gateway_url = http://{ip}:18789` for
+  // pool-path parity (configureOpenClaw constructs the same shape at
+  // lib/ssh.ts:7599-7601). To compute that URL we need ip_address from
+  // the row. ip_address is set ONCE by createUserVM Phase C UPDATE and
+  // never mutated thereafter, so reading it before the claim is race-safe:
+  //   - The pre-read is token-gated (same auth as the claim).
+  //   - ip_address can't be missing on a row that reached the bootstrap+
+  //     fetch handshake (config-token consumption requires ip_address-
+  //     bearing-row state — Phase C runs before Linode boots).
+  //   - If the pre-read finds nothing OR returns NULL ip_address, we
+  //     401 with no DB mutation (caller's retry will also 401; setup.sh
+  //     marks failed; cloud-init-poll cleans up).
+  //
+  // 2026-05-16 P0-A fix: cloud-init-callback used to leave gateway_url
+  // NULL, which (a) prevented /deploying from redirecting to /dashboard
+  // (UI's `data.vm.gatewayUrl` predicate), and (b) excluded cloud-init
+  // VMs from the reconciler's candidate query (`.not("gateway_url",
+  // "is", null)` at app/api/cron/reconcile-fleet/route.ts).
+  const { data: rowPeek } = await supabase
+    .from("instaclaw_vms")
+    .select("ip_address")
+    .eq("cloud_init_callback_token", callbackToken)
+    .eq("assigned_to", userId)
+    .eq("name", vmName)
+    .maybeSingle();
+
+  if (!rowPeek || typeof (rowPeek as { ip_address?: string | null }).ip_address !== "string") {
+    logger.warn("cloud-init-callback: pre-claim peek failed (no row or NULL ip_address)", {
+      route: "vm/cloud-init-callback",
+      userId,
+      vmName,
+      tokenPrefix: callbackToken.slice(0, 8),
+    });
+    return new NextResponse("unauthorized", { status: 401 });
+  }
+
+  const ipAddress = (rowPeek as { ip_address: string }).ip_address;
+  // GATEWAY_PORT is exported from lib/ssh.ts:221 as 18789. Inlined here
+  // (rather than imported) to keep this route handler's bundle small —
+  // lib/ssh.ts pulls SSH client deps that don't belong on the edge of
+  // a 30s-budget callback endpoint. If the port ever changes, BOTH this
+  // literal AND lib/ssh.ts:221 must be updated.
+  const gatewayUrl = `http://${ipAddress}:18789`;
+
+  // ── 4. Atomic claim-and-invalidate + state transition ──
   // Single UPDATE with all WHERE clauses ensuring race-safety:
   //   - cloud_init_callback_token = X     (auth)
   //   - cloud_init_callback_consumed_at IS NULL  (one-time-use)
@@ -192,11 +238,44 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   //       replay finds no match. Defense in depth (the consumed_at IS
   //       NULL guard already covers this; status check is belt-and-
   //       suspenders).
+  //
+  // ── Column set parity with configureOpenClaw (lib/ssh.ts:7615-7651) ──
+  // gateway_url + control_ui_url     — P0-A fix (above)
+  // health_status='healthy'           — pool path sets in vmUpdate
+  // status='assigned'                  — pool path: instaclaw_assign_vm RPC
+  // assigned_at=NOW                    — pool path: RPC at migration
+  //                                       20260319_fix_vm_reclaim_and_assign_hygiene.sql:35
+  // last_health_check=NOW              — vmUpdate line 7620
+  // last_gateway_restart=NOW           — vmUpdate line 7640
+  // ssh_fail_count=0                   — vmUpdate line 7621
+  // health_fail_count=0                — vmUpdate line 7622
+  // heartbeat_next_at=NOW+3h           — vmUpdate line 7646 (CRITICAL:
+  //                                       configureOpenClaw THROWS
+  //                                       PROVISIONING_BLOCKED if NULL
+  //                                       on subsequent reconfigure —
+  //                                       lib/ssh.ts:7754-7762)
+  // heartbeat_interval='3h'            — vmUpdate line 7647
+  // heartbeat_cycle_calls=0            — vmUpdate line 7648
+  // config_version=0                    — DB default 0 (verified); reconciler
+  //                                       picks up and pushes manifest content
+  //                                       per Rule 47 continuous reconciliation
+  // agentbook_wallet_address (cond.)   — vmUpdate line 7650
   const nowIso = new Date().toISOString();
+  const HEARTBEAT_INITIAL_DELAY_MS = 10_800_000; // 3h — matches lib/ssh.ts:7646
   const update: Record<string, unknown> = {
     cloud_init_callback_consumed_at: nowIso,
     health_status: "healthy",
     status: "assigned",
+    assigned_at: nowIso,
+    gateway_url: gatewayUrl,
+    control_ui_url: gatewayUrl,
+    last_health_check: nowIso,
+    last_gateway_restart: nowIso,
+    ssh_fail_count: 0,
+    health_fail_count: 0,
+    heartbeat_next_at: new Date(Date.now() + HEARTBEAT_INITIAL_DELAY_MS).toISOString(),
+    heartbeat_interval: "3h",
+    heartbeat_cycle_calls: 0,
   };
   // Only include agentbook_wallet_address when we have a validated non-empty
   // value. Skipping the key entirely leaves whatever was previously in the
@@ -214,7 +293,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .eq("name", vmName)
     .eq("status", "provisioning")
     .is("cloud_init_callback_consumed_at", null)
-    .select("id, name, partner, agentbook_wallet_address")
+    .select("id, name, partner, agentbook_wallet_address, gateway_url")
     .single();
 
   if (claimErr || !vm) {
@@ -240,13 +319,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // attacker without the real token can never make this SELECT match.
     const { data: priorVm, error: priorErr } = await supabase
       .from("instaclaw_vms")
-      .select("id, name, partner, agentbook_wallet_address, cloud_init_callback_consumed_at")
+      .select("id, name, partner, agentbook_wallet_address, cloud_init_callback_consumed_at, gateway_url")
       .eq("cloud_init_callback_token", callbackToken)
       .eq("assigned_to", userId)
       .eq("name", vmName)
       .eq("status", "assigned")
       .eq("health_status", "healthy")
       .not("cloud_init_callback_consumed_at", "is", null)
+      .not("gateway_url", "is", null)
       .single();
 
     if (!priorErr && priorVm) {
@@ -275,15 +355,91 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return new NextResponse("unauthorized", { status: 401 });
   }
 
-  // ── 4. Success — VM is now healthy + assigned ──
+  // ── 5. Rule 33 supplemental: mark user onboarded + consume pending row ──
+  //
+  // Mirrors the pool path's /api/vm/configure handler at lines 659-674:
+  //
+  //     await supabase.from("instaclaw_users").update({
+  //       onboarding_complete: true,
+  //       deployment_lock_at: null,
+  //     }).eq("id", userId);
+  //
+  //     if (pending) {
+  //       await supabase.from("instaclaw_pending_users")
+  //         .update({ consumed_at: new Date().toISOString() })
+  //         .eq("user_id", userId);
+  //     }
+  //
+  // Without this block, every cloud-init signup creates the exact Rule 33
+  // trap state CLAUDE.md documents: VM works, but dashboard layout's
+  // redirect (`session.user.onboardingComplete === false` at
+  // app/(dashboard)/layout.tsx:73) bounces the user to /connect on every
+  // dashboard mount. The user never sees the dashboard, the funnel never
+  // completes, and the stuck-onboarding health-check alert fires.
+  //
+  // Best-effort: catch + log on either UPDATE failure, but return 200 so
+  // setup.sh doesn't retry the callback. The VM is genuinely healthy at
+  // this point; the upstream onboarding state lagging is recoverable by
+  // process-pending Pass 5 (24h purge of stale pending) or operator
+  // surgery, but a stuck setup.sh retrying forever is not.
+  try {
+    const { error: userUpdErr } = await supabase
+      .from("instaclaw_users")
+      .update({ onboarding_complete: true, deployment_lock_at: null })
+      .eq("id", userId);
+    if (userUpdErr) {
+      logger.error("cloud-init-callback: instaclaw_users update failed (Rule 33 trap-state risk)", {
+        route: "vm/cloud-init-callback",
+        userId,
+        vmId: (vm as { id: string }).id,
+        error: userUpdErr.message,
+      });
+    }
+  } catch (e) {
+    logger.error("cloud-init-callback: instaclaw_users update threw (Rule 33 trap-state risk)", {
+      route: "vm/cloud-init-callback",
+      userId,
+      vmId: (vm as { id: string }).id,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
+  try {
+    const { error: pendingUpdErr } = await supabase
+      .from("instaclaw_pending_users")
+      .update({ consumed_at: nowIso })
+      .eq("user_id", userId);
+    if (pendingUpdErr) {
+      // Pending consumption is non-load-bearing: the user is fully
+      // onboarded (per the user_users update above). Process-pending
+      // Pass 5 (24h consumed-purge) handles cleanup either way.
+      logger.warn("cloud-init-callback: pending_users.consumed_at update failed (non-fatal)", {
+        route: "vm/cloud-init-callback",
+        userId,
+        vmId: (vm as { id: string }).id,
+        error: pendingUpdErr.message,
+      });
+    }
+  } catch (e) {
+    logger.warn("cloud-init-callback: pending_users.consumed_at update threw (non-fatal)", {
+      route: "vm/cloud-init-callback",
+      userId,
+      vmId: (vm as { id: string }).id,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
+  // ── 6. Success — VM is now healthy + assigned + user onboarded ──
   // The DB state transition is committed. Any downstream consumer (admin
   // dashboard, reconciler eligibility query, billing, etc.) sees the VM as
-  // a live, healthy, user-assigned VM from this moment on.
+  // a live, healthy, user-assigned VM from this moment on. The user
+  // session's onboarding_complete will read true on next dashboard mount.
   logger.info("cloud-init-callback: VM transitioned to assigned/healthy", {
     route: "vm/cloud-init-callback",
     vmId: (vm as { id: string }).id,
     vmName: (vm as { name: string | null }).name,
     partner: (vm as { partner: string | null }).partner,
+    gatewayUrl: (vm as { gateway_url: string | null }).gateway_url,
     agentbookAddressWritten: agentbookAddressForUpdate != null,
   });
 

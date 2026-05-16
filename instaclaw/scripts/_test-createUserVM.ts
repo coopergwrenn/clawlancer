@@ -286,7 +286,10 @@ async function test2_HappyPath() {
   assert(result.ipAddress === "172.20.0.42", "ipAddress from waitForServer");
   assert(/^[a-f0-9]{64}$/.test(result.configToken), "configToken is 64-char hex");
   assert(/^[a-f0-9]{64}$/.test(result.callbackToken), "callbackToken is 64-char hex");
+  assert(/^[a-f0-9]{64}$/.test(result.gatewayToken), "gatewayToken is 64-char hex (P0-B fix)");
   assert(result.configToken !== result.callbackToken, "configToken and callbackToken are distinct");
+  assert(result.gatewayToken !== result.configToken, "gatewayToken distinct from configToken");
+  assert(result.gatewayToken !== result.callbackToken, "gatewayToken distinct from callbackToken");
 
   // Row insert contents
   const insert = sbLog.inserts[0]!;
@@ -296,6 +299,8 @@ async function test2_HappyPath() {
   assert(row.created_via === "on_demand", "row.created_via == on_demand");
   assert(row.cloud_init_config_token === result.configToken, "row.cloud_init_config_token persisted");
   assert(row.cloud_init_callback_token === result.callbackToken, "row.cloud_init_callback_token persisted");
+  assert(row.gateway_token === result.gatewayToken, "row.gateway_token persisted at Phase A (P0-B fix)");
+  assert(/^[a-f0-9]{64}$/.test(row.gateway_token as string), "row.gateway_token is 64-char hex");
   assert(row.provider === "linode", "row.provider == linode");
   assert(row.tier === baseParams.tier, "row.tier persisted");
   assert(row.api_mode === baseParams.apiMode, "row.api_mode persisted");

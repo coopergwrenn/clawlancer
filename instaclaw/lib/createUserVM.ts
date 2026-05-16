@@ -42,6 +42,7 @@ import { linodeProvider } from "./providers/linode";
 import { buildCloudInitUserdata } from "./cloud-init-userdata";
 import { getNextVmNumber, formatVmName } from "./hetzner";
 import { assignVMWithSSHCheck } from "./ssh";
+import { generateGatewayToken } from "./security";
 import { logger } from "./logger";
 import type { CloudProvider, ServerResult } from "./providers/types";
 
@@ -89,6 +90,20 @@ export interface CreateUserVMResult {
   configToken: string;
   /** Server-minted callback token (also persisted in DB). */
   callbackToken: string;
+  /**
+   * Gateway auth token minted at provision time (64-char hex via
+   * generateGatewayToken). Persisted in instaclaw_vms.gateway_token at
+   * Phase A INSERT. buildParamsFromVmRow reads this column to populate
+   * the cloud-init tarball's setup.sh (writes it into openclaw.json's
+   * `gateway.auth.token`, `.env GATEWAY_TOKEN`, and auth-profiles.json).
+   *
+   * The pool path mints the equivalent inside configureOpenClaw
+   * (lib/ssh.ts:5170). createUserVM skips configureOpenClaw entirely —
+   * setup.sh handles config on-VM — so we mint here so the row is never
+   * observable in an `assigned`-with-no-token state (per Rule 41 CHECK
+   * constraint in supabase/migrations/20260513170000_rule41_assigned_has_gateway_token.sql).
+   */
+  gatewayToken: string;
 }
 
 // Subset of the supabase client surface this function actually uses. Tests
@@ -226,11 +241,17 @@ export async function createUserVM(
   let vmId = "";
   let configToken = "";
   let callbackToken = "";
+  let gatewayToken = "";
 
   for (let attempt = 0; attempt < MAX_NAME_COLLISION_RETRIES; attempt++) {
     const candidate = await allocateVmName(supabase);
     const ct = mintToken();
     const cb = mintToken();
+    // Pool-path parity: configureOpenClaw mints gateway_token via
+    // generateGatewayToken() at lib/ssh.ts:5170. We mint it HERE (Phase A
+    // INSERT) so buildParamsFromVmRow's `requireStr("gateway_token")` read
+    // never throws on a freshly-provisioned cloud-init row.
+    const gw = generateGatewayToken();
 
     // Row-first atomicity: insert with the per-VM tokens so the cloud-init-
     // config endpoint can claim against the row when the bootstrap's curl
@@ -244,6 +265,7 @@ export async function createUserVM(
         created_via: "on_demand",
         cloud_init_config_token: ct,
         cloud_init_callback_token: cb,
+        gateway_token: gw,
         provider: "linode",
         ssh_port: 22,
         ssh_user: "openclaw",
@@ -267,6 +289,7 @@ export async function createUserVM(
       vmId = (data as { id: string }).id;
       configToken = ct;
       callbackToken = cb;
+      gatewayToken = gw;
       break;
     }
 
@@ -403,6 +426,7 @@ export async function createUserVM(
     ipAddress: ready.ip,
     configToken,
     callbackToken,
+    gatewayToken,
   };
 }
 
