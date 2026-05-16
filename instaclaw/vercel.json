@@ -140,6 +140,10 @@
     {
       "path": "/api/cron/gbrain-coverage-check",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/gbrain-deep-check",
+      "schedule": "0 * * * *"
     }
   ]
 }
