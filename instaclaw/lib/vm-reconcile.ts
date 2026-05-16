@@ -88,10 +88,18 @@ function keyRequiresGatewayRestart(key: string): boolean {
 
 // ── gbrain (Phase 4c) install pinning ──
 //
-// gbrain is Garry Tan's per-VM PGLite knowledge graph (stdio MCP server).
+// gbrain is Garry Tan's per-VM PGLite knowledge graph. As of 2026-05-16,
+// we install it as an HTTP sidecar (persistent systemd --user service bound
+// to loopback 127.0.0.1:3131, OpenClaw connects via streamable-http
+// transport + Bearer auth) per CLAUDE.md Rule 35.
+//
+// The HTTP sidecar replaces the stdio architecture for fleet-wide install.
+// vm-050 canary (2026-05-15) proved 564ms tool latency vs the 90+ second
+// cold-start that killed sessions on the stdio era.
+//
 // Phase 4c puts the install inside the reconciler — once GBRAIN_INSTALL_ENABLED
 // is flipped on in Vercel env, every allowlisted-partner VM that surfaces in
-// the reconcile-fleet candidate query gets gbrain installed.
+// the reconcile-fleet candidate query gets the HTTP sidecar installed.
 //
 // Why an env-var gate (default off) instead of "ship and let it run":
 // 1. Defense in depth — code can ship to main and reach production without
@@ -102,17 +110,24 @@ function keyRequiresGatewayRestart(key: string): boolean {
 //    (~3.5h post-deploy, per PRD §6).
 // 3. The reconcile-fleet candidate query already includes edge_city VMs at
 //    cv<VM_MANIFEST.version. We do NOT bump VM_MANIFEST.version here —
-//    edge_city VMs are at cv=92 today (< current manifest), so they'll be
-//    naturally re-reconciled. New attendee VMs provision at cv=79 and lift
-//    through stepGbrain automatically.
+//    edge_city VMs are at cv=100 today (= current manifest), but the cron
+//    candidate query OR-s secret_version<SECRET_VERSION which we can bump
+//    to trigger re-reconciliation if needed (or wait for the next natural
+//    manifest bump).
 //
-// PRD: docs/prd/gbrain-fleet-rollout-2026-05-12.md §7 (stepGbrain design).
+// PRDs:
+//   - docs/prd/gbrain-fleet-rollout-2026-05-12.md §7 (original stepGbrain design)
+//   - docs/prd/gbrain-http-fleet-rewrite-plan-2026-05-16.md (HTTP rewrite plan)
 const GBRAIN_PARTNER_ALLOWLIST: ReadonlySet<string> = new Set(["edge_city"]);
-const GBRAIN_PINNED_COMMIT = "2ea5b71";
-const GBRAIN_PINNED_VERSION = "0.28.1";
+// HTTP sidecar architecture — bumped from stdio era (2ea5b71 / 0.28.1).
+// Pin to a specific commit per Rule 35; operator manually bumps after
+// canary validation when newer version is desired.
+const GBRAIN_PINNED_COMMIT = "baf1a47";
+const GBRAIN_PINNED_VERSION = "0.35.0.0";
 // 240s leaves ~60s headroom under reconcile-fleet's Vercel maxDuration=300s
 // for the rest of reconcileVM. Normal install (bun already present): ~70s.
 // Cold install (bun not present): ~165s. Both fit comfortably.
+// HTTP sidecar adds ~5s for systemd unit deploy + verify (negligible).
 const GBRAIN_INSTALL_TIMEOUT_MS = 240_000;
 
 // ── Secret distribution version ──
@@ -1508,8 +1523,14 @@ async function stepExecStartAlignment(
 }
 
 /**
- * stepGbrain — install gbrain (PGLite knowledge graph + stdio MCP server) on
+ * stepGbrain — install gbrain HTTP sidecar (CLAUDE.md Rule 35) on
  * partner-allowlisted VMs.
+ *
+ * Architecture (2026-05-16 rewrite): gbrain runs as a persistent
+ * `systemd --user` service (gbrain.service) bound to loopback 127.0.0.1:3131.
+ * OpenClaw connects via the streamable-http MCP transport with a Bearer token
+ * stored in the gbrain PGLite access_tokens table + ~/.gbrain/openclaw-bearer-token.txt.
+ * Replaces the stdio per-session-spawn architecture that paid a 90+s cold-start.
  *
  * Phase 4c of the gbrain fleet rollout. Auto-installs once
  * GBRAIN_INSTALL_ENABLED=true is set in Vercel env. Until then, no-op.
@@ -1519,10 +1540,13 @@ async function stepExecStartAlignment(
  *   2. Skip in strict mode (180s deadline can't accommodate ~70-165s install
  *      — non-strict reconcile-fleet cron will pick it up next cycle).
  *   3. Skip if GBRAIN_INSTALL_ENABLED env var is not "true" (silent no-op).
- *   4. Cheap idempotency check via one SSH call: if `gbrain --version` matches
- *      GBRAIN_PINNED_VERSION AND `openclaw mcp show gbrain` shows the binary
- *      registered, push alreadyCorrect and return — no script upload, no
- *      install execution.
+ *   4. Cheap idempotency check via one SSH call — four-state invariant:
+ *        V = gbrain --version           (matches GBRAIN_PINNED_VERSION)
+ *        T = mcp.servers.gbrain.transport (= "streamable-http")
+ *        S = systemctl is-active gbrain.service (= "active")
+ *        P = port 3131 bound to 127.0.0.1 (= 1)
+ *      All four must be true to short-circuit to alreadyCorrect. Any miss
+ *      triggers reinstall (fail-open posture — see PRD §11).
  *   5. Otherwise: upload install-gbrain.sh + verify-gbrain-mcp.py via stdin
  *      (no fs.readFileSync — scripts are embedded as base64 in
  *      lib/gbrain-scripts-content.ts to dodge Vercel-nft's silent-drop bug
@@ -1532,7 +1556,7 @@ async function stepExecStartAlignment(
  *      - ALREADY_INSTALLED  → alreadyCorrect (Phase A's deeper idempotency
  *        check caught it even though our cheap check didn't — e.g., bun PATH
  *        not loaded in our SSH session)
- *      - INSTALL_COMPLETE   → fixed (success — gbrain is wired)
+ *      - INSTALL_COMPLETE   → fixed (success — sidecar live, openclaw.json wired)
  *      - FATAL_<reason>     → errors (cv won't bump; next cycle retries)
  *      - timeout / other    → errors with diagnostic snippet
  *
@@ -1542,7 +1566,9 @@ async function stepExecStartAlignment(
  *
  * Never throws — all paths fall through to result.errors or silent skip.
  *
- * Design doc: docs/prd/gbrain-fleet-rollout-2026-05-12.md §7
+ * Design docs:
+ *   - docs/prd/gbrain-fleet-rollout-2026-05-12.md §7 (original stdio design)
+ *   - docs/prd/gbrain-http-fleet-rewrite-plan-2026-05-16.md (HTTP rewrite)
  */
 async function stepGbrain(
   ssh: SSHConnection,
@@ -1563,29 +1589,55 @@ async function stepGbrain(
   if (process.env.GBRAIN_INSTALL_ENABLED !== "true") return;
 
   // ── Cheap idempotency check (single SSH call, ~2s) ──
-  // If gbrain version pinned AND MCP registered, skip upload+install entirely.
-  // This is the steady-state path for already-gbrained edge_city VMs.
+  //
+  // HTTP sidecar architecture — Rule 35. Four invariants must ALL hold to
+  // skip install: version pinned, openclaw.json transport=streamable-http,
+  // gbrain.service active, port 3131 bound to 127.0.0.1.
+  //
+  // Fail-open posture (Cooper's 2026-05-16 review): any miss triggers
+  // reinstall — better to reinstall an already-fine VM than skip a partially
+  // broken one. The install path itself is idempotent (Phase A's deeper
+  // check catches false-negative cases via ALREADY_INSTALLED early-exit).
+  //
+  // Version detection regex: LENIENT (any dotted-digit version) for clean
+  // diagnostic output. The comparison against GBRAIN_PINNED_VERSION uses
+  // exact string match, so a stdio-era v0.28.1 still triggers reinstall —
+  // we just get a useful "V=0.28.1" in the dry-run/log instead of "missing".
   const checkScript = [
     'source ~/.nvm/nvm.sh 2>/dev/null',
     'export PATH="$HOME/.bun/bin:$PATH"',
-    'V=$(gbrain --version 2>/dev/null | head -1 | grep -oE "[0-9]+\\.[0-9]+\\.[0-9]+" || echo missing)',
-    'M=$(openclaw mcp show gbrain 2>/dev/null | grep -c "/home/openclaw/.bun/bin/gbrain" || echo 0)',
-    'echo "GBRAIN_CHECK V=$V M=$M"',
+    'export XDG_RUNTIME_DIR="/run/user/$(id -u)"',
+    'V=$(gbrain --version 2>/dev/null | head -1 | grep -oE "[0-9]+(\\.[0-9]+)+" | head -1)',
+    '[ -z "$V" ] && V=missing',
+    'T=$(jq -r ".mcp.servers.gbrain.transport // \\"\\"" "$HOME/.openclaw/openclaw.json" 2>/dev/null)',
+    'S=$(systemctl --user is-active gbrain.service 2>/dev/null || echo missing)',
+    // grep -F (fixed-string) avoids the `$` end-of-line anchor inside a
+    // double-quoted bash string (`$(...)` would otherwise try to expand `$)`).
+    // ss output uses `127.0.0.1:3131` followed by whitespace; a substring
+    // match against the colon-form is unambiguous on real ss output.
+    'P=$(ss -lnpt 2>/dev/null | grep -cF "127.0.0.1:3131")',
+    'echo "GBRAIN_CHECK V=$V T=$T S=$S P=$P"',
   ].join('; ');
 
   const check = await ssh.execCommand(`bash -c '${checkScript.replace(/'/g, "'\\''")}'`);
-  const checkMatch = (check.stdout || '').match(/GBRAIN_CHECK V=(\S+) M=(\d+)/);
-  if (checkMatch && checkMatch[1] === GBRAIN_PINNED_VERSION && checkMatch[2] === "1") {
-    result.alreadyCorrect.push(`gbrain v${GBRAIN_PINNED_VERSION}`);
+  const checkMatch = (check.stdout || '').match(/GBRAIN_CHECK V=(\S+) T=(\S*) S=(\S+) P=(\d+)/);
+  const versionOk = checkMatch?.[1] === GBRAIN_PINNED_VERSION;
+  const transportOk = checkMatch?.[2] === "streamable-http";
+  const serviceOk = checkMatch?.[3] === "active";
+  const portOk = checkMatch?.[4] === "1";
+  if (versionOk && transportOk && serviceOk && portOk) {
+    result.alreadyCorrect.push(`gbrain v${GBRAIN_PINNED_VERSION} (HTTP sidecar, Rule 35)`);
     return;
   }
 
   // ── Dry-run path: report what we WOULD do, take no action ──
   if (dryRun) {
     const observedVersion = checkMatch?.[1] ?? "unknown";
-    const observedMcp = checkMatch?.[2] ?? "0";
+    const observedTransport = checkMatch?.[2] ?? "(none)";
+    const observedService = checkMatch?.[3] ?? "(missing)";
+    const observedPort = checkMatch?.[4] ?? "0";
     result.fixed.push(
-      `[dry-run] gbrain install (current: version=${observedVersion} mcp=${observedMcp})`,
+      `[dry-run] gbrain HTTP sidecar install (current: V=${observedVersion} T=${observedTransport} S=${observedService} P=${observedPort})`,
     );
     return;
   }
@@ -1658,12 +1710,13 @@ async function stepGbrain(
   }
 
   if (completeMatch) {
-    result.fixed.push(`gbrain v${GBRAIN_PINNED_VERSION} (installed + MCP wired + round-trip verified)`);
+    result.fixed.push(`gbrain v${GBRAIN_PINNED_VERSION} (HTTP sidecar installed + MCP wired + round-trip verified)`);
     logger.info('stepGbrain: install complete', {
       route: 'stepGbrain',
       vmId: vm.id,
       version: GBRAIN_PINNED_VERSION,
       commit: GBRAIN_PINNED_COMMIT,
+      architecture: 'http-sidecar',
     });
     return;
   }

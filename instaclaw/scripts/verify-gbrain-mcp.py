@@ -1,380 +1,406 @@
 #!/usr/bin/env python3
 """
-gbrain MCP runtime verification — the load-bearing post-install gate.
+verify-gbrain-mcp.py — Load-bearing post-install gate for HTTP sidecar (Rule 35).
 
-Spawns ``gbrain serve`` as a subprocess, drives a JSON-RPC ``put_page`` →
-``query`` round-trip, and exits non-zero on any structural failure. Emits a
-single ``RESULT_OK ...`` line on success or ``RESULT_FAIL <code> ...`` on
-failure, consumable by parent shell / TS wrappers.
+Drives a real put_page → get_page round-trip via the running gbrain sidecar at
+http://127.0.0.1:3131/mcp with Bearer auth. Emits a single ``RESULT_OK <kvpairs>``
+line on success or ``RESULT_FAIL <code> <kvpairs>`` on any failure, consumable
+by install-gbrain.sh Phase H + the stepGbrain output parser in vm-reconcile.ts.
 
-Why this exists
----------------
-Phase F in install-gbrain.sh was just a "did the process print a banner"
-probe. It missed three categories of bug that DID happen on real VMs:
+Why this exists (the THREE bug classes Phase F-G can miss):
 
-1. **Dimension mismatch** (vm-050, 2026-05-11): ``GBRAIN_EMBEDDING_DIMENSIONS=1024``
-   in the MCP env, but PGLite schema hardcodes ``vector(1536)``. ``put_page``
-   threw "expected 1536 dimensions, not 1024" on every call. Banner probe
-   passed; real writes failed silently.
-2. **Missing ANTHROPIC_API_KEY**: ``gateway.ts:304`` silently returns the
-   original query without expansion when the key is absent. Search still works,
-   just at degraded quality. Banner probe doesn't catch this.
-3. **PGLite write failure**: disk full, permission issue, schema migration
-   stalled. Banner probe doesn't exercise the write path.
+1. **Embedding-dimension mismatch** — gbrain's PGLite schema hardcodes
+   ``vector(1536)``. If GBRAIN_EMBEDDING_DIMENSIONS is set to a different
+   value (or if a future schema migration introduces drift), every put_page
+   fails at embed time. The HTTP smoke test in Phase F2/F3 doesn't exercise
+   the write path; only Phase H does.
 
-This script catches all three by doing what an agent actually does: spawn the
-MCP server, list tools, write a marker page, query for it, verify round-trip.
+2. **PGLite write failure** — disk full, file permission, schema migration
+   stalled. /health may return 200 (lightweight stat query) but put_page
+   triggers an actual INSERT that catches these.
 
-Lifecycle
----------
-1. Validate required env vars are set (caller is responsible for sourcing them).
-2. Spawn ``gbrain serve`` with the resolved env.
-3. JSON-RPC ``initialize`` (protocol 2024-11-05).
-4. Send ``notifications/initialized``.
-5. ``tools/list`` — discover the actual put/query tool names (defensive against
-   gbrain version renames).
-6. ``tools/call`` ``put_page`` (or detected equivalent) with a stable marker
-   slug ``_gbrain-install-verify`` and a timestamped body.
-7. ``tools/call`` ``query`` (or detected equivalent), substring-match the
-   timestamp in the response.
-8. Inspect stderr for ``expansion disabled`` warnings (non-fatal — signals
-   Anthropic expansion is broken but other paths are fine).
-9. SIGTERM the subprocess, wait, SIGKILL on timeout.
+3. **Bearer-token mismatch** — the sidecar may be running with a token
+   minted against an OLD PGLite (e.g., a re-mint that didn't propagate to
+   the token file). Phase F2's initialize call would catch a complete
+   mismatch (401), but a partial mismatch (e.g., a stale token that's still
+   recognized but maps to wrong scope) is only caught by a real tools/call
+   that exercises the full auth + scope path.
 
-Idempotency / pollution
------------------------
-Marker slug ``_gbrain-install-verify`` is stable across runs (overwrites itself
-on every install). Leading underscore is gbrain's convention for hidden /
-system pages so it doesn't pollute default queries.
+Lifecycle (no subprocess management — sidecar runs separately):
+    1. Validate required env vars (GBRAIN_BEARER_TOKEN, MARKER_TS).
+    2. GET /health (no auth) — fail fast if sidecar unreachable.
+    3. POST /mcp initialize (with bearer) — confirms auth + server identity.
+    4. POST /mcp tools/list (with bearer) — discovers put + retrieve tool names
+       defensively (so a future gbrain rename doesn't false-fail us).
+    5. POST /mcp tools/call put_page — writes a marker page with MARKER_TS body.
+    6. POST /mcp tools/call get_page — reads by slug, asserts MARKER_TS present.
+    7. Print RESULT_OK <kvpairs>.
 
-Required environment
---------------------
-- ``OPENAI_API_KEY`` — for embedding (text-embedding-3-large)
-- ``ANTHROPIC_API_KEY`` — for query expansion (Haiku) + chat (Sonnet)
-- ``GBRAIN_DATABASE_URL`` — pglite:///path/to/brain.pglite
+Idempotency: marker slug ``_gbrain-install-verify`` is stable across runs (overwrites
+itself on every install). Leading underscore = gbrain convention for hidden/system
+pages — does not pollute default queries.
 
-Optional environment
---------------------
-- ``MARKER_TS`` — override marker timestamp (default: current unix epoch).
-  Useful for correlating with parent script logs.
-- ``GBRAIN_BIN`` — override gbrain binary path (default: ``~/.bun/bin/gbrain``).
-- ``VERIFY_TIMEOUT_S`` — total wall-clock budget (default: 180s).
+Required env (caller responsibility — install-gbrain.sh Phase H sets these):
+    GBRAIN_BEARER_TOKEN  — bearer for /mcp (from ~/.gbrain/openclaw-bearer-token.txt)
+    MARKER_TS            — unique timestamp string for round-trip correlation
 
-Exit codes
-----------
-0   RESULT_OK    — round-trip succeeded
-1   RESULT_FAIL  — any failure; diagnostic code in the FAIL line
+Optional env (passed-through for diagnostic; this script doesn't use them
+directly — they're consumed by the sidecar's gbrain process via its own env):
+    OPENAI_API_KEY       — embedding (text-embedding-3-large)
+    ANTHROPIC_API_KEY    — query expansion (not used by our retrieval path)
+
+Output contract (PARSED by parent shell — DO NOT change shape):
+    RESULT_OK marker_ts=... put_tool=put_page retrieve_tool=get_page tools_count=N server_version=...
+    RESULT_FAIL <CODE> <kvpairs>
+
+Exit codes:
+    0    RESULT_OK printed (round-trip succeeded)
+    1    RESULT_FAIL printed (any failure mode)
+
+Failure codes (the catalog the install script's exit 20 rolls up):
+    NO_TOKEN                — GBRAIN_BEARER_TOKEN missing/empty
+    HEALTH_UNREACHABLE      — /health connect failure (sidecar down)
+    HEALTH_NOT_OK           — /health 200 but status != "ok" (PGLite broken)
+    AUTH_401                — bearer rejected on /mcp (token mismatch)
+    INIT_HTTP_ERROR         — /mcp initialize non-401 HTTP error
+    INIT_ERROR              — /mcp initialize socket/parse error
+    INIT_UNEXPECTED_SERVER  — serverInfo.name != "gbrain" (wrong server on port)
+    INIT_MCP_ERROR          — JSON-RPC error in initialize response
+    TOOLS_LIST_ERROR        — tools/list HTTP or parse error
+    NO_PUT_PAGE             — put_page not in tools list
+    NO_RETRIEVE_TOOL        — neither get_page nor search in tools list
+    PUT_ISERROR             — put_page returned isError=true (PGLite write fail)
+    PUT_UNEXPECTED          — put_page response shape unexpected
+    RETRIEVE_ISERROR        — get_page returned isError=true
+    MARKER_NOT_FOUND        — page written but MARKER_TS missing in retrieved body
+
+Design notes for future readers:
+- Stdlib only (urllib, json) so this runs on any bare Ubuntu VM without pip.
+- Per-call timeouts are tight by purpose (5-30s); the parent shell wraps us
+  in a 180s outer timeout but we want to fail fast at the right layer.
+- We use get_page (slug lookup) not search (semantic) so the verify doesn't
+  depend on Anthropic expansion — a missing/invalid Anthropic key
+  shouldn't FATAL the install (per the May-12 PRD §5.5 cost/risk profile).
+- SSE response parsing handles both `event: message\ndata: {...}` and plain
+  JSON. The MCP SDK on the server side wraps single-shot responses in SSE.
 """
 from __future__ import annotations
 
 import json
 import os
-import queue
-import subprocess
 import sys
-import threading
 import time
+import urllib.error
+import urllib.request
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
-MCP_PROTOCOL_VERSION = "2024-11-05"
-MARKER_SLUG = "_gbrain-install-verify"
 
-# Per-step JSON-RPC timeouts (server-side: embedding + query both call out)
+SIDECAR_BASE = "http://127.0.0.1:3131"
+HEALTH_URL = f"{SIDECAR_BASE}/health"
+MCP_URL = f"{SIDECAR_BASE}/mcp"
+
+# Per-call timeouts (seconds). Tight enough that we fail at the right layer
+# without burning the parent's 180s outer budget. Loose enough that a real
+# put_page (which does an OpenAI embed call) has headroom.
+TIMEOUT_HEALTH = 5
 TIMEOUT_INIT = 30
-TIMEOUT_TOOLS_LIST = 15
-TIMEOUT_PUT_PAGE = 60   # OpenAI embedding adds 1-3s typical latency
-TIMEOUT_QUERY = 60      # Anthropic expansion adds 1-3s typical latency
+TIMEOUT_TOOLS_LIST = 10
+TIMEOUT_PUT_PAGE = 30  # includes OpenAI embedding round-trip
+TIMEOUT_GET_PAGE = 10
 
-# Defensive tool-name aliases — gbrain's tool names have been stable but we
-# tolerate renames so this gate doesn't break on a version bump alone.
-PUT_TOOL_CANDIDATES = ("put_page", "page_put", "write_page", "import_page")
-QUERY_TOOL_CANDIDATES = ("query", "search", "query_brain")
+# Idempotent marker slug. Leading underscore = gbrain hidden/system page
+# convention; overwrites itself on every verify run.
+MARKER_SLUG = "_gbrain-install-verify"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Output helpers
 # ─────────────────────────────────────────────────────────────────────────────
-def emit_fail(code: str, **details) -> "NoReturn":  # type: ignore[name-defined]
-    """Print a structured RESULT_FAIL line and exit 1.
 
-    Parent scripts grep for the leading token to classify the failure. Detail
-    values are JSON-encoded so callers can extract structured fields.
+def fail(code: str, **kw: object) -> "te.NoReturn":  # type: ignore[name-defined]
+    """Print RESULT_FAIL line and exit non-zero.
+
+    Format: ``RESULT_FAIL <CODE> key1=value1 key2=value2 ...``
+    Values are truncated to keep the line under 1000 chars (operator-readable;
+    full stderr is captured by parent shell for forensics).
     """
-    parts = [code]
-    for k, v in details.items():
-        encoded = v if isinstance(v, str) and " " not in v and "\n" not in v else json.dumps(v)
-        parts.append(f"{k}={encoded}")
-    print("RESULT_FAIL " + " ".join(parts), flush=True)
+    parts = [f"RESULT_FAIL {code}"]
+    for k, v in kw.items():
+        # Truncate long values + strip newlines so the RESULT line stays single-line
+        s = str(v).replace("\n", "\\n").replace("\r", "\\r")
+        if len(s) > 200:
+            s = s[:200] + "...[truncated]"
+        parts.append(f"{k}={s}")
+    print(" ".join(parts))
     sys.exit(1)
 
 
-def emit_ok(**details) -> None:
-    parts = []
-    for k, v in details.items():
-        encoded = v if isinstance(v, str) and " " not in v and "\n" not in v else json.dumps(v)
-        parts.append(f"{k}={encoded}")
-    print("RESULT_OK " + " ".join(parts), flush=True)
+def ok(**kw: object) -> "te.NoReturn":  # type: ignore[name-defined]
+    """Print RESULT_OK line and exit 0."""
+    parts = ["RESULT_OK"]
+    for k, v in kw.items():
+        s = str(v).replace("\n", "\\n").replace("\r", "\\r")
+        if len(s) > 200:
+            s = s[:200] + "...[truncated]"
+        parts.append(f"{k}={s}")
+    print(" ".join(parts))
+    sys.exit(0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Subprocess I/O plumbing
+# HTTP helpers
 # ─────────────────────────────────────────────────────────────────────────────
-def _reader_thread(stream, line_q) -> None:
-    """Drain a subprocess stdout/stderr stream into a queue.
 
-    Posting ``None`` signals EOF so the consumer can stop waiting.
+def parse_mcp_response(body: bytes) -> dict:
+    """Parse an MCP HTTP response body, handling both SSE and plain JSON.
+
+    The MCP SDK on the server wraps single-shot responses in SSE format:
+        event: message
+        data: {"jsonrpc":"2.0",...}
+
+    For pure JSON responses (e.g., from a non-SSE-capable client view), we
+    also fall through to a plain json.loads.
+
+    Raises:
+        ValueError: if neither SSE-data line nor plain JSON parses.
     """
-    try:
-        for raw in iter(stream.readline, b""):
-            line_q.put(raw.decode("utf-8", errors="replace"))
-    except Exception as e:
-        line_q.put(f"__READER_ERROR__:{e}\n")
-    finally:
-        line_q.put(None)
+    text = body.decode("utf-8", errors="replace")
+    # SSE format: scan for first "data: " line
+    for line in text.splitlines():
+        if line.startswith("data: "):
+            return json.loads(line[6:])
+    # Plain JSON fallback
+    return json.loads(text)
 
 
-def _send(proc, payload, lock) -> None:
-    """Write one JSON-RPC line to the subprocess stdin under a lock."""
-    encoded = (json.dumps(payload) + "\n").encode()
-    with lock:
-        proc.stdin.write(encoded)
-        proc.stdin.flush()
+def post_mcp(token: str, payload: dict, timeout: int) -> dict:
+    """POST a JSON-RPC payload to /mcp with Bearer auth.
 
+    Returns the parsed response dict (from SSE or plain JSON).
 
-def _recv_with_id(line_q, target_id: int, timeout_s: int, recent_log: list) -> dict:
-    """Drain queued stdout lines until we find a response with matching id."""
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        try:
-            line = line_q.get(timeout=0.5)
-        except queue.Empty:
-            continue
-        if line is None:
-            emit_fail("FATAL_SERVER_EOF", target_id=target_id, recent=recent_log[-5:])
-        if line.startswith("__READER_ERROR__"):
-            emit_fail("FATAL_READER_ERROR", err=line.strip())
-        stripped = line.strip()
-        if not stripped:
-            continue
-        try:
-            msg = json.loads(stripped)
-        except json.JSONDecodeError:
-            # gbrain serve may emit non-JSON banner/log lines; preserve for forensics
-            recent_log.append(stripped[:200])
-            continue
-        if msg.get("id") == target_id:
-            return msg
-        # Notifications / other-id responses — store and keep looking
-        recent_log.append(stripped[:120])
-    emit_fail("FATAL_TIMEOUT", target_id=target_id, timeout_s=timeout_s, recent=recent_log[-5:])
+    Raises:
+        urllib.error.HTTPError: on 4xx/5xx — caller maps 401 to AUTH_401.
+        urllib.error.URLError / TimeoutError: on socket-level failure.
+        ValueError / json.JSONDecodeError: on response body parse failure.
+    """
+    req = urllib.request.Request(
+        MCP_URL,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "Authorization": f"Bearer {token}",
+        },
+        data=json.dumps(payload).encode("utf-8"),
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return parse_mcp_response(resp.read())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Tool-name detection
+# Main
 # ─────────────────────────────────────────────────────────────────────────────
-def pick_tool(tool_names: list, candidates: tuple) -> str | None:
-    """Return the first candidate that appears in tool_names, else None."""
-    for c in candidates:
-        if c in tool_names:
-            return c
-    return None
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Main flow
-# ─────────────────────────────────────────────────────────────────────────────
 def main() -> None:
-    # Validate env. Caller (install-gbrain.sh or _apply-gbrain-path-a.ts wrapper)
-    # is responsible for sourcing these from the VM's ~/.openclaw/.env.
-    required = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GBRAIN_DATABASE_URL")
-    missing = [k for k in required if not os.environ.get(k)]
-    if missing:
-        emit_fail("FATAL_MISSING_ENV", missing=missing)
+    # ── Step 1: validate caller-supplied env ──
+    token = os.environ.get("GBRAIN_BEARER_TOKEN", "").strip()
+    if not token:
+        fail("NO_TOKEN", hint="caller must export GBRAIN_BEARER_TOKEN from ~/.gbrain/openclaw-bearer-token.txt")
 
-    marker_ts = os.environ.get("MARKER_TS") or str(int(time.time()))
-    marker_title = f"gbrain install verify {marker_ts}"
-    marker_unique = f"gbrain-verify-marker-{marker_ts}"
-    marker_body = (
-        f"Marker page written by gbrain install verification at ts={marker_ts}. "
-        f"Tag: {marker_unique}. This page is overwritten on every re-run. "
-        f"Safe to ignore — it's a system page used to assert put/query work."
-    )
+    marker_ts = os.environ.get("MARKER_TS", "").strip()
+    if not marker_ts:
+        # Fall back to current epoch — not fatal, just less useful for correlation.
+        marker_ts = str(int(time.time()))
 
-    gbrain_bin = os.environ.get("GBRAIN_BIN") or os.path.expanduser("~/.bun/bin/gbrain")
-    if not os.path.exists(gbrain_bin):
-        emit_fail("FATAL_GBRAIN_BIN_MISSING", path=gbrain_bin)
+    # ── Step 2: /health (no auth) — fail fast if sidecar unreachable ──
+    try:
+        with urllib.request.urlopen(HEALTH_URL, timeout=TIMEOUT_HEALTH) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            try:
+                health = json.loads(body)
+            except json.JSONDecodeError as e:
+                fail("HEALTH_NOT_OK", reason="non_json_body", err=str(e), body=body[:120])
+            if health.get("status") != "ok":
+                fail("HEALTH_NOT_OK", status=health.get("status"), engine=health.get("engine"), body=body[:120])
+            server_version = health.get("version", "unknown")
+    except urllib.error.HTTPError as e:
+        # /health shouldn't error — if it does, the sidecar is misconfigured at a
+        # deep level. Surface the code.
+        fail("HEALTH_UNREACHABLE", reason="http_error", code=e.code, msg=str(e)[:120])
+    except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+        fail("HEALTH_UNREACHABLE", reason="socket", err=str(e)[:120])
 
-    # Spawn gbrain serve with the resolved env. We use the parent env wholesale
-    # (so PATH, NVM, etc. propagate) and overlay just the things gbrain reads.
-    child_env = os.environ.copy()
-    proc = subprocess.Popen(
-        [gbrain_bin, "serve"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=child_env,
-        bufsize=0,
-    )
+    # ── Step 3: /mcp initialize (with bearer) ──
+    try:
+        init = post_mcp(token, {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "verify-gbrain-mcp", "version": "1.0"},
+            },
+        }, timeout=TIMEOUT_INIT)
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            fail("AUTH_401", hint="bearer token rejected — file/DB hash mismatch?")
+        fail("INIT_HTTP_ERROR", code=e.code, msg=str(e)[:120])
+    except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+        fail("INIT_ERROR", reason="socket", err=str(e)[:120])
+    except (ValueError, json.JSONDecodeError) as e:
+        fail("INIT_ERROR", reason="parse", err=str(e)[:120])
 
-    stdout_q: queue.Queue = queue.Queue()
-    stderr_chunks: list = []
-    send_lock = threading.Lock()
-    recent_lines: list = []
+    # MCP-level error (JSON-RPC error response)
+    if init.get("error"):
+        err = init["error"]
+        fail("INIT_MCP_ERROR", code=err.get("code"), msg=str(err.get("message"))[:120])
 
-    threading.Thread(target=_reader_thread, args=(proc.stdout, stdout_q), daemon=True).start()
+    server_info = init.get("result", {}).get("serverInfo", {})
+    if server_info.get("name") != "gbrain":
+        # Some other MCP server is bound to port 3131 — operator must investigate.
+        fail("INIT_UNEXPECTED_SERVER", got=server_info.get("name"), expected="gbrain")
 
-    def _stderr_collector() -> None:
-        try:
-            for raw in iter(proc.stderr.readline, b""):
-                stderr_chunks.append(raw.decode("utf-8", errors="replace"))
-        except Exception:
-            pass
+    server_mcp_version = server_info.get("version", "unknown")
 
-    threading.Thread(target=_stderr_collector, daemon=True).start()
+    # ── Step 4: /mcp tools/list — defensive tool-name discovery ──
+    try:
+        tools_resp = post_mcp(token, {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list",
+            "params": {},
+        }, timeout=TIMEOUT_TOOLS_LIST)
+    except urllib.error.HTTPError as e:
+        fail("TOOLS_LIST_ERROR", reason="http", code=e.code, msg=str(e)[:120])
+    except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError, json.JSONDecodeError) as e:
+        fail("TOOLS_LIST_ERROR", reason="socket_or_parse", err=str(e)[:120])
+
+    if tools_resp.get("error"):
+        err = tools_resp["error"]
+        fail("TOOLS_LIST_ERROR", reason="mcp_error", code=err.get("code"), msg=str(err.get("message"))[:120])
+
+    tool_names = [t.get("name") for t in tools_resp.get("result", {}).get("tools", [])]
+
+    if "put_page" not in tool_names:
+        fail("NO_PUT_PAGE", tool_count=len(tool_names), sample=",".join(tool_names[:10]))
+
+    # Prefer get_page (slug lookup — no Anthropic expansion needed). Fall back
+    # to search or query if get_page isn't present. This lets a future gbrain
+    # rename or removal of get_page still pass the verify if a working
+    # alternative exists.
+    if "get_page" in tool_names:
+        retrieve_tool = "get_page"
+    elif "search" in tool_names:
+        retrieve_tool = "search"
+    elif "query" in tool_names:
+        retrieve_tool = "query"
+    else:
+        fail("NO_RETRIEVE_TOOL", tool_count=len(tool_names), sample=",".join(tool_names[:10]))
+
+    # ── Step 5: tools/call put_page — write the marker page ──
+    marker_body = f"gbrain HTTP sidecar install verify — marker_ts={marker_ts}"
+    try:
+        put_resp = post_mcp(token, {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "put_page",
+                "arguments": {"slug": MARKER_SLUG, "content": marker_body},
+            },
+        }, timeout=TIMEOUT_PUT_PAGE)
+    except urllib.error.HTTPError as e:
+        fail("PUT_HTTP_ERROR", code=e.code, msg=str(e)[:120])
+    except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError, json.JSONDecodeError) as e:
+        fail("PUT_HTTP_ERROR", reason="socket_or_parse", err=str(e)[:120])
+
+    if put_resp.get("error"):
+        err = put_resp["error"]
+        fail("PUT_ISERROR", reason="mcp_error", code=err.get("code"), msg=str(err.get("message"))[:120])
+
+    put_result = put_resp.get("result", {})
+    if put_result.get("isError"):
+        # tools/call returned a domain-level error — extract the text content
+        content = put_result.get("content", [])
+        text = content[0].get("text", "") if content else ""
+        fail("PUT_ISERROR", body=text[:200])
+
+    # Confirm the response shape is what we expect — the tool result text
+    # should be JSON with a status field. If the shape changed (gbrain
+    # version upgrade), we want to know.
+    put_content = put_result.get("content", [])
+    put_text = put_content[0].get("text", "") if put_content else ""
+    try:
+        put_payload = json.loads(put_text)
+    except (json.JSONDecodeError, TypeError):
+        fail("PUT_UNEXPECTED", reason="non_json_content", body=put_text[:200])
+
+    if put_payload.get("status") not in ("created_or_updated", "created", "updated"):
+        fail("PUT_UNEXPECTED", reason="status_unexpected", status=put_payload.get("status"), body=put_text[:200])
+
+    chunks = put_payload.get("chunks", 0)
+    if not isinstance(chunks, int) or chunks < 1:
+        fail("PUT_UNEXPECTED", reason="no_chunks", chunks=chunks)
+
+    # ── Step 6: tools/call get_page — retrieve by slug, confirm marker present ──
+    if retrieve_tool == "get_page":
+        retrieve_args = {"slug": MARKER_SLUG}
+    elif retrieve_tool == "search":
+        # search needs a query — use the marker_ts itself
+        retrieve_args = {"query": marker_ts}
+    else:  # query
+        retrieve_args = {"query": marker_ts}
 
     try:
-        # 1. initialize handshake
-        _send(proc, {
-            "jsonrpc": "2.0", "id": 1, "method": "initialize",
-            "params": {
-                "protocolVersion": MCP_PROTOCOL_VERSION,
-                "capabilities": {},
-                "clientInfo": {"name": "gbrain-install-verify", "version": "1.0"},
-            },
-        }, send_lock)
-        init_resp = _recv_with_id(stdout_q, 1, TIMEOUT_INIT, recent_lines)
-        if "error" in init_resp:
-            emit_fail("FATAL_INIT_ERROR", error=init_resp["error"])
+        get_resp = post_mcp(token, {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {"name": retrieve_tool, "arguments": retrieve_args},
+        }, timeout=TIMEOUT_GET_PAGE)
+    except urllib.error.HTTPError as e:
+        fail("RETRIEVE_HTTP_ERROR", code=e.code, msg=str(e)[:120])
+    except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError, json.JSONDecodeError) as e:
+        fail("RETRIEVE_HTTP_ERROR", reason="socket_or_parse", err=str(e)[:120])
 
-        # 2. initialized notification (no response expected)
-        _send(proc, {"jsonrpc": "2.0", "method": "notifications/initialized"}, send_lock)
-        time.sleep(0.2)  # let the server settle into tool-routing mode
+    if get_resp.get("error"):
+        err = get_resp["error"]
+        fail("RETRIEVE_ISERROR", reason="mcp_error", code=err.get("code"), msg=str(err.get("message"))[:120])
 
-        # 3. tools/list — discover real names
-        _send(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, send_lock)
-        tools_resp = _recv_with_id(stdout_q, 2, TIMEOUT_TOOLS_LIST, recent_lines)
-        if "error" in tools_resp:
-            emit_fail("FATAL_TOOLS_LIST_ERROR", error=tools_resp["error"])
-        tools = (tools_resp.get("result") or {}).get("tools") or []
-        tool_names = [t.get("name", "") for t in tools]
-        if not tool_names:
-            emit_fail("FATAL_NO_TOOLS", resp=tools_resp)
+    get_result = get_resp.get("result", {})
+    if get_result.get("isError"):
+        content = get_result.get("content", [])
+        text = content[0].get("text", "") if content else ""
+        fail("RETRIEVE_ISERROR", reason="domain_error", body=text[:200])
 
-        put_name = pick_tool(tool_names, PUT_TOOL_CANDIDATES)
-        query_name = pick_tool(tool_names, QUERY_TOOL_CANDIDATES)
-        if not put_name or not query_name:
-            emit_fail("FATAL_TOOL_NAMES_NOT_FOUND",
-                      put_name=put_name or "",
-                      query_name=query_name or "",
-                      available=tool_names[:30])
+    get_content = get_result.get("content", [])
+    get_text = get_content[0].get("text", "") if get_content else ""
 
-        # 4. put_page (will exercise embedding → catches dim mismatch)
-        _send(proc, {
-            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
-            "params": {
-                "name": put_name,
-                "arguments": {
-                    "slug": MARKER_SLUG,
-                    "title": marker_title,
-                    "content": marker_body,
-                },
-            },
-        }, send_lock)
-        put_resp = _recv_with_id(stdout_q, 3, TIMEOUT_PUT_PAGE, recent_lines)
-        if "error" in put_resp:
-            emit_fail("FATAL_PUT_ERROR",
-                      error=put_resp["error"],
-                      hint="dim mismatch (schema is vector(1536)) or OPENAI_API_KEY invalid")
-        put_result = put_resp.get("result") or {}
-        if put_result.get("isError"):
-            tool_err = "".join(
-                b.get("text", "") for b in put_result.get("content", []) if b.get("type") == "text"
-            )
-            emit_fail("FATAL_PUT_ISERROR", text=tool_err[:500])
-
-        # 5. query — must find the unique marker.
-        # gbrain's query tool accepts `query` (not `q` — confirmed empirically
-        # on v0.28.1 where `{"q": ...}` returns
-        # `invalid_params: Missing required parameter: query`). We also send `q`
-        # as a defensive alias in case a future gbrain version renames it.
-        query_args = {"query": marker_unique, "q": marker_unique}
-        # If the tool's inputSchema declares specific required params, prefer those
-        for t in tools:
-            if t.get("name") == query_name:
-                schema = (t.get("inputSchema") or {})
-                req = schema.get("required") or []
-                props = schema.get("properties") or {}
-                # If schema says required field is 'query', drop the alias.
-                # If schema says 'q' is required and 'query' isn't, swap.
-                if "query" in req and "q" not in req:
-                    query_args = {"query": marker_unique}
-                elif "q" in req and "query" not in req:
-                    query_args = {"q": marker_unique}
-                # Otherwise leave both — MCP servers typically ignore unknown params.
-                _ = props  # currently unused; placeholder for future schema-driven param mapping
-                break
-        _send(proc, {
-            "jsonrpc": "2.0", "id": 4, "method": "tools/call",
-            "params": {"name": query_name, "arguments": query_args},
-        }, send_lock)
-        query_resp = _recv_with_id(stdout_q, 4, TIMEOUT_QUERY, recent_lines)
-        if "error" in query_resp:
-            emit_fail("FATAL_QUERY_ERROR", error=query_resp["error"])
-        query_result = query_resp.get("result") or {}
-        if query_result.get("isError"):
-            tool_err = "".join(
-                b.get("text", "") for b in query_result.get("content", []) if b.get("type") == "text"
-            )
-            emit_fail("FATAL_QUERY_ISERROR", text=tool_err[:500])
-
-        # 6. Substring-verify the marker appears in the query response. Query
-        # results are typically wrapped as JSON text blocks; we serialize the
-        # full result and look for the marker string.
-        result_blob = json.dumps(query_result)
-        if marker_ts not in result_blob and marker_unique not in result_blob:
-            emit_fail("FATAL_MARKER_NOT_FOUND",
-                      marker_ts=marker_ts,
-                      marker_unique=marker_unique,
-                      first_chars=result_blob[:400])
-
-        # 7. Inspect stderr for the expansion-disabled warning (gateway.ts:334).
-        # This is non-fatal — query still works without expansion — but we
-        # surface it so the operator knows the Anthropic path didn't engage.
-        stderr_text = "".join(stderr_chunks).lower()
-        expansion_disabled = "expansion disabled" in stderr_text
-        # Also detect "anthropic" errors (auth failure, etc.) — surface them
-        anthropic_auth_err = (
-            "anthropic" in stderr_text and ("401" in stderr_text or "unauthor" in stderr_text)
-        )
-
-        emit_ok(
+    # The marker_ts must appear in the retrieved content. For get_page this
+    # is the page's compiled_truth field; for search/query this is the
+    # match snippet. String search is sufficient — we wrote MARKER_TS into
+    # the body in Step 5, so it should be retrievable verbatim.
+    if marker_ts not in get_text:
+        fail(
+            "MARKER_NOT_FOUND",
+            retrieve_tool=retrieve_tool,
             marker_ts=marker_ts,
-            put_tool=put_name,
-            query_tool=query_name,
-            tools_count=len(tool_names),
-            expansion_ok="no" if expansion_disabled else "yes",
-            anthropic_auth_warn="yes" if anthropic_auth_err else "no",
+            body=get_text[:200],
         )
 
-    finally:
-        try:
-            proc.terminate()
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            try:
-                proc.wait(timeout=2)
-            except Exception:
-                pass
-        # Surface stderr tail for forensics (parent script captures stdout for
-        # the RESULT line, stderr separately).
-        if stderr_chunks:
-            sys.stderr.write("--- gbrain stderr (tail) ---\n")
-            sys.stderr.write("".join(stderr_chunks)[-2000:])
-            if not stderr_chunks[-1].endswith("\n"):
-                sys.stderr.write("\n")
+    # ── Success ──
+    ok(
+        marker_ts=marker_ts,
+        put_tool="put_page",
+        retrieve_tool=retrieve_tool,
+        tools_count=len(tool_names),
+        server_version=server_mcp_version,
+        sidecar_version=server_version,
+        chunks=chunks,
+    )
 
 
 if __name__ == "__main__":

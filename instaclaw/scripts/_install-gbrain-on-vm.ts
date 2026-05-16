@@ -21,8 +21,13 @@ import { Client } from "ssh2";
 import { createClient } from "@supabase/supabase-js";
 
 // ── Pinned versions (single source of truth) ──
-const GBRAIN_PINNED_COMMIT = "2ea5b71";   // gbrain master @ v0.28.1
-const GBRAIN_PINNED_VERSION = "0.28.1";
+// HTTP sidecar architecture (Rule 35, 2026-05-16). MUST stay in sync with
+// lib/vm-reconcile.ts:GBRAIN_PINNED_{COMMIT,VERSION}. The wrapper duplicates
+// these here rather than importing from lib/ because scripts/ runs outside
+// Next.js bundle context.
+// Bumped from stdio v0.28.1 (commit 2ea5b71) to HTTP v0.35.0.0 (baf1a47).
+const GBRAIN_PINNED_COMMIT = "baf1a47";
+const GBRAIN_PINNED_VERSION = "0.35.0.0";
 
 // ── Env loading ──
 for (const f of [
