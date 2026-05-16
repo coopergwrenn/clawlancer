@@ -1,19 +1,19 @@
 # Changelog — generated 2026-05-16
 
-Window: `9e65073a6fab3276e0521c7ec1c63bd014b28005` → `HEAD` (HEAD = `4bc963dd`)
+Window: `4bc963dd8dd69ddd62a269724c8ae1d4b20251a6` → `HEAD` (HEAD = `b289f07c`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 4bc963dd8dd69ddd62a269724c8ae1d4b20251a6 -->
+<!-- LAST_GENERATED_SHA: b289f07ca2e8c103f502ecc2406d0b41049d22ed -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `4bc963dd` 2026-05-16 — feat(coverage): SECRET_ENV_VAR_SOURCES rollout monitor (Rule 27) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
-- `955eeb05` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `b289f07c` 2026-05-16 — db: revert view additions from Phase 2 triggers migration; ship preflight script [3 files] _(multi: [infrastructure, docs])_
+- `0568d097` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `4bc963dd` 2026-05-16 — feat(coverage): SECRET_ENV_VAR_SOURCES rollout monitor (Rule 27) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `b289f07c` 2026-05-16 — db: revert view additions from Phase 2 triggers migration; ship preflight script [3 files] _(multi: [infrastructure, docs])_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `955eeb05` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `0568d097` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `4bc963dd` 2026-05-16 — [reconciler, infrastructure, edge] — feat(coverage): SECRET_ENV_VAR_SOURCES rollout monitor (Rule 27)
-
-## AI-assisted commits (1)
-
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
-
-- `4bc963dd` 2026-05-16 — feat(coverage): SECRET_ENV_VAR_SOURCES rollout monitor (Rule 27)
+- `b289f07c` 2026-05-16 — [infrastructure, docs] — db: revert view additions from Phase 2 triggers migration; ship preflight script
 
 ## Appendix — every commit (chronological)
 
-- `955eeb05` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `4bc963dd` 2026-05-16 — feat(coverage): SECRET_ENV_VAR_SOURCES rollout monitor (Rule 27) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `0568d097` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `b289f07c` 2026-05-16 — db: revert view additions from Phase 2 triggers migration; ship preflight script [3 files] _(multi: [infrastructure, docs])_
