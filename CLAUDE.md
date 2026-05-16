@@ -1033,6 +1033,54 @@ For any new PR that adds a column to `instaclaw_vms` representing on-disk state,
 
 If the answers are not present in the PR diff or description, the PR is incomplete. The 2026-05-12 incident's 8 stuck users existed because three separate code paths (configure atomic write, configure rollback, route handler's vmUpdate) each looked locally correct, but composed into a state machine that could persistently lie.
 
+### 35. gbrain MCP Must Run as Persistent HTTP Sidecar — Never Stdio Spawn
+
+gbrain (Garry Tan's PGLite-native memory) is the agent's long-term memory store. It MUST run as a persistent `systemd --user` service exposing MCP over loopback HTTP, and OpenClaw MUST connect to it via `transport: streamable-http`. The stdio-spawn pattern (where OpenClaw launches gbrain as a child process per-session) is BANNED — it has unfixable cold-start, hallucination, and session-killing failure modes that have cost paying-customer hours.
+
+#### The 2026-05-15 vm-050 canary
+
+Before (stdio spawn, v0.28.1): every session that needed gbrain re-spawned `bun run .../cli.ts serve`. PGLite open + bun runtime + Anthropic SDK init + MCP handshake = **90+ second cold-start.** OpenClaw's `connectionTimeoutMs` timed out, the session got marked failed, strip-thinking.py trimmed it (Rule 22), users saw "Something went wrong." Worse: the agent sometimes saw a missing tool result, hallucinated a save ("I saved that to memory"), and built false confidence that data was persisted when it wasn't (Rule 28/29). Plus a v0.28.1 stdin-EOF race condition (fixed upstream in v0.34.1.0 via `MCP_STDIO=1`) that killed handshakes mid-init.
+
+After (HTTP sidecar, v0.35.0.0): `/health` 7-9ms, `/mcp` initialize 37-49ms, `put_page` write 564ms, `get_page` read 47ms, full agent turn 6.8s end-to-end (vs 90+ before). Subsequent messages: same-minute responses. Zero cold-start. Single PID per VM. Loopback-only bind. Full PRD: `instaclaw/docs/prd/gbrain-http-sidecar-fleet-rollout.md`.
+
+#### Mandatory architecture
+
+1. **gbrain runs as `systemd --user gbrain.service`** with `Restart=always`, `MemoryMax=2500M`, `TasksMax=50`. ExecStart is `bun run .../gbrain/src/cli.ts serve --http --port 3131`. No `--public-url`, no `--enable-dcr` (we don't need OAuth Dynamic Client Registration).
+2. **gbrain v0.35.0.0 binds 127.0.0.1 by default.** Verify with `ss -lnpt | grep 3131` — must show `127.0.0.1:3131`, never `0.0.0.0:3131`. External-IP probe to 3131 MUST be refused.
+3. **OpenClaw's `mcp.servers.gbrain` MUST be `transport: "streamable-http"`** with `url: "http://127.0.0.1:3131/mcp"`, `headers: {"Authorization": "Bearer gbrain_<hex>"}`, `connectionTimeoutMs: 5000`. The stdio shape (`command`/`args`/`env`) is BANNED on any new VM.
+4. **Bearer token lives in the gbrain PGLite `access_tokens` table.** Plaintext stored at `~/.gbrain/openclaw-bearer-token.txt` mode 600.
+5. **Token creation uses direct PGLite INSERT, not `gbrain auth create`.** v0.35.0.0's `gbrain auth create` uses bare `postgres()` client and fails on PGLite with `ECONNREFUSED ::1:5432`. Workaround documented in PRD; upstream fix is a one-line swap to `engine.executeRaw`.
+6. **`GBRAIN_DATABASE_URL` env var MUST NOT be set.** v0.35.0.0 reads engine config from `~/.gbrain/config.json` and rejects `pglite://...` URL format in the env var.
+7. **gbrain MUST be installed from `https://github.com/garrytan/gbrain.git`, NOT npm.** The npm package `gbrain` at v1.3.1 is a typosquat (stormcolor/gbrain, "GPU JavaScript Library for Machine Learning"). Real gbrain is git-clone-only.
+8. **openclaw.json flip MUST be atomic + backed up + verified-after-restart** per Rules 5, 22, 34. Write to `openclaw.json.tmp`, `jq empty` validate, `mv` into place. Keep `.pre-http-sidecar-flip-<ts>.bak`. After gateway restart, poll `/health=200` for up to 60s. If unhealthy, restore backup and restart. Also grep journal for `GATEWAY_ROLLBACK_TRIGGERED` (Rule 34).
+
+#### Banned patterns
+
+- `mcp.servers.gbrain` with `command`/`args`/`env` keys (stdio spawn) on any new VM.
+- `bun install -g gbrain` or `npm install -g gbrain` — typosquat. Always `git clone https://github.com/garrytan/gbrain.git`.
+- `GBRAIN_DATABASE_URL=pglite://...` in any systemd unit or shell environment.
+- Running `gbrain auth create` against a PGLite brain — silently fails. Use direct PGLite INSERT until upstream fixes.
+- Binding gbrain to 0.0.0.0 for any reason. If external access ever needed: Tailscale or reverse proxy with auth — never bare-Internet 3131.
+- Multiple gbrain processes per VM. The sidecar is singular; `ps -ef | grep gbrain` must show exactly one.
+
+#### Detection rule
+
+Coverage query (P1 followup per Rule 27): for every healthy+assigned VM, verify (a) `systemctl --user is-active gbrain.service` returns `active`, (b) port 3131 bound to 127.0.0.1, (c) external-IP probe to 3131 is refused, (d) `jq '.mcp.servers.gbrain.transport' openclaw.json` returns `"streamable-http"`, (e) PGLite `access_tokens` table has at least one un-revoked row matching openclaw.json's `Authorization` header. Failure on any = Rule 23 / Rule 34 lying-DB regression.
+
+#### Existing-VM caveat
+
+When this rule conflicts with an existing stdio `mcp.servers.gbrain` entry on a VM with real user-memory data in `brain.pglite`, data preservation takes precedence (Rules 22, 30). Do NOT wipe an existing brain to "fix" it. Either leave the VM on stdio + cold-start problem until the v0.28→v0.35 PGLite migration wedge is solved upstream, OR implement a surgical schema upgrade that preserves user data. Cooper's call. Fleet-wide rollout to existing VMs is gated on this resolution; new-VM rollout via snapshot bake is not.
+
+#### Sidecar lifecycle gotcha (IR finding 2026-05-16)
+
+**SIGTERM CORRUPTS PGLite. SIGKILL produces RECOVERABLE state.** Counterintuitive. The bug is NOT missing graceful shutdown — gbrain has a proper handler chain (SIGTERM → `engine.disconnect()` → `db.close()` → `releaseLock` → `process.exit(0)`). The bug lives inside PGLite's `db.close()`: it writes something during close that corrupts the data directory so the next WASM init fails. SIGKILL skips the broken close-path; the WAL replays cleanly on next boot.
+
+Implications:
+- The `install-gbrain.sh` Phase E1 path uses `pkill -KILL` (not `pkill -TERM` or `systemctl stop` which sends the unit's `KillSignal`); Phase E5 sets `KillSignal=SIGKILL` in the unit file so operator-driven `systemctl stop/restart/reload` ALSO uses SIGKILL.
+- For freeze-thaw archival, use PGLite's native `engine.db.dumpDataDir("gzip")` for HOT backup without stopping (IR finding) — exposed as an MCP/admin endpoint would be ideal but doesn't exist yet upstream.
+- Any future code that does stop+restart WITHOUT wipe MUST use SIGKILL.
+- File upstream issue with @electric-sql/pglite when bandwidth allows: `db.close()` corrupts the data directory; reproducible on v0.4.5 against gbrain v0.35.0.0.
+
 ---
 
 ## Incident Response Runbook
@@ -2274,7 +2322,36 @@ None of these check **whether the npm dependencies are actually installed and re
 
 **Detection rule**: any new `process.env.X_API_KEY` / `X_TOKEN` / `X_SECRET` reference added to the codebase must be matched by an entry in `SECRET_VERIFIERS`. If a verifier endpoint isn't available (e.g., partner hasn't shipped their auth-check API), use a shape check + a `TODO when partner ships smoke-test endpoint` comment — but never ship the secret without at least the shape check.
 
-### Freeze pipeline — $1,450/mo leak with zero successful freezes in system history (RESOLVED 2026-05-15)
+### Freeze pipeline — $1,450/mo leak with zero successful freezes in system history (RESOLVED 2026-05-15; ARCHITECTURE PIVOT 2026-05-16)
+
+**Status update 2026-05-16-PM:** Rules 50/51/52 (the Linode-image cleanup-gated approach) stopped the bleeding but did not unblock the actual leak — production VMs accumulate 10-30 GB of irreducible user/platform state that cannot fit under Linode's 6,144 MB private-image cap even with maximum-safe cleanup. Empirical PGLite verification on vm-050 then revealed a second bug: gbrain v0.35.0.0's SIGTERM-mediated graceful shutdown corrupts PGLite-WASM state (counterintuitively, SIGKILL produces recoverable state; SIGTERM does not). The original tarball-the-disk archive design is dead.
+
+**New canonical design: Path 2 (archive-based freeze).** See `instaclaw/docs/prd/freeze-thaw-v2-archive-based.md` §15 (architecture) + §16 (locked decisions). Summary:
+
+- Stop snapshotting the entire 20 GB disk. Archive only user-irreplaceable state (~5-50 MB compressed): brain.pglite (via gbrain's native `dumpDataDir` hot-snapshot method), workspace, sessions, .env, wallet, openclaw.json, auth-profiles.json, bearer token.
+- Encrypt outer tar with AES-256-GCM (`lib/freeze-encryption.ts`), key id versioned for rotation.
+- Upload to Cloudflare R2 (`lib/r2-storage.ts`). $0 egress, S3-compatible SDK, swap-out path preserved.
+- Freeze itself just deletes the Linode instance after archive verified — no `cleanupDiskForFreeze`, no `recoverInstanceAfterFailedFreeze`, no SSH at freeze time. Rules 51 and 52 become moot for freeze-v2.
+- Thaw provisions fresh VM from base snapshot, then layers the archive onto an EMPTY PGLite dir BEFORE first gbrain start (avoids the SIGTERM-corrupted-WASM-reload bug).
+- gbrain dependency: needs a new MCP `snapshot_brain` tool that exposes `dumpDataDir`. Freeze-v2 ships once gbrain terminal lands this.
+
+**Path 2 substrate shipped 2026-05-16:**
+- Migration `20260516180000_freeze_v2_columns.sql` adds 8 NULLABLE columns (state machine, archive path/sha256/size/manifest/timestamp, thaw_requested_at, frozen_retention_policy) + 2 partial indexes. Zero behavior impact on existing fleet.
+- `lib/r2-storage.ts` — S3-SDK wrapper for R2 (putObject, getObject, deleteObject, objectExists, listObjectsByPrefix). 250 lines.
+- `lib/freeze-encryption.ts` — AES-256-GCM with key_id versioning from day 1. selfTest passes; 8-case local crypto test passes (round-trip on 0-5MB, tamper detection, too-short rejection, invalid key_id rejection, fresh-IV-per-encrypt).
+- `scripts/_verify-freeze-v2-infra.ts` — 12-step end-to-end smoke test (encrypt → upload → list → download → sha256-verify → decrypt → delete → confirm-gone). Cooper runs after configuring R2 + Vercel env.
+
+**Required Vercel env vars for substrate** (set before Phase 2 ships):
+- `R2_ACCOUNT_ID` — Cloudflare account ID
+- `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` — R2 API token credentials (scope: single bucket)
+- `R2_BUCKET` — e.g., `instaclaw-frozen-archives`
+- `FREEZE_ARCHIVE_KEY_CURRENT` — `v1` for first release
+- `FREEZE_ARCHIVE_KEY_V1` — `openssl rand -hex 32` output (64 hex chars). **Back this up offline.** Losing the key = all archives unrecoverable.
+
+**Original 2026-05-15 incident report below — preserved for historical context.**
+
+---
+
 
 **Incident summary**. From the freeze cron's first deployment through 2026-05-15, **not a single VM** was ever frozen successfully on the InstaClaw fleet. Across 7 days of production logs: 935 lifecycle-log entries, 918 `freeze_skipped_safety`, 17 `freeze_failed`, **0 `frozen`**. 50 VMs sat in `status=assigned + health_status=suspended` past their 3-day freeze grace window — paying Linode $29/mo each (~$1,450/mo total) for instances whose owners cancelled weeks ago. 17 of those 50 were left **offline-on-Linode but still billing**: failed freezes shut the instance down, the one-shot boot-back-up recovery silently failed, and the cron retried every hour observing `ssh-fail` on an instance with no OS running.
 
@@ -2374,6 +2451,41 @@ When imagize fails (any reason — over-cap silently, transient Linode error, ti
 - Treating successful `bootInstance` as proof the instance came up. Always follow with `waitForInstanceStatus("running", ...)` and confirm.
 
 **Detection rule**: any code path that issues `shutdownInstance` followed by a destructive operation (imagize, disk delete, etc.) MUST be paired with a `recoverInstanceAfterFailedFreeze` (or equivalent retry-with-alert) on the failure branch. If the destructive operation can leave the instance in any state other than the intended terminal state, the recovery is mandatory. Code review: grep for `shutdownInstance` and refuse the diff if any callsite lacks a recovery path that escalates to P0 alert on persistent failure.
+
+### Rule 53 — freeze-v2 archive bytes ALWAYS go through `lib/freeze-encryption.ts`
+
+Every byte written to or read from the R2 freeze-archive bucket MUST flow through `encrypt()` / `decrypt()` in `lib/freeze-encryption.ts`. Plaintext archive contents (wallet private keys, MEMORY.md, session jsonl, auth-profiles.json) MUST NEVER be uploaded to R2 in any form.
+
+**Why**: archive contents include crypto wallet private keys (loss = funds gone, theft = funds drained). R2 server-side encryption is on by default, but client-side AES-256-GCM is defense in depth against (a) Cloudflare insider access, (b) misconfigured R2 bucket policy, (c) accidentally-published R2 API token, (d) a future R2 breach. The marginal cost is one `encrypt(buf)` call per archive (~50ms on a 50 MB blob).
+
+**How to apply**:
+- Archive cron, freeze cron, thaw cron, GDPR delete endpoint, retention-sweep cron, ANY future code that touches the bucket → import from `lib/freeze-encryption.ts` and `lib/r2-storage.ts`. Never construct your own `S3Client` or call `crypto.createCipheriv` directly for freeze-archive bytes.
+- The `key_id` returned from `encrypt()` MUST be recorded in `instaclaw_vms.frozen_archive_manifest.encryption_key_id` so decrypt can find the right key during rotation.
+- Rotate `FREEZE_ARCHIVE_KEY_CURRENT` annually. Bump the version (e.g., `v1` → `v2`), add `FREEZE_ARCHIVE_KEY_V2` env var, set `FREEZE_ARCHIVE_KEY_CURRENT=v2`. New encrypts use v2; decrypts of old archives keep working via v1. Don't delete `FREEZE_ARCHIVE_KEY_V1` until all v1-encrypted archives have been re-encrypted or deleted.
+- **Back up the encryption key offline.** Losing `FREEZE_ARCHIVE_KEY_VN` = every archive encrypted with that version becomes permanently unrecoverable. Print it to paper and store with other cold-recovery secrets.
+
+**Banned patterns**:
+- Calling `putObject(key, plaintext)` without first running it through `encrypt()`. Diff review: grep for `putObject(` in the freeze code; every call must take a `ciphertext` Buffer, not raw user state.
+- Skipping the auth-tag check on decrypt. `AES-GCM` provides authenticated encryption; ignoring the tag (or catching `DecryptError` and proceeding with garbage) defeats the integrity guarantee.
+- Storing the encryption key in the archive itself. The key lives in Vercel env, never in R2.
+
+### Rule 54 — gbrain `systemctl stop` corrupts PGLite data dir; never use it for backup
+
+Empirically verified on vm-050 on 2026-05-16: `systemctl --user stop gbrain` produces an on-disk PGLite data dir that the next gbrain start CANNOT re-open ("PGLite failed to initialize its WASM runtime / Aborted()"). The shutdown code path in `serve.ts:beginShutdown` is logically correct (registers SIGTERM handler, calls `engine.disconnect()` → `db.close()` → `releaseLock()` → `process.exit(0)`); the resulting state is nonetheless broken. This is an upstream gbrain/PGLite v0.35.0.0 bug; we do not own a fix.
+
+Counterintuitively, `pkill -KILL -f 'gbrain.*serve'` (SIGKILL, used by `instaclaw/scripts/install-gbrain.sh:340`) produces a RECOVERABLE backup. The PRE-WIPE backup tarballs in `~/.gbrain/brain.pglite.PRE-WIPE-*.tar.gz` load cleanly when extracted onto a fresh VM.
+
+**Required pattern for ANY gbrain backup/archive operation:**
+
+- Use PGLite's native `engine.db.dumpDataDir("gzip")` exposed via gbrain's `snapshot_brain` MCP tool (or admin HTTP endpoint). This is the canonical hot-snapshot mechanism and does NOT require stopping gbrain.
+- If `snapshot_brain` is unavailable for some reason and a backup is absolutely required, use `pkill -KILL -f 'gbrain.*serve'` (SIGKILL) BEFORE the tar. Never `systemctl stop`. The backup must be paired with an immediate replacement/restore — don't leave gbrain dead.
+
+**Banned patterns**:
+- `systemctl --user stop gbrain` in any backup, archive, or migration flow. The post-stop data dir is unrecoverable. **The only legitimate use of systemctl stop for gbrain is when you're about to wipe the data dir entirely (e.g., install-gbrain.sh's wipe+reinit cycle), where the corrupted state doesn't matter because it's being replaced.**
+- "Just one more stop+restart to test something" — that's how vm-050 lost 15h of timmy memory on 2026-05-16. Always restore from a known-good backup if you need to verify gbrain restart behavior; never use the live data.
+- Adding any code that calls `stopGateway` / `systemctl --user stop gbrain` without a comment justifying why the data corruption doesn't matter at that callsite.
+
+**Detection rule**: grep for `systemctl.*stop.*gbrain` and `stopGateway` in any PR diff. Each callsite must have a code comment explaining why the post-stop state is acceptable (e.g., "wipe is the next step; corrupted state will be deleted anyway"). Empirical-test: vm-050 with the BROKEN preserved tarball at `~/.gbrain/brain.pglite.BROKEN-20260516T152817/` is the reference repro if anyone doubts this.
 
 ### Operational runbook: monthly freeze pipeline health audit
 
