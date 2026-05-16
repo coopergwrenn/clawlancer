@@ -1,35 +1,34 @@
 # Changelog — generated 2026-05-16
 
-Window: `f933a96e3bf799367eb62cc870ce426ac679ecd5` → `HEAD` (HEAD = `c67d55f5`)
+Window: `c67d55f5c6725970570850fc4288666cb81525b2` → `HEAD` (HEAD = `e6f16c57`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: c67d55f5c6725970570850fc4288666cb81525b2 -->
+<!-- LAST_GENERATED_SHA: e6f16c57ecafe4c8d84a21a7309b1613da7885a4 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
-- **Edge City partner:** 0
+- **Edge City partner:** 1
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
 
-_None in this window._
+- `e6f16c57` 2026-05-16 — docs: paste-ready privacy probe for D14/D15 Phase 2 triggers [2 files] _(multi: [edge, docs])_
 
 ## What changed under the hood
 
-- `c67d55f5` 2026-05-16 — fix(reconcile-fleet): secondary sort by sv ASC — unstick edge_city sv=0 cohort [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
-- `4cef6d0b` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `79ca6f43` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `c67d55f5` 2026-05-16 — fix(reconcile-fleet): secondary sort by sv ASC — unstick edge_city sv=0 cohort [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+_(none)_
 
 ### Infrastructure (0)
 
@@ -39,27 +38,21 @@ _(none)_
 
 _(none)_
 
-### Edge City partner (0)
+### Edge City partner (1)
 
-_(none)_
+- `e6f16c57` 2026-05-16 — docs: paste-ready privacy probe for D14/D15 Phase 2 triggers [2 files] _(multi: [edge, docs])_
 
 ### Docs / PRD only (1)
 
-- `4cef6d0b` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `79ca6f43` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `c67d55f5` 2026-05-16 — [reconciler, infrastructure, edge] — fix(reconcile-fleet): secondary sort by sv ASC — unstick edge_city sv=0 cohort
-
-## AI-assisted commits (1)
-
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
-
-- `c67d55f5` 2026-05-16 — fix(reconcile-fleet): secondary sort by sv ASC — unstick edge_city sv=0 cohort
+- `e6f16c57` 2026-05-16 — [edge, docs] — docs: paste-ready privacy probe for D14/D15 Phase 2 triggers
 
 ## Appendix — every commit (chronological)
 
-- `4cef6d0b` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `c67d55f5` 2026-05-16 — fix(reconcile-fleet): secondary sort by sv ASC — unstick edge_city sv=0 cohort [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `79ca6f43` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `e6f16c57` 2026-05-16 — docs: paste-ready privacy probe for D14/D15 Phase 2 triggers [2 files] _(multi: [edge, docs])_
