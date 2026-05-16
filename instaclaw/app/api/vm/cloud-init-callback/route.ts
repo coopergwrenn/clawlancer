@@ -76,14 +76,23 @@
  */
 // Cache-bust: 2026-05-15 — initial deploy of cloud-init-callback endpoint.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
-// Trivial workload: parse body + one DB UPDATE. 30s is generous.
-// Per CLAUDE.md Rule 11 + Vercel Fluid Compute headroom.
-export const maxDuration = 30;
+// 2026-05-16 bumped 30 → 300 to accommodate `after()` background TLS upgrade
+// (lib/ssh.ts:setupTLSBackground). The response itself still resolves in <1s
+// (parse + peek + atomic claim + 2 supplemental updates). The 300s budget is
+// reserved for the after()-block: GoDaddy DNS A record create + apt-get install
+// caddy + Caddyfile write + caddy restart. Empirically configure/route.ts uses
+// the same 300s ceiling for the same workload (line 11). Vercel bills actual
+// elapsed time, not the reservation, so the bump is cost-neutral on fast paths.
+//
+// Why 300 specifically: Rule 11 calls out 300s as the Vercel Pro max. apt-get
+// install on a cold Linode VM has hit 90-120s in observed runs; setupTLS itself
+// adds ~20-40s for Caddyfile + restart. 300s leaves headroom for slow days.
+export const maxDuration = 300;
 
 // ── Input validation regexes (mirror cloud-init-config for consistency) ──
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -429,7 +438,61 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
   }
 
-  // ── 6. Success — VM is now healthy + assigned + user onboarded ──
+  // ── 6. Background TLS upgrade (runs after response is sent) ──
+  //
+  // Mirrors the pool path's TLS hook at app/api/vm/configure/route.ts:681:
+  //
+  //     const tlsHostname = `${vm.id}.vm.instaclaw.io`;
+  //     after(async () => {
+  //       await setupTLSBackground(vm, tlsHostname);
+  //     });
+  //
+  // Without this block, cloud-init VMs stay on `http://{ip}:18789` indefinitely
+  // (the URL the callback wrote in step 4). setupTLSBackground is the SOLE
+  // TLS trigger in the codebase (no TLS cron exists) — without invoking it
+  // from the cloud-init flow, cloud-init VMs would NEVER upgrade to HTTPS.
+  //
+  // Failure semantics: setupTLSBackground NEVER throws (lib/ssh.ts:9746-9753
+  // wraps everything in try/catch and logs on failure). On TLS failure the VM
+  // stays on HTTP — functional, just not encrypted. Idempotent: the fast-path
+  // skip at lib/ssh.ts:9691 detects already-Caddied VMs and only updates the
+  // DB to HTTPS without re-running the install. Safe to invoke multiple times
+  // (e.g., setup.sh callback retries) without duplicating work.
+  //
+  // Dynamic import to keep lib/ssh.ts (9700+ lines, pulls node-ssh, ssh2)
+  // out of the callback route's cold-start bundle. The import only happens
+  // when after() fires (post-response), so the user-facing response latency
+  // is unaffected. Pattern matches the existing `await import("@/lib/security")`
+  // style for validateMiniAppToken in adjacent route files.
+  const vmRecord = {
+    id: (vm as { id: string }).id,
+    ip_address: ipAddress, // from §3 pre-claim peek
+    ssh_port: 22, // createUserVM Phase A INSERT sets this constant
+    ssh_user: "openclaw", // createUserVM Phase A INSERT sets this constant
+    assigned_to: userId, // from §4 atomic claim WHERE clause
+  };
+  const tlsHostname = `${(vm as { id: string }).id}.vm.instaclaw.io`;
+  // try/catch around after() is a test-compat shim — Next's after() throws
+  // "called outside a request scope" when invoked synthetically (integration
+  // tests calling POST directly without Next.js's AsyncLocalStorage context).
+  // In production, every invocation IS inside a request scope so this catch
+  // is never hit; the only effect is that integration tests can verify the
+  // rest of the response flow without the TLS background block crashing.
+  try {
+    after(async () => {
+      const { setupTLSBackground } = await import("@/lib/ssh");
+      await setupTLSBackground(vmRecord, tlsHostname);
+    });
+  } catch (e) {
+    logger.warn("cloud-init-callback: after() unavailable — TLS upgrade skipped this invocation", {
+      route: "vm/cloud-init-callback",
+      vmId: vmRecord.id,
+      hostname: tlsHostname,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
+  // ── 7. Success — VM is now healthy + assigned + user onboarded ──
   // The DB state transition is committed. Any downstream consumer (admin
   // dashboard, reconciler eligibility query, billing, etc.) sees the VM as
   // a live, healthy, user-assigned VM from this moment on. The user
