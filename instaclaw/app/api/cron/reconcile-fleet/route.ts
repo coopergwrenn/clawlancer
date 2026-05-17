@@ -230,6 +230,36 @@ const PER_VM_TIMEOUT_WARN_MS = Math.floor(PER_VM_TIMEOUT_MS * 0.8);
 // clears reconcile_quarantined_at to re-enable a VM after fixing root cause.
 const RECONCILE_QUARANTINE_THRESHOLD = 10;
 
+// 2026-05-17: persistent-failure alert threshold. Sits between the existing
+// counter==1 "first fire" early-warning and the counter>=K "auto-quarantine"
+// alert. At 3 consecutive failures (~9 min wall-clock on a 3-min cron tick),
+// the VM is past transient territory but still 7 cycles ahead of quarantine —
+// the right time to flag it for operator attention without waiting 30 min.
+// Dedup 12h per-VM so re-fires within the same incident don't spam.
+//
+// Why this exists: we have a "soft" first-fire alert at counter==1 and a
+// "hard" auto-quarantine alert at counter==K=10. In between, counters 2-9
+// were silent. The next structural bug (a 23h cron halt, a manifest stale-
+// bundle, a step regression) will produce VMs at counter=3-9 for 6-27 min
+// before quarantine. This alert turns that window into an operator signal.
+const RECONCILE_PERSISTENT_THRESHOLD = 3;
+const RECONCILE_PERSISTENT_DEDUP_HOURS = 12;
+
+// 2026-05-17: end-of-cron staleness sweep. Catches VMs the candidate query
+// isn't reaching at all — structurally distinct from the per-VM consecutive-
+// failure path (those VMs ARE being attempted; they're failing). A VM that
+// the batch isn't sweeping will have a stale or NULL reconcile_last_failure_at
+// AND a stale config_version. Single deduped summary alert because per-VM
+// would spam during the regression class that creates this state.
+//
+// "BEHIND_BY=5" allows up to 4 manifest bumps of natural lag before alerting
+// (since the cron tick rate naturally produces ~1 version of drift mid-bump).
+// "ATTEMPT_AGE_HOURS=2" is much larger than the cron's 3-min cadence — a
+// VM that hasn't seen a single attempt in 40 cycles is genuinely starved.
+const STALENESS_SWEEP_BEHIND_BY = 5;
+const STALENESS_SWEEP_ATTEMPT_AGE_HOURS = 2;
+const STALENESS_SWEEP_DEDUP_HOURS = 12;
+
 /**
  * Strict-mode allowlist. Comma-separated VM UUIDs. Any VM whose id is in
  * this set is reconciled in strict mode for this cron cycle:
@@ -411,7 +441,9 @@ export async function GET(req: NextRequest) {
     //   suspended VMs, which is the only remaining caller of that path).
     const { data: staleVms, error: queryErr } = await supabase
       .from("instaclaw_vms")
-      .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, secret_version, tier, api_mode, user_timezone, strict_hold_streak, partner, reconcile_consecutive_failures, index_user_id, index_api_key, index_provisioned_at, gbrain_enabled, edgeos_api_key")
+      // reconcile_first_failure_at added 2026-05-17 — the persistent-failure
+      // alert body shows "time since first failure" computed from this column.
+      .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, secret_version, tier, api_mode, user_timezone, strict_hold_streak, partner, reconcile_consecutive_failures, reconcile_first_failure_at, index_user_id, index_api_key, index_provisioned_at, gbrain_enabled, edgeos_api_key")
       .eq("status", "assigned")
       .eq("provider", "linode")
       .eq("health_status", "healthy")
@@ -761,6 +793,20 @@ export async function GET(req: NextRequest) {
               }),
             );
           }
+
+          // 2026-05-17: mid-tier "persistently failing" alert. Fires at
+          // counter>=3 but NOT at counter==K (quarantine path above handles
+          // that separately with its own alert key, so the !shouldQuarantine
+          // gate avoids double-mailing operators on the crossing tick).
+          // Different alert key from first-fire/quarantine, so its 12h
+          // dedup doesn't suppress those distinct signals.
+          if (newCounter >= RECONCILE_PERSISTENT_THRESHOLD && !shouldQuarantine) {
+            sendReconcilePersistentFailureAlert(supabase, vm, newCounter, auditResult.errors).catch((e) =>
+              logger.error("reconcile-fleet: persistent-fail alert dispatch failed", {
+                route: "cron/reconcile-fleet", vmId: vm.id, error: String(e),
+              }),
+            );
+          }
         } else {
           if (strict) strictClean++;
 
@@ -913,6 +959,18 @@ export async function GET(req: NextRequest) {
           );
         }
 
+        // 2026-05-17: mid-tier "persistently failing" alert (throw path).
+        // Mirror of the pushFailed-branch dispatch above — same trigger
+        // conditions, same dedup, same gate against double-mailing on the
+        // counter==K crossing tick.
+        if (newCounter >= RECONCILE_PERSISTENT_THRESHOLD && !shouldQuarantine) {
+          sendReconcilePersistentFailureAlert(supabase, vm, newCounter, [msg]).catch((e) =>
+            logger.error("reconcile-fleet: persistent-fail alert dispatch failed (throw path)", {
+              route: "cron/reconcile-fleet", vmId: vm.id, error: String(e),
+            }),
+          );
+        }
+
         // Preserve the original "audit failed" log line for backwards-compat
         // grep patterns + any existing alerting that keys on this string.
         logger.error("reconcile-fleet: audit failed", {
@@ -966,6 +1024,16 @@ export async function GET(req: NextRequest) {
       // without needing a follow-up DB query.
       response_strict_hold_streak_max = streakMaxThisBatch;
     }
+
+    // 2026-05-17: staleness sweep. Catch VMs the candidate query isn't
+    // reaching at all — structurally distinct from the per-VM failure
+    // alerts. Single deduped summary email (12h key). Never throws;
+    // failure to send the alert must not interrupt the response.
+    await runStalenessSweep(supabase).catch((e) =>
+      logger.error("reconcile-fleet: staleness sweep failed", {
+        route: "cron/reconcile-fleet", error: String(e),
+      }),
+    );
 
     const durationMs = Date.now() - startMs;
     logger.info("reconcile-fleet: batch complete", {
@@ -1601,3 +1669,281 @@ async function sendReconcileFailureAlert(
 // is correctly halting at the integrity gate. This redeploy pushes the current
 // v105 manifest into the function bundle. cv-lag for 131 VMs should drain to ≤5 over
 // the next ~20 ticks (1 hour) once Vercel picks up this commit.
+
+/**
+ * Mid-tier reconcile-failure alert. Fires when a VM has accumulated
+ * RECONCILE_PERSISTENT_THRESHOLD (3) consecutive failures but hasn't yet
+ * reached the auto-quarantine threshold (K=10). Fills the silent gap
+ * between the existing counter==1 first-fire alert and the counter==K
+ * quarantine alert.
+ *
+ * Trigger windows:
+ *   counter=1                → sendReconcileFailureAlert (first-fire)
+ *   counter=2                → silent (still plausibly transient)
+ *   counter=3 ... K-1        → sendReconcilePersistentFailureAlert (this fn)
+ *   counter>=K (=10)         → sendReconcileFailureAlert (quarantine)
+ *
+ * Dedup: 12h per-VM. The persistent and quarantine alerts use DIFFERENT
+ * alert_key prefixes, so a VM that fires at counter=3 then crosses K
+ * within the dedup window will still get the quarantine email — only
+ * subsequent persistent-tier re-fires are suppressed.
+ *
+ * Body includes:
+ *   - VM name + owner email (looked up best-effort from instaclaw_users)
+ *   - cv current vs manifest target
+ *   - consecutive failure count + wall-clock since first failure
+ *   - ticks remaining before auto-quarantine
+ *   - last error snippet (first 5 errors, 200 chars each)
+ *
+ * Never throws — caller fires-and-forgets via .catch(). Alert delivery
+ * failures must NEVER interrupt the cron.
+ */
+async function sendReconcilePersistentFailureAlert(
+  supabase: SupabaseClient,
+  vm: {
+    id: string;
+    name: string | null;
+    config_version: number | null;
+    assigned_to?: string | null;
+    reconcile_first_failure_at?: string | null;
+  },
+  counter: number,
+  errors: string[],
+): Promise<void> {
+  const alertKey = `reconcile_failure_persistent:${vm.id}`;
+  const cutoff = new Date(
+    Date.now() - RECONCILE_PERSISTENT_DEDUP_HOURS * 60 * 60 * 1000,
+  ).toISOString();
+  const { count: recent } = await supabase
+    .from("instaclaw_admin_alert_log")
+    .select("id", { count: "exact", head: true })
+    .eq("alert_key", alertKey)
+    .gte("sent_at", cutoff);
+  if ((recent ?? 0) > 0) {
+    logger.info("reconcile-fleet: persistent-fail alert suppressed (12h dedup)", {
+      route: "cron/reconcile-fleet", vmId: vm.id, alertKey, counter,
+    });
+    return;
+  }
+
+  // Best-effort owner email lookup. Surfacing the email in the alert
+  // turns "vm-852 failing" into "Doug Rathell's vm-725 is failing" —
+  // saves the operator a SQL join during triage. Failure mode here is
+  // non-fatal: a missing email still gets the alert dispatched with
+  // "(unknown)".
+  let ownerEmail = "(unknown)";
+  if (vm.assigned_to) {
+    try {
+      const { data: u } = await supabase
+        .from("instaclaw_users")
+        .select("email")
+        .eq("id", vm.assigned_to)
+        .maybeSingle();
+      if (u?.email) ownerEmail = u.email;
+    } catch {
+      // best-effort only
+    }
+  }
+
+  // Time-since-first-failure for the body. If first_failure_at is NULL
+  // (race with reset, or upstream select missed the column) fall back to
+  // the counter × cron-cadence approximation.
+  let sinceFirstStr = `${counter} ticks (~${counter * 3} min, cron is every 3 min)`;
+  if (vm.reconcile_first_failure_at) {
+    const ms = Date.now() - new Date(vm.reconcile_first_failure_at).getTime();
+    if (ms > 0) {
+      const min = Math.round(ms / 60000);
+      sinceFirstStr =
+        min < 90 ? `${min} min` : `${(min / 60).toFixed(1)} hours`;
+    }
+  }
+
+  const ticksToQuarantine = Math.max(
+    0,
+    RECONCILE_QUARANTINE_THRESHOLD - counter,
+  );
+
+  const subject = `[InstaClaw] reconcile persistently failing — ${vm.name ?? vm.id.slice(0, 8)} (${counter} consecutive failures)`;
+  const body = [
+    `VM ${vm.name ?? vm.id} (${vm.id}) has failed reconcile ${counter} times in a row over the last ${sinceFirstStr}.`,
+    "",
+    `This is past transient territory — the same step is likely failing every cycle. Investigate before the VM auto-quarantines at counter=${RECONCILE_QUARANTINE_THRESHOLD} (${ticksToQuarantine} more ticks).`,
+    "",
+    `vm:                  ${vm.name ?? "(unnamed)"}`,
+    `vm_id:               ${vm.id}`,
+    `owner_email:         ${ownerEmail}`,
+    `cv:                  ${vm.config_version ?? 0}`,
+    `manifest:            v${VM_MANIFEST.version}`,
+    `consecutive failures: ${counter}`,
+    `time since first fail: ${sinceFirstStr}`,
+    `ticks until quarantine: ${ticksToQuarantine}`,
+    "",
+    "Recent errors (most recent reconcile cycle):",
+    ...errors.slice(0, 5).map((e) => `  ${e.slice(0, 200)}`),
+    "",
+    "Triage:",
+    `  SELECT name, config_version, reconcile_consecutive_failures, reconcile_first_failure_at, reconcile_last_error FROM instaclaw_vms WHERE id = '${vm.id}';`,
+    "",
+    "If the failing step is acceptable (e.g. partner skill install on a non-partner VM, optional sidecar), reclassify it from result.errors to result.warnings per Rule 39. Otherwise fix the root cause; then either wait for natural success or manually reset:",
+    `  UPDATE instaclaw_vms SET reconcile_consecutive_failures = 0, reconcile_first_failure_at = NULL, reconcile_last_error = NULL WHERE id = '${vm.id}';`,
+    "",
+    `Dedup: ${RECONCILE_PERSISTENT_DEDUP_HOURS}h via alert_key="${alertKey}". Same-VM persistent-tier alerts within this window will be suppressed; quarantine-tier (counter>=${RECONCILE_QUARANTINE_THRESHOLD}) uses a different key and is NOT suppressed.`,
+  ].join("\n");
+
+  await supabase.from("instaclaw_admin_alert_log").insert({
+    alert_key: alertKey,
+    vm_count: 1,
+    details: `sent: ${subject}`,
+  });
+
+  await sendAdminAlertEmail(subject, body);
+  logger.info("reconcile-fleet: persistent-failure alert dispatched", {
+    route: "cron/reconcile-fleet",
+    vmId: vm.id,
+    alertKey,
+    counter,
+    ticksToQuarantine,
+  });
+}
+
+/**
+ * End-of-cron staleness sweep. Catches the failure mode that's
+ * STRUCTURALLY DISTINCT from the per-VM consecutive-failure path:
+ * VMs the candidate query isn't reaching at all. A VM that's being
+ * attempted every cycle but failing will have a fresh
+ * reconcile_last_failure_at (set inside recordReconcileFailure); a VM
+ * the batch isn't sweeping will have NULL or stale last-failure.
+ * Filtering by "no recent attempt" cleanly isolates the silently-not-
+ * reached cohort.
+ *
+ * Why this is a separate signal: the per-VM alert fires on ANY VM that
+ * keeps failing, but says nothing about VMs that never get touched
+ * (because they're starved out by a slow per-VM timeout, or excluded
+ * by an unintended filter, or stuck at cv=current despite needing
+ * work). Without this sweep, the next "23h cron halt"-class structural
+ * bug would create another silent-stuck cohort just like before.
+ *
+ * Without a generic last-attempt timestamp column on instaclaw_vms,
+ * "no recent attempt" is approximated as:
+ *   reconcile_last_failure_at IS NULL OR reconcile_last_failure_at < (now - 2h)
+ *
+ * Excludes:
+ *   - non-healthy / non-assigned VMs (suspended/hibernating don't need to
+ *     be reconciled until they're paid back into service)
+ *   - quarantined VMs (already covered by the quarantine-tier alert)
+ *
+ * Single deduped summary alert (12h key) — per-VM granularity would spam
+ * during a structural regression that strands many VMs at once.
+ *
+ * Never throws — caller wraps in .catch().
+ */
+async function runStalenessSweep(supabase: SupabaseClient): Promise<void> {
+  const behindCutoff = VM_MANIFEST.version - STALENESS_SWEEP_BEHIND_BY;
+  const attemptCutoff = new Date(
+    Date.now() - STALENESS_SWEEP_ATTEMPT_AGE_HOURS * 60 * 60 * 1000,
+  ).toISOString();
+
+  // 200-row cap is generous — if more than 200 VMs are stale, the
+  // operator has bigger problems than the alert payload size, and the
+  // sample below will still surface the worst-behind cohort.
+  const { data, error } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name, config_version, reconcile_last_failure_at, assigned_to")
+    .eq("status", "assigned")
+    .eq("health_status", "healthy")
+    .lt("config_version", behindCutoff)
+    .is("reconcile_quarantined_at", null)
+    .or(
+      `reconcile_last_failure_at.is.null,reconcile_last_failure_at.lt.${attemptCutoff}`,
+    )
+    .limit(200);
+
+  if (error) {
+    logger.warn("reconcile-fleet: staleness sweep query failed", {
+      route: "cron/reconcile-fleet", error: error.message,
+    });
+    return;
+  }
+  const stale = data ?? [];
+  if (stale.length === 0) {
+    logger.info("reconcile-fleet: staleness sweep clean", {
+      route: "cron/reconcile-fleet",
+      manifestVersion: VM_MANIFEST.version,
+      behindCutoff,
+      attemptCutoffH: STALENESS_SWEEP_ATTEMPT_AGE_HOURS,
+    });
+    return;
+  }
+
+  // 12h dedup keyed by a fixed string (summary alert, not per-VM).
+  const alertKey = "reconcile_staleness_sweep";
+  const dedupCutoff = new Date(
+    Date.now() - STALENESS_SWEEP_DEDUP_HOURS * 60 * 60 * 1000,
+  ).toISOString();
+  const { count: recent } = await supabase
+    .from("instaclaw_admin_alert_log")
+    .select("id", { count: "exact", head: true })
+    .eq("alert_key", alertKey)
+    .gte("sent_at", dedupCutoff);
+  if ((recent ?? 0) > 0) {
+    logger.info("reconcile-fleet: staleness sweep alert suppressed (12h dedup)", {
+      route: "cron/reconcile-fleet", vmCount: stale.length,
+    });
+    return;
+  }
+
+  // Sort by cv ascending → the most-behind VMs surface in the sample.
+  const samples = stale
+    .slice()
+    .sort((a, b) => (a.config_version ?? 0) - (b.config_version ?? 0))
+    .slice(0, 20);
+
+  const subject = `[InstaClaw] reconcile staleness sweep — ${stale.length} VMs silently stuck`;
+  const bodyLines = [
+    `${stale.length} assigned+healthy VMs are >= ${STALENESS_SWEEP_BEHIND_BY} versions behind manifest v${VM_MANIFEST.version} AND have no reconcile attempt logged in the last ${STALENESS_SWEEP_ATTEMPT_AGE_HOURS}h.`,
+    "",
+    "This is the silently-not-reached failure mode — STRUCTURALLY DISTINCT from active reconcile failures (those fire per-VM 'persistent failure' alerts because the counter is ticking). Likely causes:",
+    "  • The candidate query is excluding these VMs by an unintended filter",
+    "  • Per-VM timeout is short enough that batches starve some VMs (Rule 44 territory)",
+    "  • A prior bug (Rule 23 lying-DB, Rule 44 strict-deadline) marked cv ahead of actual disk state",
+    "  • cv was manually set ahead of actual on-disk state by an admin script",
+    "",
+    `Sample (showing ${samples.length} of ${stale.length}, sorted by cv ascending):`,
+    ...samples.map((v) => {
+      const lastFail = v.reconcile_last_failure_at ?? "never";
+      return `  ${v.name ?? v.id.slice(0, 8)}: cv=${v.config_version ?? 0}, last_failure=${lastFail}`;
+    }),
+    ...(stale.length > samples.length
+      ? [`  ... and ${stale.length - samples.length} more`]
+      : []),
+    "",
+    "Investigation query:",
+    `  SELECT name, config_version, reconcile_last_failure_at, reconcile_last_error, reconcile_quarantined_at`,
+    `  FROM instaclaw_vms`,
+    `  WHERE status='assigned' AND health_status='healthy' AND config_version < ${behindCutoff}`,
+    `    AND reconcile_quarantined_at IS NULL`,
+    `    AND (reconcile_last_failure_at IS NULL OR reconcile_last_failure_at < (now() - interval '${STALENESS_SWEEP_ATTEMPT_AGE_HOURS} hours'))`,
+    `  ORDER BY config_version ASC, name ASC;`,
+    "",
+    "Recovery options (in priority order):",
+    "  1. Manually trigger /api/cron/reconcile-fleet to walk the batch with these VMs prioritized.",
+    "  2. If a specific cohort is excluded by a filter, audit the candidate query in route.ts.",
+    `  3. For known good-state VMs falsely flagged (lying-DB-LOW per Root Cause 3): UPDATE instaclaw_vms SET config_version = ${VM_MANIFEST.version} WHERE name IN (...);`,
+    "",
+    `Dedup: ${STALENESS_SWEEP_DEDUP_HOURS}h via alert_key="${alertKey}".`,
+  ];
+
+  await supabase.from("instaclaw_admin_alert_log").insert({
+    alert_key: alertKey,
+    vm_count: stale.length,
+    details: `${stale.length} VMs >= ${STALENESS_SWEEP_BEHIND_BY} behind v${VM_MANIFEST.version}, last_attempt > ${STALENESS_SWEEP_ATTEMPT_AGE_HOURS}h ago`,
+  });
+
+  await sendAdminAlertEmail(subject, bodyLines.join("\n"));
+  logger.warn("reconcile-fleet: staleness sweep alert dispatched", {
+    route: "cron/reconcile-fleet",
+    vmCount: stale.length,
+    behindCutoff,
+    attemptAgeHours: STALENESS_SWEEP_ATTEMPT_AGE_HOURS,
+  });
+}
