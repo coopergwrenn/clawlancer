@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-17
 
-Window: `8b62b5a251e9f52d1de127b7b39ff7c0590c9640` → `HEAD` (HEAD = `dbcfa484`)
+Window: `dbcfa4842368c62c624152d129629c3e2389b07d` → `HEAD` (HEAD = `1e5fe3c2`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: dbcfa4842368c62c624152d129629c3e2389b07d -->
+<!-- LAST_GENERATED_SHA: 1e5fe3c2a4006f89ae22860c2beeffc1c75a0e2f -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `dbcfa484` 2026-05-17 — chore(reconcile-fleet): @vercel/nft cache-bust for v101 stale-bundle halt [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `e1fb7f54` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
+- `1e5fe3c2` 2026-05-17 — db: promote village dual-channel triggers — Phase 2 applied to prod 2026-05-17 [2 files] _(ai-assisted)_
+- `fc0975fc` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `dbcfa484` 2026-05-17 — chore(reconcile-fleet): @vercel/nft cache-bust for v101 stale-bundle halt [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `1e5fe3c2` 2026-05-17 — db: promote village dual-channel triggers — Phase 2 applied to prod 2026-05-17 [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `e1fb7f54` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `dbcfa484` 2026-05-17 — [reconciler, infrastructure] — chore(reconcile-fleet): @vercel/nft cache-bust for v101 stale-bundle halt
+- `fc0975fc` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `dbcfa484` 2026-05-17 — chore(reconcile-fleet): @vercel/nft cache-bust for v101 stale-bundle halt
+- `1e5fe3c2` 2026-05-17 — db: promote village dual-channel triggers — Phase 2 applied to prod 2026-05-17
 
 ## Appendix — every commit (chronological)
 
-- `e1fb7f54` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
-- `dbcfa484` 2026-05-17 — chore(reconcile-fleet): @vercel/nft cache-bust for v101 stale-bundle halt [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `fc0975fc` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
+- `1e5fe3c2` 2026-05-17 — db: promote village dual-channel triggers — Phase 2 applied to prod 2026-05-17 [2 files] _(ai-assisted)_
