@@ -1,29 +1,28 @@
 # Changelog — generated 2026-05-17
 
-Window: `8b8a8acd6c26bf1c2d0691136e9ccd931e4f1628` → `HEAD` (HEAD = `d9e69ddc`)
+Window: `d9e69ddcfea5c54389a90fb703de0ee343f25937` → `HEAD` (HEAD = `1817e1f5`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: d9e69ddcfea5c54389a90fb703de0ee343f25937 -->
+<!-- LAST_GENERATED_SHA: 1817e1f5fb7848f8edccde82f8cdc67113a87098 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
-- **Edge City partner:** 0
+- **Edge City partner:** 1
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 0
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-_None in this window._
+- `1817e1f5` 2026-05-17 — db: promote village Phase 3.5 (display_name + self-toggle + sprite hash) — applied to prod 2026-05-17 [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `d9e69ddc` 2026-05-17 — feat(cron): reconcile-stuck-vms — Tier 3 recovery for cohort excluded from main reconcile [2 files]
-- `3c786128` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
+- `79082e14` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,23 +30,29 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `d9e69ddc` 2026-05-17 — feat(cron): reconcile-stuck-vms — Tier 3 recovery for cohort excluded from main reconcile [2 files]
+_(none)_
 
 ### Feature (user-facing) (0)
 
 _(none)_
 
-### Edge City partner (0)
+### Edge City partner (1)
 
-_(none)_
+- `1817e1f5` 2026-05-17 — db: promote village Phase 3.5 (display_name + self-toggle + sprite hash) — applied to prod 2026-05-17 [2 files] _(ai-assisted)_
 
 ### Docs / PRD only (1)
 
-- `3c786128` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
+- `79082e14` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
+
+## AI-assisted commits (1)
+
+Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+
+- `1817e1f5` 2026-05-17 — db: promote village Phase 3.5 (display_name + self-toggle + sprite hash) — applied to prod 2026-05-17
 
 ## Appendix — every commit (chronological)
 
-- `3c786128` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
-- `d9e69ddc` 2026-05-17 — feat(cron): reconcile-stuck-vms — Tier 3 recovery for cohort excluded from main reconcile [2 files]
+- `79082e14` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
+- `1817e1f5` 2026-05-17 — db: promote village Phase 3.5 (display_name + self-toggle + sprite hash) — applied to prod 2026-05-17 [2 files] _(ai-assisted)_
