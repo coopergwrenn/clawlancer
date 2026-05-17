@@ -1,58 +1,71 @@
-# Changelog — generated 2026-05-16
+# Changelog — generated 2026-05-17
 
-Window: `c67d55f5c6725970570850fc4288666cb81525b2` → `HEAD` (HEAD = `e6f16c57`)
-Total commits: 2
+Window: `e6f16c57ecafe4c8d84a21a7309b1613da7885a4` → `HEAD` (HEAD = `512947a5`)
+Total commits: 4
 
-<!-- LAST_GENERATED_SHA: e6f16c57ecafe4c8d84a21a7309b1613da7885a4 -->
+<!-- LAST_GENERATED_SHA: 512947a50f29d35e1a0b201cf628ebd70bb40d02 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 2
 - **Feature (user-facing):** 0
-- **Edge City partner:** 1
+- **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 0
+- AI-assisted commits (co-authored): 2
 - Merge commits: 0
 
 ## What changed for users
 
-- `e6f16c57` 2026-05-16 — docs: paste-ready privacy probe for D14/D15 Phase 2 triggers [2 files] _(multi: [edge, docs])_
+_None in this window._
 
 ## What changed under the hood
 
-- `79ca6f43` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `f5bbd3d3` 2026-05-16 — fix(privacy-bridge): path-fallback resolution for build-inlined __dirname [1 files] _(ai-assisted)_
+- `e67bccd7` 2026-05-16 — chore: redeploy for cloud-init self-test (CLOUD_INIT_ONDEMAND_ENABLED=true) [0 files]
+- `2381503e` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `512947a5` 2026-05-17 — feat(monitoring): stuck-unhealthy-customer-alert cron + INC-20260517 doc [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
 
-_(none)_
+- `512947a5` 2026-05-17 — feat(monitoring): stuck-unhealthy-customer-alert cron + INC-20260517 doc [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
 
-### Infrastructure (0)
+### Infrastructure (2)
 
-_(none)_
+- `f5bbd3d3` 2026-05-16 — fix(privacy-bridge): path-fallback resolution for build-inlined __dirname [1 files] _(ai-assisted)_
+- `e67bccd7` 2026-05-16 — chore: redeploy for cloud-init self-test (CLOUD_INIT_ONDEMAND_ENABLED=true) [0 files]
 
 ### Feature (user-facing) (0)
 
 _(none)_
 
-### Edge City partner (1)
+### Edge City partner (0)
 
-- `e6f16c57` 2026-05-16 — docs: paste-ready privacy probe for D14/D15 Phase 2 triggers [2 files] _(multi: [edge, docs])_
+_(none)_
 
 ### Docs / PRD only (1)
 
-- `79ca6f43` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `2381503e` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `e6f16c57` 2026-05-16 — [edge, docs] — docs: paste-ready privacy probe for D14/D15 Phase 2 triggers
+- `512947a5` 2026-05-17 — [reconciler, infrastructure, docs] — feat(monitoring): stuck-unhealthy-customer-alert cron + INC-20260517 doc
+
+## AI-assisted commits (2)
+
+Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+
+- `f5bbd3d3` 2026-05-16 — fix(privacy-bridge): path-fallback resolution for build-inlined __dirname
+- `512947a5` 2026-05-17 — feat(monitoring): stuck-unhealthy-customer-alert cron + INC-20260517 doc
 
 ## Appendix — every commit (chronological)
 
-- `79ca6f43` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
-- `e6f16c57` 2026-05-16 — docs: paste-ready privacy probe for D14/D15 Phase 2 triggers [2 files] _(multi: [edge, docs])_
+- `2381503e` 2026-05-16 — chore(changelog): auto-update [skip ci] [2 files]
+- `f5bbd3d3` 2026-05-16 — fix(privacy-bridge): path-fallback resolution for build-inlined __dirname [1 files] _(ai-assisted)_
+- `e67bccd7` 2026-05-16 — chore: redeploy for cloud-init self-test (CLOUD_INIT_ONDEMAND_ENABLED=true) [0 files]
+- `512947a5` 2026-05-17 — feat(monitoring): stuck-unhealthy-customer-alert cron + INC-20260517 doc [3 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
