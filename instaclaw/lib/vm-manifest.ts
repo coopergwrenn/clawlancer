@@ -1384,8 +1384,14 @@ export const VM_MANIFEST = {
    * without the new ExecStartPre invocation on next cycle. Existing
    * synthetic toolResult events on disk remain (harmless — they're
    * valid Anthropic-shape events; the runtime accepts them as real).
+   *
+   * v102 — 2026-05-17 — canonicalize gbrain memory protocol into AGENTS.md
+   * on every VM with gbrain installed. Closes the 7-of-8-edge-city-VMs
+   * distribution gap from the SOUL.md canary diagnosis. Marker-guarded
+   * (GBRAIN_MEMORY_PROTOCOL_V1) via stepDeployGbrainSoulProtocol.
+   * Source: workspace-templates-v2.GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK.
    */
-  version: 101,
+  version: 102,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

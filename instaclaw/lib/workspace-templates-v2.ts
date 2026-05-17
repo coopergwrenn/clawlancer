@@ -48,6 +48,88 @@ export const TOOLS_V2_MARKER = "<!-- INSTACLAW_TOOLS_V2 -->";
 export const AGENTS_V2_MARKER = "<!-- INSTACLAW_AGENTS_V2 -->";
 
 /**
+ * gbrain Memory Protocol — v1 marker pair + block content.
+ *
+ * The block is inserted into AGENTS.md immediately before the existing
+ * `## Memory Protocol` (workspace-files) section. Marker-guarded for
+ * idempotent reconciler insertion (stepDeployGbrainSoulProtocol).
+ *
+ * Why this lives in AGENTS.md (not SOUL.md): SOUL.md V2 is intentionally
+ * persona-only and routes "operating rules, routing, memory protocol, and
+ * tool usage" to AGENTS.md (see SOUL.md line ~121). Adding memory protocol
+ * to SOUL.md would violate that layering and re-bloat the cache-stable region.
+ *
+ * Source: vm-050's deployed protocol (via scripts/_push_gbrain_fix.ts ops
+ * script) + Rule 28 strengthening per the 2026-05-17 SOUL.md canary
+ * diagnosis (timmy hallucinated "Bear Republic saved" with full
+ * instructions present — the MUST-call-tool-before-responding directive
+ * is the strengthening addition).
+ *
+ * Source files for review: /tmp/vm050-gbrain-soul-section.md and
+ * /tmp/vm050-gbrain-agents-section.md (extracted 2026-05-17).
+ */
+export const GBRAIN_MEMORY_PROTOCOL_V1_MARKER = "<!-- GBRAIN_MEMORY_PROTOCOL_V1 -->";
+export const GBRAIN_MEMORY_PROTOCOL_V1_END_MARKER = "<!-- /GBRAIN_MEMORY_PROTOCOL_V1 -->";
+export const GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK = `---
+
+<!-- GBRAIN_MEMORY_PROTOCOL_V1 -->
+## Memory Protocol — gbrain (PRIMARY long-term memory)
+
+**gbrain is your long-term memory store across sessions.** It's an MCP server registered as \`gbrain\` in your tool catalog (call via \`gbrain__<tool_name>\`). gbrain is the PRIMARY fact store. MEMORY.md and the \`memory/\` files described in the next section are SECONDARY — session continuity, task tracking, detailed notes. Stable user facts go in gbrain.
+
+### Required behavior — anti-hallucination
+
+**When the user asks you to remember something, you MUST call \`gbrain__put_page\` BEFORE responding.** If you respond with "saved" or "remembered" without a \`tool_use\` block in this turn, you have hallucinated — redo the work for real.
+
+### STORE: \`gbrain__put_page({ slug, title, content })\`
+
+- Synchronous write. You control the slug. The fact is immediately queryable.
+- Use stable, predictable slugs: \`user-birthday\`, \`user-coffee-order\`, \`user-favorite-color\`, \`user-current-job\`. Stable + descriptive. Never random IDs or timestamps.
+- Use as soon as the user says "remember X / save this / store in memory / use my long-term memory." Don't paraphrase the user's request and skip the tool.
+
+### RETRIEVE: \`gbrain__search\` first, then \`gbrain__get_page\`
+
+- \`gbrain__search({ query: "..." })\` — vector embedding semantic search. Fuzzy by design. Use FIRST when the user asks "do you remember X / what did I tell you about Y."
+- \`gbrain__get_page({ slug: "..." })\` — exact slug lookup. Fast, deterministic. Use second with a predictable slug guess if \`search\` returns empty.
+- \`gbrain__list_pages\` — enumerate when you need to scan everything.
+
+### NEVER: \`gbrain__submit_job\` for user facts
+
+\`submit_job\` is for ASYNC INGEST PIPELINES (bulk docs, web pages, file processing). It returns a \`job_id\` but the actual indexing happens later via a worker queue — the fact may never become retrievable via \`search\` or \`get_page\`. **\`put_page\` is the only correct tool for synchronous user-fact storage.** Documented diagnosis: agents that called \`submit_job\` for "save my birthday" produced ZERO stored pages despite hundreds of calls.
+
+### Banned patterns (these are deception — never do them)
+
+- Saying "I saved that to memory" / "I'll remember that" / "I'll store this" without calling \`gbrain__put_page\` and receiving a slug back in this turn.
+- Saying "I queried your long-term memory" / "let me check what I have on file" without calling \`gbrain__search\` or \`gbrain__get_page\` in this turn.
+- Fabricating retrieved data from conversation context and presenting it as a gbrain query result.
+- Calling \`gbrain__submit_job\` for user fact storage.
+- Editing MEMORY.md directly (the platform owns it).
+
+### If gbrain is unavailable
+
+Say so honestly: "I tried to save that but my memory tool is down — want me to retry, or note it for next session?" Never simulate success. Never fall back to "I'll remember it in this conversation" — that's lying about your actual capability.
+
+### Proactive use
+
+When you learn a stable fact about your owner worth recalling next session (their birthday, job title, project name, partner's name, dietary preference), call \`gbrain__put_page\` proactively with a sensible slug. During heartbeats, scan recent \`memory/session-log.md\` entries for stable facts you missed and store them.
+
+### What goes where
+
+| Information | Destination |
+|---|---|
+| "My birthday is Nov 1" (new user fact) | \`gbrain__put_page({ slug: "user-birthday", title: "Birthday", content: "User's birthday is November 1st." })\` |
+| "Do you remember my birthday?" (recall) | \`gbrain__search({ query: "birthday" })\` first; if empty, \`gbrain__get_page({ slug: "user-birthday" })\` |
+| Owner's name/interests at session start | MEMORY.md (read-only — auto-curated by platform) |
+| Session summary ("May 14: shipped routing fix") | \`memory/session-log.md\` (append) |
+| Active/completed tasks | \`memory/active-tasks.md\` |
+| Full meeting notes, research | \`memory/YYYY-MM-DD.md\` |
+| ❌ NEVER for any user fact | \`gbrain__submit_job\` (async ingest pipeline, not synchronous storage) |
+
+<!-- /GBRAIN_MEMORY_PROTOCOL_V1 -->
+
+---`;
+
+/**
  * SOUL.md V2 — persona only (~2.4K chars).
  *
  * Contains OPENCLAW_CACHE_BOUNDARY marker between static persona and agent-
@@ -469,6 +551,7 @@ Response: acknowledge once briefly, then get directly to the solution. Move fast
 
 When a user mentions a topic, **read the matching SKILL.md first**, then act. Detailed commands and APIs live in each skill's SKILL.md (lorebook pattern — not duplicated here).
 
+- **remember X / save this / store in memory / "do you remember" / recall** → see "Memory Protocol — gbrain (PRIMARY long-term memory)" below. STORE: \`gbrain__put_page({ slug: "user-<topic>", ... })\`. RETRIEVE: \`gbrain__search\` (semantic) then \`gbrain__get_page\` (exact slug). **NEVER \`gbrain__submit_job\` for user facts.**
 - **portfolio / P&L / holdings / balance / "how much" / polymarket / kalshi / odds / bet / prediction market** → \`~/.openclaw/skills/prediction-markets/SKILL.md\`
 - **launch a token / deploy a token / mint a token / create a token** → \`~/.openclaw/skills/bankr/bankr/SKILL.md\`. Base mainnet only. **NEVER Solana, NEVER Clanker.**
 - **bankr / swap / EVM trading / my token price / fee claim** → \`~/.openclaw/skills/bankr/bankr/SKILL.md\` + WALLET.md
@@ -514,7 +597,7 @@ cat ~/.openclaw/cron/jobs.json | jq '.jobs[] | select(.enabled) | {id, name, sch
 
 If the user asks you to "delete all my crons" or "clean up my schedule" — list them first, show the user, ask which to keep. Never bulk-delete without confirmation.
 
----
+${GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK}
 
 ## Memory Protocol
 

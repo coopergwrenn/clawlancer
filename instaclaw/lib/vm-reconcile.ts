@@ -15,6 +15,7 @@
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
 import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, AGENTKIT_CLI_PINNED_VERSION, BANKR_SKILL_PATCH_MARKER, BANKR_SKILL_PATCH_DIRECTIVE, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, PRCTL_SUBREAPER_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
 import { INSTALL_GBRAIN_SH, VERIFY_GBRAIN_MCP_PY } from "./gbrain-scripts-content";
+import { GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK } from "./workspace-templates-v2";
 import {
   DISPATCH_SCRIPTS,
   DISPATCH_SERVER_JS,
@@ -611,6 +612,16 @@ export async function reconcileVM(
     // Idempotent via SOUL_STUB_*_MARKER substrings.
     currentStep = "v92-partner-stub-rewrite";
     await stepRewriteSoulPartnerSections(ssh, vm, result, dryRun);
+
+    // ── v102: gbrain memory protocol canonicalization ──
+    // Inserts GBRAIN_MEMORY_PROTOCOL_V1 block before "## Memory Protocol"
+    // in AGENTS.md, gated on gbrain.service active. Idempotent via marker.
+    // Source: workspace-templates-v2.GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK.
+    // Why: vm-050 had the gbrain protocol from a manual ops script; the
+    // other 7 edge_city VMs had ZERO instructions despite having gbrain
+    // installed. This step closes that gap fleet-wide.
+    currentStep = "gbrain-soul-protocol";
+    await stepDeployGbrainSoulProtocol(ssh, result, dryRun);
 
     // ── Step 8f5: Edge skill InstaClaw overlay (edge_city VMs only) ──
     // Writes ~/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md with
@@ -6964,6 +6975,177 @@ out({
       sizeBytes: parsed.size_bytes,
     });
   }
+}
+
+/**
+ * stepDeployGbrainSoulProtocol — v102 migration to canonicalize the gbrain
+ * memory protocol into AGENTS.md on every VM that has gbrain installed.
+ *
+ * Why this exists: vm-050 had a manually-deployed gbrain protocol (via
+ * scripts/_push_gbrain_fix.ts ops script) but the other 7 edge_city VMs
+ * had ZERO gbrain instructions despite having gbrain installed. Their
+ * agents saw put_page/search/get_page in the MCP tool catalog but had no
+ * SOUL.md/AGENTS.md routing telling them WHEN to use them — agents fell
+ * back to MEMORY.md edits or pure hallucination (the 2026-05-17 Bear
+ * Republic canary, where timmy claimed "saved" with no tool call).
+ *
+ * Gate: gbrain.service must be active on the VM. Universal (not partner-
+ * specific): if gbrain rolls out beyond edge_city, the protocol propagates
+ * automatically.
+ *
+ * Idempotency: GBRAIN_MEMORY_PROTOCOL_V1 marker check. Skip if present.
+ *
+ * Rule 22: backs up AGENTS.md to ~/.openclaw/backups/v102-gbrain-soul-
+ * protocol-<ts>/AGENTS.md BEFORE any modification.
+ *
+ * Rule 23: atomic write (tmp + os.replace). Marker-verify after write.
+ *
+ * Source of the inserted block: lib/workspace-templates-v2.ts
+ * GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK constant. ~4.1KB of content,
+ * includes Rule 28 "MUST call gbrain__put_page BEFORE responding"
+ * anti-hallucination directive.
+ */
+async function stepDeployGbrainSoulProtocol(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // ── Gate: gbrain.service must be active on this VM ──
+  const probe = await ssh.execCommand(
+    `${HEAL_DBUS_PREFIX} && systemctl --user is-active gbrain.service 2>&1 | head -1`,
+    { execOptions: { timeout: 5_000 } } as any,
+  );
+  const active = (probe.stdout || "").trim() === "active";
+  if (!active) {
+    // Silent skip — not an error. Just means this VM doesn't have gbrain.
+    return;
+  }
+
+  // ── Marker probe ──
+  const check = await ssh.execCommand(
+    `grep -c "GBRAIN_MEMORY_PROTOCOL_V1" ~/.openclaw/workspace/AGENTS.md 2>/dev/null || echo 0`,
+  );
+  const present = parseInt((check.stdout || "0").trim(), 10) > 0;
+  if (present) {
+    result.alreadyCorrect.push("gbrain-soul-protocol (V1 marker present)");
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push("[dry-run] gbrain-soul-protocol: would insert GBRAIN_MEMORY_PROTOCOL_V1 block before ## Memory Protocol in AGENTS.md");
+    return;
+  }
+
+  // ── Python in-place insert with backup + atomic write + verify ──
+  const cfg = JSON.stringify({
+    agents_path: "~/.openclaw/workspace/AGENTS.md",
+    backup_path: `~/.openclaw/backups/v102-gbrain-soul-protocol-${Date.now()}/AGENTS.md`,
+    block: GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK,
+    insert_before_header: "## Memory Protocol",
+    marker: "GBRAIN_MEMORY_PROTOCOL_V1",
+  });
+  const PATCH_PY = `
+import json, os, sys
+
+cfg = json.loads(sys.stdin.read())
+path = os.path.expanduser(cfg["agents_path"])
+
+def out(d):
+    print(json.dumps(d))
+    sys.exit(0)
+
+if not os.path.exists(path):
+    out({"status": "missing"})
+
+with open(path) as f:
+    content = f.read()
+original = content
+
+# Idempotency: skip if marker already present (defense in depth — caller
+# also checks, but a race between two reconcile runs could bypass that).
+if cfg["marker"] in content:
+    out({"status": "already-present"})
+
+# Rule 22 backup BEFORE any modification.
+bp = os.path.expanduser(cfg["backup_path"])
+os.makedirs(os.path.dirname(bp), exist_ok=True)
+with open(bp, "w") as f:
+    f.write(original)
+
+# Locate insertion point: line equal to the header. If missing, append
+# to EOF as a fallback — never destructive, never overwrite.
+header = cfg["insert_before_header"]
+lines = content.split("\\n")
+idx = -1
+for i, line in enumerate(lines):
+    if line.strip() == header.strip():
+        idx = i
+        break
+
+block = cfg["block"]
+if idx >= 0:
+    new_content = "\\n".join(lines[:idx]) + "\\n" + block + "\\n" + "\\n".join(lines[idx:])
+    inserted_at = "before-header"
+else:
+    new_content = content.rstrip() + "\\n\\n" + block + "\\n"
+    inserted_at = "appended-eof"
+
+# Atomic write per Rule 22.
+tmp = path + ".tmp"
+with open(tmp, "w") as f:
+    f.write(new_content)
+os.replace(tmp, path)
+
+# Verify marker is now present.
+with open(path) as f:
+    final = f.read()
+if cfg["marker"] not in final:
+    out({"status": "verify-failed", "inserted_at": inserted_at})
+
+out({"status": "ok", "inserted_at": inserted_at, "size_before": len(original), "size_after": len(final)})
+`;
+
+  const scriptB64 = Buffer.from(PATCH_PY, "utf-8").toString("base64");
+  const cfgB64 = Buffer.from(cfg, "utf-8").toString("base64");
+  const cmd = `echo '${cfgB64}' | base64 -d | python3 <(echo '${scriptB64}' | base64 -d)`;
+
+  const r = await ssh.execCommand(cmd, { execOptions: { timeout: 30_000 } });
+  if (r.code !== 0) {
+    result.errors.push(
+      `gbrain-soul-protocol python failed rc=${r.code}: ${(r.stderr || r.stdout).slice(0, 200)}`,
+    );
+    return;
+  }
+
+  const lines = (r.stdout || "").split("\n").map((l: string) => l.trim()).filter(Boolean);
+  const lastLine = lines[lines.length - 1] ?? "";
+  let parsed: { status?: string; inserted_at?: string; size_before?: number; size_after?: number } = {};
+  try {
+    parsed = JSON.parse(lastLine);
+  } catch {
+    result.errors.push(`gbrain-soul-protocol: could not parse python output: ${lastLine.slice(0, 200)}`);
+    return;
+  }
+
+  if (parsed.status === "missing") {
+    result.errors.push("gbrain-soul-protocol: AGENTS.md missing — configureOpenClaw should have created it");
+    return;
+  }
+  if (parsed.status === "already-present") {
+    result.alreadyCorrect.push("gbrain-soul-protocol (marker found by python)");
+    return;
+  }
+  if (parsed.status === "verify-failed") {
+    result.errors.push(`gbrain-soul-protocol: verify-after-write failed (inserted_at=${parsed.inserted_at})`);
+    return;
+  }
+  if (parsed.status === "ok") {
+    result.fixed.push(
+      `gbrain-soul-protocol: inserted block ${parsed.inserted_at} (AGENTS.md ${parsed.size_before} → ${parsed.size_after} bytes)`,
+    );
+    return;
+  }
+  result.errors.push(`gbrain-soul-protocol: unexpected status=${parsed.status}`);
 }
 
 /**
