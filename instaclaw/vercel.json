@@ -6,6 +6,10 @@
       "schedule": "*/2 * * * *"
     },
     {
+      "path": "/api/cron/stuck-unhealthy-customer-alert",
+      "schedule": "*/30 * * * *"
+    },
+    {
       "path": "/api/cron/process-pending",
       "schedule": "*/10 * * * *"
     },
