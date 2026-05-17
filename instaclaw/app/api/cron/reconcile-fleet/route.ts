@@ -1,3 +1,13 @@
+// ─── @vercel/nft cache-bust: 2026-05-17 03:xx UTC ─────────────────────────
+// Forces re-trace after v101 stale-bundle recurrence (stale_bundle:9a4afc5c8d0e5348
+// fired 4x in 24h at 6h cadence — most recent 2026-05-16 19:27 UTC). v101
+// manifest bumped 2026-05-16 19:07 EDT (commit 48af5075) but Vercel bundle
+// kept serving v100; integrity check halted reconcile-fleet, only 6/149 VMs
+// advanced to cv=101 over ~5h. Manual touch + push needed because husky
+// pre-commit hook didn't fire on the orphan-tool_use commit. Pre-bake-check
+// found via scripts/_pre-bake-check.ts on 2026-05-16 (T-7 days before v101
+// bake on 5/23). Re-add on future incidents.
+
 // ─── @vercel/nft cache-bust: 2026-05-15 16:30 UTC ─────────────────────────
 // Forces re-trace after v100 stale-bundle halt (stale_bundle:9a4afc5c8d0e5348,
 // fired 15:12 UTC). Runtime bundle was at v99 while main has v100. Rule 44
