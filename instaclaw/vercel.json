@@ -10,6 +10,10 @@
       "schedule": "*/30 * * * *"
     },
     {
+      "path": "/api/cron/stuck-vm-auto-recover",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/process-pending",
       "schedule": "*/10 * * * *"
     },

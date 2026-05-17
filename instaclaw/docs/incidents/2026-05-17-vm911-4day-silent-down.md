@@ -127,9 +127,34 @@ Schedule: `*/30 * * * *` (registered in `vercel.json`)
 Email template: uses existing `sendAdminAlertEmail` from `lib/email.ts`.
 Dedup: `instaclaw_admin_alert_log` (existing table, existing pattern).
 
-### Out of scope (separate follow-ups)
+### Shipped same-day (2026-05-17): auto-recovery cron
 
-- **Auto-recovery for 0-byte `openclaw.json`** — would detect on the VM and restore from the latest valid `.clobbered.<ts>` file. Belongs in either `cron/watchdog`'s recovery path or a new `cron/stuck-vm-recovery`. Designed as a sibling to the new alert cron (alert triggers human investigation; recovery cron is the automation).
+**`/api/cron/stuck-vm-auto-recover`** ships in the same session as a sibling to the alert cron.
+
+Pipeline:
+- Alert cron (every 30 min) pages humans at 1h-stuck.
+- Auto-recovery cron (every 15 min) waits another hour (2h-stuck total) before attempting automated fix.
+- Recovery is SCOPED to the 0-byte `openclaw.json` pattern only (this incident's signature). Any other failure mode → skip (`AUTO_RECOVERY_SKIP_NOT_ZERO_BYTE`); the alert cron continues paging humans.
+
+Recovery recipe (validated against vm-911 manual recovery 2026-05-17 00:22 UTC, embedded as a single atomic bash command via SSH):
+
+1. Confirm `openclaw.json` is exactly 0 bytes (false-positive guard).
+2. Find latest `openclaw.json.clobbered.<ISO-timestamp>` with size ≥100 bytes AND parses as valid JSON.
+3. Backup current 0-byte → `openclaw.json.zero-byte-bak.<ts>`.
+4. Copy clobbered → openclaw.json.
+5. `systemctl --user reset-failed openclaw-gateway` (clear `StartLimitBurst` cooldown).
+6. `systemctl --user restart openclaw-gateway`.
+7. Poll `is-active=active` AND `/health=200` for up to 120s.
+8. On success: update DB `health_status='healthy'`, page admin success email.
+9. On failure: page admin with specific failure code + remediation guidance.
+
+Safety: 1 attempt per VM per 24h via `instaclaw_admin_alert_log` dedup. MAX_VMS_PER_RUN=3 caps blast radius per cron tick. Backup is created BEFORE any mutation. The `connectSSH` duplicate-IP guard prevents writing to the wrong VM.
+
+End-to-end timing improvement:
+- vm-911 (manual): 98h to detection + 10min to recovery = **98h 10min total**
+- Post-fix: 2h to first recovery attempt + ~90s SSH-side execution = **~2h 1.5min worst case** (50× improvement on resolution time)
+
+### Out of scope (separate follow-ups)
 - **Reconciler should attempt unhealthy paying-customer VMs** — separate parallel pass at lower frequency (e.g., once/hour, max 5 VMs per run, with longer per-VM timeout). Lifts the route.ts:264 filter for a narrow subset without re-introducing the throughput collapse the filter was designed to prevent.
 - **Watchdog escalation when restart attempts repeatedly fail** — current `cron/watchdog` retries restart but does not page when the restart itself doesn't recover the gateway. Should emit a distinct alert: "watchdog attempted N restarts on vm-X across N hours, none succeeded."
 
