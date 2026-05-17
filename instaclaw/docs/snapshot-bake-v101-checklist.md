@@ -24,7 +24,7 @@ Material changes that justify the bake (in delta order — most important first)
 |---|---|---|---|
 | **gbrain** | not installed | v0.35.0.0 (commit baf1a47) at `~/gbrain`, bun installed, `bun link`'d, systemd unit installed (NOT started), fresh PGLite at schema v66, NO bearer token (per-VM mint at first reconcile) | Rule 35; `scripts/install-gbrain.sh` |
 | **OpenClaw** | 2026.4.26 | latest stable (TBD at bake time — re-pin at start) | `lib/vm-manifest.ts:OPENCLAW_PINNED_VERSION` |
-| **VM manifest** | v79 | v100 baseline | `lib/vm-manifest.ts:VM_MANIFEST.version` |
+| **VM manifest** | v79 | v101 baseline (orphan-tool_use repair landed 2026-05-16 via commit `48af5075`; superseded earlier v100 plan) | `lib/vm-manifest.ts:VM_MANIFEST.version` |
 | **Session-backup runaway** | broken (Rule 45 unfixed) | fixed in strip-thinking.py via cooldown + per-session cap | `lib/ssh.ts:STRIP_THINKING_SCRIPT` |
 | **TasksMax** | 75 | 120 (v86) | systemd override |
 | **prctl-subreaper** | absent | v0.1.1 installed (v87) | npm + systemd drop-in |
@@ -69,6 +69,26 @@ grep "GBRAIN_PINNED_" scripts/_install-gbrain-on-vm.ts | head -2
 ### §2.5 — No in-flight critical alerts
 - [ ] Confirm no P0/P1 alerts in `instaclaw_admin_alert_log` for the last 24h
 - [ ] Confirm reconcile-fleet cron is running cleanly (last 3 cycles successful, no quarantined VMs added in last 24h)
+
+### §2.6 — Run the pre-bake-check script (automated go/no-go)
+- [ ] `npx tsx scripts/_pre-bake-check.ts` returns exit 0 (or all CRITICAL blockers explicitly understood and accepted)
+
+The script verifies every §2 gate above plus:
+  - HEAD aligned with origin/main (Rule 12 — must not bake against stale code)
+  - LINODE_SNAPSHOT_ID matches expected source snapshot
+  - `GBRAIN_PINNED_*` aligned between `lib/vm-reconcile.ts` and `scripts/_install-gbrain-on-vm.ts`
+  - install-gbrain.sh + verify-gbrain-mcp.py parse cleanly
+  - Linode API reachable
+  - Supabase reachable
+  - Fleet cv distribution (warns if >20% of VMs at cv ≤ manifest-2)
+  - No quarantined VMs (watchdog OR reconcile-step)
+  - No stale cron locks (>2h)
+  - No STALE_BUNDLE alerts in 24h (Vercel cache freshness, P1-4 integrity check)
+  - No ENOSPC alerts in 24h (Rule 37)
+  - No VMs with `last_disk_pct ≥ 80%` (Rule 46)
+  - gbrain edge_city coverage 100% (Rule 35) — surfaces specific missing VMs
+
+See `§11` below for the script's findings as of 2026-05-16.
 
 ---
 
@@ -444,3 +464,72 @@ Failure scenarios we MUST avoid:
 - ✗ Two VMs provisioned with the same bearer (bake-VM bearer not stripped) — operationally weird, not a security issue on loopback but still wrong
 
 Each is covered by the verification gates above. If we hit any of them in soak, halt cutover.
+
+---
+
+## §11 — Pre-bake-check findings (2026-05-16, T-7 days)
+
+This section captures the result of running `scripts/_pre-bake-check.ts` against current prod state on 2026-05-16. Re-run the script at T-3 days (2026-05-20) and T-1 day (2026-05-22) to confirm none of the GO state has regressed.
+
+### §11.1 — Verified clean (CRITICAL gates passing)
+
+- [x] **Integrity fix landed.** `f49b4e68 fix(manifest-integrity): strip JS comments before parsing cronMarkers` on origin/main.
+- [x] **LINODE_SNAPSHOT_ID matches expected source.** `private/38575292` in `.env.local`.
+- [x] **GBRAIN_PINNED_* alignment.** Both `lib/vm-reconcile.ts` and `scripts/_install-gbrain-on-vm.ts` resolve to `0.35.0.0`/`baf1a47`.
+- [x] **gbrain install scripts parse cleanly.** Both `install-gbrain.sh` and `verify-gbrain-mcp.py` pass syntax check.
+- [x] **Linode API reachable.** `/v4/account` returns 200 for `coopergrantwrenn@gmail.com`.
+- [x] **Supabase reachable.** Fleet queries respond.
+- [x] **No quarantined VMs.** Neither `watchdog_quarantined_at` nor `reconcile_quarantined_at` set on any VM.
+- [x] **No ENOSPC alerts in 24h.** Rule 37 wrapper hasn't fired.
+- [x] **No VMs with `last_disk_pct ≥ 80%`.** Max observed = 79% (close to threshold but within bounds — monitor; no immediate action).
+- [x] **Disk-data coverage 100%.** 149/149 healthy+assigned VMs have a `last_disk_pct` reading; Rule 46 health-check is fully populated.
+- [x] **No stale cron locks.** Two `vercel-cron` rows, both <5 min old.
+- [x] **No stuck-onboarding alerts (Rule 33) in 24h.**
+- [x] **No `[P0] Freeze recovery FAILED` alerts (Rule 52) in 24h.**
+
+### §11.2 — Open blockers (must resolve before bake)
+
+- [ ] **STALE_BUNDLE alerts firing every ~6 hours in 24h.** Hash `9a4afc5c8d0e5348` triggered at 2026-05-15T23:51, 2026-05-16T05:54, 2026-05-16T11:57, 2026-05-16T19:27 UTC. Each indicates the Vercel-bundled reconcile-fleet cron is running with a stale manifest cache; the P1-4 integrity check is correctly halting reconciliation. **Impact:** 0/149 VMs advanced to cv=101 for the first ~4h after the manifest bump (only 6/149 have caught up by 2026-05-16 late evening). **Fix:** touch `app/api/cron/reconcile-fleet/route.ts` with a cache-bust comment + push, OR trigger a fresh Vercel production deploy. The husky pre-commit hook is supposed to auto-touch on `vm-manifest.ts` changes — if it hasn't fired, investigate the hook OR do the manual touch.
+- [ ] **gbrain edge_city coverage at 7/8 (88%).** `instaclaw-vm-923` reports `missing_gbrain` (architecture=none, V=missing, T=absent, S=inactive, P=0, K=109 — env var present but install never ran). Likely a fresh provision waiting for stepGbrain to land or for a manual install. **Fix:**
+    ```bash
+    cd /Users/cooperwrenn/wild-west-bots/instaclaw
+    npx tsx scripts/_install-gbrain-on-vm.ts instaclaw-vm-923
+    ```
+- [ ] **vm-354 30-min soak verification (§2.1).** Checkbox still open. Run the 5 soak checks manually: service active, bearer hash match, schema v66, put_page/get_page round-trip, openclaw.json transport=streamable-http. Cooper-action.
+
+### §11.3 — Operator-only action items (Cooper, not scriptable)
+
+- [ ] **Anthropic project-key spending cap on `GBRAIN_ANTHROPIC_API_KEY`.** Verify $300/mo cap at console.anthropic.com.
+- [ ] **HEAD aligned with origin/main in the bake-source repo.** Pre-bake-check on 2026-05-16 found drift on `/Users/cooperwrenn/wild-west-bots/`: HEAD=e6f16c57, main=2381503e (auto-changelog keeps moving origin/main, so this is a moving target). Before clicking Provision on May 23, run `git pull --ff-only origin main` from the main repo. Re-run the pre-bake-check after the pull.
+
+### §11.4 — Fleet state snapshot (2026-05-16)
+
+- Manifest: **v101** (bumped 2026-05-16 19:07 EDT via commit `48af5075`)
+- Fleet size: 149 healthy+assigned VMs
+- cv distribution: cv=101:6 (4%), cv=100:142 (95%), cv=95:1 (1%) — 95% lag is the visible result of the stale_bundle block; reconciler will converge once Vercel is redeployed
+- Disk-data coverage: 149/149 (100%) — Rule 46 health-check fully populated
+- Disk-pct: max 79% (one VM at the warning edge)
+- Last admin alert: 2026-05-16T23:07 `usage-anomaly-check:cost_spike` (not blocking the bake)
+- Active cron locks: 2 vercel-cron rows, both <5 min old (healthy)
+- gbrain edge_city: 7/8 (vm-923 needs install)
+
+### §11.5 — Re-run cadence
+
+Run `scripts/_pre-bake-check.ts` at these checkpoints:
+
+- **T-7 days (2026-05-16, today)** — initial sweep ✓ (recorded above)
+- **T-3 days (2026-05-20)** — confirm blockers in §11.2 are resolved
+- **T-1 day (2026-05-22)** — final go/no-go before provisioning the bake VM
+- **T+0 (2026-05-23, morning)** — last sanity check before clicking Provision
+
+The script is fast (~5s) and idempotent. Run as many times as needed. Exit code 0 = GO, 1 = NO-GO with named blockers, 2 = connectivity error.
+
+### §11.6 — Companion script
+
+Pre-bake-check lives at `instaclaw/scripts/_pre-bake-check.ts`. It is read-only — no mutations, no SSH writes. Safe to run from any operator's workstation as long as:
+
+- `instaclaw/.env.local` is loaded (has `LINODE_API_TOKEN`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`)
+- `instaclaw/.env.ssh-key` is loaded (has `SSH_PRIVATE_KEY_B64`) — required by the delegated `_coverage-gbrain-sidecar.ts` SSH probe
+- `node_modules` are installed (script uses `@supabase/supabase-js`)
+
+Falls back to the canonical `/Users/cooperwrenn/wild-west-bots/instaclaw/.env*` paths if relative .env loading fails, so it works from both the main repo and the changelog clone.
