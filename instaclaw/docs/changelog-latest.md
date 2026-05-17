@@ -1,19 +1,19 @@
 # Changelog — generated 2026-05-17
 
-Window: `1b64d18a88b89a06914c33f988b744219037b417` → `HEAD` (HEAD = `8b8a8acd`)
+Window: `8b8a8acd6c26bf1c2d0691136e9ccd931e4f1628` → `HEAD` (HEAD = `d9e69ddc`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 8b8a8acd6c26bf1c2d0691136e9ccd931e4f1628 -->
+<!-- LAST_GENERATED_SHA: d9e69ddcfea5c54389a90fb703de0ee343f25937 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
-- AI-assisted commits (co-authored): 1
+- **Docs / PRD only:** 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `7e96ed1f` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
-- `8b8a8acd` 2026-05-17 — db+docs: Phase 3.5 — display_name + self-toggle RLS + sprite hash default [2 files] _(ai-assisted)_
+- `d9e69ddc` 2026-05-17 — feat(cron): reconcile-stuck-vms — Tier 3 recovery for cohort excluded from main reconcile [2 files]
+- `3c786128` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `d9e69ddc` 2026-05-17 — feat(cron): reconcile-stuck-vms — Tier 3 recovery for cohort excluded from main reconcile [2 files]
 
 ### Feature (user-facing) (0)
 
@@ -43,18 +43,11 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `7e96ed1f` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
-- `8b8a8acd` 2026-05-17 — db+docs: Phase 3.5 — display_name + self-toggle RLS + sprite hash default [2 files] _(ai-assisted)_
-
-## AI-assisted commits (1)
-
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
-
-- `8b8a8acd` 2026-05-17 — db+docs: Phase 3.5 — display_name + self-toggle RLS + sprite hash default
+- `3c786128` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Appendix — every commit (chronological)
 
-- `7e96ed1f` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
-- `8b8a8acd` 2026-05-17 — db+docs: Phase 3.5 — display_name + self-toggle RLS + sprite hash default [2 files] _(ai-assisted)_
+- `3c786128` 2026-05-17 — chore(changelog): auto-update [skip ci] [2 files]
+- `d9e69ddc` 2026-05-17 — feat(cron): reconcile-stuck-vms — Tier 3 recovery for cohort excluded from main reconcile [2 files]
