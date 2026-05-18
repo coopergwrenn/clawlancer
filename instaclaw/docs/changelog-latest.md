@@ -1,35 +1,35 @@
 # Changelog — generated 2026-05-18
 
-Window: `0c92a7f73b68cf48ac57c2dc55e3bb582cb5839e` → `HEAD` (HEAD = `7840c193`)
-Total commits: 2
+Window: `7840c1930b623cd28880e29799a79ba92e4bcf0e` → `HEAD` (HEAD = `3f9b3015`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 7840c1930b623cd28880e29799a79ba92e4bcf0e -->
+<!-- LAST_GENERATED_SHA: 3f9b30151f4efff7cbf2e23f85c5e4dd61c4fd28 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
-- **Edge City partner:** 0
+- **Edge City partner:** 2
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 0
+- AI-assisted commits (co-authored): 2
 - Merge commits: 0
 
 ## What changed for users
 
-_None in this window._
+- `e35fd998` 2026-05-18 — docs(rule-54): SIGKILL is conditionally safe; document pg_resetwal recovery [2 files] _(multi: [edge, docs]; ai-assisted)_
+- `3f9b3015` 2026-05-18 — feat(gbrain): PGLite CHECKPOINT prevention — patch + cron + ExecStop hook [3 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `7840c193` 2026-05-18 — fix(bake): workspace bundle check used wrong file set + wrong cap [5 files] _(multi: [reconciler, infrastructure, edge, docs])_
-- `2eac6772` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `f76b6eda` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `7840c193` 2026-05-18 — fix(bake): workspace bundle check used wrong file set + wrong cap [5 files] _(multi: [reconciler, infrastructure, edge, docs])_
+_(none)_
 
 ### Infrastructure (0)
 
@@ -39,21 +39,30 @@ _(none)_
 
 _(none)_
 
-### Edge City partner (0)
+### Edge City partner (2)
 
-_(none)_
+- `e35fd998` 2026-05-18 — docs(rule-54): SIGKILL is conditionally safe; document pg_resetwal recovery [2 files] _(multi: [edge, docs]; ai-assisted)_
+- `3f9b3015` 2026-05-18 — feat(gbrain): PGLite CHECKPOINT prevention — patch + cron + ExecStop hook [3 files] _(ai-assisted)_
 
 ### Docs / PRD only (1)
 
-- `2eac6772` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `f76b6eda` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `7840c193` 2026-05-18 — [reconciler, infrastructure, edge, docs] — fix(bake): workspace bundle check used wrong file set + wrong cap
+- `e35fd998` 2026-05-18 — [edge, docs] — docs(rule-54): SIGKILL is conditionally safe; document pg_resetwal recovery
+
+## AI-assisted commits (2)
+
+Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+
+- `e35fd998` 2026-05-18 — docs(rule-54): SIGKILL is conditionally safe; document pg_resetwal recovery
+- `3f9b3015` 2026-05-18 — feat(gbrain): PGLite CHECKPOINT prevention — patch + cron + ExecStop hook
 
 ## Appendix — every commit (chronological)
 
-- `2eac6772` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `7840c193` 2026-05-18 — fix(bake): workspace bundle check used wrong file set + wrong cap [5 files] _(multi: [reconciler, infrastructure, edge, docs])_
+- `f76b6eda` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `e35fd998` 2026-05-18 — docs(rule-54): SIGKILL is conditionally safe; document pg_resetwal recovery [2 files] _(multi: [edge, docs]; ai-assisted)_
+- `3f9b3015` 2026-05-18 — feat(gbrain): PGLite CHECKPOINT prevention — patch + cron + ExecStop hook [3 files] _(ai-assisted)_
