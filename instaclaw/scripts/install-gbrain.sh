@@ -62,6 +62,9 @@
 #  22   FATAL_VERIFY_PY_MISSING
 #  23   FATAL_INSTALL_LOCK_HELD             (concurrent install attempt)
 #  24   FATAL_PORT_OWNED_BY_OTHER_PROCESS   (port 3131 bound by non-our-sidecar PID)
+#  25   FATAL_BEARER_SYNC_* (FAILED / VERIFY_FAILED / GATEWAY_UNHEALTHY)
+#       — Phase A surgical recovery path (BEARER_MISMATCH_DETECTED) ran but failed.
+#       See "Phase A6: bearer-mismatch surgical recovery" below for details.
 #
 # Co-deployed file requirement:
 #   verify-gbrain-mcp.py must be uploaded by the TS wrapper alongside this script,
@@ -168,12 +171,21 @@ if [ -z "$DISK_AVAIL_KB" ] || [ "$DISK_AVAIL_KB" -lt 10485760 ]; then
   exit 1
 fi
 
-# A5: idempotency check — four-state HTTP sidecar invariants (Rule 35).
+# A5: idempotency check — FIVE-state HTTP sidecar invariants (Rule 35 + Rule 58).
 #
-# All four MUST be true to short-circuit to ALREADY_INSTALLED. Any miss means
+# All five MUST be true to short-circuit to ALREADY_INSTALLED. Any miss means
 # this VM is in a partial/wrong state and we re-install. The fail-open posture
 # is intentional (per Cooper's 2026-05-16 review): we'd rather reinstall an
 # already-fine VM than skip a half-broken one.
+#
+# 5th invariant — bearer match across openclaw.json and ~/.gbrain/openclaw-bearer-token.txt —
+# was added 2026-05-18 after the vm-050 incident where the legacy STDIO installer
+# (pre-2026-05-16-13:08-EDT, no Phase G) left a permanent bearer mismatch. Without
+# this 5th check, a partial-completion failure (Phase E succeeds + Phase G fails)
+# also leaves a permanent mismatch that never self-heals: Phase A's 4-invariant
+# short-circuit declares the VM "fine" while the gateway returns server_error on
+# every gbrain MCP call. The bearer-match invariant + the A6 surgical recovery
+# path below close that gap.
 #
 # Version detection: LENIENT regex captures any dotted version for diagnostic
 # (so an operator reading the log sees "V=0.28.1" if stdio era is installed,
@@ -191,16 +203,111 @@ EXISTING_SERVICE=$(systemctl --user is-active gbrain.service 2>/dev/null || echo
 # `|| echo 0` fallback, which would create a multi-line "0\n0" capture that
 # breaks downstream integer comparisons. (Bug caught during reviewer pass.)
 EXISTING_PORT=$(ss -lnpt 2>/dev/null | grep -cE '127\.0\.0\.1:3131([[:space:]]|$)')
+# Bearer cross-consumer match — added 2026-05-18 per Rule 58.
+# Read both consumers (disk file + openclaw.json) and compare. The disk file is
+# the source of truth (it's what was written at mint time and what gbrain hashes
+# into access_tokens); openclaw.json is what the gateway sends. They MUST match
+# for the gateway to authenticate. `2>/dev/null` on each so missing files yield
+# empty strings (which won't match any non-empty bearer — clean fall-through).
+EXISTING_DISK_BEARER=$(cat "$HOME/.gbrain/openclaw-bearer-token.txt" 2>/dev/null || echo "")
+EXISTING_GW_BEARER=$(jq -r '.mcp.servers.gbrain.headers.Authorization // ""' "$HOME/.openclaw/openclaw.json" 2>/dev/null | sed 's/^Bearer //')
 
 if [ "$EXISTING_VERSION" = "$GBRAIN_PINNED_VERSION" ] && \
    [ "$EXISTING_TRANSPORT" = "streamable-http" ] && \
    [ "$EXISTING_SERVICE" = "active" ] && \
-   [ "$EXISTING_PORT" = "1" ]; then
-  echo "ALREADY_INSTALLED version=$EXISTING_VERSION transport=streamable-http service=active port=loopback"
+   [ "$EXISTING_PORT" = "1" ] && \
+   [ -n "$EXISTING_DISK_BEARER" ] && \
+   [ "$EXISTING_DISK_BEARER" = "$EXISTING_GW_BEARER" ]; then
+  echo "ALREADY_INSTALLED version=$EXISTING_VERSION transport=streamable-http service=active port=loopback bearer=synced"
   exit 0
 fi
 
-echo "PHASE_A_OK backup=$TARBALL disk_avail_kb=$DISK_AVAIL_KB existing: V=$EXISTING_VERSION T=$EXISTING_TRANSPORT S=$EXISTING_SERVICE P=$EXISTING_PORT"
+# ─── A6: bearer-mismatch surgical recovery (Rule 58, vm-050 class) ───
+#
+# Triggers when the first 4 invariants pass but the bearer-match (5th invariant)
+# fails. The VM is otherwise healthy — gbrain.service is up at the correct
+# version, transport is correctly streamable-http, port is bound to loopback —
+# but openclaw.json's bearer header doesn't match the on-disk bearer file.
+#
+# Three known root causes:
+#   1. LEGACY: STDIO-era install (pre-2026-05-16 13:08 EDT) didn't run Phase G,
+#      so openclaw.json kept its old bearer while ~/.gbrain/openclaw-bearer-token.txt
+#      held a freshly-minted post-wipe value. This is what bit vm-050 on
+#      2026-05-18 — see incident notes for forensic timeline.
+#   2. PARTIAL: A previous install completed Phase E (mint + INSERT to
+#      access_tokens) but failed/timed-out before Phase G (openclaw mcp set).
+#      Leaves disk+access_tokens with NEW bearer, openclaw.json with OLD bearer.
+#   3. DRIFT: openclaw.json was hand-edited or rewritten by another script that
+#      didn't sync to the on-disk bearer.
+#
+# Recovery action: rewrite ONLY the Authorization header in openclaw.json via
+# `openclaw config set` (atomic merge, leaves all other fields untouched).
+# Restart the gateway — `mcp.servers.*` IS hot-reloadable per Rule 32, but the
+# MCP HTTP client was constructed at gateway startup with the stale bearer;
+# hot-reload alone updates config-in-memory but does NOT rebuild the client.
+# Empirically verified on vm-050 2026-05-18.
+#
+# Does NOT wipe the brain — preserves PGLite contents, access_tokens (which
+# already has the disk bearer's hash), user memory. This is the critical
+# difference from "full reinstall via Phase B-H".
+#
+# All failure paths exit with code 25 (FATAL_BEARER_SYNC_*) so the operator
+# can distinguish bearer-sync failures from full-install failures.
+if [ "$EXISTING_VERSION" = "$GBRAIN_PINNED_VERSION" ] && \
+   [ "$EXISTING_TRANSPORT" = "streamable-http" ] && \
+   [ "$EXISTING_SERVICE" = "active" ] && \
+   [ "$EXISTING_PORT" = "1" ] && \
+   [ -n "$EXISTING_DISK_BEARER" ] && \
+   [ "$EXISTING_DISK_BEARER" != "$EXISTING_GW_BEARER" ]; then
+  echo "BEARER_MISMATCH_DETECTED disk_pfx=${EXISTING_DISK_BEARER:0:14}... gw_pfx=${EXISTING_GW_BEARER:0:14}..."
+
+  # Atomic merge — only touches the Authorization leaf, doesn't touch transport,
+  # url, connectionTimeoutMs, or anything outside the gbrain MCP entry.
+  openclaw config set "mcp.servers.gbrain.headers.Authorization" "Bearer $EXISTING_DISK_BEARER" 2>&1 | tail -3
+  SYNC_RC=$?
+  if [ "$SYNC_RC" -ne 0 ]; then
+    echo "FATAL_BEARER_SYNC_FAILED rc=$SYNC_RC"
+    exit 25
+  fi
+
+  # Verify-after-set (Rule 10) — re-read disk to confirm the write landed.
+  SYNCED_GW_BEARER=$(jq -r '.mcp.servers.gbrain.headers.Authorization // ""' "$HOME/.openclaw/openclaw.json" 2>/dev/null | sed 's/^Bearer //')
+  if [ "$SYNCED_GW_BEARER" != "$EXISTING_DISK_BEARER" ]; then
+    echo "FATAL_BEARER_SYNC_VERIFY_FAILED expected_pfx=${EXISTING_DISK_BEARER:0:14}... got_pfx=${SYNCED_GW_BEARER:0:14}..."
+    exit 25
+  fi
+
+  # Gateway restart — required to rebuild the MCP HTTP client with the new
+  # bearer. Hot-reload alone is INSUFFICIENT for header changes (empirical:
+  # vm-050 2026-05-18 — config hot reload event fires, openclaw CLI explicitly
+  # prints "Restart the gateway to apply", subsequent gbrain MCP calls still
+  # fail with the old bearer until restart).
+  echo "  restarting openclaw-gateway to rebuild MCP HTTP client..."
+  systemctl --user restart openclaw-gateway 2>&1 | tail -3
+
+  # Rule 5: verify gateway came back active + /health=200 within 30s. Six
+  # iterations × 5s = 30s. If it never reaches health=200, the bearer sync
+  # itself is correctly persisted on disk but the gateway is unhealthy for
+  # some other reason (which subsequent reconcile steps will pick up).
+  GW_HEALTHY=0
+  for i in 1 2 3 4 5 6; do
+    sleep 5
+    GW_HEALTH=$(curl -sf -m 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:18789/health 2>/dev/null)
+    if [ "$GW_HEALTH" = "200" ]; then
+      GW_HEALTHY=1
+      break
+    fi
+  done
+  if [ "$GW_HEALTHY" != "1" ]; then
+    echo "FATAL_BEARER_SYNC_GATEWAY_UNHEALTHY final_health=$GW_HEALTH"
+    exit 25
+  fi
+
+  echo "BEARER_SYNCED disk_pfx=${EXISTING_DISK_BEARER:0:14}... gw_pfx=${SYNCED_GW_BEARER:0:14}... gw_health=$GW_HEALTH (brain preserved, no wipe)"
+  exit 0
+fi
+
+echo "PHASE_A_OK backup=$TARBALL disk_avail_kb=$DISK_AVAIL_KB existing: V=$EXISTING_VERSION T=$EXISTING_TRANSPORT S=$EXISTING_SERVICE P=$EXISTING_PORT bearer_disk=${EXISTING_DISK_BEARER:0:14}... bearer_gw=${EXISTING_GW_BEARER:0:14}..."
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE B: install Bun (with unzip prereq) — preserved verbatim from stdio era

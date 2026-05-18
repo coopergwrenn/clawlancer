@@ -1730,7 +1730,17 @@ async function stepGbrain(
   const stderr = (res.stderr || '').trim();
 
   // ── Parse output (last-match wins for FATAL_; first-match for OK/COMPLETE) ──
+  //
+  // Three success terminals:
+  //   ALREADY_INSTALLED  — Phase A's 5-invariant check passed; no work done
+  //   BEARER_SYNCED       — Phase A6 surgical recovery (bearer mismatch resolved
+  //                         without brain wipe, vm-050-class state). Added
+  //                         2026-05-18 per Rule 58.
+  //   INSTALL_COMPLETE    — full Phase B-H install ran successfully
+  //
+  // Plus FATAL_* (last-match wins) for any failure.
   const alreadyMatch = stdout.match(/^ALREADY_INSTALLED\s+(.+)$/m);
+  const bearerSyncedMatch = stdout.match(/^BEARER_SYNCED\s+(.+)$/m);
   const completeMatch = stdout.match(/^INSTALL_COMPLETE/m);
   const fatalMatches = Array.from(stdout.matchAll(/^FATAL_(\S+)(?:\s+(.+))?$/gm));
   const lastFatal = fatalMatches.length > 0 ? fatalMatches[fatalMatches.length - 1] : null;
@@ -1741,6 +1751,22 @@ async function stepGbrain(
       route: 'stepGbrain',
       vmId: vm.id,
       detail: alreadyMatch[1],
+    });
+    return;
+  }
+
+  if (bearerSyncedMatch) {
+    // Rule 58 — bearer-mismatch surgical recovery. Phase A6 ran openclaw config
+    // set to sync openclaw.json's bearer to the on-disk bearer file, restarted
+    // the gateway, and verified health. No brain wipe. This counts as a real
+    // change (config + gateway state mutated), so log to result.fixed — the
+    // reconcile-fleet cron will surface it in the per-VM fix list.
+    result.fixed.push(`gbrain bearer-mismatch recovered (Rule 58, brain preserved): ${bearerSyncedMatch[1]}`);
+    logger.info('stepGbrain: bearer-mismatch surgically synced', {
+      route: 'stepGbrain',
+      vmId: vm.id,
+      version: GBRAIN_PINNED_VERSION,
+      detail: bearerSyncedMatch[1],
     });
     return;
   }

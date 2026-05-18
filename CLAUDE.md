@@ -2687,6 +2687,57 @@ For any PR that adds a new `await stepX(...)` call in the `reconcileVM` orchestr
 
 The 2026-05-18 incident produced 1–4 days of silent customer-facing noise and masked a real P1 for hours. The cost of writing the two-line firewall probe in advance is dramatically lower than the cost of incident triage and post-mortem after the fact. Reviewers should treat the absence of a network-side verifier as equivalent to the absence of a local-side verifier — both classes have produced multi-day outages.
 
+### Rule 58 — Token regeneration MUST synchronize every consumer atomically; idempotency checks MUST validate cross-consumer match, not just presence
+
+When any installer / reconciler step / admin script regenerates an authentication token (bearer, API key, session secret, partner credential), it MUST update EVERY downstream consumer of that token before exit. Token regeneration without consumer sync produces silent auth failures that survive multiple reconcile ticks — because the standard "is X running" idempotency checks validate token PRESENCE, not token CONSISTENCY across consumers.
+
+Equally important: any idempotency check on a token-bearing system MUST include a cross-consumer-match assertion. A bearer that's "set" in one place but mismatched against another place looks identical to "set correctly" if you only check `[ -n "$BEARER" ]`. The check `[ "$BEARER_FROM_A" = "$BEARER_FROM_B" ]` is the load-bearing assertion.
+
+#### The 2026-05-18 vm-050 incident
+
+The legacy STDIO `install-gbrain.sh` (pre-2026-05-16 13:08 EDT, commit `5d69baeb` introduced the HTTP-sidecar rewrite) minted a new gbrain bearer and INSERTed it into the `access_tokens` PGLite table, but never updated `~/.openclaw/openclaw.json`'s `mcp.servers.gbrain.headers.Authorization`. vm-050 was installed by this older version on 2026-05-16 11:44 EDT — 84 minutes BEFORE Phase G (`openclaw mcp set gbrain`) was added at 13:08 EDT.
+
+For **2.5 days** the gateway tried bearer X (from the May 15 openclaw.json setup), gbrain hashed-and-compared, returned `server_error` (because access_tokens only had bearer Y from the May 16 wipe-and-reinit). The gateway's `bundle-mcp` cycle logged "failed to start server gbrain" every ~2–15 minutes. Cooper's @timmy agent could not reach gbrain memory at all. Every Phase A idempotency check during reconcile cycles short-circuited to ALREADY_INSTALLED because the 4 invariants it checked (version, transport, service-active, port-listening) all passed — but the 5th implicit invariant (bearers match) was silently false. **The bug was invisible to every "is gbrain healthy" check** until we SIGKILL'd the sidecar during an unrelated version-bump canary and the on-disk state could no longer be papered over by the OLD sidecar's in-memory access_tokens copy.
+
+Forensic timeline (UTC):
+- 2026-05-15 23:25 — openclaw.json set with bearer X (via some manual setup; mtime preserved)
+- 2026-05-16 15:44 — install-gbrain.sh (STDIO era, no Phase G) wipes brain.pglite, mints bearer Y, INSERTs into access_tokens. openclaw.json untouched.
+- 2026-05-16–2026-05-18 — gateway sends X, gbrain returns server_error. `bundle-mcp failed to start gbrain` logged ~30 times.
+- 2026-05-18 16:11 — Phase 2 canary SIGKILLs the sidecar. Recovery exposed the latent state.
+
+The current installer (post-`5d69baeb`) has Phase G (`openclaw mcp set gbrain`) which writes the new bearer to openclaw.json atomically. **But** even after Phase G existed, the Phase A idempotency check still only validated 4 invariants — so a partial-completion failure (Phase E mint succeeds, Phase F or G fails) would leave the same mismatch with no self-healing path. **Closed 2026-05-18 in commit `defensive/install-gbrain-bearer-sync`:** Phase A now checks 5 invariants (including bearer match) and includes a surgical A6 recovery path that runs `openclaw config set mcp.servers.gbrain.headers.Authorization` + gateway restart without wiping the brain.
+
+#### Mandatory pattern
+
+For any script / reconciler step / admin tool that mints, rotates, or regenerates an authentication token:
+
+1. **Enumerate every consumer in the diff.** Disk files, config keys, env vars, DB rows, HTTP headers — all of them. The PR description for the token-regeneration code path MUST include this enumeration. Reviewers should ask "did you check that EVERY place this token is consumed got updated?" before approving.
+2. **Update every consumer in the same atomic flow.** If one consumer can't be reached (file write fails, config-set fails, DB write fails), the others should also not be updated, OR the partial state must be detected and remediated on next idempotency check. The Phase G `openclaw mcp set` pattern with verify-after-set + Rule 5 gateway-health check is the reference shape.
+3. **Idempotency checks MUST include cross-consumer match.** Don't just check `[ -n "$bearer" ]`. Check `[ "$bearer_in_consumer_A" = "$bearer_in_consumer_B" ]`. The Phase A check in `install-gbrain.sh` is the reference shape: read both consumers, compare directly.
+4. **Provide a surgical recovery path that doesn't wipe data.** If an idempotency check detects a mismatch on a system that otherwise looks healthy, the remediation should be the MINIMAL CORRECT FIX (just sync the consumer that's wrong) — not "wipe everything and reinstall". Wiping is correct for true corruption; mismatch alone is just data drift. Phase A6's `openclaw config set` + gateway restart (without Phase B–H) is the reference shape.
+5. **Verify-after-set on every consumer.** Per Rule 10 + Rule 34: write, re-read, compare. The Phase G `verify-after-set` block and the Phase A6 `SYNCED_GW_BEARER` re-read are the reference shapes.
+
+#### Banned patterns
+
+- Idempotency checks that validate token PRESENCE (`[ -n "$X" ]`) but not token CONSISTENCY ACROSS CONSUMERS. Presence is necessary but not sufficient.
+- Installer scripts that mint a token but don't enumerate every consumer that needs the new value. Even with good intentions, "the next reconcile will catch it" is wrong — the next reconcile uses the SAME idempotency check, sees the same false-positive, skips remediation.
+- Recovery paths that wipe a database / data directory just to fix a token-mismatch problem. Wiping is a destructive op (Rule 22, Rule 30); save it for true corruption, not key drift.
+- Trusting that "we set the token, so any old copies are gone." Old copies can persist in in-memory caches, RAM-only access_tokens rows, build-time-baked env vars, etc. Always cross-reference disk state on next cold-start.
+
+#### Detection rule
+
+When reviewing any PR that touches a token / bearer / API key / secret regeneration path:
+
+1. Grep the diff for the new token. List every place it's written. Cross-reference against where it's consumed (run the test on a fresh VM if possible; otherwise read every callsite).
+2. Find the idempotency check that gates the regeneration path. Confirm it includes a cross-consumer-match assertion. If it only checks presence, push back.
+3. Trace the failure-mode tree: "what if the script crashes between consumer A's write and consumer B's write?" If the answer is "next cron tick will see consumer A's new value, B's old value, idempotency check passes because both are 'set', mismatch persists forever" — REJECT the PR until the idempotency check is strengthened.
+4. Confirm a surgical recovery path exists for the mismatch state, separate from the destructive full-reinstall path. Per the Phase A6 reference pattern.
+
+This rule complements:
+- **Rule 10** (verify-after-set): focuses on a single consumer's disk-write correctness.
+- **Rule 34** (DB↔disk drift): focuses on Supabase row vs on-VM file consistency for a SINGLE field.
+- **Rule 58** (this rule): focuses on the multi-consumer case where one canonical value (a bearer) must appear identically in N places, and the idempotency contract must enforce that invariant explicitly.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
