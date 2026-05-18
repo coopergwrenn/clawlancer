@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-18
 
-Window: `7e5088ee0904aa0f89c81e02f9a368da94dcba80` → `HEAD` (HEAD = `d095afa8`)
+Window: `d095afa8606aeac64dc4f6212d71672aade9fae7` → `HEAD` (HEAD = `66cc71d5`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: d095afa8606aeac64dc4f6212d71672aade9fae7 -->
+<!-- LAST_GENERATED_SHA: 66cc71d57b3ba973af0717705e99974b8b24b467 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `b29a3af7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `d095afa8` 2026-05-18 — docs(prd): Login with ChatGPT — deep-research decisions document [1 files] _(ai-assisted)_
+- `66cc71d5` 2026-05-18 — prep(freeze-v2): lib/freeze-v2-archive.ts — composer + R2 plumbing (PRD §15.4) [2 files] _(ai-assisted)_
+- `2c141668` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `66cc71d5` 2026-05-18 — prep(freeze-v2): lib/freeze-v2-archive.ts — composer + R2 plumbing (PRD §15.4) [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -43,18 +43,17 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `b29a3af7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `d095afa8` 2026-05-18 — docs(prd): Login with ChatGPT — deep-research decisions document [1 files] _(ai-assisted)_
+- `2c141668` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `d095afa8` 2026-05-18 — docs(prd): Login with ChatGPT — deep-research decisions document
+- `66cc71d5` 2026-05-18 — prep(freeze-v2): lib/freeze-v2-archive.ts — composer + R2 plumbing (PRD §15.4)
 
 ## Appendix — every commit (chronological)
 
-- `b29a3af7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `d095afa8` 2026-05-18 — docs(prd): Login with ChatGPT — deep-research decisions document [1 files] _(ai-assisted)_
+- `2c141668` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `66cc71d5` 2026-05-18 — prep(freeze-v2): lib/freeze-v2-archive.ts — composer + R2 plumbing (PRD §15.4) [2 files] _(ai-assisted)_
