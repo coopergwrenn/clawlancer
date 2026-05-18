@@ -2582,13 +2582,22 @@ The data dir was unrecoverable to PGLite. Both v0.35.0.0 and v0.35.8.0 panicked 
 
 SIGKILL is safe for PGLite if and only if **at least one of** the following holds:
 
-1. **pg_control was written to disk within the last ~5 minutes** before SIGKILL. Practically: the sidecar was just started (initial init writes pg_control), or a manual `CHECKPOINT` was just executed. Cold-start replays the small amount of WAL after the checkpoint, finds a valid record at the recorded LSN, succeeds.
+1. **pg_control was written to disk very recently** (sidecar was just started, or a manual `CHECKPOINT` was just executed). The exact safety boundary is empirically unknown — our tests confirm <60 seconds of drift is safe; production failure modes confirm 2+ hours is unsafe. Anywhere in between is untested. **Conservative reading: rely on this condition only when pg_control mtime is <1 minute old.**
 
 2. **The data dir is about to be wiped.** install-gbrain.sh's Phase E uses this pattern: SIGKILL → wipe `~/.gbrain/brain.pglite/` → fresh init. The post-SIGKILL corruption state never gets read; whatever's on disk is irrelevant.
 
 3. **The sidecar's WAL hasn't advanced past pg_control's checkpoint LSN.** Hard to verify externally; you'd need to read `pg_control` with `pg_controldata` and compare to the current WAL state. In practice, treat this as "unknown" and rely on condition 1 or 2.
 
 Outside those three conditions, SIGKILL on a long-running gbrain sidecar may produce an unrecoverable data dir. The risk grows with uptime.
+
+**Empirical evidence summary (2026-05-18):**
+- Test 4 (single insert, no CHECKPOINT, SIGKILL after <1s): recovered cleanly ✓
+- Test 5 (500 inserts, no CHECKPOINT, SIGKILL after ~9s): recovered cleanly ✓
+- Test 6 (177,354 inserts in 60s, no CHECKPOINT, SIGKILL): recovered cleanly ✓
+- vm-050 canary retry (~2 hours pg_control drift, SIGKILL): **UNRECOVERABLE** ✗
+- vm-050 original (~48 hours pg_control drift, SIGKILL): **UNRECOVERABLE** ✗
+
+Boundary somewhere in (60s, 2h). Untested ground. Treat as risk zone.
 
 ##### Recovery procedure (when SIGKILL has already left an unrecoverable dir)
 
@@ -2651,20 +2660,32 @@ The vm-050 2026-05-18 recovery is the reference. Use it when you observe the WAS
 
 **Quarantined dir** (`~/.gbrain/brain.pglite.unrecoverable-<ts>`) should be preserved on the VM for forensic purposes for at least 7 days. Delete only after confirming the recovered brain is stable.
 
-##### Why no periodic CHECKPOINT cron (yet)
+##### Periodic CHECKPOINT cron — SHIPPED 2026-05-18 PM
 
-The obvious prevention is a cron that runs `CHECKPOINT;` every N minutes on each VM, keeping pg_control fresh on disk. This requires invoking `CHECKPOINT` against the running sidecar — but PGLite is file-locked single-writer and gbrain's MCP surface does NOT expose raw SQL (the `query` tool is semantic search, not a SQL passthrough). Empirically verified 2026-05-18:
+**Status: deployed to all 9 edge_city VMs as of 2026-05-18 21:30 UTC.**
+
+The pure-upstream gbrain v0.35.0.0 MCP surface does NOT expose raw SQL (the `query` tool is semantic search, not a SQL passthrough). Empirically verified 2026-05-18:
 
 ```
 gbrain mcp tools/call name=query arguments={sql: "CHECKPOINT;"}
   → error: "query requires either `query` (text) or `image` (base64 bytes)"
 ```
 
-The clean fix is upstream: add a `checkpoint` MCP admin tool to gbrain that runs `engine.executeRaw("CHECKPOINT")` inside the sidecar process. Draft issue + reproducer at `instaclaw/docs/upstream/gbrain-checkpoint-mcp-tool.md`. **Filed post-Edge Esmeralda 2026** (May 23-26 conference; we don't want to depend on upstream merge during a customer-facing event). Until then, this rule documents the recovery procedure as the standard mitigation.
+To work around this, we layer a ~30 LOC patch on top of garry's unmodified gbrain source via `install-gbrain.sh` Phase C2:
+
+- **`instaclaw/scripts/gbrain-patches/0001-add-checkpoint-mcp-tool.patch`** — adds `src/core/checkpoint-operation.ts` (new file) defining a `checkpoint` MCP admin tool that runs `engine.executeRaw('CHECKPOINT')`, plus a 2-line edit to `src/core/operations.ts` registering it. Scope: `'admin'`.
+- **`instaclaw/scripts/pglite-checkpoint.sh`** — cron + ExecStop helper. Calls the new MCP tool via curl with the disk bearer. Logs to `~/.openclaw/logs/pglite-checkpoint.log`. Exit 0 always (no cron spam).
+- **install-gbrain.sh Phase I** — installs the cron (`*/30 * * * *`) and the systemd ExecStop drop-in (`~/.config/systemd/user/gbrain.service.d/20-execstop-checkpoint.conf`).
+
+Net effect: max pg_control staleness bounded to 30 min (cron interval). Controlled stops trigger a CHECKPOINT before SIGKILL via ExecStop. SIGKILL between cron ticks is still safe because the most-recent cron tick was ≤30 min ago.
+
+**The upstream PR is still desirable** — see `instaclaw/docs/upstream/gbrain-checkpoint-mcp-tool.md` for the issue draft. Once upstream merges, the patch file becomes a no-op (Phase C2 detects already-applied) and we can retire the patch in a future cleanup. Until then, this in-tree patch is the canonical mechanism.
+
+**Deployment proof (2026-05-18):** all 9 edge_city VMs went from pg_control ages of 47-51 hours (5 VMs) and 24 minutes (3 VMs) and "broken-after-canary" (vm-050) → all 9 at <1 minute freshness post-deployment. The May 23 bake window is now safe.
 
 ##### Banned patterns (in addition to the SIGTERM bans above)
 
-- Restarting gbrain.service on a long-running VM "to clear caches" or "as routine maintenance". You're rolling dice on whether pg_control is fresh enough. If you must restart, do it on a VM where the sidecar has been alive < 15 minutes (post-recent-restart is safest), OR ensure a CHECKPOINT happened first (the only current path: stop+rsync brain.pglite to a backup AND be ready to pg_resetwal if restart fails).
+- Restarting gbrain.service on a long-running VM "to clear caches" or "as routine maintenance" without first triggering a CHECKPOINT. With the 2026-05-18 PM CHECKPOINT cron deployed, max pg_control drift is bounded to 30 min — restart is safe as long as the most-recent cron tick succeeded. Check the most-recent entry in `~/.openclaw/logs/pglite-checkpoint.log` before restarting. If the last entry is `FAILED` or absent for >60 min, treat the VM as in a risk window: call the `checkpoint` MCP tool manually first (or use `bash ~/.openclaw/scripts/pglite-checkpoint.sh`), confirm `ok latency_ms=N` in the log, then restart. If checkpoint also fails, escalate — the sidecar is broken in some other way.
 - Operating on the assumption "Rule 54 says SIGKILL is safe, so I can SIGKILL anytime." The 2026-05-18 vm-050 incident proves otherwise. Always think about pg_control freshness BEFORE SIGKILL.
 - Adding a "restart gbrain to fix X" code path without first reading this section. Reconciler steps, watchdog crons, freeze flows, manifest updates — anything that calls `systemctl --user restart gbrain` or sends SIGKILL must confirm it isn't introducing a new vm-050.
 

@@ -33,11 +33,12 @@ Since gbrain's MCP surface does not currently expose a CHECKPOINT mechanism, ope
 Tested on Ubuntu 24.04 LTS, Linode g6-dedicated-2 VMs, gbrain 0.35.0.0 (commit `baf1a47`), bun 1.3.13, Node 22.22.2.
 
 1. Install gbrain via the documented HTTP sidecar setup. `gbrain.service` becomes active.
-2. Run the sidecar for at least 24 hours with normal write activity (put_page, embeddings, etc.) — or accelerate by inserting ~200k rows in a tight loop.
-3. SIGKILL the sidecar (`systemctl --user stop gbrain` with `KillSignal=SIGKILL`, or `pkill -KILL -f 'gbrain.*serve'`).
-4. Try to restart: `systemctl --user start gbrain.service`.
-5. Observe restart crash-loop. Journal shows the WASM Aborted() error above.
-6. Inspect on-disk state with `pg_controldata <data-dir>` — confirms `pg_control last modified` is the timestamp of the LAST successful CHECKPOINT (often the install timestamp), NOT the recent SIGKILL.
+2. Run the sidecar for **at least 24-48 hours** with normal write activity (put_page, embeddings, etc.). Do NOT issue any explicit `CHECKPOINT` during this window. **The bug is duration-dependent, not volume-dependent — see "Why we can't reproduce on a short-lived test" below.**
+3. Confirm pg_control on disk has gone stale: `pg_controldata <data-dir> | head -10` — the `pg_control last modified` timestamp should be hours/days old despite continuous WAL activity.
+4. SIGKILL the sidecar (`systemctl --user stop gbrain` with `KillSignal=SIGKILL`, or `pkill -KILL -f 'gbrain.*serve'`).
+5. Try to restart: `systemctl --user start gbrain.service`.
+6. Observe restart crash-loop. Journal shows the WASM Aborted() error above.
+7. Re-inspect pg_controldata — the `pg_control last modified` timestamp is the LAST successful CHECKPOINT (often the install timestamp), NOT the recent SIGKILL.
 
 ## Forensic evidence from production incident
 
@@ -66,7 +67,7 @@ On 2026-05-18 we hit this exact failure on vm-050 (an edge_city test agent). Tim
   WAL at LSN 0/1714150 had been recycled (zeroed) by the running sidecar's normal WAL turnover, while pg_control still pointed there.
 - 2026-05-18 18:04 — recovered via `pg_resetwal -f`. New checkpoint at LSN 0/2000028, fresh WAL segment `...02`. PGLite then opened the data dir successfully.
 
-Lost: ~2 days of in-flight transactions that lived only in WAL and never made it to heap pages. The actual user-visible memory was minimal (this VM was a test agent), but for a production VM with active write traffic the loss could be substantial.
+Data loss after `pg_resetwal`: the WAL bytes between the last successful CHECKPOINT (May 16 install time) and the SIGKILL (May 18 16:11) are discarded. On vm-050 specifically this meant ~2 days of write-WINDOW but the actual measured loss was minimal — the brain was a sparsely-populated test agent. Post-recovery: 1 row preserved in `pages`, 0 in `facts`, 0 in `takes`, 0 in `raw_data`, etc. Most of the lost WAL was either not-yet-flushed background activity or test probes. **For a production VM with active write traffic, the loss window equals the time between the last on-disk pg_control update and the SIGKILL — which, given PGLite's apparent lack of autocheckpoint, can be the full sidecar uptime.**
 
 ## Why we can't reproduce on a short-lived test
 
@@ -86,33 +87,35 @@ Both conditions take significant uptime to converge. Short tests don't hit them.
 
 ## Proposed fix (option A): add an MCP admin tool to gbrain
 
-Add a `checkpoint` MCP tool to gbrain's tool surface. Implementation sketch:
+Add a `checkpoint` Operation to gbrain's tool surface. Since gbrain v0.35.0.0 uses an `Operation[]` registry (in `src/core/operations.ts`) that's exposed automatically via `buildToolDefs(ops)` to the MCP layer, the integration is minimal: add a new Operation, register it in the array. Implementation sketch (matches the patch we're running in production at `instaclaw/scripts/gbrain-patches/0001-add-checkpoint-mcp-tool.patch`):
 
 ```typescript
-// src/mcp/tools/checkpoint.ts (new file)
-import { engine } from '../../core/engine-factory';
+// src/core/checkpoint-operation.ts (new file)
+import type { Operation } from './operations.ts';
 
-export const checkpointTool = {
+export const checkpoint: Operation = {
   name: 'checkpoint',
-  description: 'Force a PGLite CHECKPOINT — flushes dirty buffers and pg_control to disk. Use periodically (every 30 min recommended) on long-running sidecars to prevent pg_control/WAL desynchronization. Required for safe SIGKILL recovery.',
-  inputSchema: {
-    type: 'object',
-    properties: {},
-  },
-  handler: async () => {
+  description:
+    'Force a PGLite CHECKPOINT — flushes dirty buffers and pg_control to disk. ' +
+    'Use periodically (every 30 min recommended) on long-running sidecars to ' +
+    'prevent pg_control/WAL desynchronization. Required for safe SIGKILL recovery.',
+  params: {},
+  scope: 'admin',         // synchronous I/O burst; admin-only
+  mutating: true,         // pg_control + flushed buffers; conservative truth
+  handler: async (ctx) => {
     const t0 = Date.now();
-    await engine.executeRaw('CHECKPOINT');
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({ ok: true, latency_ms: Date.now() - t0 }),
-      }],
-    };
+    await ctx.engine.executeRaw('CHECKPOINT');
+    const latency_ms = Date.now() - t0;
+    ctx.logger.info?.('checkpoint completed', { latency_ms });
+    return { ok: true, latency_ms };
   },
+  cliHints: { name: 'checkpoint', hidden: true },
 };
 ```
 
-Register in the MCP server (tool-defs.ts or similar). Add scope check — `checkpoint` should require `admin` scope (not just `write`), since it triggers a synchronous I/O burst.
+Then in `src/core/operations.ts` add `import { checkpoint } from './checkpoint-operation.ts';` at the top and `checkpoint,` to the `operations: Operation[]` array (in the "Admin" section). Total diff: ~62 lines (57 in the new file, 5 in operations.ts).
+
+The integration uses gbrain's existing Operation interface (no new MCP plumbing needed) — `buildToolDefs(operations)` in `src/mcp/tool-defs.ts` discovers it automatically. Scope `'admin'` is enforced by gbrain's existing scope checker in `src/core/scope.ts`.
 
 External callers (cron, ExecStop hook) then invoke:
 
@@ -129,11 +132,15 @@ Roughly 30 LOC change. Tests should cover (a) tool registration, (b) admin scope
 
 ## Proposed fix (option B): fix PGLite's autocheckpoint
 
-The deeper fix is in `electric-sql/pglite` itself: implement the `checkpoint_timeout` background worker that vanilla Postgres has. PGLite already includes most Postgres internals; the autocheckpoint logic is presumably stripped to save runtime size. Reinstating it would resolve every downstream gbrain-style consumer simultaneously.
+The deeper fix is in `electric-sql/pglite` itself: investigate why the `checkpoint_timeout` background worker (which vanilla Postgres runs every 5 minutes by default) doesn't fire in PGLite. Possible causes:
 
-Cost: probably more invasive — PGLite is built around a single-tasked WASM execution model and a periodic background timer may require runtime changes.
+- The autocheckpoint background worker may have been intentionally omitted to keep the WASM runtime small.
+- The worker may be present but the WASM execution model (single-tasked, no async timer loop) prevents it from firing during normal serve activity.
+- Some other PGLite-specific config that disables it.
 
-We propose option A as the practical immediate fix; option B as the durable architectural fix.
+Whatever the cause, restoring autocheckpoint at the PGLite layer would resolve every downstream gbrain-style consumer simultaneously without each one needing an in-band CHECKPOINT call.
+
+Cost: likely more invasive than option A. We propose option A as the practical immediate fix; option B as the durable architectural fix. We have not investigated PGLite source to confirm the root cause; that investigation is part of filing option B.
 
 ## Risk if not fixed
 
@@ -149,9 +156,10 @@ For a single-user agent platform like instaclaw.io, this means per-customer memo
 
 While this issue is open, we've shipped:
 
-1. **Recovery procedure documented** in CLAUDE.md Rule 54: `pg_resetwal -f` on an experimental copy, validate with PGLite, promote to live, restart sidecar.
-2. **Defensive install-gbrain.sh fix**: Phase A idempotency now validates bearer match across openclaw.json and disk file (vm-050 had a parallel bearer-mismatch issue that masked the pg_control symptom for 2.5 days; see Rule 58).
-3. **Reasoning trail**: pg_controldata output, WAL inspection, and forensic logs preserved at `~/.gbrain/brain.pglite.unrecoverable-20260518T181251Z` on vm-050.
+1. **Patch + cron + ExecStop hook** (2026-05-18 PM): the `0001-add-checkpoint-mcp-tool.patch` file is applied via `install-gbrain.sh` Phase C2 on top of garry's unmodified gbrain release. A 30-min cron and a systemd ExecStop hook (`install-gbrain.sh` Phase I) call the new `checkpoint` MCP tool to bound pg_control staleness. **The patch file itself is the implementation sketch above, ready for extraction into an upstream PR.**
+2. **Recovery procedure documented** in CLAUDE.md Rule 54: `pg_resetwal -f` on an experimental copy, validate with PGLite, promote to live, restart sidecar.
+3. **Defensive install-gbrain.sh fix**: Phase A idempotency now validates bearer match across openclaw.json and disk file (vm-050 had a parallel bearer-mismatch issue that masked the pg_control symptom for 2.5 days; see Rule 58).
+4. **Reasoning trail**: pg_controldata output, WAL inspection, and forensic logs preserved at `~/.gbrain/brain.pglite.unrecoverable-20260518T181251Z` on vm-050.
 
 ## Cross-reference
 

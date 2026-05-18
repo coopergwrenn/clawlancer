@@ -410,24 +410,40 @@ if [ -z "$PATCH_FILE" ]; then
   echo "  hint: TS wrapper should SFTP 0001-add-checkpoint-mcp-tool.patch alongside install-gbrain.sh"
 else
   cd "$HOME/gbrain"
-  # If the patch was already applied (idempotency), git apply --check returns non-zero;
-  # we detect this and skip. Otherwise apply.
-  if git apply --check "$PATCH_FILE" 2>/dev/null; then
+  # Idempotency: verify BOTH halves of the patch are applied, not just one half.
+  # The patch adds (a) src/core/checkpoint-operation.ts (new file), and
+  # (b) an import line in src/core/operations.ts. If only (a) is present and
+  # (b) was reverted by an upstream pull, we'd be in a half-applied state
+  # that compiles but the Operation never registers. Check BOTH.
+  HAS_FILE=0
+  HAS_IMPORT=0
+  [ -f "$HOME/gbrain/src/core/checkpoint-operation.ts" ] && HAS_FILE=1
+  grep -q "import { checkpoint } from './checkpoint-operation.ts'" "$HOME/gbrain/src/core/operations.ts" 2>/dev/null && HAS_IMPORT=1
+
+  if [ "$HAS_FILE" = "1" ] && [ "$HAS_IMPORT" = "1" ]; then
+    echo "PHASE_C2_OK patch_already_applied (file=$HAS_FILE import=$HAS_IMPORT, idempotent)"
+  elif git apply --check "$PATCH_FILE" 2>/dev/null; then
+    # Clean apply path. Use PIPESTATUS so we capture git apply's exit code,
+    # not tail's (which is always 0 unless given a bad arg).
     git apply --verbose "$PATCH_FILE" 2>&1 | tail -3
-    APPLY_RC=$?
+    APPLY_RC=${PIPESTATUS[0]}
     if [ "$APPLY_RC" -ne 0 ]; then
       echo "PHASE_C2_WARN patch_apply_failed rc=$APPLY_RC — fresh install will NOT have CHECKPOINT tool"
       echo "  hint: upstream may have changed src/core/operations.ts shape; rebase the patch"
     else
-      echo "PHASE_C2_OK patch_applied=$(basename "$PATCH_FILE")"
+      # Verify-after-apply: re-check both halves landed (Rule 10 / Rule 34 discipline).
+      [ -f "$HOME/gbrain/src/core/checkpoint-operation.ts" ] && HAS_FILE=1
+      grep -q "import { checkpoint } from './checkpoint-operation.ts'" "$HOME/gbrain/src/core/operations.ts" 2>/dev/null && HAS_IMPORT=1
+      if [ "$HAS_FILE" = "1" ] && [ "$HAS_IMPORT" = "1" ]; then
+        echo "PHASE_C2_OK patch_applied=$(basename "$PATCH_FILE") (file=$HAS_FILE import=$HAS_IMPORT)"
+      else
+        echo "PHASE_C2_WARN patch_apply_verify_failed (file=$HAS_FILE import=$HAS_IMPORT) — half-applied state"
+      fi
     fi
   else
-    # Check if it's already-applied (patch is no-op) vs truly failing
-    if [ -f "$HOME/gbrain/src/core/checkpoint-operation.ts" ]; then
-      echo "PHASE_C2_OK patch_already_applied (idempotent)"
-    else
-      echo "PHASE_C2_WARN patch_check_failed — patch may conflict with upstream changes"
-    fi
+    # --check failed AND we're not already-applied — half-applied or conflict.
+    echo "PHASE_C2_WARN patch_check_failed file=$HAS_FILE import=$HAS_IMPORT — half-applied or conflicts with upstream"
+    echo "  hint: rebase 0001-add-checkpoint-mcp-tool.patch against the current GBRAIN_PINNED_COMMIT"
   fi
 fi
 
