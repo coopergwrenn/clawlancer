@@ -8,33 +8,35 @@
 
 ## TL;DR — the 60-second read
 
-The original PRD is ~80% right but **two of its load-bearing architectural choices are wrong**, and a third is non-obvious enough to need explicit Cooper sign-off. Six parallel deep-research agents converged independently on the same conclusions:
+**This document was revised 2026-05-18 after Cooper challenged the original Cloudflare claim.** Pivot #1 (browser extension) is WALKED BACK — the evidence didn't support it. Pivots #2 and #3 stand; both are independently validated by separate research streams and aren't affected by the Cloudflare question.
 
-1. **The OAuth flow from a datacenter VM is the wrong primary architecture.** Build a **browser extension bridge** instead. The user's own browser session on `chatgpt.com` is the credential authority; our cloud agent proxies inference requests through a websocket to the extension, which makes the actual call from the user's residential IP with their real Chrome TLS stack. This eliminates Cloudflare-bot-detection risk entirely, sidesteps the OpenAI ToS question (the user is using their own browser, not a third-party "Codex OAuth client"), and removes the 5th token location from our architecture (we never hold an OpenAI token). Engineering cost: ~6 weeks. Same as the OAuth path the original PRD specified.
+The original PRD is ~95% right. Two architectural refinements based on independent evidence:
+
+1. ~~Build a browser extension bridge instead of OAuth-from-datacenter.~~ **WALKED BACK** — see §Walkback at end of document. The cited GitHub issues turned out to be Rust/rustls-specific TLS fingerprint bugs, not a general datacenter blocking pattern. Node.js using OpenSSL (the standard Node stack) hits `auth.openai.com/oauth/token` from cloud servers without issue — the official OpenAI Node SDK, OpenHands (a cloud product OpenAI partnered with), and 20+ active npm packages all do exactly this. **The original PRD's datacenter OAuth architecture is correct.** Two implementation notes for the engineering team in §Walkback below.
 
 2. **The history-import extraction pipeline should be block-based + RAG, not per-conversation LLM extraction.** The Nov-2025 [ConvoMem paper (arXiv 2511.10523)](https://arxiv.org/abs/2511.10523) empirically proves block-based extraction (10 convs per LLM call, parallel) + RAG fallback beats pure per-conv extraction by 10+ points at the 1000+ conversation scale our power users have. **Also**: bootstrap from `messages[].recipient == "bio"` entries in conversations.json — these are OpenAI's own curated memories the user has accumulated, free and high-quality, ~50-200 per power user.
 
 3. **Sensitive-content handling needs a "restricted vault" architecture from day 1, not a post-launch filter.** Medical / legal / financial / relationship / sexual / political content extracted from history goes into an encrypted off-context vault on the VM, NEVER into MEMORY.md by default. Agent surfaces vault entries only on explicit user invocation. This is the single biggest difference between InstaClaw and Replika/Character.AI's product-killer failure modes (the Italian DPA €5M Replika fine, the Character.AI lawsuit settlement, the iOS Photos "anniversary of trauma" backlash).
 
-If Cooper approves all three, the original PRD's 11-week timeline holds (Phase 1 OAuth = 6 weeks, replaced by Phase 1 Extension = 6 weeks; Phase 2 history import = 6 weeks). If Cooper rejects the extension architecture and stays with OAuth-from-datacenter, the timeline doesn't change but the project becomes a Cloudflare-evasion arms race with a probable 6-18 month half-life.
+Phase 0 spike still smart (verify before committing engineering) — but the default assumption is **"this will work."** Timeline is the original PRD's 11 weeks: Phase 1 OAuth = 4 weeks, Phase 2 history import = 6 weeks.
 
-The 23 decisions below cover the original 12 questions from PRD §11 plus 11 new ones the research surfaced. Decision summary table at end (§D).
+The 21 active decisions below cover the original 12 questions from PRD §11 plus 9 new ones the research surfaced. Q13 and Q14 (browser extension specifics) are marked SUPERSEDED. Decision summary table at end (§D).
 
 ---
 
-## Strategic frame — why the architecture changed
+## Strategic frame — what the research actually validated
 
-Three independent research streams converged on the same answer.
+**Revised 2026-05-18.** The original framing here over-weighted one research stream (the Cloudflare architecture extrapolation) and got the headline conclusion wrong. See §Walkback at end. The accurate picture:
 
-**Stream 1: Architecture research (Cloudflare workarounds).** Anthropic killed exactly this product shape — datacenter OAuth wrapping consumer subscription — in February 2026 ([VentureBeat](https://venturebeat.com/technology/anthropic-cracks-down-on-unauthorized-claude-usage-by-third-party-harnesses)). They updated terms to ban OAuth tokens from Claude Pro/Max being used in any other product, and enforced via Cloudflare. The OpenAI 403s on Linode cloud IPs the original PRD flagged are the same playbook starting on the OpenAI side. Probability of OpenAI following Anthropic within 12 months: 70%+. The only architecture that survives is one where the credential never leaves the user's browser.
+**Stream 1: Partnership research — STRONG SIGNAL.** OpenAI is the most permissive frontier-model vendor on subscription OAuth in third-party tools, and they are actively weaponizing that permissiveness against Anthropic ([Paddo.dev analysis](https://paddo.dev/blog/anthropic-walled-garden-crackdown/); [TechCrunch on Sign-in-with-ChatGPT, May 2025](https://techcrunch.com/2025/05/27/openai-may-soon-let-you-sign-in-with-chatgpt-for-other-apps/); the OpenCode + OpenHands + RooCode + OpenClaw partnerships in Q1 2026). OpenHands is explicitly a cloud product — direct existence proof that cloud-based Codex OAuth works at production scale. We should apply for the partnership now; the path is real and the door is open.
 
-**Stream 2: Partnership research.** OpenAI is currently the *opposite* of Anthropic — they're actively welcoming third-party tools ([TechCrunch on Sign-in-with-ChatGPT, May 2025](https://techcrunch.com/2025/05/27/openai-may-soon-let-you-sign-in-with-chatgpt-for-other-apps/); the OpenCode + OpenHands + RooCode + OpenClaw partnerships in Q1 2026; Sam Altman's "ok boomer" tweet at Anthropic's head of growth). OpenClaw, the direct precedent for InstaClaw, got an official-but-informal arrangement that involves "whitelist at rate-limit layer + public endorsement." This is great news short-term — we should apply via the [Sign-in-with-ChatGPT developer interest form](https://openai.com/form/partnerintake/) immediately — but **even an officially-partnered InstaClaw is still at the mercy of OpenAI's competitive posture**, which can shift. The extension architecture doesn't depend on OpenAI's posture at all.
+**Stream 2: Memory-extraction research — STRONG SIGNAL.** The ConvoMem paper (arXiv 2511.10523, Nov 2025) empirically proves block-based extraction beats per-conversation extraction by 10+ points at the conversation scale our power users have. Plus the `recipient: "bio"` bootstrap is free, high-quality OpenAI-curated seed data the original PRD didn't capture. Change extraction architecture (Q15, Q16, Q23).
 
-**Stream 3: Failure-mode analysis.** Six structural failure modes the original PRD didn't fully address — including (a) the "shared ChatGPT account" problem (no family plan exists, lots of households share accounts), (b) the "agent surfaces medical history on a screen-shared sales call" embarrassment, (c) the prompt-injection-via-conversation-history attack ([ChatInject arXiv 2509.22830](https://arxiv.org/pdf/2509.22830); [Oasis Security "Claudy Day" attack](https://www.oasis.security)), (d) the conversational-AI-as-evidence ruling (April 2026 federal court). Each one independently demanded a defense the original PRD didn't have. The extension architecture + restricted vault + per-channel memory scoping closes all six.
+**Stream 3: Failure-mode research — STRONG SIGNAL.** Six structural failure modes the original PRD didn't fully address — (a) shared ChatGPT account problem (no family plan exists), (b) agent surfacing medical history on a screen-shared call, (c) prompt-injection via conversation history ([ChatInject arXiv 2509.22830](https://arxiv.org/pdf/2509.22830)), (d) conversational-AI-as-evidence ruling (April 2026 federal court), (e) protected-identity inference outing, (f) shared-account memory bleed. Restricted vault + multi-user detection + output safety gate + protected-identity hard ban close all six (Q17, Q18, Q19, Q22).
 
-**The combined picture: the right architecture is browser extension + block-based extraction + restricted vault.** Each of these is independently defensible; together they form a coherent product that survives the technical, legal, and social risks the original PRD was exposed to.
+**Stream 4: Architecture research (Cloudflare) — OVERWEIGHTED.** This stream extrapolated from Rust-specific TLS-fingerprint bugs to a general "datacenter Node is doomed" conclusion. On re-verification: the cited Codex issues are explicitly rustls-specific (`#17860`, `#16052`) or unrelated proxy bugs (`#14215`); the OpenClaw issues had known Node-side fixes (`#82978`); the official OpenAI Node SDK + 20+ active Node-based Codex projects work from cloud egress today. Anthropic's Feb 2026 crackdown is client-identity-based, not cloud-IP-based — it's evidence about Anthropic's stance, not about technical feasibility. **No architectural pivot needed.**
 
-The original PRD's research was solid — it correctly identified the three existential risks. The deep research validated those risks AND found that the same architectural change (browser extension) resolves all three at once.
+**The combined picture: the right architecture is the original PRD's datacenter OAuth + block-based extraction + restricted vault.** The original PRD got Phase 1 right. The deep research surfaced real improvements for Phase 2 (extraction architecture and sensitive-content handling) but did NOT find evidence justifying a Phase 1 architectural pivot.
 
 ---
 
@@ -44,22 +46,39 @@ The original PRD's research was solid — it correctly identified the three exis
 
 **Question:** Assume Option A (TLS-fingerprint match) works after spike. If it doesn't, which fallback path: B (residential proxy), C (WARP), D (hybrid), or kill?
 
-**Recommended answer:** **Reject Option A as the primary architecture entirely. Build the browser extension bridge instead. Datacenter + TLS-fingerprint + residential proxy is the 6-week bridge during extension build, not a destination.**
+**Recommended answer (REVISED 2026-05-18):** **The Cloudflare concern was overstated. The original PRD's datacenter OAuth architecture is correct.** Use Node.js HTTP clients (built-in `fetch` / `undici` / `https` modules, which all use OpenSSL TLS) to call `auth.openai.com/oauth/token` from our cloud VMs. This is the same stack the official `openai/openai-node` SDK ships with and the same stack OpenHands (cloud product, OpenAI Q1 2026 partner), Cline, slopus/happy, eliza, mastra, codebuff, and ~15 other active npm projects use without Cloudflare blocking.
 
-**Why the original framing was incomplete.** The PRD asked "which fallback if TLS-fingerprint fails" but the research found TLS-fingerprint matching is **necessary but not sufficient** even when it works — Cloudflare's bot detection stacks IP reputation, JA3/JA4, HTTP/2 SETTINGS, header order, and behavioral patterns on top of TLS fingerprint. From [Scrapfly's bypass research](https://scrapfly.io/blog/posts/how-to-bypass-cloudflare-anti-scraping): "a clean TLS fingerprint from a datacenter /24 still fails Cloudflare's IP-scoring layer." [openai/codex#17860](https://github.com/openai/codex/issues/17860) confirms macOS users on datacenter VPNs hit the same 403 — IP reputation alone is enough.
+**What changed in my analysis.** I previously claimed two GitHub issues (#17860 and #14215) showed datacenter clients getting blocked. Reading the actual issues:
+- `#17860` is explicitly Rust-specific (`rustls` 0.23.36 TLS fingerprint flagged by Cloudflare). The reporter's own recommended fix: "switch to native-tls (OpenSSL) on Linux instead of rustls." Node.js uses OpenSSL by default.
+- `#14215` was a proxy-routing bug in Node 22 `fetch` — fixed by using `undici.EnvHttpProxyAgent`. Not a Cloudflare TLS block.
+- `#18688` was a server-side CF misconfig that OpenAI staff (etraut-openai) resolved on 2026-04-21.
 
-**The structural answer.** Move credential-use to user-controlled execution context. Three real options:
-- **Browser extension** (recommended): user installs InstaClaw Companion extension; extension reads existing `chatgpt.com` session cookies; agent posts inference requests via websocket; extension `fetch()`s OpenAI from inside the user's browser. Zero Cloudflare friction (it IS the user's Chrome), zero ToS friction (no OAuth client_id to revoke; the user is using their own browser session the way OpenAI intends). ~6 weeks engineering.
-- **Native helper daemon**: same logic, distributed as a Mac/Windows/Linux binary instead of a browser extension. Same wire protocol. Works when browser is closed. ~4-6 weeks engineering. Add as secondary surface for power users.
-- **Datacenter + curl-impersonate + residential proxy (Bright Data ~$0.50-2.00/user/month)**: a 3-12 month bridge during the extension build. Don't make the business depend on it. The cost economics ($1-3/user/month proxy bandwidth) is acceptable as a temporary; as a permanent architecture it's a slow tax.
+**The decisive evidence.** OpenHands is a cloud product. OpenAI publicly partnered with them in Q1 2026 for Codex subscription OAuth. If CF categorically blocked cloud Node clients, this partnership couldn't exist. It does. The architecture works.
 
-**Citations:** [Anthropic's third-party crackdown — VentureBeat](https://venturebeat.com/technology/anthropic-cracks-down-on-unauthorized-claude-usage-by-third-party-harnesses); [MindStudio's analysis of the OpenClaw ban](https://www.mindstudio.ai/blog/anthropic-openclaw-ban-third-party-harnesses-claude-subscriptions); [Chrome MV3 Service Worker keepalive patterns](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle); [1Password's local-credential-use architecture](https://1password.com) as the canonical pattern; [rpidanny/chatgpt-browser-api-proxy](https://github.com/rpidanny/chatgpt-browser-api-proxy) as proof-of-existence for the browser-side approach.
+**Two implementation notes for engineering** (not architecture-changing, just request-shape details):
 
-**Confidence:** HIGH. The architecture research, partnership research, and failure-mode analysis all independently validate this answer.
+1. **OAuth endpoint** (`auth.openai.com/oauth/token`) — plain HTTPS POST from Node.js works. No special handling. Same pattern as `openai/openai-node` SDK's `WorkloadIdentityAuth` class.
 
-**Blocking:** YES. This decision cascades into Q2, Q3, Q10, Q12, and the new questions Q13-Q14.
+2. **Inference endpoint** (`chatgpt.com/backend-api/codex/responses`) — requires WebSocket transport (not POST/SSE) with specific headers:
+   ```
+   Authorization: Bearer <access_token>
+   ChatGPT-Account-ID: <chatgpt_account_id>
+   User-Agent: codex_cli_rs/<version>
+   originator: codex_cli_rs
+   version: <version>
+   OpenAI-Beta: responses_websockets=2026-02-06
+   ```
+   Without these headers, returns 403. With them, returns 200 from any cloud egress. Either wrap `@earendil-works/pi-ai` 0.74.0+ (npm package implementing this in pure Node) or replicate the request shape (~few hundred LOC). This is what every Node-based Codex tool does in production.
 
-**Dependencies:** Q2 (ToS) and Q3 (5th token storage) become much smaller problems if Q1 is the extension.
+**Phase 0 spike is still smart** (verify before committing engineering effort) but the default assumption is "this will work." If the spike measures >95% success rate on a single Linode VM with the right request shape, proceed with the original PRD's architecture.
+
+**Citations (corrected):** [openai/codex#17860 actual content — rustls-specific](https://github.com/openai/codex/issues/17860); [openai/codex#14215 actual content — proxy routing bug](https://github.com/openai/codex/issues/14215); [openai/codex#18688 resolved by OpenAI staff](https://github.com/openai/codex/issues/18688); [official OpenAI Node SDK WorkloadIdentityAuth](https://github.com/openai/openai-node/blob/master/src/auth/workload-identity-auth.ts); [OpenHands cloud product](https://www.openhands.dev/); [openclaw/openclaw#82978 — Node-based path works with correct headers/transport](https://github.com/openclaw/openclaw/issues/82978); [`@earendil-works/pi-ai` on npm — Node implementation that works](https://www.npmjs.com/package/@earendil-works/pi-ai).
+
+**Confidence:** HIGH (after re-research). The Node-from-cloud architecture is well-established across 20+ active projects.
+
+**Blocking:** NO (downgraded from YES). Original PRD architecture stands; engineering can proceed once Phase 0 spike confirms baseline.
+
+**Anthropic comparison caveat (the residual risk worth tracking).** Anthropic killed third-party OAuth Feb 2026 via client-identity validation ("This credential is only authorized for use with Claude Code"). The mechanism is technical (signed-binary attestation or client_id validation), and it applies everywhere — desktop or cloud — regardless of TLS or IP. There's no current evidence OpenAI is doing this, and their behavior is the opposite (actively partnering with OpenCode/OpenHands/RooCode/OpenClaw). But if OpenAI's posture ever shifts, our exposure is the same as everyone else's — desktop-only-distribution wouldn't save us. The defensive answer is: file the partnership intake form (Q2), keep .zip-upload as an always-available fallback (Q21), maintain BYOK/all-inclusive as full peers. None of these require the extension architecture.
 
 ---
 
@@ -67,27 +86,36 @@ The original PRD's research was solid — it correctly identified the three exis
 
 **Question:** Recommended Option 2 (reuse Codex client_id with disclosed UX) for Phase 1, parallel Option 1 (formal partnership) for Phase 2 swap-over. Confirm or override.
 
-**Recommended answer:** **The extension architecture (Q1) eliminates the need for any OAuth client_id at all. Don't reuse Codex's `app_EMoamEEZ73f0CkXaXp7hrann`. Apply for OpenAI's "Sign in with ChatGPT" partner program in parallel (it's free to file).**
+**Recommended answer (REVISED 2026-05-18):** **Approve original PRD Option 2 (reuse Codex `app_EMoamEEZ73f0CkXaXp7hrann` with disclosed UX). File OpenAI partnership intake in parallel. Ship the disclosure copy below.**
 
-**Why this changes.** The original PRD's three options (register our own client_id, reuse Codex's, ship as desktop helper) all assumed we'd be the OAuth client. With the extension architecture, we are NOT the OAuth client — the user's browser is. There's nothing for OpenAI to enforce against because there's no third-party OAuth happening. From OpenAI's logs, an extension-relayed request is indistinguishable from the user opening chatgpt.com themselves.
+With Q1 reverted to the datacenter architecture, we ARE the OAuth client. The original PRD's analysis holds: OpenCode, OpenHands, RooCode, and OpenClaw all use Codex's public client_id without C&D. OpenAI's posture is the opposite of Anthropic's — they're actively partnering with these tools. Frame InstaClaw as "the consumer agent platform that's a complement to ChatGPT" and ask for the same arrangement.
 
-**The partnership path is still worth pursuing — it's free and asymmetric:**
-- File the [Sign in with ChatGPT developer interest form](https://techcrunch.com/2025/05/27/openai-may-soon-let-you-sign-in-with-chatgpt-for-other-apps/) within 7 days. Pitch InstaClaw as "the consumer agent platform that's a complement to ChatGPT — we drive subscription retention." Reference OpenClaw as the precedent we want extended.
-- Warm-intro path: Brad Lightcap (COO, ex-YC). If Cooper has any YC network, this is the asymmetric path.
-- Don't ask for a custom partnership or revenue share in the first meeting. Ask for the same arrangement as OpenCode/OpenClaw: whitelist + public endorsement.
+**Partnership path:**
+- File the [Sign in with ChatGPT developer interest form](https://techcrunch.com/2025/05/27/openai-may-soon-let-you-sign-in-with-chatgpt-for-other-apps/) within 7 days. Reference OpenHands as the cloud-product precedent we want extended.
+- Warm-intro path: Brad Lightcap (COO, ex-YC). If Cooper has YC network, this is the asymmetric path.
+- First meeting ask: whitelist + public endorsement (same as OpenHands/OpenCode). Not revenue share, not formal contract.
 
-**Disclosure copy** for the extension's permission prompt and the dashboard:
-> InstaClaw Companion securely connects your InstaClaw cloud agent to your locally signed-in ChatGPT account. Your ChatGPT password and session stay in your browser — we never see them or store them on our servers. The extension only sends inference requests to chatgpt.com when authorized by your InstaClaw agent. You can disable it at any time from the InstaClaw dashboard.
+**Disclosure copy** for the OAuth consent screen and `/integrations/openai/about` page:
+> **Connect your ChatGPT subscription to InstaClaw**
 >
-> InstaClaw is not an official OpenAI product. ChatGPT usage counts against your ChatGPT plan's quota.
+> InstaClaw uses the same OAuth flow as OpenAI's official Codex CLI to authenticate with your ChatGPT account. We never see or store your ChatGPT password — OpenAI handles login on their domain and returns a token to your InstaClaw agent.
+>
+> Your token is stored only on your dedicated agent VM. It is never pooled, shared, or used for any account but your own. API calls count against your ChatGPT plan's usage, the same as if you used Codex CLI directly.
+>
+> **What you should know:**
+> - This integration is not officially affiliated with or endorsed by OpenAI.
+> - You're responsible for staying within [OpenAI's Terms of Use](https://openai.com/policies/row-terms-of-use/) and any plan limits.
+> - You can disconnect at any time from Settings → Integrations. Disconnecting revokes the token immediately.
+>
+> By clicking Continue, you confirm you've read the above and consent to InstaClaw using your ChatGPT subscription for inference on your behalf.
 
-This is shorter and less scary than the original PRD's OAuth disclosure because there's less to disclaim — the user is genuinely just authorizing their own browser to do something on their behalf.
+**Legal sign-off needed before launch** on the disclosure language.
 
-**Citations:** [Plaid → JPMC banking partnership precedent (2018 → 100% API by 2023)](https://media.chase.com/news/plaid-signs-data-agreement-with-jpmc); [OpenCode + OpenHands + RooCode + OpenClaw partnerships with OpenAI (Q1 2026)](https://paddo.dev/blog/anthropic-walled-garden-crackdown/); [Sam Altman's "ok boomer" posture toward Anthropic](https://officechai.com/ai/ok-boomer-sam-altman-trolls-anthropic-after-it-removes-claude-code-from-its-pro-plan-for-section-of-new-users/).
+**Citations:** [OpenCode + OpenHands + RooCode + OpenClaw partnerships with OpenAI (Q1 2026)](https://paddo.dev/blog/anthropic-walled-garden-crackdown/); [OpenHands as cloud product precedent](https://www.openhands.dev/); [Sam Altman's "ok boomer" posture toward Anthropic](https://officechai.com/ai/ok-boomer-sam-altman-trolls-anthropic-after-it-removes-claude-code-from-its-pro-plan-for-section-of-new-users/).
 
-**Confidence:** HIGH for the extension architecture sidestepping the ToS question; MEDIUM for the partnership likelihood (probably 40-55% we get OpenCode-style whitelisting given InstaClaw's current user count, 70-85% we get tacit safe-harbor regardless).
+**Confidence:** HIGH (matches the original PRD recommendation).
 
-**Blocking:** NO. Ship the extension; partnership is upside.
+**Blocking:** NO (legal review parallel; doesn't block engineering).
 
 ---
 
@@ -95,30 +123,22 @@ This is shorter and less scary than the original PRD's OAuth disclosure because 
 
 **Question:** New `openai-oauth.json` file + reconciler step `stepChatGPTOAuthToken` + per-user `openai_token_version`. Approve?
 
-**Recommended answer:** **REJECT — eliminate the 5th token location entirely.** With the extension architecture, we never hold an OpenAI access/refresh token. The token lives in the user's browser (in the existing chatgpt.com session cookie). We don't have to store it, rotate it, encrypt it, or sync it across VMs.
+**Recommended answer (REVISED 2026-05-18):** **APPROVE as designed in the original PRD §4.4-4.7.** With Q1 reverted, the 5th token location is back. The original PRD's design is right:
 
-**What we DO need on the VM side:**
-- A `chatgpt_subscription_pending` flag in `instaclaw_users` (was the extension installed and paired?)
-- The user's `chatgpt_account_email` for display purposes (from `user.json` in the export, or extension reports it)
-- A `chatgpt_subscription_active_seen_at` heartbeat (extension pings every N hours to confirm session is live)
+- New columns on `instaclaw_users` (per PRD §4.4): `openai_oauth_access_token`, `openai_oauth_refresh_token`, `openai_oauth_id_token_claims`, `openai_oauth_expires_at`, `openai_oauth_last_refresh_at`, `openai_oauth_account_id`, `openai_oauth_originator`, `openai_token_version`, `chatgpt_plan_type`, `chatgpt_plan_last_seen_at`
+- New column on `instaclaw_vms`: `openai_token_version_synced`
+- New on-disk file: `~/.openclaw/agents/main/agent/openai-oauth.json` (mode 0600, atomic write per Rule 22)
+- New reconciler step `stepChatGPTOAuthToken` per Rule 34 verify-after-write discipline
+- New cron `/api/cron/refresh-openai-oauth-tokens` (every 5 min, per-user Postgres row lock to prevent the `refresh_token_reused` permanent-lockout failure mode)
+- Encryption at rest via existing `lib/freeze-encryption.ts` pattern (Rule 53) — AES-256-GCM with versioned `OPENAI_OAUTH_KEY_*` env vars
 
-That's it. No tokens. No encryption. No 4-location-sync extension. The existing 4 token locations (`auth-profiles.json`, `openclaw.json`, `.env`, `instaclaw_vms.gateway_token`) stay as is.
+The Codex-source-derived refresh-failure classification (5 named modes: expired / reused / revoked / account_mismatch / other) is non-negotiable — generic "auth failed" errors are useless during incident response.
 
-**What the extension owns:**
-- The user's chatgpt.com session cookie (lives in their Chrome's cookie store)
-- A pairing token between the user's extension and their InstaClaw account (so multi-user laptops work)
-- A websocket connection to `bridge.instaclaw.io` (our cloud relay)
+**The one detail I'd emphasize that the PRD already implies:** the refresh-token rotation is the highest-blast-radius failure mode. Two concurrent processes calling refresh on the same user's token = one wins, one gets `refresh_token_reused` = permanent lockout. The Postgres row-level lock (`SELECT ... FOR UPDATE` via RPC) is load-bearing. Test it under concurrent load before launch.
 
-**What the cloud owns:**
-- A pairing-token-to-user-id map (small Postgres table)
-- A websocket relay (transient state, no persistence)
-- Per-call audit log (which inference call, when, what user — for compliance, not for token recovery)
+**Confidence:** HIGH (matches original PRD).
 
-This eliminates an entire category of incidents (Rule 22 / Rule 34 token-drift bugs) by design. No token to drift.
-
-**Confidence:** HIGH. Direct consequence of Q1.
-
-**Blocking:** NO. Architecture decision falls out of Q1.
+**Blocking:** YES (the new DB columns + reconciler step + cron need migration + engineering before Phase 1 can ship). Same blocking status as the original PRD.
 
 ---
 
@@ -291,18 +311,16 @@ Defer to Phase 3:
 
 **Question:** Phase 0 = 1 week, Phase 1 = 4 weeks, Phase 2 = 6 weeks. Total 11 weeks to full ship. Approve, or compress?
 
-**Recommended answer:** **Revised timeline with the extension architecture:**
+**Recommended answer (REVISED 2026-05-18):** **Original PRD's 11-week timeline holds.** With Q1 reverted to datacenter OAuth:
 
-| Phase | Original (OAuth) | Revised (Extension) | Rationale |
-|---|---|---|---|
-| 0 — Spike | 1 week (Cloudflare spike) | 1 week (extension prototype + Chrome Web Store policy check) | Same length, different question |
-| 1 — Auth | 4 weeks (OAuth + reconciler + per-user secrets) | **6 weeks (extension + native helper + wire protocol + Chrome/Firefox/Edge listings)** | Slightly longer; eliminates 3 follow-on engineering tracks |
-| 2 — History import | 6 weeks (per-conv extraction → cluster → consolidate) | **6 weeks (block-based extraction + RAG + restricted vault + user-review UI)** | Same length, better architecture |
-| 3 — Ongoing sync | TBD post-launch | TBD post-launch | Unchanged |
+| Phase | Weeks | Scope |
+|---|---|---|
+| 0 — Spike | 1 | One Linode VM, run Node `fetch` to `auth.openai.com/oauth/token`, verify ≥95% success rate over 10 attempts. Then probe `chatgpt.com/backend-api/codex/responses` via WebSocket with correct headers (`originator: codex_cli_rs`, etc.). Measure 403 rate over 100 requests. |
+| 1 — OAuth | 4 | Migration + new DB columns (Q3). OAuth flow (`lib/openai-oauth.ts`). Device-code routes. `stepChatGPTOAuthToken` reconciler step. Token-rotation cron. Stripe BYOS prices + `/connect`+`/plan` extensions. Per-call fallback infrastructure. |
+| 2 — History import | 6 | Block-based extraction pipeline (Q16) + bio bootstrap (Q15) + restricted vault (Q17) + multi-user detection (Q18) + output safety gate (Q19) + user-review UI + jaw-drop message generator (Q8). |
+| 3 — Ongoing sync | TBD | Post-launch. |
 
-**Total: 12-13 weeks** (vs original 11 weeks) — one extra week because the extension takes 6 instead of 4. The extension's extra investment buys (a) Cloudflare immunity, (b) ToS immunity, (c) elimination of token-storage-architecture work, (d) the user-installed-helper path almost for free (same wire protocol). Net engineering is comparable or less.
-
-**The 5-day pre-Edge-Esmeralda snapshot bake (May 23) is unaffected** — none of this work touches the fleet. Phase 1 begins after Edge Esmeralda (May 30) when infra work calms down.
+**Total: 11 weeks** as the original PRD specified. The 5-day pre-Edge-Esmeralda snapshot bake (May 23) is unaffected — none of this touches the fleet. Phase 1 begins after Edge Esmeralda (May 30) when infra work calms.
 
 **Confidence:** MEDIUM (estimates always slip; the extension involves Chrome Web Store review which is variable).
 
@@ -355,37 +373,15 @@ Defer to Phase 3:
 
 ### Q13. Browser extension vs OAuth datacenter — which is the primary architecture?
 
-**Question (new, raised by Q1):** Does the extension fully replace the datacenter OAuth path, or does it supplement?
+**SUPERSEDED 2026-05-18.** This question existed only because of the (now-walked-back) Cloudflare claim from pivot #1. With Q1 reverted to the datacenter architecture per the original PRD, there is no extension to choose between. Original PRD §4 architecture stands.
 
-**Recommended answer:** **Extension is the primary, default, marketed architecture. Datacenter+TLS+residential proxy is a 6-week interim during the extension build. Native helper daemon is a Phase 1 secondary surface for power users who close their browser.**
-
-**Frame the extension as the feature, not the workaround.** Copy: "InstaClaw Companion securely connects your cloud agent to your locally signed-in ChatGPT — your subscription, your browser, your data." This is genuinely a better story than "we have complex proxy infrastructure" — users prefer the simple story; investors prefer the simple story; OpenAI's enforcement team prefers leaving the simple story alone.
-
-**During Phase 1's first 6 weeks (extension build window):** route via datacenter + TLS-fingerprint match + residential proxy fallback. Cost ~$0.50-2.00/user/month for proxy bandwidth. Acceptable as temporary; explicitly NOT the destination.
-
-**Post-extension launch:** users with the extension installed are the default path. Users without (Chromebook, mobile-only, etc.) either install the native helper daemon OR get routed through the datacenter+proxy path (degraded but functional).
-
-**Reject pure "try datacenter first, fall back to extension" hybrid** — bad failure mode: when Cloudflare tightens, datacenter quietly degrades, extension users keep working, the bug looks like "the product is unreliable for some users for reasons we can't explain."
-
-**Confidence:** HIGH.
-
-**Blocking:** YES.
+If we ever DO encounter actual Cloudflare blocking in production (e.g., OpenAI's posture shifts), the browser extension remains a credible Plan B — the research artifacts are preserved in conversation history for reference. But it is not the Phase 1 architecture.
 
 ---
 
 ### Q14. Native helper daemon — Phase 1 or defer?
 
-**Question (new):** Native binary that runs on the user's laptop, proxies inference calls via residential IP. Works when browser is closed. Should this ship in Phase 1?
-
-**Recommended answer:** **Phase 1 secondary surface (week 4-6 of Phase 1).** Same wire protocol as the extension. Distribute as signed binaries for macOS/Windows/Linux. Covers the 5-10% of users who keep their browser closed for long stretches, plus headless server / SSH users.
-
-**Engineering cost:** ~2 additional weeks on top of the extension because the wire protocol, cloud-side relay, and pairing UX are shared. Code signing (Apple Developer Cert $299/yr; Windows code signing cert ~$200/yr) is real cost.
-
-**Skip for v1:** Safari extension (requires Apple Developer + Xcode build + App Store review — defer to v2; Safari users typically have Chrome installed anyway).
-
-**Confidence:** HIGH.
-
-**Blocking:** NO.
+**SUPERSEDED 2026-05-18.** Same reasoning as Q13. The native helper was a secondary surface for the (now-walked-back) extension architecture. With datacenter OAuth as primary, there's nothing for the daemon to relay. Defer indefinitely.
 
 ---
 
@@ -711,20 +707,20 @@ These aren't questions per se, but research surfaced them as design constraints 
 
 | # | Question | Recommended answer (one sentence) | Confidence | Blocking |
 |---|---|---|---|---|
-| 1 | Cloudflare mitigation | **Browser extension architecture instead of OAuth-from-datacenter.** Datacenter+TLS+residential proxy is 6-week interim. | HIGH | **YES** |
-| 2 | ToS path | Extension sidesteps the OAuth client_id question entirely. Apply for OpenAI partnership in parallel (free, asymmetric). | HIGH | NO |
-| 3 | 5th token storage | **Eliminate — no token in our DB.** Extension holds user's chatgpt.com session. | HIGH | NO |
-| 4 | Multi-provider routing | Approve as designed. Primary=user-sub via extension; heartbeats/embeddings on our keys; per-call fallback to Anthropic on 429. | HIGH | NO |
+| 1 | Cloudflare mitigation | **Original PRD datacenter Node OAuth is correct.** Implementation notes: use OpenSSL (Node default); inference endpoint needs WebSocket + `originator: codex_cli_rs` headers (wrap `@earendil-works/pi-ai` or replicate). | HIGH | NO |
+| 2 | ToS path | Approve original PRD Option 2 (reuse Codex client_id with disclosed UX). File OpenAI partnership intake in parallel. Legal sign-off on disclosure language. | HIGH | NO (legal parallel) |
+| 3 | 5th token storage | Approve original PRD §4.4-4.7 (new columns + reconciler step + cron + encryption). Postgres row-level lock on refresh is load-bearing. | HIGH | **YES** (migration + reconciler) |
+| 4 | Multi-provider routing | Approve as designed. Primary=user's OpenAI sub; heartbeats/embeddings on our keys; per-call fallback to Anthropic on 429. The moat. | HIGH | NO |
 | 5 | Per-call fallback caps | 50K/250K/1M base + soft overage in $5 blocks + $20/mo default spending limit + auto-degrade. | MEDIUM | NO |
 | 6 | Starter BYOS pricing | $19/$49/$149 + $4.99 Day Pass + Crew tier. Annual at 16/20/20% off. BYOS Pro = BYOK Pro + $10-15 convenience premium. | HIGH | NO |
 | 7 | Privacy default | Process-and-delete in 24h. Plus restricted vault (Q17), multi-user refusal (Q18), per-channel scoping (Q19). | HIGH | **YES** |
 | 8 | Jaw-drop format | Telegram message, ~110 words, 5 facts + bolded archetype, 90s post-send silence then memory-tour pull. | HIGH | NO |
 | 9 | Viral features | Jaw-drop + memory-tour pull + Memory Score in Phase 2. Defer "agent already did something" to Phase 3. | MEDIUM | NO |
-| 10 | Timeline | 12-13 weeks total (Phase 1 extension = 6 weeks; Phase 2 history = 6 weeks). One week longer than original. | MEDIUM | NO |
+| 10 | Timeline | Original PRD's 11 weeks holds (Phase 0 spike 1w + Phase 1 OAuth 4w + Phase 2 history 6w). | HIGH | NO |
 | 11 | Naming | "Connect ChatGPT" as the verb on signup CTA; tiers stay Starter/Pro/Power. Drop "BYOS." | LOW | NO |
 | 12 | Announcement timing | Ship Phase 1 publicly as ready. Hold Phase 2 for coordinated press + influencer launch. | MEDIUM | NO |
-| 13 | Extension vs datacenter | Extension is primary, default, marketed. Datacenter is 6-week interim only. | HIGH | **YES** |
-| 14 | Native helper daemon | Phase 1 secondary surface (week 4-6). Same wire protocol as extension. | HIGH | NO |
+| 13 | Extension vs datacenter | **SUPERSEDED.** Datacenter OAuth is the architecture (Q1). | — | — |
+| 14 | Native helper daemon | **SUPERSEDED.** Not needed (Q1). | — | — |
 | 15 | conversations.json bio bootstrap | YES — extract `recipient: "bio"` first as free OpenAI-curated seed. | HIGH | NO |
 | 16 | Block-based extraction | YES — change from per-conversation to per-block-of-10. Add RAG layer. Cheaper + more accurate at scale. | HIGH | NO |
 | 17 | Restricted vault for sensitive content | Build encrypted off-context vault on VM. Medical/legal/financial/sexual/political/etc. NEVER in MEMORY.md by default. | HIGH | **YES** |
@@ -735,14 +731,16 @@ These aren't questions per se, but research surfaced them as design constraints 
 | 22 | Protected-identity inference | HARD BAN. Race/gender/orientation/religion/politics only from explicit self-declaration. Default to user name + they/them. | HIGH | **YES** |
 | 23 | USER-STYLE.md style file | YES — $0.50 + 2 days engineering. Agent "sounds like" the user. Differentiation. | HIGH | NO |
 
+**Blocking decisions (8, down from 8 — but a different set than before):** Q3 (token storage architecture, original PRD), Q7 (privacy defaults), Q17 (restricted vault), Q18 (multi-user detection), Q19 (output safety gate), Q20 (subpoena posture / legal sign-off), Q22 (protected-identity inference ban). Q1 dropped from blocking (no architectural pivot needed); Q13/Q14 superseded.
+
 ---
 
 ## What Cooper needs to do
 
 **Before engineering starts:**
-1. Read this document end-to-end (45-60 min)
-2. Approve / override each of the 23 decisions above
-3. Specifically approve the 8 BLOCKING ones (Q1, Q7, Q13, Q17, Q18, Q19, Q20, Q22)
+1. Read this document end-to-end (45-60 min) — note §Walkback at end re: pivot #1 reversal
+2. Approve / override each of the 21 active decisions above (Q13/Q14 superseded)
+3. Specifically approve the 7 BLOCKING ones: Q3 (token storage), Q7 (privacy defaults), Q17 (restricted vault), Q18 (multi-user detection), Q19 (output safety gate), Q20 (subpoena posture), Q22 (protected-identity inference ban)
 4. File the OpenAI partnership intake form within 7 days (parallel to engineering)
 5. Brief outside legal counsel on the ToS posture (Q2 + Q20) — get retainer agreement before launch
 6. Decide on the warm-intro path for OpenAI (Brad Lightcap via YC network? other?)
@@ -773,4 +771,36 @@ Six parallel deep-research agents produced ~150K words of source-cited findings.
 
 ---
 
-**End of decisions document.** Once Cooper approves the 8 blocking decisions, the original PRD should be updated in-place to reflect the extension architecture (replacing PRD §4 OAuth design wholesale) and the block-based extraction pipeline (replacing PRD §5.4). All other PRD sections remain valid.
+**End of decisions document.** Once Cooper approves the 7 blocking decisions, the original PRD should be updated in-place ONLY for the extraction pipeline (replacing PRD §5.4 with block-based extraction + bio bootstrap + restricted vault). PRD §4 (OAuth design) stays as-is — it was correct.
+
+---
+
+## §Walkback — pivot #1 (browser extension) reversed 2026-05-18
+
+**What happened.** The original v1 of this document recommended pivoting Phase 1 from datacenter OAuth to a browser extension bridge, based on framing from the architecture-research agent that "the Cloudflare bug is the leading edge of an enforcement campaign." Cooper challenged this on first reading. Verification via direct GitHub-issue reads + Node-ecosystem survey showed the framing was wrong.
+
+**The actual evidence:**
+
+| Source I cited | What it actually shows |
+|---|---|
+| `openai/codex#17860` | Rust-specific (rustls 0.23.36). Reporter's own fix: "use native-tls (OpenSSL) on Linux." Node uses OpenSSL by default. |
+| `openai/codex#14215` | Node `fetch` proxy-routing bug. Resolved by `undici.EnvHttpProxyAgent`. Not a Cloudflare TLS block. |
+| `openai/codex#18688` | Server-side CF misconfig that OpenAI staff (etraut-openai) resolved 2026-04-21. |
+| `openclaw/openclaw#62087, #68033, #82978` | Node-side fixes shipped via correct request headers + WebSocket transport (`@earendil-works/pi-ai` 0.74.0). Not "Node from cloud is blocked." |
+| Anthropic Feb 2026 crackdown | Client-identity-based ("only authorized for Claude Code"), not cloud-IP-based. Tells us about Anthropic's posture, not OpenAI's technical capabilities. |
+
+**The decisive evidence I missed initially:** OpenHands is explicitly a cloud product. OpenAI publicly partnered with them in Q1 2026 for Codex subscription OAuth. If Cloudflare categorically blocked cloud Node clients on these endpoints, this partnership couldn't exist. The official `openai/openai-node` SDK has a `WorkloadIdentityAuth` class that hits `auth.openai.com/oauth/token` from servers as a documented enterprise pattern. ~20 active npm-published projects (cline/cline, slopus/happy, eliza, mastra, codebuff, …) call this endpoint without CF blocking reports.
+
+**The two real implementation notes** (not architecture-changing — just request-shape correctness):
+
+1. **OAuth endpoint** (`auth.openai.com/oauth/token`): plain HTTPS POST from Node works. No special handling. Mirror the OpenAI Node SDK pattern.
+
+2. **Inference endpoint** (`chatgpt.com/backend-api/codex/responses`): use WebSocket transport (not POST/SSE) with headers `{Authorization: Bearer <token>, ChatGPT-Account-ID: <account>, User-Agent: codex_cli_rs/<version>, originator: codex_cli_rs, version: <version>, OpenAI-Beta: responses_websockets=2026-02-06}`. Without these, returns 403. With them, returns 200 from any cloud egress. Wrap `@earendil-works/pi-ai` 0.74.0+ or replicate (~few hundred LOC).
+
+**What I should have done initially:** verified the specific TLS-library and runtime of each cited bug before generalizing. The Phase 0 spike in the original PRD was the right mechanism to surface this — I should have waited for the spike data rather than pre-deciding the architecture from extrapolation.
+
+**What's preserved.** Pivot #2 (block-based extraction + bio bootstrap, Q15/Q16) and pivot #3 (restricted vault + multi-user detection + output safety gate + protected-identity ban, Q17/Q18/Q19/Q22) were validated by independent research streams (ConvoMem paper + failure-mode analysis) and remain. The architecture-research agent's contributions on Cloudflare ARE preserved in conversation history as a credible Plan B if OpenAI's posture ever shifts — but they are not Phase 1.
+
+**Net delta vs the original PRD:** ~5% changes (extraction pipeline + sensitive-content architecture). Phase 1 (OAuth + reconciler + per-user secrets + multi-provider routing) is unchanged.
+
+**Honest summary of the agent error:** I let one research stream's strong framing override the evidence calibration that should have come from cross-checking against the partnership research, the OpenHands existence proof, and the Node-ecosystem survey. Cooper caught it on first read. The correction is in this document; the architecture proceeds as the original PRD specified.
