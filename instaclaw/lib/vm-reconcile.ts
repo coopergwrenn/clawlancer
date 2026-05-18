@@ -45,6 +45,12 @@ import { getSupabase } from "./supabase";
 import { logger } from "./logger";
 import { TIER_DISPLAY_LIMITS } from "./credit-constants";
 import { wrapSSHForEnospcDetection, isEnospcDetectedError } from "./enospc-guard";
+import {
+  callIndexSignup,
+  buildIndexMcpConfig,
+  getIndexEnv,
+  IndexSignupError,
+} from "./index-network-client";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -5499,6 +5505,15 @@ async function stepDispatchServer(
     }
     const [hasUnit, isActive, isListening] = [m[1] === "1", m[2] === "1", m[3] === "1"];
 
+    // Rule 57: ensure ufw allow 8765/tcp before any early-exit, so otherwise-
+    // healthy VMs still get ufw drift healed. Replaces the prior banned
+    // `sudo ufw allow 8765/tcp || true` pattern that lived in the deploy
+    // script — that one only ran on redeploy AND silently swallowed every
+    // failure mode. ensureUfwAllow probes, adds, then sentinel-verifies the
+    // rule landed. Failures are warnings (Rule 39) — dispatch's gateway
+    // service is the customer-facing piece; ufw is a defense-in-depth concern.
+    await ensureUfwAllow(ssh, result, 8765, dryRun, "dispatch-ufw");
+
     if (hasUnit && isActive && isListening) {
       result.alreadyCorrect.push("dispatch-server: unit+active+listening");
       return;
@@ -5540,7 +5555,10 @@ async function stepDispatchServer(
     lines.push(
       'chmod +x $HOME/scripts/dispatch-*.sh $HOME/scripts/dispatch-server.js 2>/dev/null',
       'sudo apt-get install -y -qq socat netcat-openbsd >/dev/null 2>&1 || true',
-      'sudo ufw allow 8765/tcp >/dev/null 2>&1 || true',
+      // ufw allow 8765/tcp is now handled by ensureUfwAllow (called above the
+      // early-exit block), not here. The prior `sudo ufw allow 8765/tcp ||
+      // true` was a Rule 57-banned pattern: silent-fail on every error path,
+      // and only ran when redeploy fired. Removed 2026-05-18.
       // Dynamic NVM node detection (avoids hardcoded v22.22.0 bug)
       'NPATH=$(ls -d $HOME/.nvm/versions/node/*/bin/node 2>/dev/null | head -1)',
       'NDIR=$(dirname "$NPATH" 2>/dev/null)',
@@ -5831,70 +5849,75 @@ echo RESTART_ISSUED
 }
 
 /**
- * Step 8m2: ufw allow 9100/tcp.
+ * Shared probe-add-verify helper for ufw ALLOW rules.
  *
- * Ensures Prometheus on the monitoring VM can reach node_exporter through
- * the host firewall. Companion to stepNodeExporter — that step verifies the
- * port is bound locally; this one verifies it's reachable externally.
+ * Per CLAUDE.md Rule 57. Used by stepUfwRules (9100/tcp for Prometheus) and
+ * stepDispatchServer (8765/tcp for the Dispatch WebSocket endpoint) so both
+ * call sites use the same discipline rather than independently re-implementing
+ * it (and one drifting). The shape is:
  *
- * Per CLAUDE.md Rule 57. Idempotent: probe ufw status first; only call
- * `sudo ufw allow` when the rule is missing. Sentinel per Rule 23: re-read
- * ufw status post-add and confirm the rule landed before reporting fixed.
+ *   1. Probe — is ufw installed at all? If not, no-op success (alreadyCorrect).
+ *      Some VMs (e.g. vm-050) don't have ufw and don't need it.
+ *   2. Probe — is the `^PORT/tcp` rule already present? If yes, alreadyCorrect.
+ *   3. Otherwise, probe sudo. No passwordless sudo → warning.
+ *   4. `sudo ufw allow PORT/tcp` then RE-READ the live ufw status and confirm
+ *      the rule landed (Rule 23 / Rule 10 sentinel — never trust the exit code
+ *      of the mutating command alone).
+ *   5. Classify per Rule 39: failures are warnings (recordHealWarning), NOT
+ *      errors. ufw rule failures don't gate cv-bump — they re-attempt on the
+ *      next cron tick and never block customer-facing flows.
  *
- * Per Rule 39, failures are warnings (recordHealWarning), not errors.
- * Prometheus monitoring is observability-only and a missing firewall rule
- * does NOT block cv-bump. The 2026-05-18 ufw-drift incident produced 8 VMs
- * with this exact gap; this step heals them on next cron tick.
+ * `label` is a free-form prefix for log messages so it's clear which call site
+ * a given audit-log entry came from (e.g. "ufw-rules" vs "dispatch-ufw").
  *
- * No isPausedState gate — adding a firewall rule is safe regardless of
- * paused-state, and ensures Prometheus can reach the VM when it wakes.
+ * No isPausedState gate — adding a firewall rule is safe regardless of paused
+ * state, and ensures the listener is reachable as soon as the VM resumes.
  */
-async function stepUfwRules(
+async function ensureUfwAllow(
   ssh: SSHConnection,
   result: ReconcileResult,
+  port: number,
   dryRun: boolean,
+  label: string,
 ): Promise<void> {
+  const portPattern = `^${port}/tcp`;
   try {
-    // Probe — does the rule already exist? Also confirm ufw is installed.
     const probe = await ssh.execCommand(
       `if ! command -v ufw >/dev/null 2>&1; then echo NO_UFW; exit 0; fi; ` +
-      `count=$(sudo -n ufw status 2>/dev/null | grep -c "^9100/tcp" || echo 0); ` +
-      `echo "9100_rule_count=$count"`
+      `count=$(sudo -n ufw status 2>/dev/null | grep -c "${portPattern}" || echo 0); ` +
+      `echo "rule_count=$count"`
     );
     if (probe.stdout.includes("NO_UFW")) {
-      // No ufw on this VM (unusual for Linode base) — Prometheus can still
-      // scrape if nothing else is blocking. Treat as a no-op success.
-      result.alreadyCorrect.push("ufw-rules: ufw not installed (skip)");
+      result.alreadyCorrect.push(`${label}: ufw not installed (skip)`);
       return;
     }
-    const probeMatch = probe.stdout.match(/9100_rule_count=(\d+)/);
+    const probeMatch = probe.stdout.match(/rule_count=(\d+)/);
     if (!probeMatch) {
       recordHealWarning(
         result,
-        `ufw-rules: probe parse failed: ${probe.stdout.slice(0, 160)}`,
+        `${label}: probe parse failed: ${probe.stdout.slice(0, 160)}`,
       );
       return;
     }
     const ruleCount = parseInt(probeMatch[1], 10);
 
     if (ruleCount >= 1) {
-      result.alreadyCorrect.push("ufw-rules: 9100/tcp present");
+      result.alreadyCorrect.push(`${label}: ${port}/tcp present`);
       return;
     }
 
     if (dryRun) {
-      result.fixed.push("[dry-run] ufw-rules: would add 9100/tcp");
+      result.fixed.push(`[dry-run] ${label}: would add ${port}/tcp`);
       return;
     }
 
-    // Probe sudo before mutating.
     const sudoCheck = await ssh.execCommand(
       "sudo -n true 2>/dev/null && echo SUDO_OK || echo NO_SUDO",
     );
     if (!sudoCheck.stdout.includes("SUDO_OK")) {
       recordHealWarning(
         result,
-        "ufw-rules: passwordless sudo unavailable; cannot add 9100/tcp",
+        `${label}: passwordless sudo unavailable; cannot add ${port}/tcp`,
       );
       return;
     }
@@ -5902,23 +5925,46 @@ async function stepUfwRules(
     // Add the rule + SENTINEL-VERIFY (Rule 23 / Rule 10) before declaring
     // fixed. ufw's exit code alone isn't trusted — re-grep the live status.
     const add = await ssh.execCommand(
-      `sudo -n ufw allow 9100/tcp 2>&1; ` +
-      `verify=$(sudo -n ufw status 2>/dev/null | grep -c "^9100/tcp" || echo 0); ` +
+      `sudo -n ufw allow ${port}/tcp 2>&1; ` +
+      `verify=$(sudo -n ufw status 2>/dev/null | grep -c "${portPattern}" || echo 0); ` +
       `echo "verify=$verify"`,
     );
     const verifyMatch = add.stdout.match(/verify=(\d+)/);
     const verifyCount = verifyMatch ? parseInt(verifyMatch[1], 10) : 0;
     if (verifyCount >= 1) {
-      result.fixed.push("ufw-rules: added 9100/tcp");
+      result.fixed.push(`${label}: added ${port}/tcp`);
     } else {
       recordHealWarning(
         result,
-        `ufw-rules: post-add verify failed (count=${verifyCount}): ${add.stdout.slice(-200)}`,
+        `${label}: post-add verify failed (count=${verifyCount}): ${add.stdout.slice(-200)}`,
       );
     }
   } catch (err) {
-    recordHealWarning(result, `ufw-rules: ${String(err).slice(0, 200)}`);
+    recordHealWarning(result, `${label}: ${String(err).slice(0, 200)}`);
   }
+}
+
+/**
+ * Step 8m2: ufw allow 9100/tcp.
+ *
+ * Ensures Prometheus on the monitoring VM can reach node_exporter through
+ * the host firewall. Companion to stepNodeExporter — that step verifies the
+ * port is bound locally; this one verifies it's reachable externally.
+ *
+ * Per CLAUDE.md Rule 57. Failure mode: 2026-05-18 ufw-drift incident — 8 VMs
+ * had node_exporter healthy but firewalled at 9100 for 1-4 days. This step
+ * heals them on next cron tick.
+ *
+ * Delegates to ensureUfwAllow so this and stepDispatchServer share the same
+ * probe-add-verify discipline. Failures are warnings (Rule 39) — observability
+ * is not customer-facing and a missing rule does NOT block cv-bump.
+ */
+async function stepUfwRules(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  await ensureUfwAllow(ssh, result, 9100, dryRun, "ufw-rules");
 }
 
 /**

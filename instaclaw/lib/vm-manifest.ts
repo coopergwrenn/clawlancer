@@ -1397,8 +1397,16 @@ export const VM_MANIFEST = {
    * 2026-05-18 IR triage — stepNodeExporter verified the local bind but
    * never external reachability. Idempotent grep-then-add + sentinel-verify
    * (Rule 23 / Rule 57). Failures are warnings (Rule 39); monitoring-only.
+   *
+   * v104 — 2026-05-18 — extract probe-add-verify into ensureUfwAllow helper;
+   * stepDispatchServer now uses it for ufw 8765/tcp (Rule 57 anti-pattern
+   * closure — the prior `sudo ufw allow 8765/tcp || true` line silently
+   * swallowed every failure mode and only ran on redeploy). Failures are
+   * warnings (Rule 39). Forces a re-reconcile across VMs that already
+   * reached cv=103 in the v103 propagation window so the dispatch fix
+   * reaches them too.
    */
-  version: 103,
+  version: 104,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
