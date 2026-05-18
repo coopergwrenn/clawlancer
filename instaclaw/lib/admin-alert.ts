@@ -4,6 +4,89 @@ import { logger } from "./logger";
 
 const COOLDOWN_HOURS = 6;
 
+/**
+ * Send a per-VM admin alert with PER-VM dedup. Use this — NOT AlertCollector —
+ * for ACTIONABLE alerts where Cooper needs visibility into EACH affected VM
+ * individually (disk-critical, paying-customer down, etc.).
+ *
+ * Why this exists separately from AlertCollector:
+ * AlertCollector dedups by `alert_key = subject`. That's correct for FYI
+ * digests ("3 VMs hit a soft threshold") but catastrophic for actionable
+ * alerts. The 2026-05-18 vm-748 lesson: when one VM fires "VM Disk
+ * Critical", AlertCollector suppresses ALL other VMs hitting Disk Critical
+ * within the 6h cooldown. Paying customers' VMs crashed silently while
+ * Cooper waited 6h for the next email.
+ *
+ * Per-VM keys (`disk_critical:${vm.id}`) dedup independently — each VM
+ * gets its own 6h window, so 8 VMs going critical in the same hour produce
+ * 8 emails (correct: each one is actionable), not 1 (wrong: only first is
+ * visible).
+ *
+ * Failure mode: if email send fails, we do NOT insert the dedup row, so
+ * the next cron tick retries. This mirrors AlertCollector's existing
+ * behavior and trades one duplicate-on-retry for "no silent P1 misses."
+ *
+ * @returns "sent" — email delivered to Resend AND dedup row inserted
+ *          "deduped" — recent send found, no action
+ *          "failed" — email failed; no dedup row, next tick will retry
+ */
+export async function sendPerVmAlertDeduped(params: {
+  alertKey: string;
+  subject: string;
+  body: string;
+  dedupHours?: number;
+}): Promise<"sent" | "deduped" | "failed"> {
+  const { alertKey, subject, body, dedupHours = COOLDOWN_HOURS } = params;
+  const supabase = getSupabase();
+
+  // Dedup check — fail-OPEN on table error (better to over-alert than to
+  // silently swallow a P1 because admin_alert_log is temporarily down).
+  try {
+    const cutoff = new Date(Date.now() - dedupHours * 60 * 60 * 1000).toISOString();
+    const { data } = await supabase
+      .from("instaclaw_admin_alert_log")
+      .select("id")
+      .eq("alert_key", alertKey)
+      .gte("sent_at", cutoff)
+      .limit(1);
+    if (data && data.length > 0) return "deduped";
+  } catch (err) {
+    logger.warn("sendPerVmAlertDeduped: dedup query failed, sending anyway", {
+      alertKey,
+      error: String(err),
+    });
+  }
+
+  // Send email FIRST. If it fails, don't claim the dedup slot — retry next tick.
+  try {
+    await sendAdminAlertEmail(subject, body);
+  } catch (err) {
+    logger.error("sendPerVmAlertDeduped: email send failed", {
+      alertKey,
+      subject,
+      error: String(err),
+    });
+    return "failed";
+  }
+
+  // Email succeeded — claim the dedup slot. Best-effort; if insert fails we'll
+  // double-send once before the next dedup window naturally cycles.
+  try {
+    await supabase.from("instaclaw_admin_alert_log").insert({
+      alert_key: alertKey,
+      vm_count: 1,
+      details: body.slice(0, 2000),
+    });
+  } catch (err) {
+    logger.warn("sendPerVmAlertDeduped: dedup row insert failed (email already sent)", {
+      alertKey,
+      error: String(err),
+    });
+  }
+
+  return "sent";
+}
+
 interface PendingAlert {
   subject: string;
   vmName: string;

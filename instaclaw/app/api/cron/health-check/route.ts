@@ -3,7 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { checkHealthExtended, checkSSHConnectivity, clearSessions, restartGateway, stopGateway, testProxyRoundTrip, resyncGatewayToken, checkVMTokenDrift, connectSSH, NVM_PREAMBLE, killStaleBrowser, checkSessionHealth, checkMemoryHealth, checkSessionCorruption, assignVMWithSSHCheck, readWatchdogStatus, checkDuplicateIP, wipeVMForNextUser, OPENCLAW_PINNED_VERSION } from "@/lib/ssh";
 import { VM_MANIFEST, getTemplateContent, BOOTSTRAP_MAX_CHARS } from "@/lib/vm-manifest";
 import { sendHealthAlertEmail, sendSuspendedEmail, sendAutoMigratedEmail } from "@/lib/email";
-import { AlertCollector } from "@/lib/admin-alert";
+import { AlertCollector, sendPerVmAlertDeduped } from "@/lib/admin-alert";
 import { logger } from "@/lib/logger";
 import { getProvider } from "@/lib/providers";
 import { bankrWalletLifecycle } from "@/lib/bankr-wallet-lifecycle";
@@ -2855,39 +2855,159 @@ else:
 
       metricsCollected++;
 
-      // Two-stage disk alerting per Rule 46:
-      //   >90% → VM Disk Critical (P0-equivalent — gateway crash imminent).
-      //   >80% → VM Disk Warning  (early-warning, 5-15 days lead time at
-      //          typical growth rates) — actionable BEFORE customer impact.
-      // Sample real-data growth rates from the 2026-05-14 incident:
-      //   vm-788 reached 100% over ~21 days of session-backup accumulation.
-      //   The 80% threshold catches that VM at day ~17 — 4 days of slack
-      //   before customer impact, vs the 90% threshold which gave ~12h.
+      // ===== Rule 46 disk monitoring + auto-purge + per-VM dedup =====
       //
-      // Same alerts.add() path → AlertCollector batches by subject and
-      // dedups over a cooldown window, so a single VM crossing 80% won't
-      // spam the inbox every 2 min (the health-check tick rate). Different
-      // subject strings ("Critical" vs "Warning") dedup independently so a
-      // VM climbing 80→90 fires both bands once each, not once total.
-      if (status.diskPct > 90) {
-        alerts.add(
-          "VM Disk Critical",
-          vm.name ?? vm.id,
-          `Disk: ${status.diskPct}%\nRAM: ${status.ramPct}%\nChrome: ${status.chromeCount}\nGateway healthy: ${status.gatewayHealthy}`
-        );
-      } else if (status.diskPct > 80) {
-        alerts.add(
-          "VM Disk Warning",
-          vm.name ?? vm.id,
-          `Disk: ${status.diskPct}%\nRAM: ${status.ramPct}%\nChrome: ${status.chromeCount}\nGateway healthy: ${status.gatewayHealthy}\n\n` +
-          `Early-warning — investigate before hitting 90% (gateway crash).\n` +
-          `Common culprits:\n` +
-          `  ~/.openclaw/session-backups/    (Rule 45 cooldown caps this at ~300 MB; if larger, check the cooldown fix landed)\n` +
-          `  ~/.openclaw/agents/main/sessions/   (active session jsonl bloat; strip-thinking.py compacts hourly)\n` +
-          `  /var/log/journal                (sudo journalctl --vacuum-time=2d typically reclaims 1-3 GB)\n` +
-          `  ~/.cache, ~/.npm/_cacache       (one-time cleanup if growing)\n\n` +
-          `Diagnose: ssh openclaw@${vm.ip_address} 'du -sh ~/.openclaw/* /var/log/journal 2>/dev/null | sort -h | tail -10'`
-        );
+      // Threshold ladder (escalates after auto-purge re-probe):
+      //   ≥85%  → WARNING email, per-VM dedup, 6h
+      //   ≥90%  → AUTO-PURGE (safe whitelist: session-backups >1d, journal,
+      //          /tmp >1d). Re-probe and persist the new disk %.
+      //   ≥95% post-purge → CRITICAL email, per-VM dedup, 6h. The purge
+      //          already ran and didn't recover headroom — manual triage
+      //          needed; gateway crash imminent.
+      //
+      // Why per-VM dedup matters (the 2026-05-18 vm-748 lesson):
+      // AlertCollector dedups by `alert_key = subject`. If vm-X fires "VM
+      // Disk Critical", AlertCollector suppresses every OTHER VM hitting
+      // critical for the next 6h. Paying customers' VMs crashed silently
+      // while Cooper waited for the next 6h window. sendPerVmAlertDeduped
+      // uses `disk_critical:${vm.id}` — each VM gets its own dedup slot,
+      // so 8 simultaneous critical events produce 8 emails, not 1.
+      //
+      // Sample growth rates (from the 2026-05-14 incident): vm-788
+      // reached 100% over ~21 days. The 85% threshold catches that VM at
+      // ~day 17 — 4 days of slack. The 90% auto-purge claws back ~300 MB
+      // -1 GB at typical fleet usage (session-backups age-purge + journal
+      // vacuum), buying another day or two of headroom.
+      let postPurgePct = status.diskPct;
+
+      if (status.diskPct >= 90) {
+        // Auto-purge runs regardless of health_status — unhealthy VMs
+        // benefit from disk recovery too. Whitelist only (Rule 22 / 30):
+        // NEVER touches workspace, agents/main/sessions, .env, wallet,
+        // openclaw.json, auth-profiles. Idempotent (find -delete is no-op
+        // on already-gone files; journalctl vacuum is no-op when already
+        // small). Opens a separate SSH connection from readWatchdogStatus
+        // — ~2-5s added per affected VM, rare event.
+        try {
+          const purgeSsh = await connectSSH({
+            id: vm.id,
+            ip_address: vm.ip_address!,
+            ssh_port: vm.ssh_port ?? 22,
+            ssh_user: vm.ssh_user ?? "openclaw",
+          });
+          try {
+            const purge = await purgeSsh.execCommand(
+              `find ~/.openclaw/session-backups -mtime +1 -delete 2>/dev/null; ` +
+              `ls -t ~/.openclaw/session-backups 2>/dev/null | tail -n +1001 | xargs -I {} rm -f ~/.openclaw/session-backups/{} 2>/dev/null; ` +
+              `sudo -n journalctl --vacuum-time=2d >/dev/null 2>&1; ` +
+              `find /tmp -maxdepth 1 -mtime +1 -type f -delete 2>/dev/null; ` +
+              `df --output=pcent / 2>/dev/null | tail -1 | tr -d " %"`,
+            );
+            const lastLine = purge.stdout.trim().split("\n").pop() ?? "";
+            const newPct = parseInt(lastLine, 10);
+            if (!Number.isNaN(newPct) && newPct >= 0 && newPct <= 100) {
+              postPurgePct = newPct;
+              // Persist the post-purge value so downstream readers (coverage
+              // script, dashboards) see the true current state, not the
+              // pre-purge snapshot from readWatchdogStatus.
+              await supabase
+                .from("instaclaw_vms")
+                .update({ last_disk_pct: newPct })
+                .eq("id", vm.id);
+            }
+          } finally {
+            purgeSsh.dispose();
+          }
+        } catch (err) {
+          logger.warn("disk auto-purge failed", {
+            vmId: vm.id,
+            vmName: vm.name,
+            preDiskPct: status.diskPct,
+            error: String(err).slice(0, 200),
+          });
+        }
+      }
+
+      // Alerts fire ONLY on healthy + assigned VMs. The outer cron query
+      // already filtered `.eq("status","assigned")` and dropped suspended
+      // /hibernating — we add the explicit `healthy` check here as
+      // defense-in-depth (Rule 39: only customer-facing failures should
+      // surface to Cooper's inbox).
+      if (vm.health_status === "healthy") {
+        const severity =
+          postPurgePct >= 95 ? "CRITICAL" :
+          postPurgePct >= 85 ? "WARNING" :
+          null;
+
+        if (severity) {
+          // Enrich body with owner email + sub state for instant triage
+          // (Cooper shouldn't have to SSH to know who's affected). Two
+          // queries per alert; rare event; cheap.
+          let ownerEmail: string | null = null;
+          let subTier: string | null = null;
+          let subStatus: string | null = null;
+          if (vm.assigned_to) {
+            try {
+              const [userRes, subRes] = await Promise.all([
+                supabase.from("instaclaw_users").select("email").eq("id", vm.assigned_to).maybeSingle(),
+                supabase.from("instaclaw_subscriptions").select("tier,status").eq("user_id", vm.assigned_to).in("status", ["active", "trialing", "past_due"]).maybeSingle(),
+              ]);
+              ownerEmail = (userRes.data as { email?: string | null } | null)?.email ?? null;
+              const subData = subRes.data as { tier?: string | null; status?: string | null } | null;
+              subTier = subData?.tier ?? null;
+              subStatus = subData?.status ?? null;
+            } catch {
+              // Best-effort enrichment — don't block the alert on a DB hiccup
+            }
+          }
+
+          const purgeNote =
+            postPurgePct !== status.diskPct
+              ? `Pre-purge: ${status.diskPct}% → post-purge: ${postPurgePct}%`
+              : status.diskPct >= 90
+                ? `(auto-purge ran but did not change disk%; investigate which files are growing)`
+                : `(below auto-purge threshold; no purge attempted)`;
+
+          const body =
+            `VM:           ${vm.name ?? vm.id}\n` +
+            `IP:           ${vm.ip_address}\n` +
+            `Owner:        ${ownerEmail ?? "(unknown)"}\n` +
+            `Tier:         ${vm.tier ?? subTier ?? "(unknown)"}\n` +
+            `Sub status:   ${subStatus ?? "(none)"}\n` +
+            `Disk %:       ${postPurgePct}%  ${purgeNote}\n` +
+            `RAM %:        ${status.ramPct}%\n` +
+            `Chrome procs: ${status.chromeCount}\n` +
+            `Gateway:      ${status.gatewayHealthy ? "healthy" : "UNHEALTHY"}\n` +
+            `\n` +
+            (severity === "CRITICAL"
+              ? `Gateway crash imminent. The auto-purge whitelist already ran and disk is\n` +
+                `still ≥95% — manual triage needed. Likely culprits:\n` +
+                `  ~/.openclaw/agents/main/sessions/  active jsonl bloat (strip-thinking.py compacts hourly; check if it's running)\n` +
+                `  /var/log/journal                   journalctl --vacuum-size=200M reclaims more aggressively than --vacuum-time=2d\n` +
+                `  ~/scripts/node_modules            xmtp / dispatch deps; can be rm -rf and re-installed via reconciler\n` +
+                `\n` +
+                `Triage:\n` +
+                `  ssh openclaw@${vm.ip_address} 'du -sh ~/.openclaw/* ~/scripts/* /var/log/journal /var/cache 2>/dev/null | sort -h | tail -10'\n`
+              : `Early-warning — investigate before hitting 90% (auto-purge) or 95% (gateway crash).\n` +
+                `Common culprits:\n` +
+                `  ~/.openclaw/session-backups/    Rule 45 cooldown caps ~300 MB; if larger, the v45 fix may not have landed\n` +
+                `  ~/.openclaw/agents/main/sessions/  active jsonl bloat; strip-thinking.py compacts hourly\n` +
+                `  /var/log/journal                sudo journalctl --vacuum-time=2d typically reclaims 1-3 GB\n` +
+                `  ~/.cache, ~/.npm/_cacache       one-time cleanup if growing\n` +
+                `\n` +
+                `Diagnose:\n` +
+                `  ssh openclaw@${vm.ip_address} 'du -sh ~/.openclaw/* /var/log/journal 2>/dev/null | sort -h | tail -10'\n`);
+
+          await sendPerVmAlertDeduped({
+            alertKey: `disk_${severity === "CRITICAL" ? "critical" : "warning"}:${vm.id}`,
+            subject:
+              severity === "CRITICAL"
+                ? `[P1] Disk ${postPurgePct}% on ${vm.name ?? vm.id} — gateway crash imminent`
+                : `[WARNING] Disk ${postPurgePct}% on ${vm.name ?? vm.id}`,
+            body,
+            dedupHours: 6,
+          });
+        }
       }
 
       // Session growth alert — runaway task detected
