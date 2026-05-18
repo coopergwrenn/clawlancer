@@ -648,13 +648,22 @@ export async function GET(req: NextRequest) {
           // Rule 40 — structured CV_BUMP_BLOCKED line (strict variant).
           // Strict and push hold-paths emit the SAME greppable prefix so a
           // single log search surfaces all currently-blocked VMs.
+          //
+          // 3am-triage context fields (ipAddress / tier / partner / versionGap /
+          // healthStatus) added 2026-05-18 so an operator can act on a single
+          // log line without first running a DB lookup to find the IP / tier.
           logger.error("CV_BUMP_BLOCKED", {
             route: "cron/reconcile-fleet",
             reason: "strict",
             vmId: vm.id,
             vmName: vm.name,
+            ipAddress: vm.ip_address ?? null,
+            healthStatus: vm.health_status,
+            tier: vm.tier ?? null,
+            partner: vm.partner ?? null,
             cvCurrent: vm.config_version ?? 0,
             cvTarget: VM_MANIFEST.version,
+            versionGap: VM_MANIFEST.version - (vm.config_version ?? 0),
             errorsCount: auditResult.strictErrors.length,
             failingSteps: extractFailingSteps(auditResult.strictErrors),
             sampleError: (auditResult.strictErrors[0] ?? "").slice(0, 200),
@@ -708,18 +717,26 @@ export async function GET(req: NextRequest) {
           // message is the canonical greppable prefix; failingSteps +
           // sampleError accelerate incident triage from "SSH-probe each
           // stuck VM" to one log search / SQL query.
+          //
+          // 3am-triage context fields (ipAddress / tier / partner / versionGap)
+          // added 2026-05-18 so an operator can act on a single log line
+          // without first running a DB lookup to find the IP / tier.
           logger.warn("CV_BUMP_BLOCKED", {
             route: "cron/reconcile-fleet",
             reason: "push",
             vmId: vm.id,
             vmName: vm.name,
+            ipAddress: vm.ip_address ?? null,
+            healthStatus: vm.health_status,
+            tier: vm.tier ?? null,
+            partner: vm.partner ?? null,
             cvCurrent: vm.config_version ?? 0,
             cvTarget: VM_MANIFEST.version,
+            versionGap: VM_MANIFEST.version - (vm.config_version ?? 0),
             errorsCount: auditResult.errors.length,
             failingSteps: extractFailingSteps(auditResult.errors),
             sampleError: (auditResult.errors[0] ?? "").slice(0, 200),
             errors: auditResult.errors,
-            healthStatus: vm.health_status,
             reconcileConsecutiveFailures: newCounter,
             quarantined: shouldQuarantine,
           });
