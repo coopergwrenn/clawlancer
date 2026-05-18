@@ -1,35 +1,34 @@
 # Changelog — generated 2026-05-18
 
-Window: `769f5a4417de9089ccd4b3bfa20ad2793960f2b2` → `HEAD` (HEAD = `699a1422`)
+Window: `699a142238d77a8c04ae8646a2543d0e1b0aa4b3` → `HEAD` (HEAD = `fcca5780`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 699a142238d77a8c04ae8646a2543d0e1b0aa4b3 -->
+<!-- LAST_GENERATED_SHA: fcca57805f2e22f88cdac9c436dfe3d81c6452a8 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
-- **Edge City partner:** 0
+- **Edge City partner:** 1
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
 
-_None in this window._
+- `fcca5780` 2026-05-18 — docs(village): Index Network integration PRD + Phase 4 forward-link [2 files] _(multi: [edge, docs])_
 
 ## What changed under the hood
 
-- `699a1422` 2026-05-18 — docs(snapshot-bake): rename v101 → v102 + add gbrain SOUL.md protocol prereq [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
-- `8f6b7a8d` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `70efa9a1` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `699a1422` 2026-05-18 — docs(snapshot-bake): rename v101 → v102 + add gbrain SOUL.md protocol prereq [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+_(none)_
 
 ### Infrastructure (0)
 
@@ -39,27 +38,21 @@ _(none)_
 
 _(none)_
 
-### Edge City partner (0)
+### Edge City partner (1)
 
-_(none)_
+- `fcca5780` 2026-05-18 — docs(village): Index Network integration PRD + Phase 4 forward-link [2 files] _(multi: [edge, docs])_
 
 ### Docs / PRD only (1)
 
-- `8f6b7a8d` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `70efa9a1` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `699a1422` 2026-05-18 — [reconciler, edge, docs] — docs(snapshot-bake): rename v101 → v102 + add gbrain SOUL.md protocol prereq
-
-## AI-assisted commits (1)
-
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
-
-- `699a1422` 2026-05-18 — docs(snapshot-bake): rename v101 → v102 + add gbrain SOUL.md protocol prereq
+- `fcca5780` 2026-05-18 — [edge, docs] — docs(village): Index Network integration PRD + Phase 4 forward-link
 
 ## Appendix — every commit (chronological)
 
-- `8f6b7a8d` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `699a1422` 2026-05-18 — docs(snapshot-bake): rename v101 → v102 + add gbrain SOUL.md protocol prereq [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+- `70efa9a1` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `fcca5780` 2026-05-18 — docs(village): Index Network integration PRD + Phase 4 forward-link [2 files] _(multi: [edge, docs])_
