@@ -1,19 +1,19 @@
 # Changelog — generated 2026-05-18
 
-Window: `b77682911fd7be9f0eb88c67aa0345c26e5c1a82` → `HEAD` (HEAD = `9adbb0c8`)
+Window: `9adbb0c8611746d4666b0c39a163faeddfbce338` → `HEAD` (HEAD = `86fddea3`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 9adbb0c8611746d4666b0c39a163faeddfbce338 -->
+<!-- LAST_GENERATED_SHA: 86fddea3c296f59fcf759aae4315bda9d7eb9b0e -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 0
+- **Docs / PRD only:** 2
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `9adbb0c8` 2026-05-18 — self-audit: 4 bugs found in today's bake-validation work [3 files] _(multi: [reconciler, infrastructure, edge, docs])_
-- `ed36a938` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `69032eb7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `86fddea3` 2026-05-18 — docs(rule-54): empirical validation of 30-min cron interval (Test 17) [1 files] _(ai-assisted)_
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `9adbb0c8` 2026-05-18 — self-audit: 4 bugs found in today's bake-validation work [3 files] _(multi: [reconciler, infrastructure, edge, docs])_
+_(none)_
 
 ### Infrastructure (0)
 
@@ -43,17 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `ed36a938` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `69032eb7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `86fddea3` 2026-05-18 — docs(rule-54): empirical validation of 30-min cron interval (Test 17) [1 files] _(ai-assisted)_
 
-## Multi-category commits (1)
+## AI-assisted commits (1)
 
-These touch more than one category root and are listed in every applicable section above.
+Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `9adbb0c8` 2026-05-18 — [reconciler, infrastructure, edge, docs] — self-audit: 4 bugs found in today's bake-validation work
+- `86fddea3` 2026-05-18 — docs(rule-54): empirical validation of 30-min cron interval (Test 17)
 
 ## Appendix — every commit (chronological)
 
-- `ed36a938` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `9adbb0c8` 2026-05-18 — self-audit: 4 bugs found in today's bake-validation work [3 files] _(multi: [reconciler, infrastructure, edge, docs])_
+- `69032eb7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `86fddea3` 2026-05-18 — docs(rule-54): empirical validation of 30-min cron interval (Test 17) [1 files] _(ai-assisted)_
