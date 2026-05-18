@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-18
 
-Window: `d095afa8606aeac64dc4f6212d71672aade9fae7` → `HEAD` (HEAD = `66cc71d5`)
+Window: `66cc71d57b3ba973af0717705e99974b8b24b467` → `HEAD` (HEAD = `53c86524`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 66cc71d57b3ba973af0717705e99974b8b24b467 -->
+<!-- LAST_GENERATED_SHA: 53c865245db1de285640fa1e4ba9950eeab560ed -->
 
 ## Summary
 
@@ -13,7 +13,7 @@ Total commits: 2
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `66cc71d5` 2026-05-18 — prep(freeze-v2): lib/freeze-v2-archive.ts — composer + R2 plumbing (PRD §15.4) [2 files] _(ai-assisted)_
-- `2c141668` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `53c86524` 2026-05-18 — feat(scripts): _verify-edge-readiness.ts — daily pre-conference check (May 30 Esmeralda) [1 files] _(multi: [infrastructure, edge])_
+- `a6a3d39c` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `66cc71d5` 2026-05-18 — prep(freeze-v2): lib/freeze-v2-archive.ts — composer + R2 plumbing (PRD §15.4) [2 files] _(ai-assisted)_
+- `53c86524` 2026-05-18 — feat(scripts): _verify-edge-readiness.ts — daily pre-conference check (May 30 Esmeralda) [1 files] _(multi: [infrastructure, edge])_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `2c141668` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `a6a3d39c` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (1)
+## Multi-category commits (1)
 
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+These touch more than one category root and are listed in every applicable section above.
 
-- `66cc71d5` 2026-05-18 — prep(freeze-v2): lib/freeze-v2-archive.ts — composer + R2 plumbing (PRD §15.4)
+- `53c86524` 2026-05-18 — [infrastructure, edge] — feat(scripts): _verify-edge-readiness.ts — daily pre-conference check (May 30 Esmeralda)
 
 ## Appendix — every commit (chronological)
 
-- `2c141668` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `66cc71d5` 2026-05-18 — prep(freeze-v2): lib/freeze-v2-archive.ts — composer + R2 plumbing (PRD §15.4) [2 files] _(ai-assisted)_
+- `a6a3d39c` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `53c86524` 2026-05-18 — feat(scripts): _verify-edge-readiness.ts — daily pre-conference check (May 30 Esmeralda) [1 files] _(multi: [infrastructure, edge])_
