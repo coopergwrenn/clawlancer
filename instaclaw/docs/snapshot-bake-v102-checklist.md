@@ -1,9 +1,9 @@
-# Snapshot Bake v101 — May 23-25 — Checklist
+# Snapshot Bake v102 — May 23-25 — Checklist
 
 **Status:** PLAN. Bake window 2026-05-23 → 2026-05-25. Esmeralda go-live 2026-05-30.
-**Target snapshot label:** `instaclaw-base-v101-2026-05-23-gbrain-http` (or similar dated label)
+**Target snapshot label:** `instaclaw-base-v102-2026-05-23-gbrain-http` (or similar dated label)
 **Predecessor snapshot:** `private/38575292` (current `LINODE_SNAPSHOT_ID`)
-**Rollback window:** keep `private/38575292` available for 1 week after v101 ships (2026-06-01 minimum)
+**Rollback window:** keep `private/38575292` available for 1 week after v102 ships (2026-06-01 minimum)
 **Single biggest delta vs v79:** gbrain v0.35.0.0 HTTP sidecar pre-installed
 
 This document is the operational checklist FOR the May 23-25 bake. The general process lives in CLAUDE.md "Snapshot Creation Process (COMPLETE REFERENCE)". This doc adds: the specific changes since v79, the new gbrain verification, pre-bake validation gates, rollback playbook, and a per-step time estimate.
@@ -12,19 +12,21 @@ This document is the operational checklist FOR the May 23-25 bake. The general p
 
 ## §0 — Why this bake
 
-1. **gbrain HTTP sidecar architecture** (Rule 35, 2026-05-15 canary) — new VMs from v79 boot with NO gbrain. Esmeralda attendees would hit the stdio cold-start (90+ s) or the missing-skill path on every memory-related agent invocation. **v101 fixes this for every new attendee VM provisioned from snapshot.**
+1. **gbrain HTTP sidecar architecture** (Rule 35, 2026-05-15 canary) — new VMs from v79 boot with NO gbrain. Esmeralda attendees would hit the stdio cold-start (90+ s) or the missing-skill path on every memory-related agent invocation. **v102 fixes this for every new attendee VM provisioned from snapshot.**
 2. **Rule 47 (continuous reconciliation)** — file-only changes (strip-thinking.py, install-gbrain.sh, verify-gbrain-mcp.py) propagate via `stepFiles` to reconciler-touched VMs, but NOT to VMs that boot fresh from snapshot and never reach the cv-stale candidate set. Baking forces these into the baseline.
-3. **Manifest version drift since v79** — multiple version bumps (v82, v86, v87, v88, v96, v97, v99, v100) haven't been re-baked into the snapshot per Rule 7. Reconciler is the safety net but accumulating drift is costly.
+3. **Manifest version drift since v79** — multiple version bumps (v82, v86, v87, v88, v96, v97, v99, v100, v101, v102) haven't been re-baked into the snapshot per Rule 7. Reconciler is the safety net but accumulating drift is costly.
+4. **gbrain SOUL/AGENTS protocol canonicalization** (v102, 2026-05-17) — vm-050 was the only edge_city VM with the gbrain memory protocol in AGENTS.md (deployed manually via `_push_gbrain_fix.ts`). The 7 other edge_city VMs had gbrain INSTALLED but ZERO routing/usage instructions for it. Agents saw the MCP tool catalog but hallucinated saves ("Bear Republic saved" without any tool call). v102 canonicalizes the protocol via `stepDeployGbrainSoulProtocol`, inserting the `GBRAIN_MEMORY_PROTOCOL_V1` block (~4.1KB, includes Rule 28 "MUST call gbrain__put_page BEFORE responding" directive) into every gbrain-installed VM's AGENTS.md. **Baking ensures new attendee VMs ship with the protocol pre-inserted via WORKSPACE_AGENTS_MD_V2 instead of waiting for the first reconcile tick.**
 
-## §1 — What's NEW in v101 vs v79
+## §1 — What's NEW in v102 vs v79
 
 Material changes that justify the bake (in delta order — most important first):
 
-| Component | v79 state | v101 state | Source |
+| Component | v79 state | v102 state | Source |
 |---|---|---|---|
 | **gbrain** | not installed | v0.35.0.0 (commit baf1a47) at `~/gbrain`, bun installed, `bun link`'d, systemd unit installed (NOT started), fresh PGLite at schema v66, NO bearer token (per-VM mint at first reconcile) | Rule 35; `scripts/install-gbrain.sh` |
+| **gbrain SOUL.md protocol** | absent | `GBRAIN_MEMORY_PROTOCOL_V1` block inlined in `WORKSPACE_AGENTS_MD_V2` (~4.1KB) — STORE/RETRIEVE rules + NEVER-submit_job + Rule 28 "MUST call before responding" anti-hallucination directive | `lib/workspace-templates-v2.ts:GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK` |
 | **OpenClaw** | 2026.4.26 | latest stable (TBD at bake time — re-pin at start) | `lib/vm-manifest.ts:OPENCLAW_PINNED_VERSION` |
-| **VM manifest** | v79 | v101 baseline (orphan-tool_use repair landed 2026-05-16 via commit `48af5075`; superseded earlier v100 plan) | `lib/vm-manifest.ts:VM_MANIFEST.version` |
+| **VM manifest** | v79 | v102 baseline (orphan-tool_use repair landed 2026-05-16 via commit `48af5075`; superseded earlier v100 plan) | `lib/vm-manifest.ts:VM_MANIFEST.version` |
 | **Session-backup runaway** | broken (Rule 45 unfixed) | fixed in strip-thinking.py via cooldown + per-session cap | `lib/ssh.ts:STRIP_THINKING_SCRIPT` |
 | **TasksMax** | 75 | 120 (v86) | systemd override |
 | **prctl-subreaper** | absent | v0.1.1 installed (v87) | npm + systemd drop-in |
@@ -70,7 +72,36 @@ grep "GBRAIN_PINNED_" scripts/_install-gbrain-on-vm.ts | head -2
 - [ ] Confirm no P0/P1 alerts in `instaclaw_admin_alert_log` for the last 24h
 - [ ] Confirm reconcile-fleet cron is running cleanly (last 3 cycles successful, no quarantined VMs added in last 24h)
 
-### §2.6 — Run the pre-bake-check script (automated go/no-go)
+### §2.6 — **[v102 NEW]** gbrain SOUL.md protocol pre-bake gate
+
+The bake VM is provisioned from `LINODE_SNAPSHOT_ID` (currently `private/38575292`, baked from v79 baseline) and brought to current state. v102's `stepDeployGbrainSoulProtocol` inserts the gbrain protocol into existing VMs at reconcile time — but the bake VM doesn't go through Vercel-cron reconcile; it goes through manual catch-up. The bake-VM-side catch-up MUST insert the protocol BEFORE imagize, otherwise every new VM provisioned from v102 boots without the gbrain instructions in AGENTS.md.
+
+After §3.5 gbrain install completes on the bake VM:
+- [ ] SSH the bake VM and verify the `GBRAIN_MEMORY_PROTOCOL_V1` marker is present in `~/.openclaw/workspace/AGENTS.md`:
+  ```bash
+  ssh -i /tmp/ic_ssh_key openclaw@<bake-vm-ip> 'grep -c "GBRAIN_MEMORY_PROTOCOL_V1" ~/.openclaw/workspace/AGENTS.md'
+  # expect: 2  (open + close markers)
+  ```
+- [ ] Verify AGENTS.md grew from baseline ~8.5KB to ~12.7KB+ (size sanity — confirms the ~4.1KB block landed)
+- [ ] Verify the Rule 28 anti-hallucination directive is present:
+  ```bash
+  ssh -i /tmp/ic_ssh_key openclaw@<bake-vm-ip> 'grep -c "MUST call \`gbrain__put_page\` BEFORE responding" ~/.openclaw/workspace/AGENTS.md'
+  # expect: 1
+  ```
+- [ ] If marker absent: manually run the gbrain SOUL protocol insert from the bake VM:
+  ```bash
+  # On the bake VM, replicate stepDeployGbrainSoulProtocol behavior:
+  # 1. Verify gbrain.service active
+  # 2. Backup AGENTS.md to ~/.openclaw/backups/v102-gbrain-soul-protocol-<ts>/AGENTS.md
+  # 3. Insert GBRAIN_MEMORY_PROTOCOL_V1 block before "## Memory Protocol"
+  # 4. Verify marker present post-write
+  # OR: bake VMs deployed from a snapshot that has been reconciled to v102 (which means AGENTS.md
+  # already has the marker) will pick it up automatically — no manual insert needed.
+  ```
+
+**Why this gate exists:** v102 propagation happens via reconciler step, but the bake VM is provisioned from an OLDER snapshot (v79-baseline) and brought current manually. Without this gate the bake produces a snapshot whose AGENTS.md lacks the gbrain protocol — every new VM provisioned from it would boot without the protocol until the FIRST reconcile cycle (~3 min post-provision) catches it up. For Edge Esmeralda attendees that's 3 minutes of unhelpful agent behavior at the most important moment.
+
+### §2.7 — Run the pre-bake-check script (automated go/no-go)
 - [ ] `npx tsx scripts/_pre-bake-check.ts` returns exit 0 (or all CRITICAL blockers explicitly understood and accepted)
 
 The script verifies every §2 gate above plus:
@@ -94,7 +125,7 @@ See `§11` below for the script's findings as of 2026-05-16.
 
 ## §3 — The bake (May 23, ~3-4 hours wall-clock)
 
-Follows CLAUDE.md "Snapshot Creation Process" with v101-specific overrides marked **[v101]**.
+Follows CLAUDE.md "Snapshot Creation Process" with v102-specific overrides marked **[v102]**.
 
 ### §3.1 — Provision the bake VM (15 min)
 
@@ -104,7 +135,7 @@ Follows CLAUDE.md "Snapshot Creation Process" with v101-specific overrides marke
 curl -X POST -H "Authorization: Bearer $LINODE_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "label": "snapshot-bake-v101",
+    "label": "snapshot-bake-v102",
     "region": "us-east",
     "type": "g6-nanode-1",
     "image": "private/38575292",
@@ -135,11 +166,11 @@ Per CLAUDE.md step 4. Run `node /tmp/extract-manifest-files.mjs .` from project 
 
 ### §3.4 — Install all crons (5 min)
 
-Per CLAUDE.md step 5. All 7 cron jobs must be present. **[v101]** No new crons added for gbrain — gbrain.service is a systemd unit, not a cron.
+Per CLAUDE.md step 5. All 7 cron jobs must be present. **[v102]** No new crons added for gbrain — gbrain.service is a systemd unit, not a cron.
 
-### §3.5 — **[v101 NEW]** Install gbrain HTTP sidecar (~80s)
+### §3.5 — **[v102 NEW]** Install gbrain HTTP sidecar (~80s)
 
-**This is the headline change for v101.** Run the canonical install path:
+**This is the headline change for v102.** Run the canonical install path:
 
 ```bash
 # From local laptop (not on the bake VM):
@@ -166,7 +197,7 @@ PHASE_H_OK RESULT_OK marker_ts=... put_tool=put_page retrieve_tool=get_page tool
 INSTALL_COMPLETE
 ```
 
-**[v101 GATE]** If install fails, stop. Investigate. Bake is not gateable until install completes cleanly on the bake VM.
+**[v102 GATE]** If install fails, stop. Investigate. Bake is not gateable until install completes cleanly on the bake VM.
 
 ### §3.6 — Strip the bake-VM-specific bearer token from the snapshot
 
@@ -240,7 +271,7 @@ python3 -m pip cache purge; sudo rm -rf /root/.cache/pip ~/.cache/pip
 rm -rf /tmp/* ~/.nvm/.cache
 sudo journalctl --vacuum-time=1d
 sudo rm -rf /var/log/*.gz /var/log/*.1 /var/log/*.old
-# [v101 NEW] gbrain-specific cache cleanup
+# [v102 NEW] gbrain-specific cache cleanup
 rm -rf ~/.bun/install/cache/*  # bun's download cache (~50 MB)
 rm -rf ~/gbrain/.git/logs ~/gbrain/.git/objects/pack/*.idx
 EOF
@@ -268,7 +299,7 @@ EOF
 | 14 | memory/active-tasks.md exists | `test -f ~/.openclaw/workspace/memory/active-tasks.md` |
 | 15a-g | All 7 crons | `crontab -l` |
 
-#### **[v101 NEW] 16-point verification — gbrain HTTP sidecar pre-bake state**
+#### **[v102 NEW] 16-point verification — gbrain HTTP sidecar pre-bake state**
 
 The bake's headline change. All 6 sub-checks must pass:
 
@@ -310,7 +341,7 @@ curl -X POST -H "Authorization: Bearer $LINODE_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
     \"disk_id\": $DISK_ID,
-    \"label\": \"instaclaw-base-v101-2026-05-23-gbrain-http\",
+    \"label\": \"instaclaw-base-v102-2026-05-23-gbrain-http\",
     \"description\": \"OpenClaw <latest> + gbrain v0.35.0.0 HTTP sidecar pre-installed. 21/21 verified (15 base + 6 gbrain). Disk usage <6.0GB.\"
   }" \
   https://api.linode.com/v4/images
@@ -344,7 +375,7 @@ Soak protocol:
 1. **Provision a test VM from the new snapshot.** Use the existing replenish-pool flow or a manual provision:
 ```bash
 curl -X POST ... \
-  -d "{\"label\":\"snapshot-soak-v101\",\"image\":\"private/<NEW_ID>\",...}"
+  -d "{\"label\":\"snapshot-soak-v102\",\"image\":\"private/<NEW_ID>\",...}"
 ```
 2. **SSH in. Run the 16-point verification (full, fresh — not relying on the bake VM's state).**
 3. **Manually run stepGbrain via the dry-run script** to confirm the four-state idempotency check reports `[dry-run] gbrain HTTP sidecar install (V=0.35.0.0 T=(none) S=inactive P=0)` — meaning V is correct (baked) but T/S/P need to be set per-VM.
@@ -387,15 +418,15 @@ curl -X DELETE -H "Authorization: Bearer $LINODE_API_TOKEN" \
 
 ### §6.2 — After cutover (production fleet affected)
 
-If new VMs from v101 are misbehaving:
+If new VMs from v102 are misbehaving:
 
 1. **Immediate:** flip `LINODE_SNAPSHOT_ID` back to `private/38575292` in Vercel. New VMs revert to v79 baseline within 5 min (next replenish-pool tick).
-2. **For VMs already provisioned from v101 in the window:** they're stuck on v101 until reconciler heals them OR until manual intervention. Triage by querying VMs created between cutover-time and rollback-time.
-3. **Keep `private/38575292` for 1 full week** (until 2026-06-01 minimum) per Rule 7. After that, if v101 is stable, the old snapshot can be deleted.
+2. **For VMs already provisioned from v102 in the window:** they're stuck on v102 until reconciler heals them OR until manual intervention. Triage by querying VMs created between cutover-time and rollback-time.
+3. **Keep `private/38575292` for 1 full week** (until 2026-06-01 minimum) per Rule 7. After that, if v102 is stable, the old snapshot can be deleted.
 
 ### §6.3 — gbrain-specific rollback (without full snapshot rollback)
 
-If gbrain is broken on v101 but everything else is fine: set `GBRAIN_INSTALL_ENABLED=false` in Vercel env. stepGbrain in the reconciler returns early on the feature flag. Existing gbrained VMs continue working (their state isn't reverted); new VMs from snapshot have `gbrain.service` inactive until manual intervention.
+If gbrain is broken on v102 but everything else is fine: set `GBRAIN_INSTALL_ENABLED=false` in Vercel env. stepGbrain in the reconciler returns early on the feature flag. Existing gbrained VMs continue working (their state isn't reverted); new VMs from snapshot have `gbrain.service` inactive until manual intervention.
 
 ---
 
@@ -433,13 +464,13 @@ Things ONLY Cooper can do (not me):
   May 25 (Mon)  ──○ Soak continues; monitor admin alerts
                   ── If 24h clean, prepare for cutover
   May 26 (Tue)  ──● Cooper flips LINODE_SNAPSHOT_ID in Vercel env
-                  ── First production provision from v101
+                  ── First production provision from v102
                   ── 24h watch
   May 27 (Wed)  ──○ Buffer
   May 28 (Thu)  ──○ Esmeralda monitoring dashboard finalized
   May 29 (Fri)  ──○ Buffer
   May 30 (Sat)  ──● Esmeralda Day 1 — attendees arrive
-                  ── New attendee VMs provisioned from v101
+                  ── New attendee VMs provisioned from v102
                   ── stepGbrain finalizes each within 3-5 min of partner-tag
 ```
 
@@ -504,7 +535,7 @@ This section captures the result of running `scripts/_pre-bake-check.ts` against
 
 ### §11.4 — Fleet state snapshot (2026-05-16)
 
-- Manifest: **v101** (bumped 2026-05-16 19:07 EDT via commit `48af5075`)
+- Manifest: **v102** (bumped 2026-05-16 19:07 EDT via commit `48af5075`)
 - Fleet size: 149 healthy+assigned VMs
 - cv distribution: cv=101:6 (4%), cv=100:142 (95%), cv=95:1 (1%) — 95% lag is the visible result of the stale_bundle block; reconciler will converge once Vercel is redeployed
 - Disk-data coverage: 149/149 (100%) — Rule 46 health-check fully populated
