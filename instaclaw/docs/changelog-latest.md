@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-18
 
-Window: `bed2d908686633346ca25ff030dd1f2181e618b3` → `HEAD` (HEAD = `04f43a45`)
+Window: `04f43a45cca0c6ecc93d1aab01682d021876ddb7` → `HEAD` (HEAD = `b3a7fee3`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 04f43a45cca0c6ecc93d1aab01682d021876ddb7 -->
+<!-- LAST_GENERATED_SHA: b3a7fee3b0ac0a7dd4696d9bc3f4320aeb0b2f23 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `04f43a45` 2026-05-18 — fix(index): accept bare-base64 apiKey shape (dev environment) [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `787439e9` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `b3a7fee3` 2026-05-18 — fix(coverage): drop hardcoded ix_ prefix from coverage display [1 files] _(ai-assisted)_
+- `5b231fea` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `04f43a45` 2026-05-18 — fix(index): accept bare-base64 apiKey shape (dev environment) [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `b3a7fee3` 2026-05-18 — fix(coverage): drop hardcoded ix_ prefix from coverage display [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `787439e9` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `04f43a45` 2026-05-18 — [reconciler, infrastructure] — fix(index): accept bare-base64 apiKey shape (dev environment)
+- `5b231fea` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `04f43a45` 2026-05-18 — fix(index): accept bare-base64 apiKey shape (dev environment)
+- `b3a7fee3` 2026-05-18 — fix(coverage): drop hardcoded ix_ prefix from coverage display
 
 ## Appendix — every commit (chronological)
 
-- `787439e9` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `04f43a45` 2026-05-18 — fix(index): accept bare-base64 apiKey shape (dev environment) [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5b231fea` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `b3a7fee3` 2026-05-18 — fix(coverage): drop hardcoded ix_ prefix from coverage display [1 files] _(ai-assisted)_
