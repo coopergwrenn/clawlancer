@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-18
 
-Window: `033cbdbb16d338df755d80c1da0b094535e05a58` → `HEAD` (HEAD = `7e5088ee`)
+Window: `7e5088ee0904aa0f89c81e02f9a368da94dcba80` → `HEAD` (HEAD = `d095afa8`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 7e5088ee0904aa0f89c81e02f9a368da94dcba80 -->
+<!-- LAST_GENERATED_SHA: d095afa8606aeac64dc4f6212d71672aade9fae7 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `7e5088ee` 2026-05-18 — fix(auditVMConfig): pass through warnings from reconcileVM [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `48c72538` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `b29a3af7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `d095afa8` 2026-05-18 — docs(prd): Login with ChatGPT — deep-research decisions document [1 files] _(ai-assisted)_
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `7e5088ee` 2026-05-18 — fix(auditVMConfig): pass through warnings from reconcileVM [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+_(none)_
 
 ### Infrastructure (0)
 
@@ -43,23 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `48c72538` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `7e5088ee` 2026-05-18 — [reconciler, infrastructure] — fix(auditVMConfig): pass through warnings from reconcileVM
+- `b29a3af7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `d095afa8` 2026-05-18 — docs(prd): Login with ChatGPT — deep-research decisions document [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `7e5088ee` 2026-05-18 — fix(auditVMConfig): pass through warnings from reconcileVM
+- `d095afa8` 2026-05-18 — docs(prd): Login with ChatGPT — deep-research decisions document
 
 ## Appendix — every commit (chronological)
 
-- `48c72538` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `7e5088ee` 2026-05-18 — fix(auditVMConfig): pass through warnings from reconcileVM [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `b29a3af7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `d095afa8` 2026-05-18 — docs(prd): Login with ChatGPT — deep-research decisions document [1 files] _(ai-assisted)_
