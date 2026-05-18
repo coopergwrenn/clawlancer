@@ -1571,3 +1571,9 @@ async function sendReconcileFailureAlert(
     quarantined,
   });
 }
+
+// Touch to bust Vercel nft trace cache (2026-05-18T18:30 UTC). The pre-bake-check
+// flagged STALE_BUNDLE hash 9a4afc5c8d0e5348 firing in the last 24h → reconcile-fleet
+// is correctly halting at the integrity gate. This redeploy pushes the current
+// v105 manifest into the function bundle. cv-lag for 131 VMs should drain to ≤5 over
+// the next ~20 ticks (1 hour) once Vercel picks up this commit.
