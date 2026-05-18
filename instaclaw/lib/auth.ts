@@ -236,13 +236,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = getSupabase();
         const { data } = await supabase
           .from("instaclaw_users")
-          .select("id, onboarding_complete")
+          .select("id, onboarding_complete, partner")
           .eq("google_id", token.googleId)
           .single();
 
         if (data) {
           session.user.id = data.id;
           session.user.onboardingComplete = data.onboarding_complete ?? false;
+          // partner is exposed so client components can conditionally render
+          // partner-specific UI (e.g., the Edge City nav item) without a
+          // round-trip — see app/(dashboard)/layout.tsx primaryNav.
+          session.user.partner = (data.partner as string | null) ?? null;
         }
       }
       return session;

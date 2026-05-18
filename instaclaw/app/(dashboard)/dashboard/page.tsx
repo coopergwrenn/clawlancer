@@ -30,6 +30,8 @@ import { BankrWalletCard } from "@/components/dashboard/bankr-wallet-card";
 import { AgentWalletFundingCard } from "@/components/dashboard/agent-wallet-funding-card";
 import { GmailConnectPopup } from "@/components/dashboard/gmail-connect-popup";
 import { DesktopThumbnail } from "@/components/dashboard/desktop-thumbnail";
+import { EdgeCityCard } from "@/components/dashboard/edge-city-card";
+import { useSession } from "next-auth/react";
 
 const MODEL_OPTIONS = [
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
@@ -96,6 +98,8 @@ interface UsageData {
 }
 
 export default function DashboardPage() {
+  const { data: session } = useSession();
+  const isEdgeCity = session?.user?.partner === "edge_city";
   const [vmStatus, setVmStatus] = useState<VMStatus | null>(null);
   const [restarting, setRestarting] = useState(false);
   const [updatingModel, setUpdatingModel] = useState(false);
@@ -586,6 +590,9 @@ export default function DashboardPage() {
       <div data-tour="dash-verify">
         <WorldIDBanner />
       </div>
+
+      {/* Edge City card — only for edge_city-tagged users. Links to /edge/dashboard */}
+      {isEdgeCity && <EdgeCityCard />}
 
       {/* Bankr wallet card — shows if agent has a provisioned wallet */}
       {vm && (

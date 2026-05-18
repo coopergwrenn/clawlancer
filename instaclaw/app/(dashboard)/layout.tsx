@@ -22,6 +22,7 @@ import {
   Award,
   Zap,
   Mail,
+  MapPin,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { motion } from "motion/react";
@@ -36,6 +37,17 @@ const primaryNav = [
   { href: "/earn", label: "Earn", icon: TrendingUp, tourKey: "nav-earn" },
   { href: "/skills", label: "Skills", icon: Puzzle, tourKey: "nav-skills" },
 ];
+
+// Partner-conditional nav items — appended to primaryNav when the user's
+// session has the matching partner tag. session.user.partner is populated
+// by the NextAuth session callback from instaclaw_users.partner; nav items
+// render without a fetch (no flash).
+const edgeCityNavItem = {
+  href: "/edge/dashboard",
+  label: "Edge City",
+  icon: MapPin,
+  tourKey: "nav-edge-city",
+};
 
 // Overflow items shown in the "more" menu on mobile, visible on lg+
 const overflowNav = [
@@ -247,7 +259,13 @@ export default function DashboardLayout({
 
           <div className="flex items-center gap-1">
             {/* Primary items — always visible, with sliding glass pill */}
-            {primaryNav.map((item) => {
+            {/* Partner-gated extras: Edge City attendees get an extra nav
+                item linking to /edge/dashboard. session.user.partner is
+                populated by the NextAuth session callback — see lib/auth.ts. */}
+            {(session?.user?.partner === "edge_city"
+              ? [...primaryNav, edgeCityNavItem]
+              : primaryNav
+            ).map((item) => {
               const isActive = pathname === item.href;
               return (
                 <Link

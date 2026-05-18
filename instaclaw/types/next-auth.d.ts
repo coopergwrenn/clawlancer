@@ -8,6 +8,9 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
       onboardingComplete: boolean;
+      // Partner tag from instaclaw_users.partner. NULL for non-partner users.
+      // Drives conditional UI (e.g., Edge City nav item in the dashboard).
+      partner?: string | null;
     };
   }
 }
