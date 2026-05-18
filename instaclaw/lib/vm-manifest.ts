@@ -1205,7 +1205,8 @@ export const VM_MANIFEST = {
    *  - SOUL.md V2 Hard Boundaries: one-line "Never create duplicate crons —
    *    see AGENTS.md" pointer. Above the OPENCLAW_CACHE_BOUNDARY marker so
    *    it's in the cached prompt prefix on every turn. Adds ~210 chars to a
-   *    ~28K-char SOUL.md — well inside the 30K bootstrapMaxChars ceiling.
+   *    ~36K-char SOUL.md — well inside the 40K bootstrapMaxChars per-file cap
+   *    (BOOTSTRAP_MAX_CHARS = 40000 since 2026-05-11; was 30K at v90 era).
    *  - AGENTS.md V2 new section "Recurring Tasks (Crons) — list first, never
    *    duplicate": full procedure with the exact `jq` command to list, the
    *    decision tree (matching cron exists / doesn't / can't tell), and the

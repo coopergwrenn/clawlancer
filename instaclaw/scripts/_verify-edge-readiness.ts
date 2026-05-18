@@ -225,12 +225,22 @@ else
 fi
 `}
 
-# 10. workspace bundle size
+# 10. workspace bootstrap-file sizes.
+# OpenClaw 2026.4.26 loads exactly 8 files as upfront context (VALID_BOOTSTRAP_NAMES
+# in workspace-Ddypv-c6.js). CAPABILITIES.md / EARN.md are NOT upfront —
+# the agent reads them on demand via filesystem tools. The pre-2026-05-18
+# version of this gate compared (SOUL+AGENTS+CAPS+IDENT) against 40000,
+# but 40000 is the PER-FILE cap (bootstrapMaxChars), not the total. The
+# TOTAL cap is bootstrapTotalMaxChars (default 60000, currently unpinned).
 SOUL=\$(wc -c < ~/.openclaw/workspace/SOUL.md 2>/dev/null || echo 0)
-AG=\$(wc -c < ~/.openclaw/workspace/AGENTS.md 2>/dev/null || echo 0)
-CAP=\$(wc -c < ~/.openclaw/workspace/CAPABILITIES.md 2>/dev/null || echo 0)
-ID=\$(wc -c < ~/.openclaw/workspace/IDENTITY.md 2>/dev/null || echo 0)
-emit workspace_bundle "soul=\$SOUL,agents=\$AG,caps=\$CAP,ident=\$ID,total=\$((SOUL+AG+CAP+ID))"
+AGENTS=\$(wc -c < ~/.openclaw/workspace/AGENTS.md 2>/dev/null || echo 0)
+TOOLS=\$(wc -c < ~/.openclaw/workspace/TOOLS.md 2>/dev/null || echo 0)
+IDENT=\$(wc -c < ~/.openclaw/workspace/IDENTITY.md 2>/dev/null || echo 0)
+USER_F=\$(wc -c < ~/.openclaw/workspace/USER.md 2>/dev/null || echo 0)
+HB=\$(wc -c < ~/.openclaw/workspace/HEARTBEAT.md 2>/dev/null || echo 0)
+MEM=\$(wc -c < ~/.openclaw/workspace/MEMORY.md 2>/dev/null || echo 0)
+BSTR=\$(wc -c < ~/.openclaw/workspace/BOOTSTRAP.md 2>/dev/null || echo 0)
+emit workspace_bootstrap "soul=\$SOUL,agents=\$AGENTS,tools=\$TOOLS,ident=\$IDENT,user=\$USER_F,heartbeat=\$HB,memory=\$MEM,bootstrap=\$BSTR,total=\$((SOUL+AGENTS+TOOLS+IDENT+USER_F+HB+MEM+BSTR))"
 
 echo "DONE"
 `;
@@ -416,15 +426,53 @@ async function probeOne(vm: VmRow, upstreamHead: string | null, manifestVersion:
       });
     }
 
-    // Workspace bundle vs cap (P1 — known issue, see runbook §11)
-    const ws = kv["workspace_bundle"] ?? "";
-    const totalMatch = ws.match(/total=(\d+)/);
-    const total = totalMatch ? parseInt(totalMatch[1], 10) : 0;
+    // Workspace bootstrap-file sizes.
+    //
+    // Two separate caps in OpenClaw 2026.4.26 (runtime-schema-TpYHXgGk.js
+    // §3208-3220):
+    //   bootstrapMaxChars (per-FILE)    — 12000 default, ours 40000
+    //   bootstrapTotalMaxChars (TOTAL)  — 60000 default, ours unpinned (uses default)
+    //
+    // Files loaded as upfront context (VALID_BOOTSTRAP_NAMES in
+    // workspace-Ddypv-c6.js): SOUL, AGENTS, TOOLS, IDENTITY, USER, HEARTBEAT,
+    // MEMORY, BOOTSTRAP. CAPABILITIES.md / EARN.md sit on disk but the agent
+    // reads them on demand — NOT upfront.
+    const PER_FILE_CAP = 40000;
+    const TOTAL_CAP = 60000;
+    const ws = kv["workspace_bootstrap"] ?? "";
+    const fileSizes: Record<string, number> = {};
+    for (const m of ws.matchAll(/(\w+)=(\d+)/g)) {
+      fileSizes[m[1]] = parseInt(m[2], 10);
+    }
+    const total = fileSizes["total"] ?? 0;
+
+    // Per-file cap: each of the 8 bootstrap files must be ≤ 40000.
+    // (We don't enumerate each as a separate gate to avoid log noise — instead,
+    // the detail line names the offender if any.)
+    const perFileOver: string[] = [];
+    for (const [k, v] of Object.entries(fileSizes)) {
+      if (k === "total") continue;
+      if (v > PER_FILE_CAP) perFileOver.push(`${k}=${v}`);
+    }
     gates.push({
-      name: "VM.workspace_bundle ≤ 40000 (BOOTSTRAP_MAX_CHARS)",
-      severity: "P1",
-      status: total > 0 && total <= 40000 ? "PASS" : "WARN",
-      detail: `${ws} (cap 40000)`,
+      name: `VM.bootstrap per-file ≤ ${PER_FILE_CAP} (bootstrapMaxChars)`,
+      severity: "P0",
+      status: perFileOver.length === 0 ? "PASS" : "FAIL",
+      detail: perFileOver.length === 0
+        ? `all 8 files under cap (SOUL=${fileSizes["soul"] ?? "?"} is largest)`
+        : `OVER PER-FILE CAP: ${perFileOver.join(", ")}`,
+    });
+
+    // Total cap: sum across all bootstrap files must be ≤ 60000.
+    const totalStatus: Status =
+      total > 0 && total <= TOTAL_CAP * 0.85 ? "PASS" : // <51K — comfortable
+      total > 0 && total <= TOTAL_CAP ? "WARN" :         // 51K-60K — approaching cap
+      "FAIL";                                             // >60K — actual truncation
+    gates.push({
+      name: `VM.bootstrap total ≤ ${TOTAL_CAP} (bootstrapTotalMaxChars)`,
+      severity: totalStatus === "FAIL" ? "P0" : "P1",
+      status: totalStatus,
+      detail: `${total} chars vs cap ${TOTAL_CAP} (headroom ${TOTAL_CAP - total})`,
     });
 
   } catch (e: unknown) {

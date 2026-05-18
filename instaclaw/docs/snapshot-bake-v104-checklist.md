@@ -114,37 +114,61 @@ After §3.5 gbrain install completes on the bake VM:
 ### §2.7 — Run the pre-bake-check script (automated go/no-go)
 - [ ] `npx tsx scripts/_pre-bake-check.ts` returns exit 0 (or all CRITICAL blockers explicitly understood and accepted)
 
-### §2.8 — **[v104 HARD STOP]** Workspace bundle size ≤ `BOOTSTRAP_MAX_CHARS=40000`
+### §2.8 — Workspace bootstrap-file sizes (informational; was false-alarm hard-stop)
 
-**Current state (verified 2026-05-18 by sampling 3 cv=105 VMs — vm-946, vm-831, vm-769):**
+**Previous version of this section was wrong** (2026-05-18 morning). It claimed the
+bundle was 49% over a 40000-char cap and called for a trim or cap-raise as a
+bake hard-stop. The error was confusing two distinct OpenClaw config keys:
 
-| File | Avg chars across 3 VMs |
-|---|---:|
-| SOUL.md | 34,444 |
-| AGENTS.md | 8,578 |
-| CAPABILITIES.md | 15,894 |
-| IDENTITY.md (per-VM) | 415 |
-| **TOTAL** | **59,332** (49% over 40K cap) |
+| Key | Type | Default | Ours (in manifest) | Enforces |
+|---|---|---|---|---|
+| `agents.defaults.bootstrapMaxChars` | **per-file** | 12000 | **40000** | Each individual bootstrap file truncated above this |
+| `agents.defaults.bootstrapTotalMaxChars` | **total across all bootstrap files** | 60000 | **unpinned → 60000 default applies** | All bootstrap files combined |
 
-**This is a `_postbake-validation.ts:293` P0 fail and a `CLAUDE.md` OpenClaw Upgrade Playbook hard-stop.** The bake CANNOT proceed until the bundle is trimmed below 40000 chars. v79 baseline today already showed 56565 — v82 → v105 added another ~3K of content (gbrain protocol block, INSTACLAW_PLATFORM_V1, cron-creation idempotency rule, etc.).
+Source-of-truth (OpenClaw `runtime-schema-TpYHXgGk.js:3208-3220`):
+> `bootstrapMaxChars` — "Max characters of EACH workspace bootstrap file injected into the system prompt before truncation (default: 12000)."
+> `bootstrapTotalMaxChars` — "Max total characters across all injected workspace bootstrap files (default: 60000)."
 
-**Top trim candidates** (sampled from vm-946):
-- `CAPABILITIES.md` §How to Use This File (CRITICAL) — 1,646 chars. Likely consolidate-able.
-- `CAPABILITIES.md` ⛔ NEVER IMPROVISE SKILLS — 1,558 chars. Important but possibly relocate-able to a skill SKILL.md.
-- `SOUL.md` §Quick Command Routing — 5,501 chars. Largest single section in SOUL.md.
-- `SOUL.md` §Virtuals Protocol ACP — 1,860 chars. Possibly partner-gated to dgclaw VMs only.
+**What's actually loaded as upfront context** (per `VALID_BOOTSTRAP_NAMES` in
+`workspace-Ddypv-c6.js:140`) — exactly these 8 files, no more:
+SOUL.md, AGENTS.md, TOOLS.md, IDENTITY.md, USER.md, HEARTBEAT.md, MEMORY.md, BOOTSTRAP.md (optional).
 
-**Three resolution paths** — Cooper picks one before bake:
+CAPABILITIES.md, EARN.md, QUICK-REFERENCE.md, WALLET.md are NOT upfront — they
+sit on disk and the agent reads them on demand via filesystem tools. The earlier
+"sum all workspace .md files" calculation was wrong on both axes (wrong file
+set + wrong cap).
 
-1. **Trim ~20K chars from SOUL.md + CAPABILITIES.md.** Architecturally correct (smaller upfront context = faster TTFT + lower per-message cost). Identifies content for trimming via cooper-review; we land the trim in a new manifest version (v106) before May 23 bake.
+**Verified state on 3 cv=105 edge VMs (vm-946, vm-922, vm-831):**
 
-2. **Raise `BOOTSTRAP_MAX_CHARS` to 60000 in `lib/vm-manifest.ts:468`.** Operator-friendly. Cost: ~7K extra tokens of upfront context per turn (~$0.02/turn at Sonnet pricing). Risk: OpenClaw 2026.4.26 may still have an INTERNAL 30K truncation independent of our `bootstrapMaxChars` config — needs verification against the OpenClaw source.
+| File | Size (bytes) | Per-file cap (40K) |
+|---|---:|---|
+| SOUL.md | 35,689 | ✓ (4,311 headroom) |
+| AGENTS.md | 12,701 | ✓ |
+| TOOLS.md | 698 | ✓ |
+| IDENTITY.md | 417 | ✓ |
+| USER.md | 365 | ✓ |
+| HEARTBEAT.md | 226 | ✓ |
+| MEMORY.md | 961 | ✓ |
+| BOOTSTRAP.md | 0 (absent) | ✓ |
+| **TOTAL** | **51,057** | (vs 60,000 cap = **8,943 headroom**) |
 
-3. **Hybrid**: trim the easy ~10K (Virtuals ACP gating, EARN.md consolidation) AND raise the cap to 50000. Lower-risk than path 2 but doesn't fully restore the architectural goal.
+**Gate status**: ✓ PASS. No truncation. Bake can proceed.
 
-**[GATE]** Until this is resolved, every bake VM will fail validation. Cooper decision required. Tracked as P0 in `bake-readiness-audit-2026-05-13.md` follow-ups.
+**Watch-list** (none of these block bake):
 
-`_postbake-validation.ts:293` check value: `upfrontBytes > 0 && upfrontBytes <= 40000`. If we raise the cap, the validation script's hardcoded 40000 must be updated too (cross-reference `BOOTSTRAP_MAX_CHARS` from the manifest instead of duplicating the constant).
+1. SOUL.md is 35,689 against a 40,000 per-file cap (4,311 chars of headroom).
+   The next major manifest bump that adds >4K to SOUL.md would trigger per-file
+   truncation. Approaching-cap warnings live in `_postbake-validation.ts §30`.
+2. Total at 51,057 against 60,000 total cap (8,943 headroom). P2 warning gates
+   fire above 50K to give early signal before any actual truncation.
+3. The default `bootstrapTotalMaxChars=60000` is **not pinned in the manifest**.
+   If a future OpenClaw release changes the default, our fleet behavior changes
+   silently. Pinning it explicitly is a recommended post-Esmeralda P2 — keeps
+   the value visible via `openclaw config get` and immune to upstream drift.
+
+**Validation gates (both fixed 2026-05-18 with the correct file set + correct caps)**:
+- `_postbake-validation.ts §4`: per-file ≤ 40000 (P0) + total ≤ 60000 (P0) + headroom warn (P2)
+- `_verify-edge-readiness.ts`: same gates per edge VM
 
 The script verifies every §2 gate above plus:
   - HEAD aligned with origin/main (Rule 12 — must not bake against stale code)

@@ -287,16 +287,62 @@ async function run() {
       }
     }
 
-    // ─── 4. Workspace files (templates present, identity reset) ────────────
-    const wsFiles = ["SOUL.md", "AGENTS.md", "CAPABILITIES.md", "IDENTITY.md", "MEMORY.md"];
-    for (const f of wsFiles) {
+    // ─── 4. Workspace files (presence + bootstrap size budgets) ────────────
+    //
+    // OpenClaw 2026.4.26 loads exactly these 8 files as upfront context (see
+    // VALID_BOOTSTRAP_NAMES in workspace-Ddypv-c6.js). CAPABILITIES.md / EARN.md /
+    // QUICK-REFERENCE.md / WALLET.md exist on disk but are NOT upfront — the
+    // agent reads them via filesystem tools when relevant. The pre-2026-05-18
+    // version of this check incorrectly included CAPABILITIES.md in the
+    // upfront sum AND compared against 40000 (the per-file cap), missing the
+    // distinct 60000 total-cap (bootstrapTotalMaxChars, default 60000).
+    //
+    // Caps per runtime-schema-TpYHXgGk.js:3208-3220:
+    //   bootstrapMaxChars      = per-FILE cap (default 12000, ours 40000)
+    //   bootstrapTotalMaxChars = TOTAL cap across all bootstrap files (default 60000)
+    const BOOTSTRAP_FILES_P0 = ["SOUL.md", "AGENTS.md", "IDENTITY.md", "USER.md", "TOOLS.md", "HEARTBEAT.md", "MEMORY.md"];
+    const BOOTSTRAP_FILES_OPTIONAL = ["BOOTSTRAP.md"]; // legitimately may not exist
+    const NON_BOOTSTRAP_WORKSPACE_FILES = ["CAPABILITIES.md", "EARN.md", "QUICK-REFERENCE.md", "WALLET.md"];
+
+    for (const f of BOOTSTRAP_FILES_P0) {
       const present = (await exec(c, `test -f ~/.openclaw/workspace/${f}`)).code === 0;
-      record(`workspace/${f} present`, "P0", ["bake", "test"], present, "");
+      record(`workspace/${f} present (bootstrap-required)`, "P0", ["bake", "test"], present, "");
     }
-    // bootstrapMaxChars sanity
-    const upfront = (await exec(c, `wc -c ~/.openclaw/workspace/SOUL.md ~/.openclaw/workspace/AGENTS.md ~/.openclaw/workspace/CAPABILITIES.md ~/.openclaw/workspace/IDENTITY.md 2>/dev/null | tail -1`)).stdout.trim();
-    const upfrontBytes = parseInt(upfront.split(/\s+/)[0] || "0", 10);
-    record("upfront context within bootstrapMaxChars (≤40000)", "P0", ["bake", "test"], upfrontBytes > 0 && upfrontBytes <= 40000, `${upfrontBytes} bytes`);
+    for (const f of NON_BOOTSTRAP_WORKSPACE_FILES) {
+      const present = (await exec(c, `test -f ~/.openclaw/workspace/${f}`)).code === 0;
+      record(`workspace/${f} present (on-demand)`, "P1", ["bake", "test"], present, "");
+    }
+
+    // Per-file cap (bootstrapMaxChars=40000): each individual bootstrap file
+    // must be ≤ 40000 chars or OpenClaw truncates it (a real, customer-visible
+    // problem — partial truncation can drop critical content silently).
+    const PER_FILE_CAP = 40000;
+    const allBootstrap = [...BOOTSTRAP_FILES_P0, ...BOOTSTRAP_FILES_OPTIONAL];
+    let bootstrapTotalBytes = 0;
+    for (const f of allBootstrap) {
+      const sizeOut = (await exec(c, `wc -c < ~/.openclaw/workspace/${f} 2>/dev/null || echo 0`)).stdout.trim();
+      const size = parseInt(sizeOut, 10) || 0;
+      if (size > 0) {
+        bootstrapTotalBytes += size;
+        record(`workspace/${f} ≤ bootstrapMaxChars=40000 (per-file cap)`, "P0", ["bake", "test"],
+          size <= PER_FILE_CAP, `${size} chars`);
+      }
+    }
+
+    // Total cap (bootstrapTotalMaxChars=60000 — default, NOT pinned in manifest
+    // as of cv=105). If we ever pin a different value in the manifest, update
+    // this constant in lockstep.
+    const TOTAL_CAP = 60000;
+    record(`upfront bootstrap total ≤ bootstrapTotalMaxChars=60000`, "P0", ["bake", "test"],
+      bootstrapTotalBytes > 0 && bootstrapTotalBytes <= TOTAL_CAP,
+      `${bootstrapTotalBytes} chars across ${allBootstrap.length} bootstrap files (cap ${TOTAL_CAP})`);
+
+    // Warning band: total > 50000 means ≤10K headroom — operator should
+    // notice and start thinking about trim before the next manifest bump.
+    if (bootstrapTotalBytes > 50000 && bootstrapTotalBytes <= TOTAL_CAP) {
+      record(`upfront bootstrap total has headroom warning (>50000, <60000)`, "P2", ["bake", "test"],
+        false, `${bootstrapTotalBytes} chars — ${TOTAL_CAP - bootstrapTotalBytes} headroom`);
+    }
 
     // IDENTITY.md is reset (no "Timmy" or other named persona)
     const identity = (await exec(c, `cat ~/.openclaw/workspace/IDENTITY.md 2>/dev/null`)).stdout;
