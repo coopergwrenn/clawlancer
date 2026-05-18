@@ -665,6 +665,15 @@ export async function reconcileVM(
     currentStep = "heal-node-exporter";
     await stepNodeExporter(ssh, result, dryRun, strict, isPausedState);
 
+    // ── Step 8m2: ufw allow 9100/tcp ──
+    // Companion to stepNodeExporter — guarantees Prometheus on the monitoring
+    // VM can actually reach the listener. The 2026-05-18 IR incident found 8
+    // VMs whose node_exporter was healthy but firewalled at 9100 for 1-4 days;
+    // stepNodeExporter verified the LOCAL bind but never EXTERNAL reachability.
+    // Per Rule 57. Idempotent + sentinel-guarded; failures are warnings (Rule 39).
+    currentStep = "heal-ufw-rules";
+    await stepUfwRules(ssh, result, dryRun);
+
     // ── Step 8n: Privacy-mode SSH bridge (edge_city VMs only) ──
     // Deploys ~/.openclaw/scripts/privacy-bridge.sh. Does NOT modify
     // ~/.ssh/authorized_keys — that cutover happens via the manual fleet
@@ -5818,6 +5827,97 @@ echo RESTART_ISSUED
     }
   } catch (err) {
     recordHealError(result, strict, `instaclaw-xmtp: ${String(err).slice(0, 200)}`);
+  }
+}
+
+/**
+ * Step 8m2: ufw allow 9100/tcp.
+ *
+ * Ensures Prometheus on the monitoring VM can reach node_exporter through
+ * the host firewall. Companion to stepNodeExporter — that step verifies the
+ * port is bound locally; this one verifies it's reachable externally.
+ *
+ * Per CLAUDE.md Rule 57. Idempotent: probe ufw status first; only call
+ * `sudo ufw allow` when the rule is missing. Sentinel per Rule 23: re-read
+ * ufw status post-add and confirm the rule landed before reporting fixed.
+ *
+ * Per Rule 39, failures are warnings (recordHealWarning), not errors.
+ * Prometheus monitoring is observability-only and a missing firewall rule
+ * does NOT block cv-bump. The 2026-05-18 ufw-drift incident produced 8 VMs
+ * with this exact gap; this step heals them on next cron tick.
+ *
+ * No isPausedState gate — adding a firewall rule is safe regardless of
+ * paused-state, and ensures Prometheus can reach the VM when it wakes.
+ */
+async function stepUfwRules(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  try {
+    // Probe — does the rule already exist? Also confirm ufw is installed.
+    const probe = await ssh.execCommand(
+      `if ! command -v ufw >/dev/null 2>&1; then echo NO_UFW; exit 0; fi; ` +
+      `count=$(sudo -n ufw status 2>/dev/null | grep -c "^9100/tcp" || echo 0); ` +
+      `echo "9100_rule_count=$count"`
+    );
+    if (probe.stdout.includes("NO_UFW")) {
+      // No ufw on this VM (unusual for Linode base) — Prometheus can still
+      // scrape if nothing else is blocking. Treat as a no-op success.
+      result.alreadyCorrect.push("ufw-rules: ufw not installed (skip)");
+      return;
+    }
+    const probeMatch = probe.stdout.match(/9100_rule_count=(\d+)/);
+    if (!probeMatch) {
+      recordHealWarning(
+        result,
+        `ufw-rules: probe parse failed: ${probe.stdout.slice(0, 160)}`,
+      );
+      return;
+    }
+    const ruleCount = parseInt(probeMatch[1], 10);
+
+    if (ruleCount >= 1) {
+      result.alreadyCorrect.push("ufw-rules: 9100/tcp present");
+      return;
+    }
+
+    if (dryRun) {
+      result.fixed.push("[dry-run] ufw-rules: would add 9100/tcp");
+      return;
+    }
+
+    // Probe sudo before mutating.
+    const sudoCheck = await ssh.execCommand(
+      "sudo -n true 2>/dev/null && echo SUDO_OK || echo NO_SUDO",
+    );
+    if (!sudoCheck.stdout.includes("SUDO_OK")) {
+      recordHealWarning(
+        result,
+        "ufw-rules: passwordless sudo unavailable; cannot add 9100/tcp",
+      );
+      return;
+    }
+
+    // Add the rule + SENTINEL-VERIFY (Rule 23 / Rule 10) before declaring
+    // fixed. ufw's exit code alone isn't trusted — re-grep the live status.
+    const add = await ssh.execCommand(
+      `sudo -n ufw allow 9100/tcp 2>&1; ` +
+      `verify=$(sudo -n ufw status 2>/dev/null | grep -c "^9100/tcp" || echo 0); ` +
+      `echo "verify=$verify"`,
+    );
+    const verifyMatch = add.stdout.match(/verify=(\d+)/);
+    const verifyCount = verifyMatch ? parseInt(verifyMatch[1], 10) : 0;
+    if (verifyCount >= 1) {
+      result.fixed.push("ufw-rules: added 9100/tcp");
+    } else {
+      recordHealWarning(
+        result,
+        `ufw-rules: post-add verify failed (count=${verifyCount}): ${add.stdout.slice(-200)}`,
+      );
+    }
+  } catch (err) {
+    recordHealWarning(result, `ufw-rules: ${String(err).slice(0, 200)}`);
   }
 }
 

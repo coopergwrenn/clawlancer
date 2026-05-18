@@ -2637,6 +2637,56 @@ If verify-migrations is blocking builds RIGHT NOW because a migration was commit
 
 The 2026-05-16 timeline above is the canonical reference for what this looks like; the agent_positions paste sequence Cooper used is in the conversation log.
 
+### Rule 57 — Reconciler steps depending on external reachability MUST verify firewall reachability, not just local-port binding
+
+Any reconciler step that installs or maintains a service whose value depends on being reachable from *outside the VM* (Prometheus scrapes from the monitoring VM, gateway health probes from Vercel cron, partner-API outbound calls returning, etc.) MUST verify both halves:
+
+1. **Local-side** (process is bound, port is listening, service is active) — what almost every step already does.
+2. **Network-side** (the firewall allows the expected source to reach the listener) — what stepNodeExporter did NOT do.
+
+Without the second half, the step writes the "fixed" verdict on the basis of `ss -lntp | grep :9100` returning a binding, while ufw silently drops every external packet for the next 1–4 days until someone runs an out-of-band probe and notices.
+
+#### The 2026-05-18 ufw-9100 incident
+
+`stepNodeExporter` (manifest v99) was carefully built: it downloads node_exporter, writes the systemd unit, creates the dedicated user, restarts the service, and Rule-23-sentinel-verifies `port=$(ss -tln | grep ":9100 ")` before pushing to `result.fixed`. Locally correct, locally verified.
+
+But it never touched `ufw`. The base snapshot (v79) has the `9100/tcp` allow rule baked in, so most VMs were fine. Eight VMs — provisioned from older snapshots, or where ufw got reset, or where a different code path rewrote the rule set — ended up with node_exporter listening on `*:9100` but no ufw rule. Prometheus on 66.228.43.140 got SYN-dropped at the firewall for every scrape attempt. `up{instance=…} == 0` fired VMUnreachable for 1–4 days before the IR triage caught it. The step itself had no signal that anything was wrong — its probe (`ss -tln | grep :9100`) passed every cycle.
+
+Worse: the alerts those VMs generated (15 VMUnreachable + 15 NodeExporterDown firing in Alertmanager) drowned out the actual P1 (vm-748 disk pressure) by ~100×. Signal-to-noise collapsed to near-zero. When operators triaged from the email digest, the real incident was invisible under a wall of firewall-blocked-but-healthy VMs.
+
+The fix shipped 2026-05-18 (manifest v103):
+
+- **stepUfwRules** — new step at orchestrator position right after `heal-node-exporter`. Probes `sudo -n ufw status | grep -c "^9100/tcp"`. If 0, calls `sudo -n ufw allow 9100/tcp`, then re-probes (Rule 23 sentinel) before pushing `result.fixed`. Failures push to `result.warnings` (Rule 39) — monitoring-only, never block cv-bump. `NO_UFW` case (rare; vm-050-style) silently treated as `alreadyCorrect`.
+- **scripts/\_coverage-ufw-9100.ts** per Rule 27 — random sample of 5 healthy + assigned VMs, parallel SSH `ufw status | grep ^9100/tcp`, pass/fail table, exit 1 on miss. Initial run found 2/5 sampled VMs missing the rule — drift was wider than the 8 IPs that fired alerts.
+
+#### Mandatory pattern
+
+For any reconciler step that installs / maintains a service whose value comes from a remote consumer reaching it:
+
+1. **Local probe** (existing pattern) — port bound, service active, drop-in present, etc.
+2. **Firewall verification** — confirm the relevant ALLOW rule is in the live `ufw status` output. Match by `^port/proto` to avoid false-matches on rule descriptions.
+3. **If the rule is missing AND the step is responsible for it** — add it via `sudo ufw allow`, then re-probe and confirm it landed before reporting `fixed`. Same sentinel discipline as Rule 23.
+4. **Failure classification per Rule 39** — for monitoring-only ports (`9100/tcp`), failures are warnings, not errors. For customer-facing ports (`18789/tcp` gateway, `8765/tcp` dispatch), failures are errors and block cv-bump.
+5. **Out-of-band verification** is the only ground truth — the reachability check inside the VM is necessary but not sufficient. The coverage script (Rule 27) probes from the operator's machine over SSH, which is itself going through the firewall. Once it can SSH in, the firewall has demonstrated *some* allow path exists; out-of-band probe of the actual port (e.g., `curl http://VM:9100/metrics` from the Prometheus host) is the gold-standard validation. Coverage scripts SHOULD eventually probe in this shape; the current `ssh + ufw status` is a reasonable approximation.
+
+#### Banned patterns
+
+- Reconciler steps that install a network service WITHOUT a corresponding firewall-rule step in the same orchestrator chain. If the step is responsible for the service's externally-visible utility, it's responsible for the firewall path too.
+- Trusting `ss -tln | grep :PORT` as proof that "the service is reachable." That's proof of LOCAL binding only — a UFW DROP rule at INPUT is invisible to `ss`.
+- "Best-effort" `sudo ufw allow X || true` patterns without verify-after-add (the existing `stepDispatchServer` ufw 8765 line is exactly this anti-pattern; tracked for follow-up). The 2026-05-18 incident proved that `|| true` masks every category of failure — sudo unavailable, ufw not installed, rule rejected, firewall syntax error.
+- Adding a new alerting rule for "node_exporter unreachable" without first verifying that the underlying step has a firewall path. Without that, the alert fires forever and we add a new line of noise to the inbox.
+
+#### Detection rule
+
+For any PR that adds a new `await stepX(...)` call in the `reconcileVM` orchestrator OR a new entry to `vm-manifest.ts:cronJobs` or `systemdOverrides` involving a network service:
+
+1. Does the step install/maintain a service that's consumed by a remote system (Prometheus, monitoring VM, partner API, Vercel cron)? If no — skip this rule.
+2. If yes — does the step verify the firewall path for the relevant port? If no — that's a Rule 57 gap.
+3. Is the verification Rule-23-sentinel-shaped (re-probe live state post-add, not just trust the `ufw allow` exit code)? If no — reviewer pushes back.
+4. Is there a coverage script (Rule 27) for the firewall rule? If no — file the follow-up alongside the step.
+
+The 2026-05-18 incident produced 1–4 days of silent customer-facing noise and masked a real P1 for hours. The cost of writing the two-line firewall probe in advance is dramatically lower than the cost of incident triage and post-mortem after the fact. Reviewers should treat the absence of a network-side verifier as equivalent to the absence of a local-side verifier — both classes have produced multi-day outages.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.

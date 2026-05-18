@@ -1390,8 +1390,15 @@ export const VM_MANIFEST = {
    * distribution gap from the SOUL.md canary diagnosis. Marker-guarded
    * (GBRAIN_MEMORY_PROTOCOL_V1) via stepDeployGbrainSoulProtocol.
    * Source: workspace-templates-v2.GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK.
+   *
+   * v103 — 2026-05-18 — add stepUfwRules to guarantee `ufw allow 9100/tcp`
+   * is present on every VM, so Prometheus on the monitoring VM can reach
+   * node_exporter externally. Closes the 8-VM ufw-drift gap surfaced by the
+   * 2026-05-18 IR triage — stepNodeExporter verified the local bind but
+   * never external reachability. Idempotent grep-then-add + sentinel-verify
+   * (Rule 23 / Rule 57). Failures are warnings (Rule 39); monitoring-only.
    */
-  version: 102,
+  version: 103,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
