@@ -250,8 +250,11 @@ async function verifyIndexMasterKey(value: string): Promise<VerifierResult> {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+    // Mirror the runtime base-URL resolution from lib/index-network-client.ts
+    // so dev-env credentials probe against the dev host rather than prod.
+    const apiBase = (process.env.INDEX_NETWORK_API_URL?.trim() || "https://protocol.index.network").replace(/\/+$/, "");
     const res = await fetch(
-      `https://protocol.index.network/api/networks/${networkId}/signup`,
+      `${apiBase}/api/networks/${networkId}/signup`,
       {
         method: "POST",
         headers: {

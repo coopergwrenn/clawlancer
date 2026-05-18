@@ -25,9 +25,16 @@
  * Env contract:
  *   INDEX_NETWORK_ID         — UUID of the Edge City experiment network.
  *   INDEX_NETWORK_MASTER_KEY — Master x-api-key issued at network creation.
- *
- *   Both are read from process.env at module init so the failure mode for a
- *   missing key is a clear startup throw, not a silent 401 on first call.
+ *   INDEX_NETWORK_API_URL    — Optional. Base URL for both signup + MCP.
+ *                              Defaults to https://protocol.index.network
+ *                              (production). Set to
+ *                              https://protocol.dev.index.network for the
+ *                              dev environment while credentials are issued
+ *                              against dev (Cooper 2026-05-18). The MCP URL
+ *                              the agent connects to is derived from this
+ *                              same base — signup-host and MCP-host MUST
+ *                              match because the apiKey is scoped to its
+ *                              originating environment.
  */
 
 export interface IndexSignupRequest {
@@ -62,8 +69,20 @@ export class IndexSignupError extends Error {
   }
 }
 
-const INDEX_API_BASE = "https://protocol.index.network";
+const INDEX_API_BASE_DEFAULT = "https://protocol.index.network";
 const SIGNUP_TIMEOUT_MS = 15_000;
+
+/**
+ * Resolve the Index API base URL. Reads INDEX_NETWORK_API_URL, falls back to
+ * production. Trailing slashes stripped for clean URL concatenation. Same
+ * helper used by both callIndexSignup (server-side) and buildIndexMcpConfig
+ * (writes the URL on disk to the VM) so the two never diverge.
+ */
+function getIndexApiBase(): string {
+  const raw = process.env.INDEX_NETWORK_API_URL?.trim();
+  if (!raw) return INDEX_API_BASE_DEFAULT;
+  return raw.replace(/\/+$/, "");
+}
 
 /**
  * Call POST /api/networks/<NETWORK_ID>/signup.
@@ -75,7 +94,7 @@ export async function callIndexSignup(
   req: IndexSignupRequest,
   opts: { networkId: string; masterKey: string },
 ): Promise<IndexSignupResponse> {
-  const url = `${INDEX_API_BASE}/api/networks/${opts.networkId}/signup`;
+  const url = `${getIndexApiBase()}/api/networks/${opts.networkId}/signup`;
 
   // AbortController so we don't hang indefinitely on a slow Index instance.
   const ac = new AbortController();
@@ -181,7 +200,7 @@ export function buildIndexMcpConfig(apiKey: string): {
 } {
   return {
     transport: "streamable-http",
-    url: `${INDEX_API_BASE}/mcp`,
+    url: `${getIndexApiBase()}/mcp`,
     headers: { "x-api-key": apiKey },
     connectionTimeoutMs: 5000,
   };
