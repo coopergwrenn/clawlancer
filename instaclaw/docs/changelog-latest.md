@@ -1,29 +1,28 @@
 # Changelog — generated 2026-05-18
 
-Window: `a3fc5b46bdd3253523553b1c9636a421ecc0bf48` → `HEAD` (HEAD = `79f3d8df`)
+Window: `79f3d8dffba07c3d65e6fe4a5f8cce846f4eb025` → `HEAD` (HEAD = `769f5a44`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 79f3d8dffba07c3d65e6fe4a5f8cce846f4eb025 -->
+<!-- LAST_GENERATED_SHA: 769f5a4417de9089ccd4b3bfa20ad2793960f2b2 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
-- **Edge City partner:** 0
+- **Edge City partner:** 1
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 0
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-_None in this window._
+- `769f5a44` 2026-05-18 — db: promote village default_spawn_tile (Gap 3, Phase 3.6) — applied to prod 2026-05-18 [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `79f3d8df` 2026-05-18 — feat(scripts): _unquarantine-vm.ts CLI to clear reconcile_quarantined_at [3 files] _(multi: [infrastructure, docs])_
-- `8d61e7bf` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `66402987` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,29 +30,29 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `79f3d8df` 2026-05-18 — feat(scripts): _unquarantine-vm.ts CLI to clear reconcile_quarantined_at [3 files] _(multi: [infrastructure, docs])_
+_(none)_
 
 ### Feature (user-facing) (0)
 
 _(none)_
 
-### Edge City partner (0)
+### Edge City partner (1)
 
-_(none)_
+- `769f5a44` 2026-05-18 — db: promote village default_spawn_tile (Gap 3, Phase 3.6) — applied to prod 2026-05-18 [2 files] _(ai-assisted)_
 
 ### Docs / PRD only (1)
 
-- `8d61e7bf` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `66402987` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
-## Multi-category commits (1)
+## AI-assisted commits (1)
 
-These touch more than one category root and are listed in every applicable section above.
+Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `79f3d8df` 2026-05-18 — [infrastructure, docs] — feat(scripts): _unquarantine-vm.ts CLI to clear reconcile_quarantined_at
+- `769f5a44` 2026-05-18 — db: promote village default_spawn_tile (Gap 3, Phase 3.6) — applied to prod 2026-05-18
 
 ## Appendix — every commit (chronological)
 
-- `8d61e7bf` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `79f3d8df` 2026-05-18 — feat(scripts): _unquarantine-vm.ts CLI to clear reconcile_quarantined_at [3 files] _(multi: [infrastructure, docs])_
+- `66402987` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `769f5a44` 2026-05-18 — db: promote village default_spawn_tile (Gap 3, Phase 3.6) — applied to prod 2026-05-18 [2 files] _(ai-assisted)_
