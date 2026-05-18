@@ -663,6 +663,18 @@ export async function GET(req: NextRequest) {
 
         if (daysSincePause < graceDays) {
           report.pass1_v2_skipped_grace++;
+          // Pure-observability log (2026-05-18): the 28-VM "silent skip" cohort
+          // surfaced during the vm-748 incident investigation traced back to
+          // this path — counter-only, no lifecycle event. Hibernating VMs sit
+          // in the 90-day grace window producing zero audit trail, so a stuck
+          // VM looked indistinguishable from "never reached" in the cron logs.
+          if (!dryRun) {
+            await logLifecycleEvent(
+              supabase, vm, vm.assigned_to ?? null, "(grace)", null,
+              "freeze_skipped_grace",
+              `${Math.floor(daysSincePause)}d/${graceDays}d grace (${vm.health_status})`,
+            );
+          }
           continue;
         }
 
