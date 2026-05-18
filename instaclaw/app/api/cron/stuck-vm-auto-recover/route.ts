@@ -73,6 +73,13 @@ export const maxDuration = 300; // 5 min covers 3 VMs × ~90s recovery each + ov
 /** Hours unhealthy before this cron will attempt auto-recovery. Gives the
  *  stuck-unhealthy-customer-alert (1h threshold) AND humans a chance first. */
 const STUCK_HOURS_THRESHOLD = 2;
+/**
+ * health-check runs every 2 min, so fail_count × 2min ≈ time stuck.
+ * Using `last_health_check < cutoff` is BROKEN — that column is bumped on
+ * every probe regardless of outcome, so the filter is structurally never
+ * true for actively-probed unhealthy VMs (vm-748 incident, 2026-05-18).
+ */
+const FAIL_COUNT_FOR_STUCK = Math.ceil((STUCK_HOURS_THRESHOLD * 60) / 2); // 60
 /** Cap recovery attempts per VM per N hours (dedup key TTL). */
 const DEDUP_HOURS = 24;
 /** Max VMs to attempt per cron tick — bounded blast radius. */
@@ -178,11 +185,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const supabase = getSupabase();
   const now = new Date();
-  const stuckCutoff = new Date(
-    now.getTime() - STUCK_HOURS_THRESHOLD * 3600_000,
-  ).toISOString();
 
-  // Candidates: paying-customer VMs stuck unhealthy/unknown for >2h.
+  // Candidates: paying-customer VMs stuck unhealthy/unknown for >2h, using
+  // health_fail_count as the stuck-time signal (see FAIL_COUNT_FOR_STUCK).
   const { data: candidates, error } = await supabase
     .from("instaclaw_vms")
     .select(
@@ -191,10 +196,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .eq("status", "assigned")
     .eq("provider", "linode")
     .in("health_status", ["unhealthy", "unknown"])
-    .lt("last_health_check", stuckCutoff)
+    .gte("health_fail_count", FAIL_COUNT_FOR_STUCK)
     .not("assigned_to", "is", null)
     .not("ip_address", "is", null)
-    .order("last_health_check", { ascending: true })
+    .order("health_fail_count", { ascending: false })
     .limit(MAX_VMS_PER_RUN * 4); // overfetch to skip dedup-hit candidates
 
   if (error) {

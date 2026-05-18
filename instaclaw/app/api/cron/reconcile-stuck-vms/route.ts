@@ -74,6 +74,13 @@ const LOCK_TTL_SECONDS = 360;
 
 const STUCK_HOURS_THRESHOLD = 2;
 const B_ESCALATION_CUTOFF_HOURS = 6;
+/**
+ * health-check runs every 2 min, so fail_count × 2min ≈ time stuck.
+ * Using `last_health_check < cutoff` is BROKEN — that column is bumped on
+ * every probe regardless of outcome (vm-748 incident, 2026-05-18).
+ */
+const FAIL_COUNT_FOR_STUCK = Math.ceil((STUCK_HOURS_THRESHOLD * 60) / 2); // 60
+const FAIL_COUNT_FOR_ESCALATION = Math.ceil((B_ESCALATION_CUTOFF_HOURS * 60) / 2); // 180
 const MAX_VMS_PER_RUN = 2;
 const PER_VM_TIMEOUT_MS = 180_000;
 const QUARANTINE_FAILURE_THRESHOLD = 3;
@@ -116,19 +123,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const startMs = Date.now();
   const supabase = getSupabase();
   const now = new Date();
-  const stuckCutoff = new Date(
-    now.getTime() - STUCK_HOURS_THRESHOLD * 3600_000,
-  ).toISOString();
-  const escalationCutoff = new Date(
-    now.getTime() - B_ESCALATION_CUTOFF_HOURS * 3600_000,
-  ).toISOString();
   const failureWindowStart = new Date(
     now.getTime() - FAILURE_COUNT_WINDOW_HOURS * 3600_000,
   ).toISOString();
 
   try {
-    // Candidate pool: paying-customer, unhealthy ≥2h, not quarantined,
-    // has IP + gateway_url. Overfetch for B-deferral filtering.
+    // Candidate pool: paying-customer, unhealthy ≥2h (fail_count ≥ 60),
+    // not quarantined, has IP + gateway_url. Overfetch for B-deferral filtering.
     const { data: pool, error: queryErr } = await supabase
       .from("instaclaw_vms")
       .select(
@@ -137,12 +138,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .eq("status", "assigned")
       .eq("provider", "linode")
       .in("health_status", ["unhealthy", "unknown"])
-      .lt("last_health_check", stuckCutoff)
+      .gte("health_fail_count", FAIL_COUNT_FOR_STUCK)
       .not("assigned_to", "is", null)
       .not("ip_address", "is", null)
       .not("gateway_url", "is", null)
       .is("reconcile_quarantined_at", null)
-      .order("last_health_check", { ascending: true }) // oldest-stuck first
+      .order("health_fail_count", { ascending: false }) // longest-stuck first
       .limit(MAX_VMS_PER_RUN * 6); // overfetch — many may be B-deferred
 
     if (queryErr) {
@@ -171,10 +172,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     let cFailureLocked = 0;
 
     for (const vm of pool as VmCandidate[]) {
-      const lastCheck = vm.last_health_check
-        ? new Date(vm.last_health_check).getTime()
-        : 0;
-      const escalated = lastCheck < new Date(escalationCutoff).getTime();
+      // Escalated past 6h-stuck (fail_count ≥ 180). The pre-fix version
+      // compared last_health_check < (now - 6h), which is structurally never
+      // true because health-check refreshes that column every 2 min.
+      const escalated = (vm.health_fail_count ?? 0) >= FAIL_COUNT_FOR_ESCALATION;
 
       // B-deferral check (unless escalated past 6h)
       if (!escalated) {
