@@ -114,6 +114,38 @@ After §3.5 gbrain install completes on the bake VM:
 ### §2.7 — Run the pre-bake-check script (automated go/no-go)
 - [ ] `npx tsx scripts/_pre-bake-check.ts` returns exit 0 (or all CRITICAL blockers explicitly understood and accepted)
 
+### §2.8 — **[v104 HARD STOP]** Workspace bundle size ≤ `BOOTSTRAP_MAX_CHARS=40000`
+
+**Current state (verified 2026-05-18 by sampling 3 cv=105 VMs — vm-946, vm-831, vm-769):**
+
+| File | Avg chars across 3 VMs |
+|---|---:|
+| SOUL.md | 34,444 |
+| AGENTS.md | 8,578 |
+| CAPABILITIES.md | 15,894 |
+| IDENTITY.md (per-VM) | 415 |
+| **TOTAL** | **59,332** (49% over 40K cap) |
+
+**This is a `_postbake-validation.ts:293` P0 fail and a `CLAUDE.md` OpenClaw Upgrade Playbook hard-stop.** The bake CANNOT proceed until the bundle is trimmed below 40000 chars. v79 baseline today already showed 56565 — v82 → v105 added another ~3K of content (gbrain protocol block, INSTACLAW_PLATFORM_V1, cron-creation idempotency rule, etc.).
+
+**Top trim candidates** (sampled from vm-946):
+- `CAPABILITIES.md` §How to Use This File (CRITICAL) — 1,646 chars. Likely consolidate-able.
+- `CAPABILITIES.md` ⛔ NEVER IMPROVISE SKILLS — 1,558 chars. Important but possibly relocate-able to a skill SKILL.md.
+- `SOUL.md` §Quick Command Routing — 5,501 chars. Largest single section in SOUL.md.
+- `SOUL.md` §Virtuals Protocol ACP — 1,860 chars. Possibly partner-gated to dgclaw VMs only.
+
+**Three resolution paths** — Cooper picks one before bake:
+
+1. **Trim ~20K chars from SOUL.md + CAPABILITIES.md.** Architecturally correct (smaller upfront context = faster TTFT + lower per-message cost). Identifies content for trimming via cooper-review; we land the trim in a new manifest version (v106) before May 23 bake.
+
+2. **Raise `BOOTSTRAP_MAX_CHARS` to 60000 in `lib/vm-manifest.ts:468`.** Operator-friendly. Cost: ~7K extra tokens of upfront context per turn (~$0.02/turn at Sonnet pricing). Risk: OpenClaw 2026.4.26 may still have an INTERNAL 30K truncation independent of our `bootstrapMaxChars` config — needs verification against the OpenClaw source.
+
+3. **Hybrid**: trim the easy ~10K (Virtuals ACP gating, EARN.md consolidation) AND raise the cap to 50000. Lower-risk than path 2 but doesn't fully restore the architectural goal.
+
+**[GATE]** Until this is resolved, every bake VM will fail validation. Cooper decision required. Tracked as P0 in `bake-readiness-audit-2026-05-13.md` follow-ups.
+
+`_postbake-validation.ts:293` check value: `upfrontBytes > 0 && upfrontBytes <= 40000`. If we raise the cap, the validation script's hardcoded 40000 must be updated too (cross-reference `BOOTSTRAP_MAX_CHARS` from the manifest instead of duplicating the constant).
+
 The script verifies every §2 gate above plus:
   - HEAD aligned with origin/main (Rule 12 — must not bake against stale code)
   - LINODE_SNAPSHOT_ID matches expected source snapshot
@@ -169,6 +201,40 @@ openclaw --version  # confirm latest
 ```
 
 Install/update system packages per CLAUDE.md step 3 if needed.
+
+### §3.2.5 — **[v104 NEW]** Lock down nodejs to prevent v24+ regression (5 min)
+
+The vm-748 incident (2026-05-18, 7-day silent customer-down) was caused by `/etc/apt/sources.list.d/nodesource.sources` being present + `apt unattended-upgrades` auto-installing nodejs 24.14.1 from NodeSource over the NVM-managed v22. The new system Node had ABI/API differences that broke openclaw modules built for v22, and the gateway entered a permanent crash loop.
+
+Today's baseline test (`_postbake-validation.ts --mode=bake` on a fresh nanode from `private/38575292`) confirmed the v79 snapshot doesn't ship with NodeSource by default — but defense-in-depth still requires both gates:
+
+```bash
+ssh openclaw@$BAKE_VM_IP <<'EOF'
+# Gate 1: confirm NodeSource apt repo is ABSENT. If present, remove it.
+if [ -f /etc/apt/sources.list.d/nodesource.sources ]; then
+  echo "WARNING: NodeSource repo found — removing"
+  sudo rm /etc/apt/sources.list.d/nodesource.sources
+  sudo apt-get update
+else
+  echo "✓ NodeSource repo absent (vm-748 root cause gate)"
+fi
+
+# Gate 2: apt-mark hold nodejs. Even if NodeSource is absent, Ubuntu's
+# universe repo can ship nodejs updates; the hold prevents apt upgrade
+# from touching the package. Note: hold blocks `apt upgrade` paths;
+# explicit `apt install nodejs=<version>` still works for the operator.
+sudo apt-mark hold nodejs
+
+# Verify the hold landed
+sudo apt-mark showhold | grep -c '^nodejs$' | grep -q '^1$' \
+  && echo "✓ nodejs apt-marked hold" \
+  || { echo "✗ nodejs hold did NOT apply"; exit 1; }
+EOF
+```
+
+**[v104 GATE]** Both checks must pass before §3.3. If `apt-mark hold` doesn't apply (e.g., no sudo or weird Linode-image override), STOP and investigate — the snapshot would otherwise ship the vm-748 risk.
+
+Validated post-bake by `_postbake-validation.ts` §30a (NodeSource absent + nodejs held).
 
 ### §3.3 — Extract + deploy manifest files (15 min)
 
