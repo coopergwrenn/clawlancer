@@ -8794,11 +8794,12 @@ export interface AuditResult {
 export async function auditVMConfig(
   vm: VMRecord & { gateway_token?: string; api_mode?: string; tier?: string | null; user_timezone?: string | null },
   options?: { strict?: boolean; dryRun?: boolean; canary?: boolean; skipGatewayRestart?: boolean },
-): Promise<AuditResult & { strictErrors: string[]; canaryHealthy: boolean | null; canarySkippedBudget: boolean; errors: string[]; gatewayRestartNeeded: boolean; gatewayRestarted: boolean; envPushSucceeded: boolean }> {
+): Promise<AuditResult & { strictErrors: string[]; canaryHealthy: boolean | null; canarySkippedBudget: boolean; errors: string[]; warnings: string[]; gatewayRestartNeeded: boolean; gatewayRestarted: boolean; envPushSucceeded: boolean }> {
   const reconcileResult = await reconcileVM(vm, VM_MANIFEST, options);
   return {
     fixed: reconcileResult.fixed,
     alreadyCorrect: reconcileResult.alreadyCorrect,
+    warnings: reconcileResult.warnings,
     missingFiles: [], // Now handled inside reconcileVM
     // Surface strict-mode outcomes so callers (reconcile-fleet cron,
     // /api/admin/reconcile-vm) can gate config_version advancement on them.
