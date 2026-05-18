@@ -334,11 +334,12 @@ Step 7 requires real walk traffic from at least one edge_city VM. The Edge bots 
 
 ## Phase 4 follow-ups (carried forward, not in this migration)
 
+- **Index Network discovery integration** — replace the placeholder internal `match_engine = 'instaclaw'` matching with Index Network's intent-driven discovery + bilateral negotiation protocol. Each edge_city agent gets the Index MCP server mounted at provisioning time; accepted opportunities flow back into `matchpool_outcomes` with `match_engine = 'index'`; the Phase 2 trigger fires and the village renders the connection. **Spec signed off 2026-05-17, dev credentials exchanged, engineering scheduled May 19–29.** Full plan + API contract + reconciler step design at [`village-index-network-integration.md`](./village-index-network-integration.md). Index Network founder is Seref Yarar — one of our 5 visible spectator attendees.
 - **Dashboard UI for `spectator_visible` toggle** — attendee-controlled opt-out without DB access.
 - **System-wide kill switch** — GUC or env var to disable the entire public broadcast path in <60s.
 - **Signup-time sprite picker** — replace the manually-seeded `larry_atlas_index` with user-chosen.
 - **Per-attendee home_tile UI** — pick your "lives at" spot when joining the village.
-- **Eclipse / Devcon partner expansion** — same overlay table, different view filter.
+- **Eclipse / Devcon partner expansion** — same overlay table, different view filter; per-partner Index network with its own ID.
 - **Realtime broadcast end-to-end probe** — design a synthetic-but-non-transactional probe that doesn't hit the `INSERT+DELETE`-in-same-transaction issue we saw in Phase 2.
 
 ---
