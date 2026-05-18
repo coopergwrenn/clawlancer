@@ -1,19 +1,19 @@
 # Changelog — generated 2026-05-18
 
-Window: `c239db4485af8157946f318d7d3b356cf212c0ce` → `HEAD` (HEAD = `55ca85ca`)
+Window: `55ca85cac5f8a17ce0e3fc2c70714e090ae901b4` → `HEAD` (HEAD = `7bbd2824`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 55ca85cac5f8a17ce0e3fc2c70714e090ae901b4 -->
+<!-- LAST_GENERATED_SHA: 7bbd2824638e46ac9f1ebec71ca62954e7304c7d -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 0
+- **Docs / PRD only:** 2
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `55ca85ca` 2026-05-18 — fix(cron): stuck-unhealthy-customer-alert filter on health_fail_count, not last_health_check [1 files]
-- `9a9acf2c` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `7e1e4a9a` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `7bbd2824` 2026-05-18 — docs(research): gbrain v0.35.0.0 → v0.35.7.0 compatibility report (Phase 1) [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `55ca85ca` 2026-05-18 — fix(cron): stuck-unhealthy-customer-alert filter on health_fail_count, not last_health_check [1 files]
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -43,11 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `9a9acf2c` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `7e1e4a9a` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `7bbd2824` 2026-05-18 — docs(research): gbrain v0.35.0.0 → v0.35.7.0 compatibility report (Phase 1) [1 files] _(ai-assisted)_
+
+## AI-assisted commits (1)
+
+Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+
+- `7bbd2824` 2026-05-18 — docs(research): gbrain v0.35.0.0 → v0.35.7.0 compatibility report (Phase 1)
 
 ## Appendix — every commit (chronological)
 
-- `9a9acf2c` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `55ca85ca` 2026-05-18 — fix(cron): stuck-unhealthy-customer-alert filter on health_fail_count, not last_health_check [1 files]
+- `7e1e4a9a` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `7bbd2824` 2026-05-18 — docs(research): gbrain v0.35.0.0 → v0.35.7.0 compatibility report (Phase 1) [1 files] _(ai-assisted)_
