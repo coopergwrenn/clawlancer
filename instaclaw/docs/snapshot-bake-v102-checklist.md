@@ -520,12 +520,8 @@ This section captures the result of running `scripts/_pre-bake-check.ts` against
 
 ### §11.2 — Open blockers (must resolve before bake)
 
-- [ ] **STALE_BUNDLE alerts firing every ~6 hours in 24h.** Hash `9a4afc5c8d0e5348` triggered at 2026-05-15T23:51, 2026-05-16T05:54, 2026-05-16T11:57, 2026-05-16T19:27 UTC. Each indicates the Vercel-bundled reconcile-fleet cron is running with a stale manifest cache; the P1-4 integrity check is correctly halting reconciliation. **Impact:** 0/149 VMs advanced to cv=101 for the first ~4h after the manifest bump (only 6/149 have caught up by 2026-05-16 late evening). **Fix:** touch `app/api/cron/reconcile-fleet/route.ts` with a cache-bust comment + push, OR trigger a fresh Vercel production deploy. The husky pre-commit hook is supposed to auto-touch on `vm-manifest.ts` changes — if it hasn't fired, investigate the hook OR do the manual touch.
-- [ ] **gbrain edge_city coverage at 7/8 (88%).** `instaclaw-vm-923` reports `missing_gbrain` (architecture=none, V=missing, T=absent, S=inactive, P=0, K=109 — env var present but install never ran). Likely a fresh provision waiting for stepGbrain to land or for a manual install. **Fix:**
-    ```bash
-    cd /Users/cooperwrenn/wild-west-bots/instaclaw
-    npx tsx scripts/_install-gbrain-on-vm.ts instaclaw-vm-923
-    ```
+- [x] **STALE_BUNDLE alerts firing every ~6 hours in 24h.** _Resolved 2026-05-17 ~03:00 UTC via cache-bust commit on `app/api/cron/reconcile-fleet/route.ts` (prepended a new `@vercel/nft cache-bust` block above the existing 2026-05-15 entry, pushed direct to main)._ Hash `9a4afc5c8d0e5348` triggered at 2026-05-15T23:51, 2026-05-16T05:54, 2026-05-16T11:57, 2026-05-16T19:27 UTC. The P1-4 integrity check was correctly halting reconciliation. **Impact (pre-fix):** 0/149 VMs advanced to cv=101 for the first ~4h after the manifest bump (only 6/149 had caught up by 2026-05-16 late evening). **Post-fix:** fleet converged to **146/146 at cv=101 (100%)** within ~5 minutes of the Vercel auto-deploy. No new stale_bundle alert has fired since. _Followup_: husky pre-commit hook should have auto-touched route.ts on the orphan-tool_use commit; it didn't. Filed as Tier 3 followup — investigate hook behavior so future manifest bumps don't require manual cache-bust.
+- [x] **gbrain edge_city coverage at 7/8 (88%).** _Resolved 2026-05-17 ~02:55 UTC._ Ran `_install-gbrain-on-vm.ts instaclaw-vm-923` — all 8 phases passed (A→H), INSTALL_COMPLETE in 47s, 63 gbrain tools live in agent toolset. Subsequent coverage check found a DIFFERENT edge_city VM had appeared since the audit: `instaclaw-vm-917` (entered the assigned+healthy edge_city set in parallel with the T-7 work). Ran the same install on vm-917 — INSTALL_COMPLETE in 62s, 63 gbrain tools live. **Final coverage: 8/8 (100%) ✓** _Lesson_: per-VM manual gbrain install is fragile against fleet churn. Structural fix is to flip `GBRAIN_INSTALL_ENABLED=true` (per §7 Cooper-action) so the reconciler installs on every cv-drift cycle. Without that, each new edge_city VM between now and T-0 requires a manual install — exposure window scales with provisioning velocity.
 - [ ] **vm-354 30-min soak verification (§2.1).** Checkbox still open. Run the 5 soak checks manually: service active, bearer hash match, schema v66, put_page/get_page round-trip, openclaw.json transport=streamable-http. Cooper-action.
 
 ### §11.3 — Operator-only action items (Cooper, not scriptable)
@@ -533,16 +529,25 @@ This section captures the result of running `scripts/_pre-bake-check.ts` against
 - [ ] **Anthropic project-key spending cap on `GBRAIN_ANTHROPIC_API_KEY`.** Verify $300/mo cap at console.anthropic.com.
 - [ ] **HEAD aligned with origin/main in the bake-source repo.** Pre-bake-check on 2026-05-16 found drift on `/Users/cooperwrenn/wild-west-bots/`: HEAD=e6f16c57, main=2381503e (auto-changelog keeps moving origin/main, so this is a moving target). Before clicking Provision on May 23, run `git pull --ff-only origin main` from the main repo. Re-run the pre-bake-check after the pull.
 
-### §11.4 — Fleet state snapshot (2026-05-16)
+### §11.4 — Fleet state snapshot
 
-- Manifest: **v102** (bumped 2026-05-16 19:07 EDT via commit `48af5075`)
+**Pre-fix (2026-05-16, T-7 days, before cache-bust + gbrain installs):**
+- Manifest: **v101** at audit time (bumped 2026-05-16 19:07 EDT via commit `48af5075`)
 - Fleet size: 149 healthy+assigned VMs
-- cv distribution: cv=101:6 (4%), cv=100:142 (95%), cv=95:1 (1%) — 95% lag is the visible result of the stale_bundle block; reconciler will converge once Vercel is redeployed
+- cv distribution: cv=101:6 (4%), cv=100:142 (95%), cv=95:1 (1%) — 95% lag was the visible result of the stale_bundle block
 - Disk-data coverage: 149/149 (100%) — Rule 46 health-check fully populated
 - Disk-pct: max 79% (one VM at the warning edge)
-- Last admin alert: 2026-05-16T23:07 `usage-anomaly-check:cost_spike` (not blocking the bake)
-- Active cron locks: 2 vercel-cron rows, both <5 min old (healthy)
-- gbrain edge_city: 7/8 (vm-923 needs install)
+- gbrain edge_city: 7/8 (vm-923 needed install)
+
+**Post-fix (2026-05-17, ~03:00 UTC, after cache-bust + gbrain installs):**
+- Manifest: **v101** at the moment (since superseded by v102, then v103, then v104 — see §11.7 for the manifest-drift note)
+- Fleet size: 146 healthy+assigned VMs (small churn during the work window)
+- cv distribution: **cv=101:146 (100%)** — full convergence ✓
+- Disk-data coverage: 146/146 (100%)
+- Disk-pct: max 74% (down from 79% — fleet got healthier)
+- gbrain edge_city: **8/8 (100%) ✓**
+- Most recent stale_bundle alert: 2026-05-16T19:27 UTC — historical (pre-fix); aged out of the 24h alert window by ~2026-05-17 19:30 UTC
+- No quarantined VMs, no stuck-onboarding, no freeze-recovery, no ENOSPC, no high-disk
 
 ### §11.5 — Re-run cadence
 
@@ -564,3 +569,21 @@ Pre-bake-check lives at `instaclaw/scripts/_pre-bake-check.ts`. It is read-only 
 - `node_modules` are installed (script uses `@supabase/supabase-js`)
 
 Falls back to the canonical `/Users/cooperwrenn/wild-west-bots/instaclaw/.env*` paths if relative .env loading fails, so it works from both the main repo and the changelog clone.
+
+### §11.7 — Resolution log (2026-05-17 / -18)
+
+Final verdict after T-7 blocker resolution work:
+
+| Gate | T-7 state (2026-05-16) | Post-fix state (2026-05-17) | Action taken |
+|---|---|---|---|
+| STALE_BUNDLE alerts | 4 in 24h, fleet halted | 1 in 24h (historical); fleet converged 146/146 cv=101 | Cache-bust commit on `app/api/cron/reconcile-fleet/route.ts` direct to main |
+| gbrain edge_city coverage | 7/8 (vm-923 missing) | 8/8 ✓ | `_install-gbrain-on-vm.ts` on vm-923 (47s) + vm-917 (62s, appeared mid-work via fleet churn) |
+| HEAD aligned (main repo) | Drift detected | Drift detected (auto-changelog churn) | Operator action at T-1 / T+0 |
+| vm-354 30-min soak | Unchecked | Unchecked | Cooper-action before T+0 |
+| Anthropic project-key cap | Unverified | Unverified | Cooper-action before T+0 |
+
+**Manifest drift since the T-7 audit (2026-05-17 → 2026-05-18):** the manifest has bumped through v102 (orphan-tool_use repair — file rename of this checklist happened during this bump), then v103 (`944068db feat(reconcile): stepUfwRules + Rule 57`), then v104 (`0ab38404 refactor(reconcile): ensureUfwAllow helper`). At T-3 (2026-05-20) the bake target will be whatever manifest version is current then. The `_pre-bake-check.ts` script is version-agnostic — it reads `VM_MANIFEST.version` dynamically and adjusts its cv-lag and integrity-check thresholds accordingly.
+
+**Bake-prep status: COMPLETE except for 3 operator-action items** (vm-354 soak, Anthropic cap, HEAD pull). All scriptable CRITICAL gates either pass cleanly OR show only the historical 1-stale-bundle-alert artifact that aged out of the 24h window by 2026-05-17 19:30 UTC.
+
+At T-3 (2026-05-20), re-run `_pre-bake-check.ts` against the THEN-current manifest. Notable risk: each newly-provisioned edge_city VM between now and T-0 needs `_install-gbrain-on-vm.ts` to run manually until `GBRAIN_INSTALL_ENABLED=true` is flipped (per §7 Cooper-action). The script will surface any new missing-gbrain VMs by name in its details output, so re-run + re-install is the simple operational cadence.
