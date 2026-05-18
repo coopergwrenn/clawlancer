@@ -88,7 +88,7 @@ async function main() {
     console.log("Per-VM detail:");
     for (const v of rows) {
       const ownerStr = v.assigned_to ? v.assigned_to.slice(0, 8) : "(no owner)";
-      const keyStr = v.index_api_key ? `ix_${v.index_api_key.slice(3, 8)}…` : "(none)";
+      const keyStr = v.index_api_key ? `${v.index_api_key.slice(0, 8)}…` : "(none)";
       const userStr = v.index_user_id ? v.index_user_id.slice(0, 8) : "(none)";
       const provStr = v.index_provisioned_at ? v.index_provisioned_at.slice(0, 19).replace("T", " ") : "(never)";
       const failStr = v.index_provisioned_failed_at
