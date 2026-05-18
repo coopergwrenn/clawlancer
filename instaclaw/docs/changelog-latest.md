@@ -1,19 +1,19 @@
 # Changelog — generated 2026-05-18
 
-Window: `b3a7fee3b0ac0a7dd4696d9bc3f4320aeb0b2f23` → `HEAD` (HEAD = `0c92a7f7`)
+Window: `0c92a7f73b68cf48ac57c2dc55e3bb582cb5839e` → `HEAD` (HEAD = `7840c193`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 0c92a7f73b68cf48ac57c2dc55e3bb582cb5839e -->
+<!-- LAST_GENERATED_SHA: 7840c1930b623cd28880e29799a79ba92e4bcf0e -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
+- **Reconciler / manifest:** 1
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
-- AI-assisted commits (co-authored): 1
+- **Docs / PRD only:** 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `89e9ffb7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `0c92a7f7` 2026-05-18 — docs(prd): Phase 0 spike report — Codex OAuth verified from Linode us-east [1 files] _(ai-assisted)_
+- `7840c193` 2026-05-18 — fix(bake): workspace bundle check used wrong file set + wrong cap [5 files] _(multi: [reconciler, infrastructure, edge, docs])_
+- `2eac6772` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
 
-_(none)_
+- `7840c193` 2026-05-18 — fix(bake): workspace bundle check used wrong file set + wrong cap [5 files] _(multi: [reconciler, infrastructure, edge, docs])_
 
 ### Infrastructure (0)
 
@@ -43,18 +43,17 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `89e9ffb7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `0c92a7f7` 2026-05-18 — docs(prd): Phase 0 spike report — Codex OAuth verified from Linode us-east [1 files] _(ai-assisted)_
+- `2eac6772` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (1)
+## Multi-category commits (1)
 
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+These touch more than one category root and are listed in every applicable section above.
 
-- `0c92a7f7` 2026-05-18 — docs(prd): Phase 0 spike report — Codex OAuth verified from Linode us-east
+- `7840c193` 2026-05-18 — [reconciler, infrastructure, edge, docs] — fix(bake): workspace bundle check used wrong file set + wrong cap
 
 ## Appendix — every commit (chronological)
 
-- `89e9ffb7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `0c92a7f7` 2026-05-18 — docs(prd): Phase 0 spike report — Codex OAuth verified from Linode us-east [1 files] _(ai-assisted)_
+- `2eac6772` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `7840c193` 2026-05-18 — fix(bake): workspace bundle check used wrong file set + wrong cap [5 files] _(multi: [reconciler, infrastructure, edge, docs])_
