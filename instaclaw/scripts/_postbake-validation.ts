@@ -225,7 +225,13 @@ async function run() {
     record("MemoryMax=3500M", "P1", ["bake", "test"], /MemoryMax\s*=\s*3500M/.test(override), "");
     record("OOMScoreAdjust=500 in override", "P1", ["bake", "test"], /OOMScoreAdjust\s*=\s*500/.test(override), "");
     record("KillMode=mixed in override", "P1", ["bake", "test"], /KillMode\s*=\s*mixed/.test(override), "");
-    record("RuntimeMaxSec=86400 (daily restart)", "P2", ["bake", "test"], /RuntimeMaxSec\s*=\s*86400/.test(override), "");
+    // v100 (2026-05-15, commit d2f94536) REMOVED RuntimeMaxSec + RuntimeRandomizedExtraSec.
+    // The 24h forced restart caused mid-conversation SIGTERM (vm-050 incident). The check
+    // is now inverted: these lines MUST be absent from override.conf.
+    record("v100: RuntimeMaxSec REMOVED from override (no scheduled 24h restart)", "P0", ["bake", "test"],
+      !/RuntimeMaxSec/.test(override), "RuntimeMaxSec still present in override.conf");
+    record("v100: RuntimeRandomizedExtraSec REMOVED from override", "P1", ["bake", "test"],
+      !/RuntimeRandomizedExtraSec/.test(override), "RuntimeRandomizedExtraSec still present in override.conf");
     record("Environment=PARTNER_ID=INSTACLAW in override", "P2", ["bake", "test"], /PARTNER_ID=INSTACLAW/.test(override), "");
     // Memory-snapshot integration (v73): ExecStartPre restore + ExecStopPost pre-stop.
     // If missing, MEMORY.md is not preserved across gateway restarts — user-data loss.
@@ -525,6 +531,12 @@ async function run() {
       "SESSION COMPACTED:",          // v90 Layer 1 log line
       "def _extract_large_tool_results_to_cache", // v90 Layer 3
       "LAYER3_EXTRACTED:",           // v90 Layer 3 log line
+      // v101 (2026-05-16, commit 48af5075): startup orphan tool_use repair
+      "def run_startup_orphan_repair",
+      "ORPHAN_REPAIR:",
+      // Rule 45 (2026-05-14, commit eaf5617a): session-backup runaway fix
+      "SESSION_BACKUP_COOLDOWN_SEC",
+      "SESSION_BACKUP_MAX_PER_SESSION",
     ];
     for (const sent of RULE23_SENTINELS) {
       const found = (await exec(c, `grep -c -F ${JSON.stringify(sent)} ~/.openclaw/scripts/strip-thinking.py 2>/dev/null`)).stdout.trim();
@@ -767,6 +779,165 @@ async function run() {
     // Caddy service active (the file alone is useless if Caddy isn't running)
     const caddyActive = (await exec(c, `sudo systemctl is-active caddy 2>&1`)).stdout.trim();
     record("caddy.service active", "P1", ["bake", "test"], caddyActive === "active", `state=${caddyActive}`);
+
+    // ─── 30. Recent-incident gates (2026-05-13 → 2026-05-18) ─────────────
+    // Every check below traces to a manifest version bump or production
+    // incident in the past 5 days. The bake VM MUST satisfy all of these
+    // OR the resulting snapshot ships a known-broken state to every new
+    // VM provisioned from it.
+
+    // 30a — vm-748 root cause (2026-05-18). NodeSource apt repo + nodejs
+    // auto-upgrade to v24 caused 7+ day silent customer-down. Both must be
+    // defended against permanently.
+    const nodesourcePresent = (await exec(c, `test -f /etc/apt/sources.list.d/nodesource.sources && echo Y || echo N`)).stdout.trim();
+    record("NodeSource apt repo ABSENT (vm-748 root cause)", "P0", ["bake", "test"],
+      nodesourcePresent === "N", nodesourcePresent === "Y" ? "/etc/apt/sources.list.d/nodesource.sources still present — apt unattended-upgrade can install Node v24+" : "");
+
+    const nodejsHeld = (await exec(c, `sudo apt-mark showhold 2>/dev/null | grep -c '^nodejs$'`)).stdout.trim();
+    record("nodejs apt-marked hold (vm-748 defense-in-depth)", "P1", ["bake", "test"],
+      nodejsHeld === "1", `apt-mark count=${nodejsHeld}`);
+
+    // 30b — Gateway ExecStart MUST use NVM Node path, not /usr/bin/node.
+    // vm-748 had ExecStart=/usr/bin/node and got v24 via NodeSource apt upgrade,
+    // which couldn't load modules built for v22. The dispatch-server check at
+    // §3b doesn't cover the gateway unit itself.
+    const gatewayUnit = (await exec(c, `systemctl --user cat openclaw-gateway 2>/dev/null | grep -m1 '^ExecStart='`)).stdout.trim();
+    record("gateway ExecStart uses NVM Node path (not /usr/bin/node)", "P0", ["bake", "test"],
+      /ExecStart=\/home\/openclaw\/\.nvm\/versions\/node\/v22/.test(gatewayUnit),
+      `got: ${gatewayUnit.slice(0, 120)}`);
+
+    // 30c — v103 (commit 944068db, stepUfwRules) + v104 (commit 0ab38404,
+    // ensureUfwAllow helper closing Rule 57 anti-pattern in dispatch):
+    // ufw should have BOTH 9100/tcp (node_exporter) AND 8765/tcp (dispatch).
+    // The 2026-05-15 IR incident: 8 fleet VMs had node_exporter listening but
+    // no ufw rule — Prometheus scraped zero metrics for days. The bake VM
+    // should have both rules on disk so new provisions don't depend on
+    // the reconciler's first-tick to install them.
+    const ufwStatus = (await exec(c, `sudo ufw status 2>&1`)).stdout;
+    const ufwAvailable = !/command not found/.test(ufwStatus);
+    if (ufwAvailable) {
+      record("v103: ufw allow 9100/tcp rule present (stepUfwRules artifact)", "P0", ["bake", "test"],
+        /9100\/tcp/.test(ufwStatus), `ufw status output: ${ufwStatus.slice(0, 100)}`);
+      record("v104: ufw allow 8765/tcp rule present (dispatch ensureUfwAllow)", "P0", ["bake", "test"],
+        /8765\/tcp/.test(ufwStatus), `ufw status output: ${ufwStatus.slice(0, 100)}`);
+    } else {
+      record("v103+v104: ufw installed (required for stepUfwRules + ensureUfwAllow)", "P0", ["bake", "test"], false,
+        "ufw command not found");
+    }
+
+    // 30d — v101 (2026-05-16, commit 48af5075): startup orphan tool_use repair.
+    // systemd ExecStartPre must invoke strip-thinking.py --startup-repair-active.
+    const execStartPre = (await exec(c, `systemctl --user show openclaw-gateway --property=ExecStartPre 2>/dev/null`)).stdout.trim();
+    record("v101: ExecStartPre includes --startup-repair-active",
+      "P0", ["bake", "test"],
+      /startup-repair-active/.test(execStartPre),
+      execStartPre.slice(0, 150));
+
+    // 30e — v102 (2026-05-17, commit ea026a6a): GBRAIN_MEMORY_PROTOCOL_V1
+    // in AGENTS.md. Without this, Edge attendees see hallucinated saves
+    // (Rule 28). Open + close markers should both be present.
+    const agentsMarkerCount = parseInt(
+      (await exec(c, `grep -c GBRAIN_MEMORY_PROTOCOL_V1 ~/.openclaw/workspace/AGENTS.md 2>/dev/null || echo 0`)).stdout.trim() || "0",
+      10,
+    );
+    record("v102: AGENTS.md contains GBRAIN_MEMORY_PROTOCOL_V1 markers (open+close)",
+      "P0", ["bake", "test"],
+      agentsMarkerCount >= 2, `markers=${agentsMarkerCount} (expected ≥2)`);
+
+    // v102 Rule 28 anti-hallucination directive
+    const rule28Present = (await exec(c, `grep -c "MUST call .*gbrain__put_page.* BEFORE responding" ~/.openclaw/workspace/AGENTS.md 2>/dev/null || echo 0`)).stdout.trim();
+    record("v102: AGENTS.md contains Rule 28 anti-hallucination directive",
+      "P1", ["bake", "test"],
+      parseInt(rule28Present, 10) >= 1, `count=${rule28Present}`);
+
+    // 30f — Rule 54 (2026-05-16): gbrain.service KillSignal=SIGKILL.
+    // SIGTERM corrupts PGLite (empirically verified on vm-050 2026-05-16).
+    // install-gbrain.sh Phase E5 writes KillSignal=SIGKILL; if missing, any
+    // operator-driven systemctl stop/restart corrupts the PGLite data dir.
+    const gbrainUnit = (await exec(c, `cat ~/.config/systemd/user/gbrain.service 2>/dev/null`)).stdout;
+    if (gbrainUnit.length > 0) {
+      record("Rule 54: gbrain.service KillSignal=SIGKILL",
+        "P0", ["bake", "test"],
+        /^KillSignal\s*=\s*SIGKILL/m.test(gbrainUnit),
+        "KillSignal=SIGTERM or absent — SIGTERM corrupts PGLite (Rule 54)");
+    } else {
+      // gbrain not installed (acceptable on non-edge_city bake) — skip
+      record("Rule 54: gbrain.service unit present (skipped — gbrain not installed)",
+        "P2", ["bake", "test"], true, "");
+    }
+
+    // 30g — v99 (2026-05-14): gateway-health-textfile artifacts.
+    // gateway-health-textfile.sh feeds Prometheus's textfile_collector with
+    // openclaw_gateway_up{}. Without it, the GatewayDown alert never fires.
+    const ghtfScript = (await exec(c, `test -f ~/.openclaw/scripts/gateway-health-textfile.sh && echo Y || echo N`)).stdout.trim();
+    record("v99: gateway-health-textfile.sh present", "P0", ["bake", "test"],
+      ghtfScript === "Y", "missing — GatewayDown alert won't fire");
+    const ghtfCron = (await exec(c, `crontab -l 2>/dev/null | grep -c gateway-health-textfile`)).stdout.trim();
+    record("v99: gateway-health-textfile.sh cron entry present", "P0", ["bake", "test"],
+      parseInt(ghtfCron, 10) >= 1, `count=${ghtfCron}`);
+    const ghtfDir = (await exec(c, `test -d /var/lib/node_exporter/textfile_collector && echo Y || echo N`)).stdout.trim();
+    record("v99: textfile_collector directory present", "P0", ["bake", "test"],
+      ghtfDir === "Y", "/var/lib/node_exporter/textfile_collector missing");
+    const ghtfDropIn = (await exec(c, `sudo test -f /etc/systemd/system/node_exporter.service.d/textfile.conf && echo Y || echo N`)).stdout.trim();
+    record("v99: node_exporter textfile drop-in present", "P0", ["bake", "test"],
+      ghtfDropIn === "Y", "drop-in missing — node_exporter won't read textfile dir");
+
+    // 30h — Rule 45 (2026-05-14, commit eaf5617a): session-backup runaway fix.
+    // The constants below are checked in the RULE23_SENTINELS array, but the
+    // value matters too — if SESSION_BACKUP_MAX_PER_SESSION=999999 someone
+    // disabled the cap. Check the actual values.
+    const cooldownVal = (await exec(c, `grep -oE "SESSION_BACKUP_COOLDOWN_SEC\\s*=\\s*[0-9]+" ~/.openclaw/scripts/strip-thinking.py 2>/dev/null | head -1`)).stdout.trim();
+    const capVal = (await exec(c, `grep -oE "SESSION_BACKUP_MAX_PER_SESSION\\s*=\\s*[0-9]+" ~/.openclaw/scripts/strip-thinking.py 2>/dev/null | head -1`)).stdout.trim();
+    record("Rule 45: SESSION_BACKUP_COOLDOWN_SEC = 300", "P1", ["bake", "test"],
+      /=\s*300\s*$/.test(cooldownVal), `got: ${cooldownVal || "missing"}`);
+    record("Rule 45: SESSION_BACKUP_MAX_PER_SESSION = 50", "P1", ["bake", "test"],
+      /=\s*50\s*$/.test(capVal), `got: ${capVal || "missing"}`);
+
+    // 30i — Rule 47 (2026-05-14): file-drift cron exists in Vercel cron config.
+    // This is fleet-level not on-VM, so we can't check it here directly. The
+    // pre-bake-check covers the fleet side. (Documented for cross-reference.)
+
+    // 30j — Rule 49 (2026-05-14): partner-secrets verifier — verified by
+    // _pre-bake-check.ts before bake (fleet-level), not on-VM.
+
+    // 30k — PGLite pg_control staleness (gbrain terminal finding, 2026-05-18).
+    // Every gbrain sidecar running for more than a few hours leaves stale
+    // pg_control on disk. If gbrain dies (SIGKILL, crash, VM reboot) WITHOUT
+    // a prior explicit CHECKPOINT, the next cold-start panics with "invalid
+    // resource manager ID in checkpoint record."
+    //
+    // Bake-mode check: for a properly-baked snapshot, EITHER
+    //   (a) brain.pglite is absent/empty (gbrain never started on bake VM), OR
+    //   (b) brain.pglite has a recovery.signal that proves a clean checkpoint
+    //       (file present means PGLite would replay on next start — bad)
+    //       — actually inverted: recovery.signal ABSENT means clean shutdown.
+    //   (c) pg_control file present AND mtime within last 60s of last close
+    //       (recent CHECKPOINT before snapshot).
+    //
+    // Simplest robust check: WAL files in pg_wal/ should not exceed 2 segments
+    // (each segment is 16 MB by default); excess WAL = unflushed state.
+    const pgliteDir = (await exec(c, `test -d ~/.gbrain/brain.pglite && echo Y || echo N`)).stdout.trim();
+    if (pgliteDir === "Y") {
+      // recovery.signal absent = last shutdown was clean
+      const recoverySignal = (await exec(c, `test -f ~/.gbrain/brain.pglite/recovery.signal && echo PRESENT || echo absent`)).stdout.trim();
+      record("PGLite recovery.signal absent (clean shutdown — gbrain term finding 2026-05-18)",
+        "P0", ["bake"],
+        recoverySignal === "absent",
+        recoverySignal === "PRESENT" ? "recovery.signal present — pg_control stale, next start will PANIC" : "");
+
+      // WAL segments — too many = unflushed state. Each segment defaults to 16 MB.
+      // After a CHECKPOINT, old segments are recycled. >2 segments = no recent CHECKPOINT.
+      const walSegs = parseInt(
+        (await exec(c, `ls ~/.gbrain/brain.pglite/pg_wal/ 2>/dev/null | grep -cE '^[0-9A-F]{24}$' || echo 0`)).stdout.trim() || "0",
+        10,
+      );
+      record("PGLite WAL ≤ 2 segments (recent CHECKPOINT before bake)",
+        "P0", ["bake"],
+        walSegs <= 2, `${walSegs} WAL segments — run CHECKPOINT before final close to compact`);
+    } else {
+      record("PGLite brain.pglite absent (gbrain never started on bake VM — acceptable for non-edge_city bake)",
+        "P2", ["bake"], true, "");
+    }
 
     // ─── 29. Bun-in-gateway-PATH (audit P1 follow-up) ─────────────────────
     // Map §11 known-risk. Gbrain's shebang is `#!/usr/bin/env bun` — without bun on the

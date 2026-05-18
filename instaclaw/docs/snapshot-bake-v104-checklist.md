@@ -1,10 +1,20 @@
-# Snapshot Bake v102 — May 23-25 — Checklist
+# Snapshot Bake v104 — May 23-25 — Checklist
 
 **Status:** PLAN. Bake window 2026-05-23 → 2026-05-25. Esmeralda go-live 2026-05-30.
-**Target snapshot label:** `instaclaw-base-v102-2026-05-23-gbrain-http` (or similar dated label)
+**Target snapshot label:** `instaclaw-base-v104-2026-05-23-gbrain-http` (or similar dated label)
 **Predecessor snapshot:** `private/38575292` (current `LINODE_SNAPSHOT_ID`)
-**Rollback window:** keep `private/38575292` available for 1 week after v102 ships (2026-06-01 minimum)
-**Single biggest delta vs v79:** gbrain v0.35.0.0 HTTP sidecar pre-installed
+**Rollback window:** keep `private/38575292` available for 1 week after v104 ships (2026-06-01 minimum)
+**Single biggest delta vs v79:** gbrain v0.35.0.0 HTTP sidecar pre-installed; v100-v104 reconciler fixes pre-applied
+
+> **Bake from a FRESH g6-nanode-1, never from a production VM.** See `snapshot-bake-runbook.md` §−1 for the reasoning. vm-050 (and any customer VM) is explicitly unsuitable: 24 GB disk > 6144 MB image cap, customer-specific identity baked in, partner state leakage, baked API keys, gbrain PGLite with 40 MB user memories. The canonical path provisions a fresh nanode from `LINODE_SNAPSHOT_ID`, reconciles it to the current manifest, installs gbrain via `install-gbrain.sh`, runs `_prebake-cleanup.sh`, validates with `_postbake-validation.ts --mode=bake`, then imagizes.
+
+> **Manifest deltas since the v102 plan was first drafted (2026-05-18):**
+> - v103 (commit `944068db`): `stepUfwRules` enforces `ufw allow 9100/tcp` fleet-wide (Rule 57). 2026-05-15 IR incident: 8 fleet VMs had node_exporter listening but no ufw rule — Prometheus scraped zero metrics for days. Validated by `_postbake-validation.ts` §30c.
+> - v104 (commit `0ab38404`): `ensureUfwAllow` helper. Closes the Rule 57 anti-pattern in `stepDispatchServer` so the dispatch port (8765/tcp) also heals on the otherwise-healthy redeploy path. Validated by `_postbake-validation.ts` §30c.
+
+> **NEW critical-path discoveries (must be addressed during bake):**
+> - **Stale-Node-path / NodeSource regression (vm-748 incident, 2026-05-18):** the bake VM MUST have `/etc/apt/sources.list.d/nodesource.sources` REMOVED and `apt-mark hold nodejs` applied. Gateway `ExecStart` must point to `/home/openclaw/.nvm/versions/node/v22.22.2/bin/node`, NOT `/usr/bin/node`. Validated by `_postbake-validation.ts` §30a + §30b.
+> - **PGLite pg_control staleness (gbrain terminal finding, 2026-05-18):** every gbrain sidecar that ran for more than a few hours leaves stale `pg_control`. SIGKILL without prior CHECKPOINT → next cold-boot from the snapshot panics with `invalid resource manager ID in checkpoint record`. The bake's gbrain-strip step (§3.6 below) must issue an explicit `CHECKPOINT` BEFORE `pkill --signal=SIGKILL gbrain.service`. Validated by `_postbake-validation.ts` §30k (`recovery.signal` absent + WAL ≤ 2 segments).
 
 This document is the operational checklist FOR the May 23-25 bake. The general process lives in CLAUDE.md "Snapshot Creation Process (COMPLETE REFERENCE)". This doc adds: the specific changes since v79, the new gbrain verification, pre-bake validation gates, rollback playbook, and a per-step time estimate.
 
@@ -208,16 +218,34 @@ ssh openclaw@$BAKE_VM_IP <<'EOF'
 # Wipe the per-VM bearer token + access_tokens row
 rm -f ~/.gbrain/openclaw-bearer-token.txt
 rm -f ~/.gbrain/openclaw-bearer-token.txt.*
-# Empty the access_tokens table (sidecar must be stopped first to release PGLite lock)
-systemctl --user kill --signal=SIGKILL gbrain.service
-systemctl --user stop gbrain.service
+
+# [v104 NEW] Issue an explicit CHECKPOINT BEFORE killing the sidecar.
+# Per gbrain terminal finding 2026-05-18: every gbrain sidecar running for
+# more than a few hours leaves stale pg_control on disk. SIGKILL without
+# prior CHECKPOINT → next cold-boot from snapshot panics with
+# "invalid resource manager ID in checkpoint record".
+# We call CHECKPOINT via the running sidecar's HTTP interface OR via direct
+# PGLite (preferred since the sidecar is about to be killed anyway).
 cd ~/gbrain
 bun -e "
 import { PGlite } from '@electric-sql/pglite';
 const db = new PGlite('/home/openclaw/.gbrain/brain.pglite');
 await db.waitReady;
+await db.query('CHECKPOINT');
+console.log('CHECKPOINT issued — pg_control fresh');
+await db.close();
+"
+
+# Now empty the access_tokens table (sidecar already released the lock from CHECKPOINT)
+systemctl --user kill --signal=SIGKILL gbrain.service
+systemctl --user stop gbrain.service
+bun -e "
+import { PGlite } from '@electric-sql/pglite';
+const db = new PGlite('/home/openclaw/.gbrain/brain.pglite');
+await db.waitReady;
 await db.query('DELETE FROM access_tokens');
-console.log('access_tokens cleared');
+await db.query('CHECKPOINT');
+console.log('access_tokens cleared + CHECKPOINT issued');
 await db.close();
 "
 # Also clear the marker page from Phase H verify
@@ -226,7 +254,8 @@ import { PGlite } from '@electric-sql/pglite';
 const db = new PGlite('/home/openclaw/.gbrain/brain.pglite');
 await db.waitReady;
 await db.query(\"DELETE FROM pages WHERE slug = '_gbrain-install-verify'\");
-console.log('marker page cleared');
+await db.query('CHECKPOINT');
+console.log('marker page cleared + final CHECKPOINT issued');
 await db.close();
 "
 # Leave gbrain.service stopped — first boot will start it, but it needs the per-VM token first
@@ -254,10 +283,15 @@ ssh openclaw@$BAKE_VM_IP "
   echo '--- access_tokens row count (should be 0) ---'
   cd ~/gbrain
   bun -e \"import {PGlite} from '@electric-sql/pglite'; const db=new PGlite('/home/openclaw/.gbrain/brain.pglite'); await db.waitReady; const r=await db.query('SELECT count(*) FROM access_tokens'); console.log(r.rows[0]); await db.close();\"
+  echo '--- [v104 NEW] PGLite pg_control freshness (gbrain term 2026-05-18) ---'
+  echo '  recovery.signal absent → last shutdown was clean:'
+  ls ~/.gbrain/brain.pglite/recovery.signal 2>&1
+  echo '  WAL segments (should be ≤ 2 — recent CHECKPOINT compacted older segs):'
+  ls ~/.gbrain/brain.pglite/pg_wal/ 2>/dev/null | grep -cE '^[0-9A-F]{24}$'
 "
 ```
 
-Expected: file absent, gbrain entry absent, service inactive + disabled, access_tokens count 0.
+Expected: file absent, gbrain entry absent, service inactive + disabled, access_tokens count 0, `recovery.signal` absent (`No such file or directory`), WAL segment count ≤ 2.
 
 ### §3.7 — Clean caches (5 min)
 
