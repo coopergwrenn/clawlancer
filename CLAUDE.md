@@ -2536,6 +2536,148 @@ Counterintuitively, `pkill -KILL -f 'gbrain.*serve'` (SIGKILL, used by `instacla
 
 **Detection rule**: grep for `systemctl.*stop.*gbrain` and `stopGateway` in any PR diff. Each callsite must have a code comment explaining why the post-stop state is acceptable (e.g., "wipe is the next step; corrupted state will be deleted anyway"). Empirical-test: vm-050 with the BROKEN preserved tarball at `~/.gbrain/brain.pglite.BROKEN-20260516T152817/` is the reference repro if anyone doubts this.
 
+#### 2026-05-18 nuance: SIGKILL is CONDITIONALLY safe, not unconditionally safe
+
+The original Rule 54 (above) said "SIGTERM corrupts, SIGKILL is recoverable." That's STILL TRUE — but the framing implied SIGKILL is always safe, and it isn't. The vm-050 incident on 2026-05-18 (separate from the 2026-05-16 SIGTERM incident that originally motivated Rule 54) revealed a **second** PGLite bug that affects SIGKILL too. This nuance is critical: future terminals reading "SIGKILL is safe" and reflexively SIGKILL-ing a long-running gbrain sidecar can produce an unrecoverable data dir.
+
+**Read this section in full before using SIGKILL on any gbrain process.**
+
+##### The pg_control staleness failure mode
+
+PGLite v0.4.3 (used by gbrain 0.35.0.0) does NOT automatically checkpoint the way vanilla Postgres does. Vanilla Postgres has `checkpoint_timeout=5min` by default — every 5 minutes, dirty buffer pages flush to disk AND `pg_control` (the WAL-recovery anchor) is rewritten with the latest checkpoint LSN. PGLite skips this autocheckpoint cycle. Empirical confirmation from vm-050 forensics 2026-05-18:
+
+```
+Test 6: 177,354 rows inserted over 60 seconds. pg_control mtime did NOT change.
+        WAL grew through one full segment without a single pg_control update.
+```
+
+So during normal sidecar operation, **the on-disk pg_control progressively desynchronizes from the actual WAL state**:
+- The sidecar's in-memory Postgres holds a current view (correct checkpoint LSN in shared_buffers)
+- The on-disk `pg_control` reflects only the LAST persisted checkpoint — typically the initial install or the last manual `CHECKPOINT` call
+- The WAL on disk has been written to AHEAD of pg_control's recorded checkpoint LSN
+- When PGLite recycles a WAL segment (after the in-memory checkpoint advances past it), the bytes at the old (stale) pg_control LSN can be ZEROED or OVERWRITTEN
+
+When the sidecar dies (SIGKILL or any other cause) and the next process tries to cold-start, Postgres reads pg_control, finds its recorded checkpoint LSN, attempts to read the checkpoint record at that LSN, finds invalid bytes (because the WAL location it points to was recycled while the sidecar was alive), and PANICs:
+
+```
+DEBUG:  InitPostgres
+NOTICE:  database system was shut down at <ancient timestamp>
+LOG:    invalid resource manager ID in checkpoint record
+PANIC:  could not locate a valid checkpoint record at 0/<old-LSN>
+Aborted()
+```
+
+This is **structurally identical** to the WASM Aborted() error from the 2026-05-16 SIGTERM incident. From the symptom (Aborted() at WASM init) the two bugs look identical, but the root cause is different — and so is the timing condition. The SIGTERM bug fires on every controlled stop; the SIGKILL/pg_control bug fires when (a) the sidecar has been alive long enough for the WAL to advance past pg_control's recorded LSN AND (b) the on-disk pg_control hasn't been refreshed via a manual CHECKPOINT.
+
+**The vm-050 2026-05-18 timeline confirms:**
+- 2026-05-16 15:46:59 — install-gbrain.sh wipe+reinit completed; pg_control written cleanly to disk
+- 2026-05-16 → 2026-05-18 — sidecar ran for ~2 days, WAL written through, pg_control on disk NEVER updated
+- 2026-05-18 16:09 — last WAL write before our intentional SIGKILL
+- 2026-05-18 16:11 — `systemctl stop` with `KillSignal=SIGKILL` fired (Rule 54 happy path)
+- 2026-05-18 16:11+ — restart attempt #1, restart attempt #2, ... restart counter at 271, each one hitting the same PANIC
+
+The data dir was unrecoverable to PGLite. Both v0.35.0.0 and v0.35.8.0 panicked identically. The recovery (below) required external tooling.
+
+##### When SIGKILL is actually safe
+
+SIGKILL is safe for PGLite if and only if **at least one of** the following holds:
+
+1. **pg_control was written to disk within the last ~5 minutes** before SIGKILL. Practically: the sidecar was just started (initial init writes pg_control), or a manual `CHECKPOINT` was just executed. Cold-start replays the small amount of WAL after the checkpoint, finds a valid record at the recorded LSN, succeeds.
+
+2. **The data dir is about to be wiped.** install-gbrain.sh's Phase E uses this pattern: SIGKILL → wipe `~/.gbrain/brain.pglite/` → fresh init. The post-SIGKILL corruption state never gets read; whatever's on disk is irrelevant.
+
+3. **The sidecar's WAL hasn't advanced past pg_control's checkpoint LSN.** Hard to verify externally; you'd need to read `pg_control` with `pg_controldata` and compare to the current WAL state. In practice, treat this as "unknown" and rely on condition 1 or 2.
+
+Outside those three conditions, SIGKILL on a long-running gbrain sidecar may produce an unrecoverable data dir. The risk grows with uptime.
+
+##### Recovery procedure (when SIGKILL has already left an unrecoverable dir)
+
+The vm-050 2026-05-18 recovery is the reference. Use it when you observe the WASM Aborted() error from a stopped sidecar, AND verify the pg_control timestamp via `pg_controldata` is from an earlier-than-expected time.
+
+1. **Confirm corruption is pg_control-class** (not the SIGTERM-class). Read `pg_control`:
+   ```bash
+   sudo apt-get install -y postgresql-17 2>&1 | tail -3   # one-time per VM
+   sudo systemctl stop postgresql@17-main; sudo systemctl disable postgresql@17-main  # we don't run a postgres cluster
+   /usr/lib/postgresql/17/bin/pg_controldata ~/.gbrain/brain.pglite | head -10
+   ```
+   - If `Database cluster state: shut down` AND `pg_control last modified` is hours/days old → this rule applies.
+   - If `Database cluster state: shutting down` or any in-flight state → likely a different bug; surface to operator.
+
+2. **Make an experimental copy** (never operate on the live dir directly):
+   ```bash
+   rsync -a ~/.gbrain/brain.pglite/ ~/brain-pglite-experiment/
+   rm -f ~/brain-pglite-experiment/postmaster.pid
+   ```
+
+3. **Run pg_resetwal -f on the COPY**:
+   ```bash
+   /usr/lib/postgresql/17/bin/pg_resetwal -n ~/brain-pglite-experiment   # dry run first
+   /usr/lib/postgresql/17/bin/pg_resetwal -f ~/brain-pglite-experiment   # commit
+   /usr/lib/postgresql/17/bin/pg_controldata ~/brain-pglite-experiment | head -5
+   # confirm: pg_control last modified is "now", checkpoint LSN is in a new segment file (...02 instead of ...01)
+   ```
+
+4. **Validate PGLite can open the reset copy** before touching the live dir:
+   ```bash
+   cd ~/gbrain
+   timeout 60 bun -e "
+     import { PGlite } from '@electric-sql/pglite';
+     const db = new PGlite(process.env.HOME + '/brain-pglite-experiment');
+     await db.waitReady;
+     console.log('OK:', (await db.query('SELECT count(*) FROM pages')).rows);
+     await db.close();
+   "
+   ```
+
+5. **Promote the experiment to live**:
+   ```bash
+   systemctl --user stop gbrain.service && systemctl --user reset-failed gbrain.service
+   mv ~/.gbrain/brain.pglite ~/.gbrain/brain.pglite.unrecoverable-$(date -u +%Y%m%dT%H%M%SZ)
+   mv ~/brain-pglite-experiment ~/.gbrain/brain.pglite
+   systemctl --user start gbrain.service
+   # wait for /health=200
+   ```
+
+6. **Verify gbrain MCP is functional**:
+   ```bash
+   BEARER=$(cat ~/.gbrain/openclaw-bearer-token.txt)
+   curl -sS -X POST http://127.0.0.1:3131/mcp \
+     -H "Authorization: Bearer $BEARER" -H "Content-Type: application/json" \
+     -H "Accept: application/json,text/event-stream" --max-time 15 \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"whoami","arguments":{}}}'
+   ```
+
+**Data loss expectations from pg_resetwal**: any committed transactions that lived only in WAL (not yet flushed to heap pages) are lost. For a small gbrain brain with few page edits, this is typically < 1 minute of writes. For a heavy-write brain, could be larger. The trade-off vs total loss is always worth it.
+
+**Quarantined dir** (`~/.gbrain/brain.pglite.unrecoverable-<ts>`) should be preserved on the VM for forensic purposes for at least 7 days. Delete only after confirming the recovered brain is stable.
+
+##### Why no periodic CHECKPOINT cron (yet)
+
+The obvious prevention is a cron that runs `CHECKPOINT;` every N minutes on each VM, keeping pg_control fresh on disk. This requires invoking `CHECKPOINT` against the running sidecar — but PGLite is file-locked single-writer and gbrain's MCP surface does NOT expose raw SQL (the `query` tool is semantic search, not a SQL passthrough). Empirically verified 2026-05-18:
+
+```
+gbrain mcp tools/call name=query arguments={sql: "CHECKPOINT;"}
+  → error: "query requires either `query` (text) or `image` (base64 bytes)"
+```
+
+The clean fix is upstream: add a `checkpoint` MCP admin tool to gbrain that runs `engine.executeRaw("CHECKPOINT")` inside the sidecar process. Draft issue + reproducer at `instaclaw/docs/upstream/gbrain-checkpoint-mcp-tool.md`. **Filed post-Edge Esmeralda 2026** (May 23-26 conference; we don't want to depend on upstream merge during a customer-facing event). Until then, this rule documents the recovery procedure as the standard mitigation.
+
+##### Banned patterns (in addition to the SIGTERM bans above)
+
+- Restarting gbrain.service on a long-running VM "to clear caches" or "as routine maintenance". You're rolling dice on whether pg_control is fresh enough. If you must restart, do it on a VM where the sidecar has been alive < 15 minutes (post-recent-restart is safest), OR ensure a CHECKPOINT happened first (the only current path: stop+rsync brain.pglite to a backup AND be ready to pg_resetwal if restart fails).
+- Operating on the assumption "Rule 54 says SIGKILL is safe, so I can SIGKILL anytime." The 2026-05-18 vm-050 incident proves otherwise. Always think about pg_control freshness BEFORE SIGKILL.
+- Adding a "restart gbrain to fix X" code path without first reading this section. Reconciler steps, watchdog crons, freeze flows, manifest updates — anything that calls `systemctl --user restart gbrain` or sends SIGKILL must confirm it isn't introducing a new vm-050.
+
+##### Detection extension to the existing grep rule
+
+When reviewing any code that touches gbrain.service or sends signals to gbrain processes, the PR description must answer:
+
+1. How long has the sidecar typically been running when this code path fires?
+2. If > 30 minutes uptime, what protects against the pg_control-staleness panic on next cold-start?
+3. Does the path include a recovery hook (pg_resetwal procedure) if cold-start fails?
+
+If the answers are "we don't know," "nothing," or "no" — the PR is incomplete. The cost of writing the answer is low; the cost of NOT writing it is another vm-050.
+
 ### Rule 55 — Marketing Copy & Launches Must Pass the Viral Playbooks
 
 **Keyword activation (non-negotiable).** When Cooper types any of these in any terminal — reconciler, changelog, ops, edge, this one, any other:
