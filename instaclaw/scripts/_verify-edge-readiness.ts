@@ -444,36 +444,55 @@ async function probeOne(vm: VmRow, upstreamHead: string | null, manifestVersion:
     for (const m of ws.matchAll(/(\w+)=(\d+)/g)) {
       fileSizes[m[1]] = parseInt(m[2], 10);
     }
+    // Guard against missing/malformed probe data — distinguish "no data" from
+    // "probe says all-zero". Without this, an SSH glitch silently passes the
+    // per-file gate (no entries → 0 over cap) and FAILS the total gate as P0
+    // (0 chars vs 60000 → totalStatus=FAIL). Both are misleading.
+    const probeOk = ws.length > 0 && fileSizes["total"] !== undefined;
     const total = fileSizes["total"] ?? 0;
 
-    // Per-file cap: each of the 8 bootstrap files must be ≤ 40000.
-    // (We don't enumerate each as a separate gate to avoid log noise — instead,
-    // the detail line names the offender if any.)
-    const perFileOver: string[] = [];
-    for (const [k, v] of Object.entries(fileSizes)) {
-      if (k === "total") continue;
-      if (v > PER_FILE_CAP) perFileOver.push(`${k}=${v}`);
-    }
-    gates.push({
-      name: `VM.bootstrap per-file ≤ ${PER_FILE_CAP} (bootstrapMaxChars)`,
-      severity: "P0",
-      status: perFileOver.length === 0 ? "PASS" : "FAIL",
-      detail: perFileOver.length === 0
-        ? `all 8 files under cap (SOUL=${fileSizes["soul"] ?? "?"} is largest)`
-        : `OVER PER-FILE CAP: ${perFileOver.join(", ")}`,
-    });
+    if (!probeOk) {
+      gates.push({
+        name: `VM.bootstrap per-file ≤ ${PER_FILE_CAP} (bootstrapMaxChars)`,
+        severity: "P1",
+        status: "WARN",
+        detail: `probe data missing — ssh probe did not emit workspace_bootstrap line (raw='${ws.slice(0, 60)}')`,
+      });
+      gates.push({
+        name: `VM.bootstrap total ≤ ${TOTAL_CAP} (bootstrapTotalMaxChars)`,
+        severity: "P1",
+        status: "WARN",
+        detail: `probe data missing — see per-file gate detail`,
+      });
+    } else {
+      // Per-file cap: each of the 8 bootstrap files must be ≤ 40000.
+      // Detail line names any offenders.
+      const perFileOver: string[] = [];
+      for (const [k, v] of Object.entries(fileSizes)) {
+        if (k === "total") continue;
+        if (v > PER_FILE_CAP) perFileOver.push(`${k}=${v}`);
+      }
+      gates.push({
+        name: `VM.bootstrap per-file ≤ ${PER_FILE_CAP} (bootstrapMaxChars)`,
+        severity: "P0",
+        status: perFileOver.length === 0 ? "PASS" : "FAIL",
+        detail: perFileOver.length === 0
+          ? `all 8 files under cap (SOUL=${fileSizes["soul"] ?? "?"} is largest)`
+          : `OVER PER-FILE CAP: ${perFileOver.join(", ")}`,
+      });
 
-    // Total cap: sum across all bootstrap files must be ≤ 60000.
-    const totalStatus: Status =
-      total > 0 && total <= TOTAL_CAP * 0.85 ? "PASS" : // <51K — comfortable
-      total > 0 && total <= TOTAL_CAP ? "WARN" :         // 51K-60K — approaching cap
-      "FAIL";                                             // >60K — actual truncation
-    gates.push({
-      name: `VM.bootstrap total ≤ ${TOTAL_CAP} (bootstrapTotalMaxChars)`,
-      severity: totalStatus === "FAIL" ? "P0" : "P1",
-      status: totalStatus,
-      detail: `${total} chars vs cap ${TOTAL_CAP} (headroom ${TOTAL_CAP - total})`,
-    });
+      // Total cap: sum across all bootstrap files must be ≤ 60000.
+      const totalStatus: Status =
+        total <= TOTAL_CAP * 0.85 ? "PASS" : // ≤51K — comfortable
+        total <= TOTAL_CAP ? "WARN" :         // 51K-60K — approaching cap
+        "FAIL";                                // >60K — actual truncation
+      gates.push({
+        name: `VM.bootstrap total ≤ ${TOTAL_CAP} (bootstrapTotalMaxChars)`,
+        severity: totalStatus === "FAIL" ? "P0" : "P1",
+        status: totalStatus,
+        detail: `${total} chars vs cap ${TOTAL_CAP} (headroom ${TOTAL_CAP - total})`,
+      });
+    }
 
   } catch (e: unknown) {
     try { ssh.dispose(); } catch {}

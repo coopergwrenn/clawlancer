@@ -356,10 +356,23 @@ async function run() {
     // SOUL.md OPENCLAW_CACHE_BOUNDARY marker (v72 — load-bearing for 1000x cheaper edits)
     record("SOUL.md contains OPENCLAW_CACHE_BOUNDARY marker (v72)", "P1", ["bake", "test"],
       /OPENCLAW_CACHE_BOUNDARY/.test(soul), "");
-    // SOUL.md individual size — playbook hard-stop is "trim if >30K chars"
+    // SOUL.md size — full enforcement against BOOTSTRAP_MAX_CHARS=40000 (per-file cap)
+    // happens in §4 above, where every bootstrap file gets a P0 gate. This block
+    // adds two early-warning P2 signals so operators see SOUL approaching the cap
+    // before it actually truncates. Previously this was a P1 ≤35000 gate that
+    // conflicted with the new §4 P0 ≤40000 gate — SOUL.md naturally grew to
+    // 35689 over v82→v105, which would have caused every postbake run to report
+    // a spurious P1 fail. The OpenClaw Upgrade Playbook's old "30K hard stop"
+    // referenced the pre-2026-05-11 30000-char limit; BOOTSTRAP_MAX_CHARS was
+    // raised to 40000 on 2026-05-11.
     const soulBytes = parseInt((await exec(c, `wc -c < ~/.openclaw/workspace/SOUL.md 2>/dev/null`)).stdout.trim() || "0", 10);
-    record("SOUL.md size sane (≤35000 bytes — playbook warns above 30K)", "P1", ["bake", "test"],
-      soulBytes > 0 && soulBytes <= 35000, `${soulBytes} bytes`);
+    if (soulBytes > 35000 && soulBytes <= 40000) {
+      record(
+        "SOUL.md approaching bootstrapMaxChars per-file cap (>35000, ≤40000)",
+        "P2", ["bake", "test"], false,
+        `${soulBytes} bytes — ${40000 - soulBytes} headroom before truncation`,
+      );
+    }
 
     // MEMORY.md is empty/template
     const memory = (await exec(c, `cat ~/.openclaw/workspace/MEMORY.md 2>/dev/null`)).stdout;
