@@ -65,6 +65,17 @@ const STUCK_HOURS_WARN = 1;
 /** Hours unhealthy before subject is elevated to P1-shape. */
 const STUCK_HOURS_CRITICAL = 24;
 /**
+ * health-check runs every 2 min, so fail_count × 2min ≈ time stuck.
+ * fail_count ≥ 30 ≈ 1+ hour continuously unhealthy. This is the correct
+ * signal — `last_health_check` is bumped on EVERY probe regardless of
+ * outcome, so `last_health_check < (now - 1h)` is structurally never
+ * true for actively-probed VMs. The 2026-05-17 cron's first-version
+ * filter on `last_health_check` was the reason vm-748 went 7+ days
+ * unalerted despite fail_count climbing 0 → 1340.
+ */
+const FAIL_COUNT_FOR_STUCK_WARN = Math.ceil((STUCK_HOURS_WARN * 60) / 2);     // 30
+const FAIL_COUNT_FOR_STUCK_CRITICAL = Math.ceil((STUCK_HOURS_CRITICAL * 60) / 2); // 720
+/**
  * Bucket size for dedup keys. While a VM stays stuck, it re-alerts every
  * DEDUP_WINDOW_HOURS instead of once-per-incident. 6h is the right trade-off:
  * frequent enough to surface 4-day-class outages (would have alerted ~16
@@ -83,11 +94,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const supabase = getSupabase();
   const now = new Date();
-  const stuckCutoff = new Date(
-    now.getTime() - STUCK_HOURS_WARN * 3600_000,
-  ).toISOString();
 
-  // Candidates: paying-customer VMs that are unhealthy/unknown for >1h.
+  // Candidates: paying-customer VMs that have been unhealthy/unknown for >1h.
+  // Use health_fail_count as the stuck-time signal — see comment on
+  // FAIL_COUNT_FOR_STUCK_WARN for why last_health_check is the wrong column.
   const { data: candidates, error } = await supabase
     .from("instaclaw_vms")
     .select(
@@ -96,9 +106,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     .eq("status", "assigned")
     .eq("provider", "linode")
     .in("health_status", ["unhealthy", "unknown"])
-    .lt("last_health_check", stuckCutoff)
+    .gte("health_fail_count", FAIL_COUNT_FOR_STUCK_WARN)
     .not("assigned_to", "is", null)
-    .order("last_health_check", { ascending: true });
+    .order("health_fail_count", { ascending: false });
 
   if (error) {
     logger.error("stuck-unhealthy-customer-alert: query failed", {
@@ -138,10 +148,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   for (const vm of candidates) {
     const user = userMap.get(vm.assigned_to);
-    const hoursStuck = vm.last_health_check
-      ? (now.getTime() - new Date(vm.last_health_check).getTime()) / 3600_000
-      : -1;
-    const isCritical = hoursStuck >= STUCK_HOURS_CRITICAL;
+    // Derive hoursStuck from fail_count (× 2-min health-check cadence).
+    // last_health_check is always-fresh and can't be used as a stuck-time
+    // signal (was the bug that left vm-748 silent 7+ days).
+    const hoursStuck = ((vm.health_fail_count ?? 0) * 2) / 60;
+    const isCritical = (vm.health_fail_count ?? 0) >= FAIL_COUNT_FOR_STUCK_CRITICAL;
     if (isCritical) critical++;
 
     // Dedup: rotating 6-hour bucket. Same VM in two consecutive crons within
