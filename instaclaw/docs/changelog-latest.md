@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-18
 
-Window: `04f43a45cca0c6ecc93d1aab01682d021876ddb7` → `HEAD` (HEAD = `b3a7fee3`)
+Window: `b3a7fee3b0ac0a7dd4696d9bc3f4320aeb0b2f23` → `HEAD` (HEAD = `0c92a7f7`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: b3a7fee3b0ac0a7dd4696d9bc3f4320aeb0b2f23 -->
+<!-- LAST_GENERATED_SHA: 0c92a7f73b68cf48ac57c2dc55e3bb582cb5839e -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `b3a7fee3` 2026-05-18 — fix(coverage): drop hardcoded ix_ prefix from coverage display [1 files] _(ai-assisted)_
-- `5b231fea` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `89e9ffb7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `0c92a7f7` 2026-05-18 — docs(prd): Phase 0 spike report — Codex OAuth verified from Linode us-east [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `b3a7fee3` 2026-05-18 — fix(coverage): drop hardcoded ix_ prefix from coverage display [1 files] _(ai-assisted)_
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -43,17 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `5b231fea` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `89e9ffb7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `0c92a7f7` 2026-05-18 — docs(prd): Phase 0 spike report — Codex OAuth verified from Linode us-east [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `b3a7fee3` 2026-05-18 — fix(coverage): drop hardcoded ix_ prefix from coverage display
+- `0c92a7f7` 2026-05-18 — docs(prd): Phase 0 spike report — Codex OAuth verified from Linode us-east
 
 ## Appendix — every commit (chronological)
 
-- `5b231fea` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `b3a7fee3` 2026-05-18 — fix(coverage): drop hardcoded ix_ prefix from coverage display [1 files] _(ai-assisted)_
+- `89e9ffb7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `0c92a7f7` 2026-05-18 — docs(prd): Phase 0 spike report — Codex OAuth verified from Linode us-east [1 files] _(ai-assisted)_
