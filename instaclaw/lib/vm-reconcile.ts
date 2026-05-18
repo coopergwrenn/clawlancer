@@ -5828,12 +5828,29 @@ async function stepGatewayWatchdogTimer(
  */
 async function stepDispatchServer(
   ssh: SSHConnection,
-  vm: VMRecord,
+  vm: VMRecord & { partner?: string | null },
   result: ReconcileResult,
   dryRun: boolean,
   strict: boolean,
   isPausedState: boolean,
 ): Promise<void> {
+  // Rule 39 — dispatch is only customer-facing on edge_city VMs (the
+  // surface is the World mini app's dispatch mode for remote computer
+  // control). On every other VM, dispatch is installed for fleet
+  // consistency, but a failed install or probe doesn't affect any user.
+  // Downgrade failures to warnings on non-edge VMs so cv-bump can
+  // proceed; the heal step is idempotent and retries next cron tick.
+  //
+  // Add other partners to the equality check if/when they ship a
+  // feature that consumes dispatch.
+  const isDispatchCustomerFacing = vm.partner === "edge_city";
+  const recordDispatchFailure = (msg: string): void => {
+    if (isDispatchCustomerFacing) {
+      recordHealError(result, strict, msg);
+    } else {
+      recordHealWarning(result, `${msg} [non-edge_city — warning, not error]`);
+    }
+  };
   try {
     const probe = await ssh.execCommand(
       `${HEAL_DBUS_PREFIX} && ` +
@@ -5844,7 +5861,7 @@ async function stepDispatchServer(
     );
     const m = probe.stdout.match(/unit=(\d) active=(\d) port=(\d)/);
     if (!m) {
-      recordHealError(result, strict, `dispatch-server: probe parse failed: ${probe.stdout.slice(0, 120)}`);
+      recordDispatchFailure(`dispatch-server: probe parse failed: ${probe.stdout.slice(0, 120)}`);
       return;
     }
     const [hasUnit, isActive, isListening] = [m[1] === "1", m[2] === "1", m[3] === "1"];
@@ -5957,12 +5974,12 @@ async function stepDispatchServer(
     } else if (r.stdout.includes("PORT_OK")) {
       result.fixed.push("dispatch-server: redeployed + active + listening on :8765");
     } else if (r.stdout.includes("NO_NODE")) {
-      recordHealError(result, strict, "dispatch-server: NVM node binary not found");
+      recordDispatchFailure("dispatch-server: NVM node binary not found");
     } else {
-      recordHealError(result, strict, `dispatch-server: redeploy failed: ${r.stdout.slice(-200)}`);
+      recordDispatchFailure(`dispatch-server: redeploy failed: ${r.stdout.slice(-200)}`);
     }
   } catch (err) {
-    recordHealError(result, strict, `dispatch-server: ${String(err).slice(0, 200)}`);
+    recordDispatchFailure(`dispatch-server: ${String(err).slice(0, 200)}`);
   }
 }
 
