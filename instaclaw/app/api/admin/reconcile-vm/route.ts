@@ -104,6 +104,12 @@ export async function POST(req: NextRequest) {
       manifestVersion: VM_MANIFEST.version,
       fixed: result.fixed,
       alreadyCorrect: result.alreadyCorrect,
+      // 2026-05-18: surfacing warnings + errors in the response so canary
+      // scripts (and ops triage) can see what stepIndexProvision / other
+      // Rule-39 warning-only paths reported. Pre-this-fix the response only
+      // returned fixed/alreadyCorrect, hiding warning messages from callers.
+      warnings: result.warnings,
+      errors: result.errors,
       strictErrors: result.strictErrors,
       canaryHealthy: result.canaryHealthy,
       wouldAdvanceConfigVersion,
