@@ -119,6 +119,7 @@ const LOCK_TTL_SECONDS = 660; // > maxDuration with 60s headroom (was 360 when m
 // completely stuck. Option C (decouple secret_version to its own cron)
 // is the proper structural fix and is filed as a follow-up.
 const CONFIG_AUDIT_BATCH_SIZE = 1;
+// nft cache-bust auto-touch (vm-manifest.ts changed): 2026-05-18 17:22 UTC
 // nft cache-bust auto-touch (vm-manifest.ts changed): 2026-05-18 17:06 UTC
 // nft cache-bust auto-touch (vm-manifest.ts changed): 2026-05-18 16:10 UTC
 // nft cache-bust auto-touch (vm-manifest.ts changed): 2026-05-17 22:38 UTC
@@ -403,7 +404,7 @@ export async function GET(req: NextRequest) {
     //   suspended VMs, which is the only remaining caller of that path).
     const { data: staleVms, error: queryErr } = await supabase
       .from("instaclaw_vms")
-      .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, secret_version, tier, api_mode, user_timezone, strict_hold_streak, partner, reconcile_consecutive_failures")
+      .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, secret_version, tier, api_mode, user_timezone, strict_hold_streak, partner, reconcile_consecutive_failures, index_user_id, index_api_key, index_provisioned_at")
       .eq("status", "assigned")
       .eq("provider", "linode")
       .eq("health_status", "healthy")

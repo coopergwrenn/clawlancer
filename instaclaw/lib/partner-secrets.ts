@@ -192,6 +192,120 @@ async function verifyEdgeosBearer(value: string): Promise<VerifierResult> {
 }
 
 /**
+ * INDEX_NETWORK_ID — UUID of the Edge City experiment network.
+ *
+ * No network call — this is a static value defined when the network was
+ * created in the Index dashboard. Shape check (36-char UUID v4 format with
+ * hyphens) is the only validation that makes sense locally; if the UUID is
+ * shape-valid but points at a non-existent network, the
+ * INDEX_NETWORK_MASTER_KEY verifier will catch that via 403 on signup.
+ *
+ * Empirical: the Edge City network ID is fee18edc-1e60-4b13-b8c8-20e6f6ed1acb
+ * (verified in PRD §6 and the partner-handoff doc 2026-05-18). Shape check
+ * accepts ANY valid UUID — we don't pin the exact value here to keep this
+ * file partner-agnostic for the future Eclipse / Devcon / etc. expansions.
+ */
+async function verifyIndexNetworkId(value: string): Promise<VerifierResult> {
+  if (!value) return { ok: false, status: "not_configured" };
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+    return {
+      ok: false,
+      status: "shape_invalid",
+      error: "INDEX_NETWORK_ID must be a UUID. Got " + value.slice(0, 12) + "…",
+    };
+  }
+  return { ok: true, status: "ok" };
+}
+
+/**
+ * INDEX_NETWORK_MASTER_KEY — master x-api-key for /api/networks/:id/signup.
+ *
+ * Verify by hitting `/api/networks/<id>/signup` with a deliberately invalid
+ * email (no `@`). That triggers Index's 400 "invalid email" path BEFORE the
+ * auth check on a valid request — but the auth check fires FIRST in Index's
+ * stack, so a wrong master key returns 401/403 immediately and a right
+ * master key returns 400 (invalid body). We treat 400 as auth-pass.
+ *
+ * Why we don't just use a real email: signup with a real email rotates the
+ * apiKey for that user, per Yanek's idempotency contract. We'd burn the
+ * agent's working key on every verifier run. Sending a deliberately bad
+ * email avoids that side effect while still exercising the auth layer.
+ *
+ * Master keys don't have a canonical prefix per Yanek's guide — they're
+ * issued at network-creation time and stored once. The shape check is just
+ * "non-empty + non-whitespace".
+ */
+async function verifyIndexMasterKey(value: string): Promise<VerifierResult> {
+  if (!value || value.trim().length < 16) {
+    return value
+      ? { ok: false, status: "shape_invalid", error: "INDEX master key suspiciously short" }
+      : { ok: false, status: "not_configured" };
+  }
+  const networkId = process.env.INDEX_NETWORK_ID;
+  if (!networkId) {
+    // Can't run the auth probe without the network ID. Shape-only pass is
+    // the best we can do; verifyIndexNetworkId reports the missing pair.
+    return { ok: true, status: "ok" };
+  }
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+    const res = await fetch(
+      `https://protocol.index.network/api/networks/${networkId}/signup`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": value,
+        },
+        // Deliberately invalid: no `@`. Triggers 400 on a valid master key,
+        // 401/403 on an invalid one (auth checked before body validation).
+        body: JSON.stringify({ email: "verify-probe-not-real" }),
+        signal: ctrl.signal,
+      },
+    );
+    clearTimeout(t);
+    if (res.status === 401 || res.status === 403) {
+      const bodyText = await res.text().catch(() => "");
+      return {
+        ok: false,
+        status: "auth_failed",
+        http_code: res.status,
+        body_prefix: bodyText.slice(0, 200),
+      };
+    }
+    if (res.status === 400) {
+      // Auth passed, body rejected (as designed). Master key is valid.
+      return { ok: true, status: "ok", http_code: res.status };
+    }
+    if (res.status >= 500) {
+      return { ok: false, status: "endpoint_5xx", http_code: res.status };
+    }
+    if (res.status === 200 || res.status === 201) {
+      // Unexpected success on a deliberately invalid email — Index may have
+      // changed their validation order. Not a hard failure (auth obviously
+      // worked) but worth surfacing so we know to update the probe.
+      return {
+        ok: true,
+        status: "ok",
+        http_code: res.status,
+        body_prefix: "(unexpected 2xx on probe — check Index API changelog)",
+      };
+    }
+    const bodyText = await res.text().catch(() => "");
+    return {
+      ok: false,
+      status: "endpoint_other",
+      http_code: res.status,
+      body_prefix: bodyText.slice(0, 200),
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, status: "unreachable", error: msg.slice(0, 200) };
+  }
+}
+
+/**
  * BANKR_PARTNER_KEY — Bankr's partner-API key for wallet provisioning.
  *
  * Placeholder: when Igor (Bankr) delivers the real partner key, replace
@@ -240,6 +354,18 @@ export const SECRET_VERIFIERS: SecretVerifier[] = [
     envKey: "BANKR_PARTNER_KEY",
     label: "Bankr partner-API key (shape only — endpoint TBD)",
     verify: verifyBankrPartnerKey,
+  },
+  {
+    envKey: "INDEX_NETWORK_ID",
+    label: "Index Network — Edge City experiment network UUID",
+    partnerGate: "edge_city",
+    verify: verifyIndexNetworkId,
+  },
+  {
+    envKey: "INDEX_NETWORK_MASTER_KEY",
+    label: "Index Network — master signup x-api-key",
+    partnerGate: "edge_city",
+    verify: verifyIndexMasterKey,
   },
 ];
 

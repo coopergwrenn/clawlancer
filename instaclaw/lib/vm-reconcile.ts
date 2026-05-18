@@ -474,6 +474,16 @@ export async function reconcileVM(
     currentStep = "gbrain";
     await stepGbrain(ssh, vm, result, dryRun, strict);
 
+    // ── Step 1d: Index Network provisioning (partner=edge_city only) ──
+    // Adjacent to gbrain because both are partner-gated MCP-side-effects on
+    // the agent runtime. Warnings-only on failure per Rule 39 — Index is
+    // optional and a 4xx/5xx must not block cv-bump. Per Yanek's idempotency
+    // contract, signup rotates the apiKey on every call, so this step
+    // short-circuits hard on local-cache presence (instaclaw_vms.index_api_key).
+    // PRD: docs/prd/village-index-network-integration.md §7.
+    currentStep = "index";
+    await stepIndexProvision(ssh, vm, result, dryRun, strict);
+
     // ── Step 2: Files ──
     currentStep = "files";
     await stepFiles(ssh, vm, manifest, result, dryRun);
@@ -1772,6 +1782,340 @@ async function stepGbrain(
     stdoutLength: stdout.length,
     stdoutTail: stdout.slice(-200),
   });
+}
+
+/**
+ * stepIndexProvision — wire the Index Network MCP server onto an edge_city
+ * agent's runtime (PRD: docs/prd/village-index-network-integration.md §7).
+ *
+ * Gates the entire path on `vm.partner === 'edge_city'` — Index is a per-event
+ * partnership and the network ID we hold is bound to Edge Esmeralda 2026.
+ *
+ * Idempotency (READ this — it's load-bearing):
+ *
+ *   The Index signup API does NOT have its own idempotency layer. Per Yanek's
+ *   integration guide, EVERY call to /signup issues a fresh apiKey and
+ *   REVOKES the previous one for the same user+network pair. If this step
+ *   called signup on every reconcile tick, it would invalidate the in-use
+ *   key on every cron run.
+ *
+ *   The local cache IS the idempotency layer. We short-circuit on
+ *   `vm.index_user_id && vm.index_api_key` and never hit the network in the
+ *   steady state. Rotation = NULL the columns, let the next reconcile re-sign.
+ *
+ * Failure posture (Rule 39):
+ *
+ *   Index integration is OPTIONAL — an edge_city agent that lacks the Index
+ *   MCP server still works fine for Telegram + gbrain + bankr. Every failure
+ *   path in this step pushes to `result.warnings` via recordHealWarning, NOT
+ *   to `result.errors`. cv-bump is never held by Index issues. This is the
+ *   same posture as stepNodeExporter, stepGatewayWatchdogTimer, etc.
+ *
+ * Rule 32 — MCP servers ARE hot-reloadable. After `openclaw mcp set index`,
+ * the runtime picks up the new server on the next gateway tick. No gateway
+ * restart needed (the gbrain installer's Phase G confirmed this empirically).
+ * We still verify-after-set (Rule 10) by re-reading the on-disk transport.
+ */
+async function stepIndexProvision(
+  ssh: SSHConnection,
+  vm: VMRecord & {
+    name?: string | null;
+    partner?: string | null;
+    assigned_to?: string | null;
+    index_user_id?: string | null;
+    index_api_key?: string | null;
+    index_provisioned_at?: string | null;
+  },
+  result: ReconcileResult,
+  dryRun: boolean,
+  strict: boolean,
+): Promise<void> {
+  // ── Gate 1: partner allowlist ──
+  // Only edge_city agents get the Index MCP for Edge Esmeralda 2026. Future
+  // events (Eclipse, Devcon) would get their own network IDs and either a
+  // sibling step or an allowlist expansion here.
+  if (vm.partner !== "edge_city") return;
+
+  // ── Gate 2: strict-mode bypass ──
+  // signup is a third-party HTTP call (15s timeout). Don't burn strict's
+  // 180s budget on it — the non-strict reconcile-fleet cron picks it up
+  // within the next 3 min anyway. Mirrors stepGbrain.
+  if (strict) return;
+
+  // ── Gate 3: env config present ──
+  // Local dev / preview deploys legitimately won't have INDEX_NETWORK_ID +
+  // INDEX_NETWORK_MASTER_KEY. Silent skip there. In production we emit a
+  // single warning so the operator notices if the env var ever drops.
+  const indexEnv = getIndexEnv();
+  if (!indexEnv) {
+    if (process.env.VERCEL_ENV === "production") {
+      recordHealWarning(
+        result,
+        "index: INDEX_NETWORK_ID or INDEX_NETWORK_MASTER_KEY not configured in this env",
+      );
+    }
+    return;
+  }
+
+  // ── Gate 4: VM is assigned ──
+  // Index signup is keyed by attendee email; without an owner we have no email.
+  if (!vm.assigned_to) {
+    recordHealWarning(result, "index: VM has no assigned_to; cannot provision");
+    return;
+  }
+
+  // ── Idempotency check — local cache only, never call signup if we already
+  //    have a key. See header comment on key rotation. ──
+  const hasLocalCreds = Boolean(
+    vm.index_user_id && vm.index_api_key && vm.index_provisioned_at,
+  );
+
+  // ── Probe disk for current MCP transport. Three states: ──
+  //    (a) on-disk transport = streamable-http        → in sync
+  //    (b) on-disk key missing or different transport → drift; need to write
+  //    (c) probe fails (jq missing / openclaw.json gone) → fail-soft warning
+  let diskOk = false;
+  try {
+    const probe = await ssh.execCommand(
+      `jq -r '.mcp.servers.index.transport // ""' "$HOME/.openclaw/openclaw.json" 2>/dev/null`,
+    );
+    diskOk = (probe.stdout || "").trim() === "streamable-http";
+  } catch (e: unknown) {
+    recordHealWarning(
+      result,
+      `index: disk probe failed: ${String((e as Error)?.message ?? e).slice(0, 150)}`,
+    );
+    return;
+  }
+
+  if (hasLocalCreds && diskOk) {
+    result.alreadyCorrect.push("index: provisioned + MCP on disk");
+    return;
+  }
+
+  if (dryRun) {
+    const reason = hasLocalCreds ? "MCP block missing on disk (drift)" : "no local creds";
+    result.fixed.push(`[dry-run] index: would provision (${reason})`);
+    return;
+  }
+
+  // ── Load owner profile for the signup body ──
+  const sb = getSupabase();
+  const { data: user, error: userErr } = await sb
+    .from("instaclaw_users")
+    .select("email, name, telegram_handle")
+    .eq("id", vm.assigned_to)
+    .maybeSingle();
+
+  if (userErr || !user?.email) {
+    recordHealWarning(
+      result,
+      `index: user lookup failed (assigned_to=${vm.assigned_to.slice(0, 8)}): ${userErr?.message ?? "no email"}`,
+    );
+    return;
+  }
+
+  // ── Decide path: full signup or MCP-only rewrite ──
+  // If we already have a valid key (cached locally) but the MCP block drifted
+  // off disk (config rollback, manual edit, fresh snapshot bake), we just
+  // re-write the MCP block. Calling signup would revoke the still-good key.
+  let apiKey: string;
+  let indexUserId: string;
+  let signupCalled = false;
+
+  if (hasLocalCreds) {
+    apiKey = vm.index_api_key!;
+    indexUserId = vm.index_user_id!;
+    logger.info("[reconcile] index: MCP drift detected, rewriting block (no signup)", {
+      vmId: vm.id,
+      indexUserIdPrefix: indexUserId.slice(0, 8),
+    });
+  } else {
+    // Build socials defensively. Telegram is the only social we store.
+    const socials: Array<{ label: string; value: string }> = [];
+    if (user.telegram_handle && typeof user.telegram_handle === "string") {
+      socials.push({ label: "telegram", value: user.telegram_handle });
+    }
+
+    let signupResp;
+    try {
+      signupResp = await callIndexSignup(
+        {
+          email: user.email,
+          name: user.name ?? undefined,
+          socials: socials.length > 0 ? socials : undefined,
+        },
+        indexEnv,
+      );
+    } catch (err: unknown) {
+      if (err instanceof IndexSignupError && err.retryable) {
+        // One retry with 2s backoff. Index 5xx is rare but the platform IS
+        // bursty during pre-event onboarding waves.
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          signupResp = await callIndexSignup(
+            {
+              email: user.email,
+              name: user.name ?? undefined,
+              socials: socials.length > 0 ? socials : undefined,
+            },
+            indexEnv,
+          );
+        } catch (err2: unknown) {
+          recordHealWarning(
+            result,
+            `index: signup retry failed: ${String((err2 as Error)?.message ?? err2).slice(0, 200)}`,
+          );
+          await markIndexFailure(sb, vm.id);
+          return;
+        }
+      } else {
+        recordHealWarning(
+          result,
+          `index: signup failed: ${String((err as Error)?.message ?? err).slice(0, 200)}`,
+        );
+        await markIndexFailure(sb, vm.id);
+        return;
+      }
+    }
+    apiKey = signupResp.apiKey;
+    indexUserId = signupResp.user.id;
+    signupCalled = true;
+  }
+
+  // ── Defense-in-depth shell-arg validation ──
+  // Index issues `ix_<base64ish>` keys. Reject anything containing shell
+  // metacharacters even though we'll send the JSON via stdin (so it shouldn't
+  // matter) — fail loud rather than rely on the upload path being safe.
+  if (!/^ix_[A-Za-z0-9_\-=.]+$/.test(apiKey)) {
+    recordHealWarning(
+      result,
+      `index: signup returned unexpected apiKey shape (prefix=${apiKey.slice(0, 5)})`,
+    );
+    return;
+  }
+
+  // ── Persist new credentials BEFORE writing to disk. ──
+  // If we crash between writing DB and writing disk, the next reconcile reads
+  // DB-has-key + disk-missing → fall through to the rewrite-only branch above
+  // (no second signup, no key rotation). Reverse order (disk first) would
+  // produce a key on disk that we have no record of → on the next reconcile
+  // we'd call signup, get a fresh key, and the on-disk key would become orphaned.
+  if (signupCalled) {
+    const { error: dbErr } = await sb
+      .from("instaclaw_vms")
+      .update({
+        index_user_id: indexUserId,
+        index_api_key: apiKey,
+        index_provisioned_at: new Date().toISOString(),
+        index_provisioned_failed_at: null,
+      })
+      .eq("id", vm.id);
+    if (dbErr) {
+      recordHealWarning(result, `index: DB write failed: ${dbErr.message}`);
+      return;
+    }
+  }
+
+  // ── Write the MCP block via openclaw mcp set (atomic, hot-reload-trigger). ──
+  // Upload JSON to a tempfile via stdin, then `openclaw mcp set index "$(cat file)"`.
+  // Mirrors install-gbrain.sh Phase G2/G4. Tempfile path uses vm.id to avoid the
+  // concurrent-worker `Date.now()` race (the strip-thinking fleet-push lesson).
+  const mcpJson = JSON.stringify(buildIndexMcpConfig(apiKey));
+  const tmpPath = `/tmp/index-mcp-${vm.id}.json`;
+
+  const upload = await ssh.execCommand(`cat > ${tmpPath} && chmod 600 ${tmpPath}`, {
+    stdin: mcpJson,
+  });
+  if (upload.code !== 0) {
+    recordHealWarning(
+      result,
+      `index: upload mcp.json failed (exit=${upload.code}): ${(upload.stderr || "").slice(0, 150)}`,
+    );
+    return;
+  }
+
+  const setCmd = await ssh.execCommand(
+    `${NVM_PREAMBLE} && openclaw mcp set index "$(cat ${tmpPath})" 2>&1; SET_RC=$?; rm -f ${tmpPath}; exit $SET_RC`,
+  );
+  if (setCmd.code !== 0) {
+    recordHealWarning(
+      result,
+      `index: openclaw mcp set failed (exit=${setCmd.code}): ${(setCmd.stdout || "").slice(-200)}`,
+    );
+    return;
+  }
+
+  // ── Verify-after-set (Rule 10): re-read on-disk transport. ──
+  // mcp.servers.* is hot-reloadable (Rule 32), but the on-disk write happens
+  // synchronously; we don't need to wait for the hot-reload window before this
+  // check. Hot-reload affects the running process, not the file on disk.
+  const verify = await ssh.execCommand(
+    `jq -r '.mcp.servers.index.transport // "MISSING"' "$HOME/.openclaw/openclaw.json"`,
+  );
+  const verifyTransport = (verify.stdout || "").trim();
+  if (verifyTransport !== "streamable-http") {
+    recordHealWarning(
+      result,
+      `index: verify-after-set failed (disk transport=${verifyTransport.slice(0, 50)})`,
+    );
+    return;
+  }
+
+  // ── Lifecycle log forensic trail (best-effort, never fatal). ──
+  try {
+    await sb.from("instaclaw_vm_lifecycle_log").insert({
+      vm_id: vm.id,
+      vm_name: vm.name ?? null,
+      ip_address: vm.ip_address,
+      user_id: vm.assigned_to,
+      user_email: user.email,
+      subscription_status: null,
+      credit_balance: 0,
+      action: "index_provisioned",
+      reason: signupCalled
+        ? `index: signup ok, MCP wired (index_user_id=${indexUserId.slice(0, 8)}..., key=ix_${apiKey.slice(3, 8)}...)`
+        : `index: MCP drift recovered (no signup, key unchanged)`,
+      provider_server_id: null,
+    });
+  } catch (logErr: unknown) {
+    // Non-fatal — the provisioning itself succeeded.
+    logger.warn("[reconcile] index: lifecycle log insert failed", {
+      vmId: vm.id,
+      error: String((logErr as Error)?.message ?? logErr).slice(0, 150),
+    });
+  }
+
+  result.fixed.push(
+    signupCalled
+      ? `index: provisioned + MCP wired (Edge City)`
+      : `index: MCP block re-synced from cached creds`,
+  );
+  logger.info("[reconcile] index: provisioned", {
+    vmId: vm.id,
+    signupCalled,
+    indexUserIdPrefix: indexUserId.slice(0, 8),
+    apiKeyPrefix: apiKey.slice(0, 7),
+  });
+}
+
+/**
+ * Best-effort write of index_provisioned_failed_at for forensics.
+ * Never throws — failure to write the forensic column is not worth blocking
+ * the warning path that's already been emitted.
+ */
+async function markIndexFailure(
+  sb: ReturnType<typeof getSupabase>,
+  vmId: string,
+): Promise<void> {
+  try {
+    await sb
+      .from("instaclaw_vms")
+      .update({ index_provisioned_failed_at: new Date().toISOString() })
+      .eq("id", vmId);
+  } catch {
+    // Swallow — markIndexFailure is forensic decoration on an already-failed path.
+  }
 }
 
 async function stepConfigSettings(

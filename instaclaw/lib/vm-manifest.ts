@@ -1405,8 +1405,22 @@ export const VM_MANIFEST = {
    * warnings (Rule 39). Forces a re-reconcile across VMs that already
    * reached cv=103 in the v103 propagation window so the dispatch fix
    * reaches them too.
+   *
+   * v105 — 2026-05-18 — stepIndexProvision: partner-gated Index Network MCP
+   * provisioning for edge_city VMs. Adds 4 nullable columns to instaclaw_vms
+   * (index_user_id, index_api_key, index_provisioned_at,
+   * index_provisioned_failed_at) — migration in
+   * supabase/pending_migrations/20260518210000_vm_index_network_columns.sql,
+   * apply to prod BEFORE deploying. Step calls POST /signup once per VM
+   * (per-tick re-call would invalidate the in-use apiKey per Yanek's
+   * idempotency contract), caches the returned credentials in DB, writes
+   * mcp.servers.index via `openclaw mcp set` (hot-reloadable per Rule 32).
+   * Warnings-only on failure (Rule 39 — Index is optional). PRD:
+   * docs/prd/village-index-network-integration.md. Forces re-reconcile
+   * across the 9 edge_city VMs so the step actually runs (other partners
+   * gate-out cleanly at line 1).
    */
-  version: 104,
+  version: 105,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
