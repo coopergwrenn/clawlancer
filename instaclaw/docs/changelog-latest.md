@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-18
 
-Window: `be64b7f2aa6838ad3d1ca9d9ac4c6d9f26724daa` → `HEAD` (HEAD = `033cbdbb`)
+Window: `033cbdbb16d338df755d80c1da0b094535e05a58` → `HEAD` (HEAD = `7e5088ee`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 033cbdbb16d338df755d80c1da0b094535e05a58 -->
+<!-- LAST_GENERATED_SHA: 7e5088ee0904aa0f89c81e02f9a368da94dcba80 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `033cbdbb` 2026-05-18 — fix(admin/reconcile-vm): include warnings + errors in response [1 files] _(ai-assisted)_
-- `0fb0658b` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `7e5088ee` 2026-05-18 — fix(auditVMConfig): pass through warnings from reconcileVM [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `48c72538` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `7e5088ee` 2026-05-18 — fix(auditVMConfig): pass through warnings from reconcileVM [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `033cbdbb` 2026-05-18 — fix(admin/reconcile-vm): include warnings + errors in response [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `0fb0658b` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `48c72538` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `7e5088ee` 2026-05-18 — [reconciler, infrastructure] — fix(auditVMConfig): pass through warnings from reconcileVM
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `033cbdbb` 2026-05-18 — fix(admin/reconcile-vm): include warnings + errors in response
+- `7e5088ee` 2026-05-18 — fix(auditVMConfig): pass through warnings from reconcileVM
 
 ## Appendix — every commit (chronological)
 
-- `0fb0658b` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `033cbdbb` 2026-05-18 — fix(admin/reconcile-vm): include warnings + errors in response [1 files] _(ai-assisted)_
+- `48c72538` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `7e5088ee` 2026-05-18 — fix(auditVMConfig): pass through warnings from reconcileVM [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
