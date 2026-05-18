@@ -1,19 +1,19 @@
 # Changelog — generated 2026-05-18
 
-Window: `3f9b30151f4efff7cbf2e23f85c5e4dd61c4fd28` → `HEAD` (HEAD = `b7768291`)
+Window: `b77682911fd7be9f0eb88c67aa0345c26e5c1a82` → `HEAD` (HEAD = `9adbb0c8`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: b77682911fd7be9f0eb88c67aa0345c26e5c1a82 -->
+<!-- LAST_GENERATED_SHA: 9adbb0c8611746d4666b0c39a163faeddfbce338 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
+- **Reconciler / manifest:** 1
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
-- AI-assisted commits (co-authored): 1
+- **Docs / PRD only:** 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `08915441` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `b7768291` 2026-05-18 — fix(post-audit): PIPESTATUS bug + tighten Phase C2 idempotency + Rule 54 + upstream issue corrections [3 files] _(ai-assisted)_
+- `9adbb0c8` 2026-05-18 — self-audit: 4 bugs found in today's bake-validation work [3 files] _(multi: [reconciler, infrastructure, edge, docs])_
+- `ed36a938` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
 
-_(none)_
+- `9adbb0c8` 2026-05-18 — self-audit: 4 bugs found in today's bake-validation work [3 files] _(multi: [reconciler, infrastructure, edge, docs])_
 
 ### Infrastructure (0)
 
@@ -43,18 +43,17 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `08915441` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `b7768291` 2026-05-18 — fix(post-audit): PIPESTATUS bug + tighten Phase C2 idempotency + Rule 54 + upstream issue corrections [3 files] _(ai-assisted)_
+- `ed36a938` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (1)
+## Multi-category commits (1)
 
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+These touch more than one category root and are listed in every applicable section above.
 
-- `b7768291` 2026-05-18 — fix(post-audit): PIPESTATUS bug + tighten Phase C2 idempotency + Rule 54 + upstream issue corrections
+- `9adbb0c8` 2026-05-18 — [reconciler, infrastructure, edge, docs] — self-audit: 4 bugs found in today's bake-validation work
 
 ## Appendix — every commit (chronological)
 
-- `08915441` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `b7768291` 2026-05-18 — fix(post-audit): PIPESTATUS bug + tighten Phase C2 idempotency + Rule 54 + upstream issue corrections [3 files] _(ai-assisted)_
+- `ed36a938` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `9adbb0c8` 2026-05-18 — self-audit: 4 bugs found in today's bake-validation work [3 files] _(multi: [reconciler, infrastructure, edge, docs])_
