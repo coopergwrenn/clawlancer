@@ -1,0 +1,128 @@
+From 6d66411f923ae554cff29a8d0e8bc909dc534ea1 Mon Sep 17 00:00:00 2001
+From: instaclaw <patch@instaclaw.io>
+Date: Mon, 18 May 2026 17:15:09 -0400
+Subject: [PATCH] Add checkpoint MCP admin tool (instaclaw patch)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Adds a 'checkpoint' MCP Operation that calls engine.executeRaw('CHECKPOINT')
+to force a PGLite checkpoint and flush pg_control to disk. Scoped 'admin' so
+remote callers need an admin-scope bearer.
+
+Background: PGLite v0.4.x does not autocheckpoint on a wall-clock timer like
+vanilla Postgres (default checkpoint_timeout=5min). In long-running 'gbrain
+serve --http' sidecars, the on-disk pg_control stays frozen at the install-
+time LSN while WAL advances and recycles. When the sidecar dies (SIGKILL,
+OOM, host reboot), the next cold-start tries to read the recorded checkpoint
+record at the stale LSN, finds the WAL bytes have been recycled, and panics
+with WASM Aborted().
+
+Empirically confirmed 2026-05-18 on instaclaw production: 5 of 9 edge_city
+VMs had pg_control 46-51 HOURS old. Two SIGKILL+restart attempts on vm-050
+both produced unrecoverable data dirs. Recovery required out-of-band
+pg_resetwal -f from postgresql-17.
+
+This Operation is the in-band fix. Cron callers run it every 30 min to bound
+max pg_control staleness, making SIGKILL safe at all times.
+
+Files:
+- src/core/checkpoint-operation.ts (new) — the Operation definition
+- src/core/operations.ts — import + register in the 'Admin' section
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+---
+ src/core/checkpoint-operation.ts | 57 ++++++++++++++++++++++++++++++++
+ src/core/operations.ts           |  5 +++
+ 2 files changed, 62 insertions(+)
+ create mode 100644 src/core/checkpoint-operation.ts
+
+diff --git a/src/core/checkpoint-operation.ts b/src/core/checkpoint-operation.ts
+new file mode 100644
+index 00000000..f6f1112d
+--- /dev/null
++++ b/src/core/checkpoint-operation.ts
+@@ -0,0 +1,57 @@
++/**
++ * checkpoint — force a PGLite CHECKPOINT to flush pg_control to disk.
++ *
++ * This Operation is added by the instaclaw deployment patch (see
++ * instaclaw/scripts/gbrain-patches/0001-add-checkpoint-mcp-tool.patch).
++ * It is NOT upstream as of v0.35.0.0. Once upstream gbrain merges the
++ * equivalent PR, this file becomes dead code and the patch can be retired.
++ *
++ * Why it exists:
++ *
++ *   PGLite v0.4.x does NOT autocheckpoint on a wall-clock timer the way
++ *   vanilla PostgreSQL does (`checkpoint_timeout=5min` by default in PG).
++ *   In a long-running gbrain serve --http sidecar, the on-disk pg_control
++ *   stays frozen at the install-time LSN while the WAL advances and
++ *   recycles. When the sidecar dies (SIGKILL, OOM, host reboot, manifest-
++ *   driven restart), the next cold-start tries to read the recorded
++ *   checkpoint record, finds the WAL bytes at that location have been
++ *   recycled, and PANICs with WASM Aborted().
++ *
++ *   This was empirically confirmed 2026-05-18 on multiple production VMs
++ *   (instaclaw edge_city deployment): 5 of 9 edge_city sidecars had
++ *   pg_control 46-51 HOURS old after 2 days of uptime. A simple stop+start
++ *   on any of those VMs would have produced an unrecoverable data dir.
++ *
++ *   This Operation is the in-band fix: run it via cron every 30 minutes
++ *   to bound max staleness to 30 min, making SIGKILL safe at all times.
++ *
++ * Scope: 'admin' — synchronous I/O burst; not a general read-or-write
++ * operation. Cron callers + ExecStop hooks pass admin-scoped bearers.
++ *
++ * Mutating: true — writes to disk (pg_control + flushed dirty buffers).
++ * Marking mutating is conservative; CHECKPOINT does not affect
++ * user-visible data, but reflects the truth that disk state changes.
++ */
++
++import type { Operation } from './operations.ts';
++
++export const checkpoint: Operation = {
++  name: 'checkpoint',
++  description:
++    'Force a PGLite CHECKPOINT — flushes dirty buffers and pg_control to disk. ' +
++    'Required periodically (every 30 min recommended) on long-running PGLite sidecars to ' +
++    'prevent pg_control/WAL desynchronization. Without it, SIGKILL can leave the on-disk ' +
++    'state unrecoverable to PGLite alone (requires external pg_resetwal). ' +
++    'See instaclaw/docs/upstream/gbrain-checkpoint-mcp-tool.md for the upstream PR.',
++  params: {},
++  scope: 'admin',
++  mutating: true,
++  handler: async (ctx) => {
++    const t0 = Date.now();
++    await ctx.engine.executeRaw('CHECKPOINT');
++    const latency_ms = Date.now() - t0;
++    ctx.logger.info?.('checkpoint completed', { latency_ms });
++    return { ok: true, latency_ms };
++  },
++  cliHints: { name: 'checkpoint', hidden: true },
++};
+diff --git a/src/core/operations.ts b/src/core/operations.ts
+index 2d763ef9..20c057cf 100644
+--- a/src/core/operations.ts
++++ b/src/core/operations.ts
+@@ -36,6 +36,9 @@ import {
+   CODE_DEF_DESCRIPTION,
+   CODE_REFS_DESCRIPTION,
+ } from './operations-descriptions.ts';
++// instaclaw patch: add `checkpoint` admin MCP tool for periodic PGLite pg_control flush.
++// See instaclaw/scripts/gbrain-patches/0001-add-checkpoint-mcp-tool.patch + CLAUDE.md Rule 54.
++import { checkpoint } from './checkpoint-operation.ts';
+ 
+ // --- Types ---
+ 
+@@ -3141,6 +3144,8 @@ export const operations: Operation[] = [
+   add_timeline_entry, get_timeline,
+   // Admin
+   get_stats, get_health, run_doctor, get_versions, revert_version,
++  // instaclaw patch: pg_control flush — see CLAUDE.md Rule 54.
++  checkpoint,
+   // v0.31.1 (Issue #734): thin-client banner identity packet (read-scope, banner-only)
+   get_brain_identity,
+   // Sync
+-- 
+2.50.1 (Apple Git-155)
+

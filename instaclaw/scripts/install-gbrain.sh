@@ -380,6 +380,58 @@ fi
 echo "PHASE_C_OK head=$VERIFY_HEAD path=$HOME/gbrain"
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PHASE C2: apply instaclaw patches (CLAUDE.md Rule 54 / Rule 58)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# After git checkout, before bun install, apply our local patches on top of
+# garry's unmodified source. Currently one patch:
+#
+#   0001-add-checkpoint-mcp-tool.patch — adds a `checkpoint` MCP admin tool
+#     that runs PGLite CHECKPOINT. Required to prevent the pg_control-staleness
+#     bug documented in Rule 54 (vm-050 incident 2026-05-18). Once upstream
+#     gbrain merges the equivalent PR, this patch becomes a no-op and we
+#     remove this Phase C2 block.
+#
+# Patch file is co-deployed alongside install-gbrain.sh by the TS wrapper
+# (similar to verify-gbrain-mcp.py). If absent, the install proceeds without
+# the patch — operator will see the missing CHECKPOINT tool downstream and
+# can re-run.
+echo "PHASE_C2_START"
+PATCH_FILE=""
+for candidate in \
+    "/tmp/0001-add-checkpoint-mcp-tool.patch" \
+    "/tmp/checkpoint-patch.patch" \
+    "$(dirname "${BASH_SOURCE[0]}")/gbrain-patches/0001-add-checkpoint-mcp-tool.patch"; do
+  if [ -s "$candidate" ]; then PATCH_FILE="$candidate"; break; fi
+done
+
+if [ -z "$PATCH_FILE" ]; then
+  echo "PHASE_C2_WARN no_patch_file — fresh install will NOT have CHECKPOINT MCP tool. See Rule 54."
+  echo "  hint: TS wrapper should SFTP 0001-add-checkpoint-mcp-tool.patch alongside install-gbrain.sh"
+else
+  cd "$HOME/gbrain"
+  # If the patch was already applied (idempotency), git apply --check returns non-zero;
+  # we detect this and skip. Otherwise apply.
+  if git apply --check "$PATCH_FILE" 2>/dev/null; then
+    git apply --verbose "$PATCH_FILE" 2>&1 | tail -3
+    APPLY_RC=$?
+    if [ "$APPLY_RC" -ne 0 ]; then
+      echo "PHASE_C2_WARN patch_apply_failed rc=$APPLY_RC — fresh install will NOT have CHECKPOINT tool"
+      echo "  hint: upstream may have changed src/core/operations.ts shape; rebase the patch"
+    else
+      echo "PHASE_C2_OK patch_applied=$(basename "$PATCH_FILE")"
+    fi
+  else
+    # Check if it's already-applied (patch is no-op) vs truly failing
+    if [ -f "$HOME/gbrain/src/core/checkpoint-operation.ts" ]; then
+      echo "PHASE_C2_OK patch_already_applied (idempotent)"
+    else
+      echo "PHASE_C2_WARN patch_check_failed — patch may conflict with upstream changes"
+    fi
+  fi
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # PHASE D: bun install + bun link + version verify
 # ═══════════════════════════════════════════════════════════════════════════════
 echo "PHASE_D_START"
@@ -1061,6 +1113,75 @@ fi
 rm -f "$VERIFY_PY"
 
 echo "PHASE_H_OK $RESULT_LINE"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE I: install CHECKPOINT cron + ExecStop drop-in (CLAUDE.md Rule 54)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Two-layer prevention against pg_control staleness:
+#   1. crontab: every 30 min, force a CHECKPOINT via the gbrain MCP `checkpoint`
+#      tool (added by the Phase C2 patch). Bounds SIGKILL-safety window to 30 min.
+#   2. systemd ExecStop hook: force CHECKPOINT before SIGKILL fires on any
+#      controlled stop. Pairs with the 10-killsignal.conf drop-in that enforces
+#      KillSignal=SIGKILL.
+#
+# Both layers depend on the Phase C2 patch having applied. If it didn't (Phase
+# C2 emitted a WARN), the cron will log FAILED entries to
+# ~/.openclaw/logs/pglite-checkpoint.log — operator sees it on next audit.
+# We still install the cron + drop-in regardless, so the protection lands
+# automatically once the patch is rebased and re-deployed.
+echo "PHASE_I_START"
+
+mkdir -p "$HOME/.openclaw/scripts" "$HOME/.openclaw/logs" "$HOME/.config/systemd/user/gbrain.service.d"
+
+# Locate the cron script — TS wrapper SFTPs it alongside install-gbrain.sh,
+# or it lives next to this script in the instaclaw repo.
+CRON_SCRIPT_SRC=""
+for candidate in \
+    "/tmp/pglite-checkpoint.sh" \
+    "$(dirname "${BASH_SOURCE[0]}")/pglite-checkpoint.sh"; do
+  if [ -s "$candidate" ]; then CRON_SCRIPT_SRC="$candidate"; break; fi
+done
+
+if [ -z "$CRON_SCRIPT_SRC" ]; then
+  echo "PHASE_I_WARN no_cron_script — CHECKPOINT prevention NOT deployed. Operator must install manually."
+  echo "  hint: TS wrapper should SFTP pglite-checkpoint.sh alongside install-gbrain.sh"
+else
+  cp "$CRON_SCRIPT_SRC" "$HOME/.openclaw/scripts/pglite-checkpoint.sh"
+  chmod +x "$HOME/.openclaw/scripts/pglite-checkpoint.sh"
+  echo "  cron script: $HOME/.openclaw/scripts/pglite-checkpoint.sh"
+
+  # Idempotent crontab install (every 30 min)
+  if ! crontab -l 2>/dev/null | grep -q "pglite-checkpoint.sh"; then
+    (crontab -l 2>/dev/null; echo "*/30 * * * * bash $HOME/.openclaw/scripts/pglite-checkpoint.sh") | crontab -
+    echo "  crontab: installed (every 30 min)"
+  else
+    echo "  crontab: already installed (idempotent)"
+  fi
+
+  # systemd drop-in for ExecStop
+  DROPIN="$HOME/.config/systemd/user/gbrain.service.d/20-execstop-checkpoint.conf"
+  cat > "$DROPIN" <<EOF
+# Rule 54 / Rule 58 — force CHECKPOINT before SIGKILL fires on controlled stop.
+# Runs BEFORE KillSignal=SIGKILL (set by 10-killsignal.conf).
+# TimeoutStopSec=30 leaves ample budget: CHECKPOINT <1s + HTTP RTT + 25s buffer.
+[Service]
+ExecStop=$HOME/.openclaw/scripts/pglite-checkpoint.sh
+TimeoutStopSec=30
+EOF
+  systemctl --user daemon-reload 2>&1
+
+  echo "  drop-in: $DROPIN"
+  echo "  effective TimeoutStopSec: $(systemctl --user show gbrain.service --property=TimeoutStopUSec --value)"
+
+  # Test run — force a CHECKPOINT now so pg_control is fresh from the moment
+  # of install completion (not relying on the first cron tick to happen).
+  bash "$HOME/.openclaw/scripts/pglite-checkpoint.sh" 2>&1 | tail -1 || true
+  CHECKPOINT_LOG_TAIL=$(tail -1 "$HOME/.openclaw/logs/pglite-checkpoint.log" 2>/dev/null || echo "(no log)")
+  echo "  test run: $CHECKPOINT_LOG_TAIL"
+fi
+
+echo "PHASE_I_OK"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DONE
