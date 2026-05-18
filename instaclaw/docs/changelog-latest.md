@@ -1,14 +1,14 @@
 # Changelog — generated 2026-05-18
 
-Window: `9c525e9e999957dacc949719288e1dc228043786` → `HEAD` (HEAD = `0ab38404`)
+Window: `0ab3840451f73ec6f2e718c3d92b07c434318d51` → `HEAD` (HEAD = `652e732d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 0ab3840451f73ec6f2e718c3d92b07c434318d51 -->
+<!-- LAST_GENERATED_SHA: 652e732d6ee0160f6f01685e72f7c0527541eadb -->
 
 ## Summary
 
 - **Manifest version bumps:** 1
-  - Range: v104 → v104
+  - Range: v105 → v105
 - **Reconciler / manifest:** 1
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
@@ -19,11 +19,14 @@ Total commits: 2
 
 ## Manifest version timeline
 
-### v104 — 2026-05-18 — `0ab38404`
+### v105 — 2026-05-18 — `652e732d`
 
-refactor(reconcile): ensureUfwAllow helper + close Rule 57 anti-pattern in dispatch (v104)
+feat(reconcile): stepIndexProvision + manifest v105 — Index Network MCP for edge_city
 
-> Rule 39 audit of the three reconciler steps Cooper flagged:
+> Wires the Index Network discovery protocol's MCP server onto every edge_city
+> agent's runtime so agents at Edge Esmeralda 2026 can express intents and
+> receive bilateral-negotiated opportunities. PRD:
+> docs/prd/village-index-network-integration.md.
 
 ## What changed for users
 
@@ -31,14 +34,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `0ab38404` 2026-05-18 — refactor(reconcile): ensureUfwAllow helper + close Rule 57 anti-pattern in dispatch (v104) [3 files] _(**MANIFEST v104**; multi: [reconciler, infrastructure]; ai-assisted)_
-- `f16ba8e0` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `652e732d` 2026-05-18 — feat(reconcile): stepIndexProvision + manifest v105 — Index Network MCP for edge_city [8 files] _(**MANIFEST v105**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `c5213f18` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `0ab38404` 2026-05-18 — refactor(reconcile): ensureUfwAllow helper + close Rule 57 anti-pattern in dispatch (v104) [3 files] _(**MANIFEST v104**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `652e732d` 2026-05-18 — feat(reconcile): stepIndexProvision + manifest v105 — Index Network MCP for edge_city [8 files] _(**MANIFEST v105**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -54,21 +57,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `f16ba8e0` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `c5213f18` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `0ab38404` 2026-05-18 — [reconciler, infrastructure] — refactor(reconcile): ensureUfwAllow helper + close Rule 57 anti-pattern in dispatch (v104)
+- `652e732d` 2026-05-18 — [reconciler, infrastructure, edge] — feat(reconcile): stepIndexProvision + manifest v105 — Index Network MCP for edge_city
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `0ab38404` 2026-05-18 — refactor(reconcile): ensureUfwAllow helper + close Rule 57 anti-pattern in dispatch (v104)
+- `652e732d` 2026-05-18 — feat(reconcile): stepIndexProvision + manifest v105 — Index Network MCP for edge_city
 
 ## Appendix — every commit (chronological)
 
-- `f16ba8e0` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `0ab38404` 2026-05-18 — refactor(reconcile): ensureUfwAllow helper + close Rule 57 anti-pattern in dispatch (v104) [3 files] _(**MANIFEST v104**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `c5213f18` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `652e732d` 2026-05-18 — feat(reconcile): stepIndexProvision + manifest v105 — Index Network MCP for edge_city [8 files] _(**MANIFEST v105**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
