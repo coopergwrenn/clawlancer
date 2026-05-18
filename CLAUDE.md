@@ -2594,10 +2594,11 @@ Outside those three conditions, SIGKILL on a long-running gbrain sidecar may pro
 - Test 4 (single insert, no CHECKPOINT, SIGKILL after <1s): recovered cleanly ✓
 - Test 5 (500 inserts, no CHECKPOINT, SIGKILL after ~9s): recovered cleanly ✓
 - Test 6 (177,354 inserts in 60s, no CHECKPOINT, SIGKILL): recovered cleanly ✓
+- **Test 17 (idle 25min stale, raw pkill -9 with no ExecStop, no auto-restart hook help): recovered cleanly in 10s ✓**
 - vm-050 canary retry (~2 hours pg_control drift, SIGKILL): **UNRECOVERABLE** ✗
 - vm-050 original (~48 hours pg_control drift, SIGKILL): **UNRECOVERABLE** ✗
 
-Boundary somewhere in (60s, 2h). Untested ground. Treat as risk zone.
+Boundary somewhere in (25min, 2h). The 30-min CHECKPOINT cron interval is empirically validated as safe at the upper edge of the cron window — even when ExecStop is also disabled and the kill is the rawest possible (SIGKILL on idle gbrain with stale pg_control).
 
 ##### Recovery procedure (when SIGKILL has already left an unrecoverable dir)
 
