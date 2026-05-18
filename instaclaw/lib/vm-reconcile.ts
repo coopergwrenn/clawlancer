@@ -2010,13 +2010,15 @@ async function stepIndexProvision(
   }
 
   // ── Defense-in-depth shell-arg validation ──
-  // Index issues `ix_<base64ish>` keys. Reject anything containing shell
-  // metacharacters even though we'll send the JSON via stdin (so it shouldn't
-  // matter) — fail loud rather than rely on the upload path being safe.
-  if (!/^ix_[A-Za-z0-9_\-=.]+$/.test(apiKey)) {
+  // The apiKey gets written to a JSON file via stdin and read back via
+  // `"$(cat tmpPath)"` — JSON.stringify already handles any character safely,
+  // so this regex is belt-and-suspenders. Allow alphanumerics, base64 chars,
+  // and underscores/hyphens/dots/equals — covers both the documented `ix_...`
+  // prod format and the bare-base64 dev format observed 2026-05-18.
+  if (!/^[A-Za-z0-9_\-=.+/]{16,}$/.test(apiKey)) {
     recordHealWarning(
       result,
-      `index: signup returned unexpected apiKey shape (prefix=${apiKey.slice(0, 5)})`,
+      `index: signup returned unexpected apiKey shape (len=${apiKey.length}, prefix=${apiKey.slice(0, 5)})`,
     );
     return;
   }

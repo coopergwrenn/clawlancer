@@ -169,7 +169,11 @@ function isValidSignupResponse(v: unknown): v is IndexSignupResponse {
   if (!o.user || typeof o.user !== "object") return false;
   const user = o.user as Record<string, unknown>;
   if (typeof user.id !== "string" || typeof user.email !== "string") return false;
-  if (typeof o.apiKey !== "string" || !o.apiKey.startsWith("ix_")) return false;
+  // Yanek's guide documents `ix_...` as the apiKey prefix, but the dev
+  // environment (https://protocol.dev.index.network) returns keys with no
+  // prefix — observed 2026-05-18 canary against vm-050. Accept any non-empty
+  // string; downstream handlers treat the apiKey as opaque.
+  if (typeof o.apiKey !== "string" || o.apiKey.length < 16) return false;
   if (!o.mcpServer || typeof o.mcpServer !== "object") return false;
   const mcp = o.mcpServer as Record<string, unknown>;
   if (typeof mcp.name !== "string" || typeof mcp.url !== "string") return false;
