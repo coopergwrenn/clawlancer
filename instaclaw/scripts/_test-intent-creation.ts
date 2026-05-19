@@ -33,43 +33,7 @@ for (const l of readFileSync(
 }
 
 import { createIndexIntent } from "../lib/index-intent-creator";
-// TODO(P1, 2026-05-19): inline MCP helper duplicated here because the
-// IndexMcpClient class in lib/index-mcp-client.ts returns "Invalid API key"
-// on tools/call despite the same inputs working inline (see file header
-// of lib/index-mcp-client.ts for the bug repro). Reinstate the client class
-// + delete this duplicate when the bug is fixed.
-import crypto from "crypto";
-async function callIndexMcpTool(args: {
-  apiKey: string;
-  toolName: string;
-  toolArgs: Record<string, unknown>;
-  _attempt?: number;
-}): Promise<{ ok: true; result: unknown } | { ok: false; error: string; detail?: string }> {
-  const attempt = args._attempt ?? 1;
-  const base = (process.env.INDEX_NETWORK_API_URL?.trim() || "https://protocol.index.network").replace(/\/+$/, "");
-  const url = `${base}/mcp`;
-  const headers = { "x-api-key": args.apiKey, "Content-Type": "application/json", Accept: "application/json, text/event-stream" };
-  await fetch(url, { method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id: crypto.randomUUID(), method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: { tools: {} }, clientInfo: { name: "instaclaw", version: "0.1.0" } } }) }).then(r => r.text());
-  const callRes = await fetch(url, { method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id: crypto.randomUUID(), method: "tools/call", params: { name: args.toolName, arguments: args.toolArgs } }) });
-  const raw = await callRes.text();
-  let parsed: any;
-  if (/^event:|\ndata:\s/m.test(raw)) {
-    const matches = Array.from(raw.matchAll(/^data:\s*(.*)$/gm));
-    try { parsed = JSON.parse(matches[matches.length - 1]?.[1] ?? ""); } catch { return { ok: false, error: "sse_non_json", detail: raw.slice(0, 200) }; }
-  } else {
-    try { parsed = JSON.parse(raw); } catch { return { ok: false, error: "non_json", detail: raw.slice(0, 200) }; }
-  }
-  if (parsed?.result?.isError === true) {
-    const detail = JSON.stringify(parsed.result.content).slice(0, 200);
-    // Retry once on burst-rate-limit signature (same shape as lib/index-intent-creator.ts).
-    if (attempt === 1 && /Invalid API key/.test(detail)) {
-      await new Promise((r) => setTimeout(r, 1500));
-      return callIndexMcpTool({ ...args, _attempt: 2 });
-    }
-    return { ok: false, error: "tool_call_isError", detail };
-  }
-  return { ok: true, result: parsed?.result ?? null };
-}
+import { callIndexMcpTool } from "../lib/index-mcp-client";
 
 const skipCleanup = process.argv.includes("--no-cleanup");
 

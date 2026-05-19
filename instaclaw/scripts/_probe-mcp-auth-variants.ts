@@ -16,6 +16,7 @@
 import { readFileSync } from "fs";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { callIndexMcpTool } from "../lib/index-mcp-client";
 
 for (const l of readFileSync(
   "/Users/cooperwrenn/wild-west-bots/instaclaw/.env.local",
@@ -88,6 +89,20 @@ async function main() {
     const cookieValue = setCookie.split(";")[0]; // name=value
     const call5 = await send({ ...initBase, Cookie: cookieValue }, { jsonrpc: "2.0", id: "c", method: "tools/call", params: { name: "read_intents", arguments: {} } });
     console.log(`  [variant 5] tools/call status=${call5.status} body preview: ${call5.body.slice(0, 200)}`);
+  }
+
+  // Variant 6 (added 2026-05-19): IndexMcpClient class via callIndexMcpTool
+  // helper. Proves the class works post session-id-replay fix. Pre-fix this
+  // variant would have failed identically to variant 4 because the class
+  // was sending mcp-session-id on tools/call. Post-fix it should match
+  // variant 1's success.
+  console.log(`\n  [variant 6: IndexMcpClient class] calling read_intents through lib/index-mcp-client.ts`);
+  const v6 = await callIndexMcpTool({ apiKey, toolName: "read_intents", toolArgs: {} });
+  if (v6.ok) {
+    const text = (v6.result as { content?: Array<{ text?: string }> })?.content?.[0]?.text ?? "";
+    console.log(`  [variant 6] ✓ PASS — result preview: ${text.slice(0, 150).replace(/\n/g, " ")}`);
+  } else {
+    console.log(`  [variant 6] ✗ FAIL — error=${v6.error} detail=${(v6.detail ?? "").slice(0, 200)}`);
   }
 }
 

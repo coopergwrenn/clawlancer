@@ -1,18 +1,22 @@
-// ⚠️ KNOWN BUG (P1, 2026-05-19): This client class is NOT in active use.
-// Empirical reproduction: same x-api-key + body shape succeeds when called
-// inline (see scripts/_probe-mcp-auth-variants.ts variant 1) but fails
-// through this class with `{ "isError": true, content: [...Invalid API key...] }`.
-// Confirmed across multiple keys; not a key validity issue.
+// Session-id replay removed 2026-05-19. Root cause of the
+// previously-reported "this class returns Invalid API key on tools/call
+// despite same inputs working inline": the class was capturing
+// `mcp-session-id` from initialize's response header and replaying it
+// on tools/call. Yanek's server rejects that header-bound auth context
+// with "Invalid API key" — proven empirically by
+// scripts/_probe-mcp-auth-variants.ts variant 4 (x-api-key +
+// mcp-session-id) failing while variant 1 (x-api-key only) succeeds.
+// Removing the capture + replay reduces the class to variant-1
+// equivalent.
 //
-// Workaround: lib/index-intent-creator.ts inlines the bare initialize +
-// tools/call pattern with explicit fetch/JSON-RPC handling, bypassing
-// this class. Same ~130 LOC duplicated in scripts/_test-intent-creation.ts.
+// Re-enable when Yanek confirms server-side session-id handling on
+// tools/call is fixed — see "DISABLED:" comments below at SESSION_HEADER,
+// the rawCall headers block, and the response-header capture site.
 //
-// When the root cause is found (likely something in rawCall's header
-// construction or session-handling between initialize and tools/call —
-// maybe related to the `arguments` field encoding or response stream
-// consumption order), reinstate this class and replace the inline
-// helpers in both files.
+// NOTE: write tools (create_intent, update_intent, discover_opportunities)
+// still fail with "Invalid API key" through ANY auth shape — that's a
+// separate Yanek-side bug tracked under his write-tool investigation,
+// independent of this fix. The class fix unblocks READ tools only.
 
 /**
  * Server-side MCP-over-HTTP client for Yanek's Index Network MCP server.
@@ -43,10 +47,11 @@
  *     payload needs. We parse both.
  *
  *   - Session id: returned in `mcp-session-id` response header from
- *     `initialize`. Subsequent calls in the same logical session should
- *     pass it back via `mcp-session-id` request header. For one-shot
- *     create_intent we don't strictly NEED to pass it, but we do (cheaper
- *     for Yanek's server-side state mgmt).
+ *     `initialize`. The MCP 2025-03-26 spec says subsequent calls in the
+ *     same session SHOULD pass it back. We DON'T (see file header comment)
+ *     — Yanek's server rejects tools/call with "Invalid API key" when the
+ *     header is present. Each request is single-shot auth via x-api-key
+ *     until that's fixed.
  *
  *   - Each call is a fresh client. Vercel functions are stateless;
  *     opening one MCP session per route invocation is cheap (~50ms init +
@@ -72,6 +77,11 @@ import crypto from "crypto";
 
 const MCP_PATH = "/mcp";
 const DEFAULT_BASE = "https://protocol.index.network";
+// DISABLED 2026-05-19: kept for re-enablement. See file header comment.
+// When Yanek confirms tools/call accepts mcp-session-id, reinstate the
+// `this.sessionId` field + the two usage sites in rawCall (header
+// injection + response capture).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const SESSION_HEADER = "mcp-session-id";
 
 const PROTOCOL_VERSION = "2025-03-26";
@@ -109,7 +119,9 @@ export class IndexMcpClient {
   private readonly apiKey: string;
   private readonly url: string;
   private readonly timeoutMs: number;
-  private sessionId: string | null = null;
+  // DISABLED 2026-05-19: session-id replay removed (see file header).
+  // Reinstate `private sessionId: string | null = null;` when Yanek's
+  // server stops rejecting tools/call requests that carry the header.
   private initialized = false;
 
   constructor(opts: IndexMcpClientOptions) {
@@ -189,7 +201,10 @@ export class IndexMcpClient {
       return {
         ok: true,
         result: result ?? null,
-        sessionId: this.sessionId,
+        // DISABLED 2026-05-19: session-id replay removed (see file header).
+        // Interface kept for forward compatibility — always null until
+        // Yanek's server-side fix lands and we reinstate this.sessionId.
+        sessionId: null,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -201,8 +216,8 @@ export class IndexMcpClient {
    * Low-level JSON-RPC POST + parse. Returns the raw parsed data on 200,
    * or a structured error otherwise.
    *
-   * Captures `mcp-session-id` response header into this.sessionId so
-   * subsequent calls thread the session.
+   * Session-id capture + replay DISABLED 2026-05-19 (see file header).
+   * Re-enable in two sites below when Yanek's server-side fix lands.
    */
   private async rawCall(
     body: object,
@@ -220,7 +235,9 @@ export class IndexMcpClient {
         // Both content types — Yanek's server picks per request.
         Accept: "application/json, text/event-stream",
       };
-      if (this.sessionId) headers[SESSION_HEADER] = this.sessionId;
+      // DISABLED 2026-05-19: header injection removed (see file header).
+      // Reinstate `if (this.sessionId) headers[SESSION_HEADER] = this.sessionId;`
+      // when Yanek's server stops rejecting session-id-bearing tools/call.
       res = await fetch(this.url, {
         method: "POST",
         headers,
@@ -234,10 +251,10 @@ export class IndexMcpClient {
     }
     clearTimeout(timer);
 
-    // Pick up session id from response (set on initialize; may be echoed
-    // on subsequent calls).
-    const respSession = res.headers.get(SESSION_HEADER);
-    if (respSession) this.sessionId = respSession;
+    // DISABLED 2026-05-19: response-header capture removed (see file header).
+    // Reinstate the following when Yanek's server-side fix lands:
+    //   const respSession = res.headers.get(SESSION_HEADER);
+    //   if (respSession) this.sessionId = respSession;
 
     const raw = await res.text();
     if (res.status >= 400) {

@@ -41,9 +41,9 @@
  *
  * Returns a tagged union — callers pattern-match on .status.
  */
-import crypto from "crypto";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
+import { callIndexMcpTool, type McpResponse } from "@/lib/index-mcp-client";
 
 // Edge City network id (Yanek-confirmed). Hard-coded because we have
 // exactly one partner network today; if we add more (Eclipse, Devcon, etc)
@@ -130,11 +130,10 @@ export async function createIndexIntent(args: {
   const toolArgs: Record<string, unknown> = { description: desc };
   if (networkId) toolArgs.networkId = networkId;
 
-  // TODO(P1, 2026-05-19): Inline MCP call — workaround for IndexMcpClient
-  // class bug (see lib/index-mcp-client.ts file header for repro).
-  // Replace this inline call with IndexMcpClient once the bug is rooted out.
-  // Same workaround duplicated in scripts/_test-intent-creation.ts.
-  const mcpRes = await inlineMcpToolCall(
+  // Call via the canonical IndexMcpClient (lib/index-mcp-client.ts) wrapped
+  // with a burst-rate-limit retry. The retry is a workaround for a separate
+  // Yanek-side burst-rate-limit behavior — see callMcpWithBurstRetry below.
+  const mcpRes = await callMcpWithBurstRetry(
     vm.index_api_key as string,
     "create_intent",
     toolArgs,
@@ -213,157 +212,42 @@ export async function createIndexIntent(args: {
   };
 }
 
-// ── Internal: minimal inline MCP-over-HTTP tool call. ───────────────────
+// ── Internal: burst-rate-limit retry wrapper around callIndexMcpTool. ──
 //
-// Yanek's Index Network MCP is streamable-http transport. We POST a
-// JSON-RPC envelope (initialize, then tools/call) with x-api-key for auth.
-// Response is SSE-shaped: lines of `event: ...` then `data: <json>`.
+// Yanek's Index Network MCP returns a transient `tool_call_isError` with
+// "Invalid API key" content when called in burst (>1-2 calls/sec across
+// multiple sessions). Empirically (2026-05-19 testing, see
+// scripts/_test-all-keys-mcp.ts): all 9 cohort keys succeeded with 200ms
+// pauses; burst calls failed. A 1.5s pause + retry consistently recovers.
 //
-// Includes a retry-once-with-delay on the SPECIFIC "Invalid API key"
-// tool_call_isError shape. Empirically (2026-05-19 testing), Yanek's MCP
-// returns that error transiently when called in burst (>1-2 calls/sec
-// across multiple sessions). A 1.5s pause + retry consistently recovers.
-// The retry is bounded to ONE attempt so we don't infinite-loop on a
-// permanently-bad key. See _test-all-keys-mcp.ts for the empirical basis:
-// all 9 keys succeeded with 200ms pauses; burst calls failed.
+// We retry exactly once so a permanently-bad key still surfaces a clean
+// error rather than infinite-looping. The retry creates a fresh
+// IndexMcpClient instance via callIndexMcpTool — which means a fresh
+// initialize handshake — matching the pre-2026-05-19 inline impl's
+// behavior on retry.
 //
-// This bypasses the lib/index-mcp-client.ts client class (which has an
-// open bug where its tools/call returns "Invalid API key" despite the
-// same inputs working inline). When that's debugged, swap this back.
-async function inlineMcpToolCall(
+// This is distinct from the session-id-replay bug we fixed in
+// lib/index-mcp-client.ts on 2026-05-19 (that one was always-on once
+// initialize fired; this one is a separate burst-only signal).
+async function callMcpWithBurstRetry(
   apiKey: string,
   toolName: string,
   toolArgs: Record<string, unknown>,
   attempt: number = 1,
-): Promise<
-  | { ok: true; result: unknown }
-  | { ok: false; error: string; detail?: string }
-> {
-  const base = (
-    process.env.INDEX_NETWORK_API_URL?.trim() || "https://protocol.index.network"
-  ).replace(/\/+$/, "");
-  const url = `${base}/mcp`;
-  const headers = {
-    "x-api-key": apiKey,
-    "Content-Type": "application/json",
-    Accept: "application/json, text/event-stream",
-  };
-
-  // Step 1: initialize (required handshake per MCP spec).
-  try {
-    const initRes = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: crypto.randomUUID(),
-        method: "initialize",
-        params: {
-          protocolVersion: "2025-03-26",
-          capabilities: { tools: {} },
-          clientInfo: { name: "instaclaw", version: "0.1.0" },
-        },
-      }),
+): Promise<McpResponse> {
+  const res = await callIndexMcpTool({ apiKey, toolName, toolArgs });
+  if (
+    !res.ok &&
+    attempt === 1 &&
+    res.error === "tool_call_isError" &&
+    /Invalid API key/.test(res.detail ?? "")
+  ) {
+    logger.warn("[index-intent-creator] burst-rate-limit retry", {
+      toolName,
+      delayMs: 1500,
     });
-    if (initRes.status !== 200) {
-      const body = await initRes.text().catch(() => "");
-      return {
-        ok: false,
-        error: `init_http_${initRes.status}`,
-        detail: body.slice(0, 200),
-      };
-    }
-    // Drain the body — don't need to parse the init result, just confirm
-    // it succeeded.
-    await initRes.text();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: "init_transport", detail: msg.slice(0, 200) };
+    await new Promise((r) => setTimeout(r, 1500));
+    return callMcpWithBurstRetry(apiKey, toolName, toolArgs, attempt + 1);
   }
-
-  // Step 2: tools/call.
-  let callRes: Response;
-  try {
-    callRes = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: crypto.randomUUID(),
-        method: "tools/call",
-        params: { name: toolName, arguments: toolArgs },
-      }),
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: "call_transport", detail: msg.slice(0, 200) };
-  }
-  const raw = await callRes.text();
-  if (callRes.status !== 200) {
-    return {
-      ok: false,
-      error: `call_http_${callRes.status}`,
-      detail: raw.slice(0, 200),
-    };
-  }
-
-  // Parse SSE or JSON response. SSE format:
-  //   event: message
-  //   data: <json>
-  let parsed: unknown;
-  if (/^event:|\ndata:\s/m.test(raw)) {
-    const matches = Array.from(raw.matchAll(/^data:\s*(.*)$/gm));
-    const lastData = matches[matches.length - 1]?.[1] ?? "";
-    try {
-      parsed = JSON.parse(lastData);
-    } catch {
-      return {
-        ok: false,
-        error: "sse_non_json",
-        detail: lastData.slice(0, 200),
-      };
-    }
-  } else {
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return {
-        ok: false,
-        error: "response_non_json",
-        detail: raw.slice(0, 200),
-      };
-    }
-  }
-
-  const data = parsed as { result?: { content?: unknown; isError?: boolean }; error?: { code?: number; message?: string } };
-  if (data?.error) {
-    return {
-      ok: false,
-      error: "json_rpc_error",
-      detail: `${data.error.code}: ${data.error.message}`.slice(0, 200),
-    };
-  }
-  if (data?.result?.isError === true) {
-    const content = data.result.content;
-    const contentStr = JSON.stringify(content ?? null);
-    // Retry once on the burst-rate-limit signature ("Invalid API key" inside
-    // a tool result that the SAME key succeeded with seconds earlier).
-    if (
-      attempt === 1 &&
-      /Invalid API key/.test(contentStr)
-    ) {
-      logger.warn("[index-intent-creator] burst-rate-limit retry", {
-        toolName,
-        delayMs: 1500,
-      });
-      await new Promise((r) => setTimeout(r, 1500));
-      return inlineMcpToolCall(apiKey, toolName, toolArgs, attempt + 1);
-    }
-    return {
-      ok: false,
-      error: "tool_call_isError",
-      detail: contentStr.slice(0, 200),
-    };
-  }
-  return { ok: true, result: data?.result ?? null };
+  return res;
 }
