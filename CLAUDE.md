@@ -2902,6 +2902,48 @@ This rule complements:
 - **Rule 34** (DB↔disk drift): focuses on Supabase row vs on-VM file consistency for a SINGLE field.
 - **Rule 58** (this rule): focuses on the multi-consumer case where one canonical value (a bearer) must appear identically in N places, and the idempotency contract must enforce that invariant explicitly.
 
+### Rule 59 — Never defer after one failure; investigate, then ship the fix
+
+When a task fails, problem-solve with a rollback plan in place. Only roll back after genuinely exhausting the investigation. "It failed once" is not a reason to defer — it's a reason to investigate.
+
+**Pattern:** attempt fix with safety net → if it works, ship it → if it genuinely can't be solved after real effort, then roll back to the working version.
+
+**The default reflex after a failed canary is "defer to post-event for safety." That reflex is wrong.** Deferring means shipping the infrastructure you couldn't validate; "post-event" means you have less scrutiny, less time, and less recovery margin. The right move is to investigate the failure root cause before concluding the upgrade path is unworkable.
+
+**Example (2026-05-19 v0.36.x upgrade):** the gbrain version bump failed twice — once on yesterday's v0.35.8.0 canary (WASM Aborted from stale pg_control), once on this morning's v0.36.3.0 canary (1280/1536 embedding dimension mismatch). The fear-driven reading was "v0.36.x is broken, defer to post-Esmeralda." The investigation-driven reading was:
+
+1. First failure (stale pg_control) → root cause: PGLite doesn't autocheckpoint + cron had XDG bug. Fix: cron XDG_RUNTIME_DIR export + ExecStop accept "deactivating" state. 1-line script change.
+2. Second failure (dim mismatch) → root cause: v0.36.x reads `GBRAIN_EMBEDDING_DIMENSIONS` env var separately from `GBRAIN_EMBEDDING_MODEL`; without it, falls back to ZE 1280 default while writing to a 1536-dim column. Fix: add the second env var via systemd drop-in.
+
+Both fixes were trivial once investigated. The first failure took 30 minutes to root-cause; the second took 45 minutes. Total investigation budget: ~75 minutes. The alternative (defer to post-Esmeralda) would have shipped 500 Edge attendees on:
+- A cron that never actually fires (no fleet pg_control protection)
+- An old gbrain version with no validated upgrade path (no ability to push security fixes during the month)
+
+**Mandatory pattern:**
+
+1. **Investigation has a real time budget**, not "we'll look at it eventually." Block out 60-90 min when a critical-path canary fails. Read source, check logs, hypothesize, test on a copy.
+2. **Investigation requires a rollback plan**. Before investigating, document the rollback path (commit hash, recovery procedure, expected time). Knowing the rollback is real lets you investigate aggressively.
+3. **Single-failure deferrals are banned**. If you find yourself writing "deferred to post-X due to canary failure" without naming the root cause, you haven't investigated yet. Either name the cause + ship a fix, or name the cause + explicitly choose deferral as the right trade-off.
+4. **"It failed twice on the same VM" is not two failures — it's one failure that wasn't investigated**. The vm-050 SIGKILL canary failed twice in a row because we didn't change our approach between attempts. After the FIRST failure, we should have investigated; instead the second attempt re-triggered the same bug. The investigation-first approach would have caught both bugs (pg_control + embedding dims) in one cycle.
+5. **Document what was investigated AND ruled out**, not just what was fixed. Future readers should be able to see the search you ran ("checked X, Y, Z; X was the cause; Y and Z are not relevant") so they don't re-run the same hypothesis chain on a similar bug.
+
+**Banned patterns:**
+
+- "Let's defer this version bump to post-event for stability." Stability requires proving you can maintain the system. Deferring an upgrade means shipping infrastructure you can't update during the event.
+- "The canary failed, so the version is broken." A canary failure is a SYMPTOM. The version may or may not be the cause. Without root-cause investigation, you don't know.
+- "We'll roll back and try again later." Without the investigation, "later" hits the same wall. The rollback is justified only after you understand WHY the forward path failed.
+- Treating "it worked yesterday" as proof the version is fine. The vm-050 v0.35.0.0 rollback failed identically to the v0.35.8.0 forward attempt — same data dir state, same WASM Aborted. Version was a red herring.
+
+**Detection rule:**
+
+When reviewing any PR that says "deferred to a later milestone due to a canary failure," ask:
+1. What was the root cause of the failure? (If unstated → investigate now.)
+2. What did you try to fix it? List the hypotheses tested and ruled out.
+3. What's the actual blocker (vs the apparent blocker)? Often the canary failure is downstream of a separate latent bug.
+4. What's the cost of deferring vs investigating now? Deferral cost is rarely zero — it usually means "ship infra we can't validate."
+
+If answers 1-3 are unclear, the PR isn't ready. Investigate first.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
