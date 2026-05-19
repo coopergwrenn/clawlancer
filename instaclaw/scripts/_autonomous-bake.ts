@@ -162,6 +162,15 @@ function printBanner(state: BakeState): void {
  * runs the action, returns success/failure. State is persisted after every
  * call (action or verification).
  */
+/**
+ * In dry-run mode, every step EXCEPT these phases gets its action skipped.
+ * Preflight reads source (no side effects). Report just prints to stdout.
+ * Everything else (provision, reconcile, install, imagize, soak, etc.)
+ * mutates external state — Linode VMs, SSH targets, Vercel env — so the
+ * orchestrator stubs them out in dry-run.
+ */
+const SAFE_PHASES_IN_DRY_RUN: ReadonlySet<string> = new Set(["preflight"]);
+
 async function runStep(
   step: BakeStep,
   ctx: BakeContext,
@@ -186,6 +195,29 @@ async function runStep(
 
   logFn("", step.id);
   logFn(`▶ [${step.phase}] ${step.id}: ${step.description}`, step.id);
+
+  // Dry-run short-circuit. Steps in non-safe phases skip their action entirely.
+  // Their preconditions still run — those are read-only and tell the operator
+  // whether the step WOULD have proceeded.
+  if (ctx.dry_run && !SAFE_PHASES_IN_DRY_RUN.has(step.phase)) {
+    const preResults = await runVerifications(step.preconditions, ctx);
+    state.step_results[step.id].precondition_results = preResults;
+    for (const r of preResults) {
+      const sym = r.ok ? "✓" : r.severity === "P0" ? "✗" : r.severity === "P1" ? "⚠" : "·";
+      logFn(`  ${sym} pre [${r.severity}] ${r.id} ${r.detail ? `(${r.detail})` : ""}`, step.id);
+    }
+    logFn(
+      `  ↻ dry-run skip: ${step.description} (would take ~${step.estimated_seconds}s)`,
+      step.id,
+    );
+    state.step_results[step.id].status = "skipped";
+    state.step_results[step.id].output = [
+      `(dry-run skipped — would: ${step.description})`,
+    ];
+    state.step_results[step.id].completed_at = new Date().toISOString();
+    persistState(state);
+    return { ok: true, abort: false };
+  }
 
   // Pre-conditions
   const preResults = await runVerifications(step.preconditions, ctx);
@@ -254,11 +286,34 @@ async function runStep(
     return { ok: false, abort: true };
   }
 
-  // Action succeeded — apply state updates
+  // Action succeeded — apply state updates.
+  //
+  // CRITICAL: array fields on BakeState (warnings, errors, notes,
+  // cooper_actions) must be APPENDED across steps, not replaced. Using
+  // Object.assign() naively would overwrite e.g. `state.warnings` if a
+  // step returns `{ warnings: [...] }` in its state_updates, dropping all
+  // warnings from prior steps. Discovered live during preflight 2026-05-19.
   for (const line of actionResult!.output) logFn(line, step.id);
   if (actionResult!.state_updates) {
-    Object.assign(state, actionResult!.state_updates);
+    const APPEND_ARRAY_FIELDS = new Set([
+      "warnings",
+      "errors",
+      "notes",
+      "cooper_actions",
+    ]);
+    for (const [k, v] of Object.entries(actionResult!.state_updates)) {
+      if (APPEND_ARRAY_FIELDS.has(k) && Array.isArray(v) && Array.isArray((state as any)[k])) {
+        // Prefix array entries with step.id so the operator can trace the source
+        const prefixed = v.map((entry) =>
+          typeof entry === "string" ? `${step.id}: ${entry}` : entry,
+        );
+        (state as any)[k].push(...prefixed);
+      } else {
+        (state as any)[k] = v;
+      }
+    }
   }
+  // Top-level StepResult.warnings field (kept for backward compat; same append semantics)
   if (actionResult!.warnings) {
     state.warnings.push(...actionResult!.warnings.map((w) => `${step.id}: ${w}`));
     for (const w of actionResult!.warnings) logFn(`  ⚠ ${w}`, step.id);
@@ -385,9 +440,7 @@ async function actionFull(args: CLIArgs, dryRun = false): Promise<number> {
   if (aborted) {
     state.status = "failed";
     persistState(state);
-    logFn("");
-    logFn(`BAKE FAILED — state at ${stateDir}/state.json`);
-    logFn(`Log: ${logPath}`);
+    printFinalSummary(state, /* aborted */ true, ctx.dry_run);
     if (!ctx.dry_run) {
       logFn("Initiating rollback...");
       await runRollback(steps, ctx, logFn);
@@ -399,9 +452,90 @@ async function actionFull(args: CLIArgs, dryRun = false): Promise<number> {
   state.status = "succeeded";
   persistState(state);
   releaseGlobalBakeLock();
-  logFn("");
-  logFn(`BAKE SUCCEEDED — state at ${stateDir}/state.json`);
+  printFinalSummary(state, /* aborted */ false, ctx.dry_run);
   return 0;
+}
+
+/**
+ * Print the operator-facing end-of-run summary. Goes to stdout regardless
+ * of --verbose. Surfaces warnings + errors prominently so the 2am operator
+ * doesn't miss them buried in the log.
+ */
+function printFinalSummary(state: BakeState, aborted: boolean, dry_run: boolean): void {
+  const isPreflightOnly = state.current_phase === "preflight";
+  const headline = aborted
+    ? `❌ BAKE FAILED at phase=${state.current_phase} step=${state.current_step_id}`
+    : isPreflightOnly
+    ? `✓ PREFLIGHT PASSED${dry_run ? " (dry-run)" : ""}`
+    : `✓ BAKE SUCCEEDED${dry_run ? " (dry-run)" : ""}`;
+
+  console.log("");
+  console.log("══════════════════════════════════════════════════════════════");
+  console.log(`  ${headline}`);
+  console.log(`  run_id:   ${state.run_id}`);
+  console.log(`  elapsed:  ${formatElapsed(state.elapsed_seconds * 1000)}`);
+  console.log(`  errors:   ${state.errors.length}`);
+  console.log(`  warnings: ${state.warnings.length}`);
+  console.log(`  notes:    ${state.notes.length}`);
+  console.log(`  state:    ~/.bake-state/runs/${state.run_id}/state.json`);
+  console.log(`  log:      ~/.bake-state/runs/${state.run_id}/log.txt`);
+  console.log("══════════════════════════════════════════════════════════════");
+
+  if (state.errors.length > 0) {
+    console.log("");
+    console.log("ERRORS (P0 — these blocked the bake):");
+    for (const e of state.errors) console.log(`  ✗ ${e}`);
+    // Show the last-failed step's output + recovery hint inline, so the
+    // operator doesn't have to dig into the state file at 2am.
+    const failedStepId = state.current_step_id;
+    const failedStep = state.step_results[failedStepId];
+    if (failedStep && failedStep.output.length > 0) {
+      console.log("");
+      console.log(`Last output from ${failedStepId} (most recent ${Math.min(10, failedStep.output.length)} lines):`);
+      for (const line of failedStep.output.slice(-10)) {
+        console.log(`  │ ${line}`);
+      }
+    }
+    // Step recovery hint from the step spec — pulled out of buildAllSteps()
+    // via id match. This isn't persisted in state, so we re-derive at print time.
+    const allSteps = buildAllSteps();
+    const stepSpec = allSteps.find((s) => s.id === failedStepId);
+    if (stepSpec?.recovery_hint) {
+      console.log("");
+      console.log(`Recovery hint: ${stepSpec.recovery_hint}`);
+    }
+    console.log("");
+  }
+
+  if (state.warnings.length > 0) {
+    console.log("");
+    console.log("WARNINGS (P1 — bake proceeded but review before next bake):");
+    for (const w of state.warnings) console.log(`  ⚠ ${w}`);
+    console.log("");
+  }
+
+  if (aborted) {
+    console.log("Resume after fixing the underlying issue:");
+    console.log(`  npx tsx scripts/_autonomous-bake.ts --action=resume ${state.run_id}`);
+    console.log("");
+    console.log("Or rollback (destroys any Linode resources, releases locks):");
+    console.log(`  npx tsx scripts/_autonomous-bake.ts --action=rollback ${state.run_id}`);
+    console.log("");
+  } else if (!isPreflightOnly && state.new_snapshot.image_id) {
+    console.log("");
+    console.log("Cooper actions (paste-ready):");
+    for (const c of state.cooper_actions) console.log(`  ${c}`);
+    console.log("");
+  } else if (isPreflightOnly && state.warnings.length === 0) {
+    console.log("Preflight clean. Run full bake:");
+    console.log(`  npx tsx scripts/_autonomous-bake.ts`);
+    console.log("");
+  } else if (isPreflightOnly) {
+    console.log("Preflight passed with warnings. Review above. Then:");
+    console.log(`  npx tsx scripts/_autonomous-bake.ts                  # ignore warnings, bake`);
+    console.log(`  # OR — resolve the warnings first (see remediation in log), then re-run preflight`);
+    console.log("");
+  }
 }
 
 async function actionResume(args: CLIArgs): Promise<number> {

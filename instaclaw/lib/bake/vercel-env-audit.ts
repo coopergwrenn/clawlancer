@@ -94,12 +94,22 @@ export async function auditVercelProdEnv(): Promise<VercelEnvCheckResult> {
   result.cli_available = true;
 
   // 2. List Vercel production env vars
+  //
+  // `vercel env ls production` prints a paginated table. The default page
+  // size shows ~25 rows. Production has ~95 vars — we need to consume all
+  // pages by piping through `cat` (forces non-tty mode → no paging) AND
+  // using `--limit=200` if the CLI supports it.
+  //
+  // Empirically (vercel CLI as of 2026-05-19): the command does NOT honor
+  // --limit, but piping to a file via stdout in a non-tty subprocess returns
+  // ALL vars in a single output. Node's execSync captures stdout fully, so
+  // we get the complete list as long as the CLI doesn't impose its own cap.
   let envListOutput = "";
   try {
-    // `vercel env ls production` prints a table to stdout. Format-stable enough to grep.
     envListOutput = execSync("npx vercel env ls production 2>&1", {
       encoding: "utf-8",
       timeout: 30_000,
+      maxBuffer: 8 * 1024 * 1024, // 8 MB buffer for large env lists
     });
   } catch (e) {
     const msg = (e as Error).message;
@@ -111,23 +121,22 @@ export async function auditVercelProdEnv(): Promise<VercelEnvCheckResult> {
     return result;
   }
 
+  // Sanity-check: log how many rows we got (helps debug pagination issues)
+  const rowCount = envListOutput.split("\n").filter((l) => /^\s+[A-Z]/.test(l)).length;
+  result.notes.push(`Vercel env ls returned ${rowCount} rows`);
+
   // 3. For each expected var, check if it appears in the listing
   const lines = envListOutput.split("\n");
   for (const exp of EXPECTED_VERCEL_ENV_VARS) {
-    // The CLI's table format has columns: `name | environment | added`.
-    // We match the name as a column-1 token. Be permissive — Vercel can
-    // change the format.
+    // The CLI's table format has columns: `name  type  environments  age`.
+    // Be permissive — match the name as a column-1 token after trim.
     const matchedLine = lines.find((l) => {
       const trimmed = l.trim();
-      // Naively split on whitespace + check first token equals name.
       return trimmed.split(/\s+/)[0] === exp.name;
     });
     const present = !!matchedLine;
     let value_hint = "";
     if (matchedLine) {
-      // Values are typically masked as `Encrypted` or shown truncated.
-      // For our purposes, presence is enough — Vercel doesn't expose values
-      // via `env ls`. To compare a value, the operator must `env pull`.
       value_hint = matchedLine.trim().slice(0, 80);
     }
     result.vars.push({

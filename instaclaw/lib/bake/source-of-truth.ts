@@ -47,13 +47,21 @@ function readSource(repoRoot: string, relPath: string): string {
  * Extract a top-level `const NAME = "value"` (or numeric) from a TS source.
  * Returns null if absent. Throws on multiple matches (ambiguous).
  *
- * Looks for `const NAME = "..."` OR `const NAME = '...'` OR `const NAME = N;`.
- * Skips lines beginning with `//` (single-line comments — multi-line comments
- * containing fake declarations are an unhandled edge case but unlikely in practice).
+ * Handles three declaration shapes:
+ *   const NAME = "value"
+ *   export const NAME = "value"
+ *   const NAME: Type = "value"      (and the export-prefixed equivalent)
+ *
+ * Skips lines beginning with `//` or `*` (single-line + JSDoc comment lines —
+ * multi-line comment blocks containing fake declarations are an unhandled
+ * edge case but unlikely in practice).
  */
 export function extractConst(source: string, name: string): string | null {
-  // First try string literal
-  const stringPat = new RegExp(`^const\\s+${name}\\s*(?::\\s*[^=]+)?=\\s*["']([^"']*)["']`, "m");
+  // First try string literal. Accept optional `export ` prefix.
+  const stringPat = new RegExp(
+    `^(?:export\\s+)?const\\s+${name}\\s*(?::\\s*[^=]+)?=\\s*["']([^"']*)["']`,
+    "m",
+  );
   const stringMatches = [...source.matchAll(new RegExp(stringPat.source, "gm"))];
   // Filter out matches inside JSDoc/comment blocks (heuristic: line not starting with //)
   const filtered = stringMatches.filter((m) => {
@@ -67,21 +75,40 @@ export function extractConst(source: string, name: string): string | null {
   if (filtered.length === 1) return filtered[0][1];
 
   // Try numeric literal
-  const numPat = new RegExp(`^const\\s+${name}\\s*(?::\\s*[^=]+)?=\\s*(\\d+(?:\\.\\d+)?)`, "m");
+  const numPat = new RegExp(
+    `^(?:export\\s+)?const\\s+${name}\\s*(?::\\s*[^=]+)?=\\s*(\\d+(?:\\.\\d+)?)`,
+    "m",
+  );
   const numMatch = source.match(numPat);
   if (numMatch) return numMatch[1];
 
   return null;
 }
 
-/** Extract `version: NNN` from `export const VM_MANIFEST = { ... version: NNN, ... }`. */
+/**
+ * Extract `version: NNN` from `export const VM_MANIFEST = { ... version: NNN, ... }`.
+ *
+ * The VM_MANIFEST literal has a massive (~30K+ chars) changelog docblock
+ * between the opening `{` and the first real field. So we can't bound
+ * the search by chars-from-opening-brace.
+ *
+ * Strategy: find the start of `export const VM_MANIFEST = {`, then scan
+ * forward for the first `version: <numeric-literal>,` line that's at top
+ * level (NOT inside a comment block — heuristic: the line itself starts
+ * with `^  version:\s*\d` exactly). The literal `version:` pattern at
+ * 2-space indent uniquely identifies the manifest version; CONFIG_SPEC's
+ * version field uses `VM_MANIFEST.version` (reference, not literal) so
+ * it doesn't match the `\d` pattern.
+ */
 export function extractManifestVersion(source: string): number | null {
-  // Find the VM_MANIFEST object literal start.
   const startMatch = source.match(/export\s+const\s+VM_MANIFEST\s*=\s*\{/);
   if (!startMatch) return null;
   const after = source.slice((startMatch.index ?? 0) + startMatch[0].length);
-  // Look for `version: <num>` in the next 1000 chars (top-level of the object).
-  const verMatch = after.slice(0, 5000).match(/^\s*version:\s*(\d+)/m);
+  // Match an indented `  version: <number>` line (manifest convention)
+  // anywhere after the object opener. The first match is the manifest's
+  // own version field (CONFIG_SPEC's uses VM_MANIFEST.version, not a
+  // literal, and so won't match the `\d` pattern).
+  const verMatch = after.match(/^[ \t]+version:\s*(\d+)\s*,/m);
   if (!verMatch) return null;
   return parseInt(verMatch[1], 10);
 }
@@ -118,10 +145,20 @@ export interface SourcePins {
 /**
  * Read every bake-relevant pin from source. Throws if any required pin
  * is unreadable (preflight catches and reports).
+ *
+ * Pin locations (discovered empirically 2026-05-19):
+ *   - GBRAIN_PINNED_COMMIT/VERSION   → lib/vm-reconcile.ts
+ *   - OPENCLAW_PINNED_VERSION        → lib/ssh.ts (NOT vm-reconcile)
+ *   - NODE_PINNED_VERSION            → lib/ssh.ts (symbol name has _PINNED_)
+ *   - BOOTSTRAP_MAX_CHARS            → lib/vm-manifest.ts
+ *   - SECRET_VERSION                 → lib/vm-reconcile.ts (declared with `export`)
+ *   - VM_MANIFEST.version            → lib/vm-manifest.ts (deep inside the docblock)
+ *   - GBRAIN_PARTNER_ALLOWLIST       → lib/vm-reconcile.ts (Set literal)
  */
 export function readSourcePins(repoRoot: string): SourcePins {
   const reconcileSrc = readSource(repoRoot, SRC.vmReconcile);
   const manifestSrc = readSource(repoRoot, SRC.vmManifest);
+  const sshSrc = readSource(repoRoot, SRC.ssh);
 
   const gbrain_commit = extractConst(reconcileSrc, "GBRAIN_PINNED_COMMIT");
   if (!gbrain_commit) {
@@ -135,8 +172,10 @@ export function readSourcePins(repoRoot: string): SourcePins {
   if (manifest_version === null) {
     throw new Error("VM_MANIFEST.version not found in lib/vm-manifest.ts");
   }
-  const openclaw_pinned_version = extractConst(reconcileSrc, "OPENCLAW_PINNED_VERSION");
-  const node_version = extractConst(manifestSrc, "NODE_VERSION");
+  // OPENCLAW_PINNED_VERSION lives in lib/ssh.ts, not vm-reconcile
+  const openclaw_pinned_version = extractConst(sshSrc, "OPENCLAW_PINNED_VERSION");
+  // The Node version constant is NODE_PINNED_VERSION (in ssh.ts)
+  const node_version = extractConst(sshSrc, "NODE_PINNED_VERSION");
   const bootstrap_max_chars_raw = extractConst(manifestSrc, "BOOTSTRAP_MAX_CHARS");
   const bootstrap_max_chars = bootstrap_max_chars_raw ? parseInt(bootstrap_max_chars_raw, 10) : 40000;
   const secret_version_raw = extractConst(reconcileSrc, "SECRET_VERSION");
