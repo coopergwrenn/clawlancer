@@ -1,19 +1,19 @@
 # Changelog — generated 2026-05-19
 
-Window: `fbdab2c69fa5d22969274992757fc700e84e9b1c` → `HEAD` (HEAD = `a543897f`)
-Total commits: 3
+Window: `a543897f19d098251faf25d0c90e665387fb3fc3` → `HEAD` (HEAD = `a027455c`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: a543897f19d098251faf25d0c90e665387fb3fc3 -->
+<!-- LAST_GENERATED_SHA: a027455c28aaff024cfae459ee46ee22e4f3749a -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 2
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 2
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
@@ -22,9 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `27aa70f1` 2026-05-19 — chore(chatgpt-oauth): promote migration to migrations/ — applied to prod 2026-05-19 [2 files] _(ai-assisted)_
-- `a543897f` 2026-05-19 — fix(bake): live-validation findings — pin extraction + UX + dry-run guards [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
-- `6218e04a` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `a027455c` 2026-05-19 — feat(chatgpt-oauth): Phase 1 Day 2 — DB helpers + device-code API routes + disconnect [7 files] _(ai-assisted)_
+- `320959e1` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -32,10 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (2)
+### Infrastructure (1)
 
-- `27aa70f1` 2026-05-19 — chore(chatgpt-oauth): promote migration to migrations/ — applied to prod 2026-05-19 [2 files] _(ai-assisted)_
-- `a543897f` 2026-05-19 — fix(bake): live-validation findings — pin extraction + UX + dry-run guards [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `a027455c` 2026-05-19 — feat(chatgpt-oauth): Phase 1 Day 2 — DB helpers + device-code API routes + disconnect [7 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -47,23 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `6218e04a` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `320959e1` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `a543897f` 2026-05-19 — [infrastructure, docs] — fix(bake): live-validation findings — pin extraction + UX + dry-run guards
-
-## AI-assisted commits (2)
+## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `27aa70f1` 2026-05-19 — chore(chatgpt-oauth): promote migration to migrations/ — applied to prod 2026-05-19
-- `a543897f` 2026-05-19 — fix(bake): live-validation findings — pin extraction + UX + dry-run guards
+- `a027455c` 2026-05-19 — feat(chatgpt-oauth): Phase 1 Day 2 — DB helpers + device-code API routes + disconnect
 
 ## Appendix — every commit (chronological)
 
-- `6218e04a` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-- `27aa70f1` 2026-05-19 — chore(chatgpt-oauth): promote migration to migrations/ — applied to prod 2026-05-19 [2 files] _(ai-assisted)_
-- `a543897f` 2026-05-19 — fix(bake): live-validation findings — pin extraction + UX + dry-run guards [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `320959e1` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `a027455c` 2026-05-19 — feat(chatgpt-oauth): Phase 1 Day 2 — DB helpers + device-code API routes + disconnect [7 files] _(ai-assisted)_
