@@ -652,7 +652,7 @@ export async function reconcileVM(
     // other 7 edge_city VMs had ZERO instructions despite having gbrain
     // installed. This step closes that gap fleet-wide.
     currentStep = "gbrain-soul-protocol";
-    await stepDeployGbrainSoulProtocol(ssh, result, dryRun);
+    await stepDeployGbrainSoulProtocol(ssh, vm, result, dryRun);
 
     // ── v106: gbrain SOUL.md routing canonicalization ──
     // Replaces the legacy MEMORY.md-first `## Memory Persistence (CRITICAL)`
@@ -7569,7 +7569,7 @@ out({
 
 /**
  * stepDeployGbrainSoulProtocol — v102 migration to canonicalize the gbrain
- * memory protocol into AGENTS.md on every VM that has gbrain installed.
+ * memory protocol into AGENTS.md on every gbrain-eligible VM.
  *
  * Why this exists: vm-050 had a manually-deployed gbrain protocol (via
  * scripts/_push_gbrain_fix.ts ops script) but the other 7 edge_city VMs
@@ -7579,9 +7579,23 @@ out({
  * back to MEMORY.md edits or pure hallucination (the 2026-05-17 Bear
  * Republic canary, where timmy claimed "saved" with no tool call).
  *
- * Gate: gbrain.service must be active on the VM. Universal (not partner-
- * specific): if gbrain rolls out beyond edge_city, the protocol propagates
- * automatically.
+ * Triple gate (defense in depth — added 2026-05-19 to close the latent
+ * VM-reassignment bug originally flagged in v106's PRD):
+ *   1. vm.partner ∈ GBRAIN_PARTNER_ALLOWLIST (covers reassign edge case
+ *      via freeze→thaw or manual partner mutation; without this gate, a
+ *      VM reassigned from edge_city to non-edge would keep gbrain.service
+ *      running from the previous tenant and this step would inject gbrain
+ *      routing into the new non-edge user's AGENTS.md — wrong)
+ *   2. GBRAIN_INSTALL_ENABLED env var === "true" (pauses propagation if
+ *      the gbrain rollout is intentionally disabled in Vercel)
+ *   3. gbrain.service active on the VM (catches edge case where gbrain
+ *      isn't installed yet — same cycle's earlier stepGbrain may have
+ *      just installed it, or it may have crashed)
+ *
+ * Same gate shape as stepDeployGbrainSoulRouting (v106), kept in lock-step
+ * via the shared GBRAIN_PARTNER_ALLOWLIST and the env var. When the
+ * allowlist grows (consensus_2026, eclipse, etc.), both steps propagate
+ * automatically without code changes here.
  *
  * Idempotency: GBRAIN_MEMORY_PROTOCOL_V1 marker check. Skip if present.
  *
@@ -7597,10 +7611,17 @@ out({
  */
 async function stepDeployGbrainSoulProtocol(
   ssh: SSHConnection,
+  vm: VMRecord & { partner?: string | null },
   result: ReconcileResult,
   dryRun: boolean,
 ): Promise<void> {
-  // ── Gate: gbrain.service must be active on this VM ──
+  // ── Gate 1: partner allowlist (cheapest check first) ──
+  if (!vm.partner || !GBRAIN_PARTNER_ALLOWLIST.has(vm.partner)) return;
+
+  // ── Gate 2: env var (pauses entire gbrain content surface) ──
+  if (process.env.GBRAIN_INSTALL_ENABLED !== "true") return;
+
+  // ── Gate 3: gbrain.service must be active on this VM ──
   const probe = await ssh.execCommand(
     `${HEAL_DBUS_PREFIX} && systemctl --user is-active gbrain.service 2>&1 | head -1`,
     { execOptions: { timeout: 5_000 } } as any,
@@ -7849,9 +7870,11 @@ async function sendGbrainSoulRoutingDriftAlertDeduped(
  *   - Atomic write (tmp + os.replace)
  *   - Verify-after-write (marker grep)
  *
- * Triple gate (defense in depth — beyond stepDeployGbrainSoulProtocol's
- * service-active-only gating, which has a latent VM-reassignment bug):
- *   1. vm.partner ∈ GBRAIN_PARTNER_ALLOWLIST (covers reassign edge case)
+ * Triple gate (defense in depth — same shape as stepDeployGbrainSoulProtocol
+ * post-2026-05-19 hardening; kept in lock-step via shared
+ * GBRAIN_PARTNER_ALLOWLIST + env var):
+ *   1. vm.partner ∈ GBRAIN_PARTNER_ALLOWLIST (covers VM-reassign edge case
+ *      via freeze→thaw or manual partner mutation)
  *   2. gbrain.service active on the VM
  *   3. GBRAIN_INSTALL_ENABLED env var === "true"
  *
