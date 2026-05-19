@@ -4,7 +4,7 @@
 **Target snapshot label:** `instaclaw-base-v105-2026-05-23-gbrain-http` (or similar dated label)
 **Predecessor snapshot:** `private/38575292` (current `LINODE_SNAPSHOT_ID`)
 **Rollback window:** keep `private/38575292` available for 1 week after v105 ships (2026-06-01 minimum)
-**Single biggest delta vs v79:** gbrain v0.35.0.0 HTTP sidecar pre-installed; v82-v105 reconciler fixes pre-applied (16 manifest version bumps)
+**Single biggest delta vs v79:** gbrain v0.36.3.0 HTTP sidecar pre-installed (commit `1d5f69f`, Phase J upgrade path + cron XDG fix); v82-v105 reconciler fixes pre-applied (16 manifest version bumps)
 
 > **Version-tag convention in this doc:** `[v102 NEW]` / `[v104 NEW]` / `[v105 NEW]` tags in the §3.x walk are **historical attribution** showing which manifest version first introduced that gate or step. They are NOT "still new in this version" — they document the audit trail for future operators. The file's overall **target** is whatever `VM_MANIFEST.version` reads at bake-time (v105 at file rename 2026-05-19; bake-day operator must re-confirm before clicking Provision).
 
@@ -35,7 +35,7 @@ Material changes that justify the bake (in delta order — most important first)
 
 | Component | v79 state | v102 state | Source |
 |---|---|---|---|
-| **gbrain** | not installed | v0.35.0.0 (commit baf1a47) at `~/gbrain`, bun installed, `bun link`'d, systemd unit installed (NOT started), fresh PGLite at schema v66, NO bearer token (per-VM mint at first reconcile) | Rule 35; `scripts/install-gbrain.sh` |
+| **gbrain** | not installed | v0.36.3.0 (commit `1d5f69f`, Phase J upgrade path + cron XDG fix + embedding-dims fix from `a8eb1aa5` 2026-05-19) at `~/gbrain`, bun installed, `bun link`'d, systemd unit installed (NOT started), fresh PGLite at schema v66, NO bearer token (per-VM mint at first reconcile), Phase I CHECKPOINT cron + ExecStop hook installed (Rule 54) | Rule 35; `scripts/install-gbrain.sh` |
 | **gbrain SOUL.md protocol** | absent | `GBRAIN_MEMORY_PROTOCOL_V1` block inlined in `WORKSPACE_AGENTS_MD_V2` (~4.1KB) — STORE/RETRIEVE rules + NEVER-submit_job + Rule 28 "MUST call before responding" anti-hallucination directive | `lib/workspace-templates-v2.ts:GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK` |
 | **OpenClaw** | 2026.4.26 | latest stable (TBD at bake time — re-pin at start) | `lib/vm-manifest.ts:OPENCLAW_PINNED_VERSION` |
 | **VM manifest** | v79 | v102 baseline (orphan-tool_use repair landed 2026-05-16 via commit `48af5075`; superseded earlier v100 plan) | `lib/vm-manifest.ts:VM_MANIFEST.version` |
@@ -74,7 +74,9 @@ python3 -m py_compile scripts/verify-gbrain-mcp.py && echo "syntax OK"
 # Confirm pinned constants are aligned
 grep "GBRAIN_PINNED_" lib/vm-reconcile.ts | head -2
 grep "GBRAIN_PINNED_" scripts/_install-gbrain-on-vm.ts | head -2
-# All must show: COMMIT=baf1a47 VERSION=0.35.0.0
+# All must show: COMMIT=1d5f69f VERSION=0.36.3.0
+# (Bumped 2026-05-19 from baf1a47/0.35.0.0 via a8eb1aa5 — Phase J upgrade path + cron XDG fix.
+# If grep returns different values, USE THOSE — vm-reconcile.ts is source of truth.)
 ```
 
 ### §2.4 — Anthropic project-key spending cap
@@ -112,6 +114,179 @@ After §3.5 gbrain install completes on the bake VM:
   ```
 
 **Why this gate exists:** v102 propagation happens via reconciler step, but the bake VM is provisioned from an OLDER snapshot (v79-baseline) and brought current manually. Without this gate the bake produces a snapshot whose AGENTS.md lacks the gbrain protocol — every new VM provisioned from it would boot without the protocol until the FIRST reconcile cycle (~3 min post-provision) catches it up. For Edge Esmeralda attendees that's 3 minutes of unhelpful agent behavior at the most important moment.
+
+### §2.6.5 — **[v106 NEW — P0]** Reconciler env-var gates that affect the bake reconcile (§3.3)
+
+Three independent env-var families. Each consumed by a different process. Mis-classifying which env each var belongs to was an earlier bug in this section — fixed 2026-05-19. Source-of-truth analysis: [`docs/prd/gbrain-routing-architecture-decision-2026-05-19.md`](./prd/gbrain-routing-architecture-decision-2026-05-19.md) §"Question 3".
+
+#### Family A: bake-tooling env (consumed by `auditVMConfig` in §3.3)
+
+These are read by the local tsx process that runs the §3.3 reconcile. They live in `instaclaw/.env.local` on the operator's machine.
+
+| Env var | Required value | Source of truth | Effect if unset / wrong |
+|---|---|---|---|
+| `RECONCILE_SOUL_MIGRATION_ENABLED` | `"true"` | `lib/vm-reconcile.ts:6906` | `stepMigrateSoulV2` returns immediately. Bake VM keeps V1 templates. V1 AGENTS.md has ZERO gbrain mentions. **Snapshot ships without V2.** |
+| `RECONCILE_SOUL_MIGRATION_VM_IDS` | **UNSET** (or includes bake VM id) | `lib/vm-reconcile.ts:6911` | If set to a whitelist that doesn't include the bake VM, `stepMigrateSoulV2` skips the bake VM even with `_ENABLED=true`. Silent. Easy to miss — prior canary work (e.g., `vm-733` per project memory) may have set this. |
+
+Pre-flight check (run on the machine that will execute §3.3):
+```bash
+# Both A vars
+grep -E '^RECONCILE_SOUL_MIGRATION_(ENABLED|VM_IDS)=' instaclaw/.env.local
+
+# Expected output:
+#   RECONCILE_SOUL_MIGRATION_ENABLED="true"
+# (RECONCILE_SOUL_MIGRATION_VM_IDS should be ABSENT, or explicitly include the bake VM id when known)
+```
+
+- [ ] `RECONCILE_SOUL_MIGRATION_ENABLED=true` in `instaclaw/.env.local`
+- [ ] `RECONCILE_SOUL_MIGRATION_VM_IDS` is **NOT** set in `instaclaw/.env.local`, OR (if set) includes the bake VM's id
+
+If `RECONCILE_SOUL_MIGRATION_VM_IDS` IS set from prior canary work, `unset` it for the bake shell:
+```bash
+unset RECONCILE_SOUL_MIGRATION_VM_IDS
+# OR comment-out the line in instaclaw/.env.local for the duration of the bake
+```
+
+#### Family B: bake VM's `.env` file (consumed by `install-gbrain.sh` in §3.5)
+
+These must be inline-exported on the shell command that invokes `install-gbrain.sh`. They are NOT inherited from `.env.local` automatically — they're args to the script, not config of the VM.
+
+| Env var | Required value | Source of truth | Effect if unset / wrong |
+|---|---|---|---|
+| `GBRAIN_PINNED_COMMIT` | `"1d5f69f"` | `lib/vm-reconcile.ts:136` (`a8eb1aa5` Phase J landing, 2026-05-19) | `install-gbrain.sh:106` exits immediately. No gbrain installed. |
+| `GBRAIN_PINNED_VERSION` | `"0.36.3.0"` | `lib/vm-reconcile.ts:137` | `install-gbrain.sh:107` exits immediately. No gbrain installed. |
+
+**WARNING**: the §3.5 invocation line in the prior version of this checklist used STALE values (`baf1a47` / `0.35.0.0`). Fix shipped 2026-05-19 — verify the current §3.5 line reads `1d5f69f` / `0.36.3.0` before running. The current pins are at `lib/vm-reconcile.ts:136-137`; treat those as source of truth.
+
+- [ ] §3.5 invocation line uses `GBRAIN_PINNED_COMMIT=1d5f69f`
+- [ ] §3.5 invocation line uses `GBRAIN_PINNED_VERSION=0.36.3.0`
+- [ ] Both values match `lib/vm-reconcile.ts:136-137` at the moment of bake (re-grep `lib/vm-reconcile.ts` if any commits land between now and bake-time)
+
+#### Family C: production Vercel env (DOES NOT affect the bake itself — but operator must verify before letting fresh VMs into prod)
+
+`GBRAIN_INSTALL_ENABLED=true` controls whether the **Vercel reconcile-fleet cron** (running in production, not in the bake shell) calls `stepGbrain` on production VMs after they get assigned. It does NOT affect bake-VM behavior — §3.5 installs gbrain via direct shell invocation, bypassing the reconciler partner gate and this env var entirely.
+
+| Env var | Required value | Source of truth | Effect on PRODUCTION VMs |
+|---|---|---|---|
+| `GBRAIN_INSTALL_ENABLED` (Vercel prod env) | `"true"` | `lib/vm-reconcile.ts:1629`; already set in Vercel prod env as of 2026-05-19 | If unset, edge_city VMs provisioned from this snapshot don't get gbrain re-installed/updated by the Vercel cron. Snapshot ships WITH gbrain, but every reconcile cycle's stepGbrain silently skips. |
+| `GBRAIN_PINNED_COMMIT` / `_VERSION` (Vercel prod env) | Same as Family B | `lib/vm-reconcile.ts:136-137` | If unset in prod env, Vercel cron's stepGbrain calls into install-gbrain.sh which then fails on the env-var-required guards. |
+
+Confirm in Vercel dashboard before the bake (or via `npx vercel env ls production`):
+- [ ] `GBRAIN_INSTALL_ENABLED=true` in Vercel **production** env
+- [ ] `GBRAIN_PINNED_COMMIT=1d5f69f` in Vercel **production** env (per Rule 6, set via `printf` not `<<<`/`echo`)
+- [ ] `GBRAIN_PINNED_VERSION=0.36.3.0` in Vercel **production** env
+- [ ] `RECONCILE_SOUL_MIGRATION_ENABLED=true` in Vercel **production** env (Q-C decision: flip alongside v106 deploy)
+
+#### Cross-check during §3.8 verification — what SHOULD be on the baked snapshot
+
+The bake VM's gbrain.service goes through two distinct states during the bake:
+
+| When | gbrain.service state | Why |
+|---|---|---|
+| After §3.5 (install) | `active` + enabled | install-gbrain.sh Phase E5 starts the service |
+| After §3.6 (token strip) | `inactive` + disabled | §3.6 explicitly stops + disables so per-VM mint can happen at first-reconcile |
+
+`_postbake-validation.ts:920` expects `KillSignal=SIGKILL` in the unit file (always present after §3.5; not affected by §3.6's disable). The §3.8 16e check expects `is-active = inactive` — that's the FINAL state after §3.6. **Don't conflate these.**
+
+After all §3.x steps complete (just before §3.10 imagize):
+
+```bash
+# V2 templates landed (OPENCLAW_CACHE_BOUNDARY marker is only in V2 SOUL.md per workspace-templates-v2.ts:205)
+ssh openclaw@$BAKE_VM_IP 'grep -q "OPENCLAW_CACHE_BOUNDARY" ~/.openclaw/workspace/SOUL.md' \
+  && echo "V2 SOUL ✓" || echo "V1 SOUL — Family A gate failed"
+
+# AGENTS.md V2 inlined the gbrain block at module-load time, OR the §2.6 manual backfill landed it
+ssh openclaw@$BAKE_VM_IP 'grep -c "GBRAIN_MEMORY_PROTOCOL_V1" ~/.openclaw/workspace/AGENTS.md'
+# Expected: 2 (open marker + close marker). If 0: re-run §2.6 manual remediation.
+
+# gbrain BINARY is expected installed; service is INACTIVE+DISABLED post-§3.6 (per-VM mint at first reconcile)
+ssh openclaw@$BAKE_VM_IP 'gbrain --version 2>&1 | head -1'
+# Expected: contains "0.36.3.0" (or current GBRAIN_PINNED_VERSION). If "command not found": §3.5 didn't install.
+ssh openclaw@$BAKE_VM_IP 'systemctl --user is-active gbrain.service'
+# Expected: inactive (post-§3.6 strip). If active: §3.6 didn't run — bake-blocker (snapshot would carry per-VM bearer).
+ssh openclaw@$BAKE_VM_IP 'systemctl --user is-enabled gbrain.service'
+# Expected: disabled (post-§3.6 strip). If enabled: §3.6's disable step didn't run.
+
+# Bake VM SOUL.md is GENERIC (no GBRAIN_SOUL_ROUTING_V1 marker — see §2.6.6)
+ssh openclaw@$BAKE_VM_IP 'grep -c "GBRAIN_SOUL_ROUTING_V1" ~/.openclaw/workspace/SOUL.md'
+# Expected: 0 (snapshot stays generic; routing applied per-VM at assign time).
+
+# brain.pglite is EMPTY (per _postbake-validation.ts:432-433 — bake VM must not ship with hand-extracted user data)
+ssh openclaw@$BAKE_VM_IP 'ls ~/.gbrain/brain.pglite 2>/dev/null | wc -l'
+# Expected: 0 entries (config + PGLite data files cleared by §3.6, OR the dir exists but is empty post-strip).
+# More precise: check that access_tokens table is empty AND pages table has no _gbrain-install-verify marker
+# (the bun -e queries in §3.6 cover this).
+
+# Bearer token file removed
+ssh openclaw@$BAKE_VM_IP 'ls ~/.gbrain/openclaw-bearer-token.txt 2>&1'
+# Expected: "No such file or directory"
+
+# openclaw.json mcp.servers.gbrain entry removed (per-VM re-add at first reconcile)
+ssh openclaw@$BAKE_VM_IP 'jq ".mcp.servers.gbrain // \"absent\"" ~/.openclaw/openclaw.json'
+# Expected: "absent"
+```
+
+### §2.6.6 — **[v106 NEW]** `stepDeployGbrainSoulRouting` (v106) landing contingency
+
+The gbrain terminal is implementing v106 (`stepDeployGbrainSoulRouting` — SOUL.md gbrain routing block, the companion to v102's AGENTS.md gbrain block) right now. PRD at [`docs/prd/gbrain-soul-routing-3-surface-analysis-2026-05-19.md`](./prd/gbrain-soul-routing-3-surface-analysis-2026-05-19.md). Decision doc at [`docs/prd/gbrain-routing-architecture-decision-2026-05-19.md`](./prd/gbrain-routing-architecture-decision-2026-05-19.md). It may or may not land before May 23. Bake behavior diverges. **Both paths are acceptable.** Per Q-D decision (already resolved by Cooper): bake on schedule regardless.
+
+#### Determine landing status at T-1 (May 22 EOD)
+
+```bash
+git log --oneline main -- instaclaw/lib/vm-reconcile.ts instaclaw/lib/workspace-templates-v2.ts instaclaw/lib/ssh.ts instaclaw/lib/vm-manifest.ts | head -20
+grep -E '^  version: 10[5-9]' instaclaw/lib/vm-manifest.ts
+grep -nE 'stepDeployGbrainSoulRouting|GBRAIN_SOUL_ROUTING_V1' instaclaw/lib/vm-reconcile.ts instaclaw/lib/workspace-templates-v2.ts instaclaw/lib/ssh.ts | head -5
+```
+
+If `VM_MANIFEST.version === 106` AND `stepDeployGbrainSoulRouting` is grep-hit in `vm-reconcile.ts` → **Path A (v106 landed)**.
+Otherwise → **Path B (v106 not yet landed)**.
+
+#### Critical: the bake VM's SOUL.md MUST stay generic regardless of Path A or B
+
+Per the gbrain terminal's PRD §"Does bake need updating?":
+
+> If we DID change `WORKSPACE_SOUL_MD`, non-gbrain VMs (the 137 in production today) would receive gbrain routing guidance pointing them at tools they don't have. That's noise, not value. Keeping `WORKSPACE_SOUL_MD` unchanged preserves correct default-for-non-gbrain behavior.
+
+Translation: the bake snapshot's SOUL.md should ship with the **obsolete** `## Memory Persistence (CRITICAL)` MEMORY.md-first section unchanged. Routing replacement happens **at assignment time** on production VMs via `configureOpenClaw`'s partner-gated injection (PRD's Surface 3), NOT at bake time. The snapshot is generic; routing is per-VM.
+
+#### Path A: v106 landed before May 23
+
+`stepDeployGbrainSoulRouting` exists in the reconciler. Its gate is `gbrain.service active` (NOT partner-gated, per PRD §"Gate semantics"). The natural ordering of the checklist keeps the bake VM safe:
+
+1. §3.3 reconcile fires → `stepDeployGbrainSoulRouting`'s gate (`gbrain.service active`) FAILS because §3.5 hasn't run yet → step skips silently. ✓ bake SOUL.md unchanged.
+2. §3.5 installs gbrain → gbrain.service active. But we do NOT re-run §3.3 after this point. ✓ bake SOUL.md still unchanged.
+3. Snapshot is imagized with bake VM's SOUL.md in its generic V2 + obsolete-section state.
+4. Production VM is provisioned from snapshot → assigned to a user → `configureOpenClaw` runs. For edge_city users, the configureOpenClaw injection adds the gbrain block before write. For non-edge users, the injection skips (partner gate) — SOUL.md stays generic.
+5. First reconcile tick on the assigned VM: `stepDeployGbrainSoulRouting` fires (gbrain.service active from snapshot). **Note the reconciler step does NOT have a partner gate — this means it will apply to ANY VM with gbrain.service active, including non-edge VMs from this snapshot.** This is a documented gap in the v106 PRD that the gbrain terminal owns; out of scope for the bake itself but worth flagging here.
+
+Verification AFTER §3.5 (bake VM SOUL.md should be UNCHANGED — marker should be ABSENT):
+
+```bash
+# Path A — confirm bake VM's SOUL.md does NOT have the gbrain marker (intentional)
+ssh openclaw@$BAKE_VM_IP 'grep -c "GBRAIN_SOUL_ROUTING_V1" ~/.openclaw/workspace/SOUL.md'
+# Expected: 0. If 2: someone re-ran reconcile after §3.5 — bake VM's SOUL.md is contaminated.
+#   To recover: restore SOUL.md from the bake VM's pre-modification backup, OR re-provision the bake VM.
+
+# Sanity check — the obsolete section should STILL be present (this is the generic baseline)
+ssh openclaw@$BAKE_VM_IP 'grep -c "Your workspace files are your persistent memory across sessions" ~/.openclaw/workspace/SOUL.md'
+# Expected: 1 (the V1 MEMORY.md-first phrasing is the snapshot baseline)
+```
+
+- [ ] Verify `GBRAIN_SOUL_ROUTING_V1` marker is **ABSENT** on bake VM SOUL.md (count = 0)
+- [ ] Verify the legacy MEMORY.md-first phrasing IS present (count = 1) — confirms the section exists in its generic form
+- [ ] Do NOT re-run §3.3 reconcile after §3.5 — that would trigger the (now-passing) gate and contaminate the snapshot
+
+#### Path B: v106 NOT yet landed by May 23
+
+`stepDeployGbrainSoulRouting` doesn't exist yet. Snapshot ships with V1's `## Memory Persistence (CRITICAL)` MEMORY.md-first section in SOUL.md — identical baseline to Path A. **No bake-side action needed; bake snapshots are byte-equivalent between Path A and Path B.**
+
+Production divergence (informational — doesn't affect the bake):
+- For non-edge VMs post-bake: no change either way — they don't have gbrain, MEMORY.md-first routing in SOUL.md is correct for them.
+- For edge_city VMs post-bake (Path B specifically): SOUL.md keeps the obsolete section until v106 lands and the reconciler's stepDeployGbrainSoulRouting propagates. The AGENTS.md gbrain block (v102) is still there and is richer/more directive — the agent will preferentially use gbrain for memory regardless. **Degraded but not broken.** Resolves when v106 lands and per-VM reconcile ticks propagate (~3-5 min per VM).
+
+- [ ] At T-1 (May 22 EOD), check v106 landing status with the `git log` command above
+- [ ] Tag this checklist run as Path A or Path B (for incident-forensics purposes — same bake snapshot, different post-bake convergence timeline for edge_city VMs)
+- [ ] Both paths: bake VM SOUL.md verification (above) is IDENTICAL — marker absent, legacy phrasing present
 
 ### §2.7 — Run the pre-bake-check script (automated go/no-go)
 - [ ] `npx tsx scripts/_pre-bake-check.ts` returns exit 0 (or all CRITICAL blockers explicitly understood and accepted)
@@ -346,7 +521,7 @@ ssh openclaw@$BAKE_VM_IP "crontab -l" | grep -E "strip-thinking|auto-approve|pus
 
 If a marker is missing, the reconciler errored on `stepCronJobs` (re-check §3.3 output) — do NOT proceed.
 
-### §3.5 — **[v102 NEW]** Install gbrain HTTP sidecar (~80s)
+### §3.5 — **[v102 NEW; v106 PIN UPDATE 2026-05-19]** Install gbrain HTTP sidecar (~80s)
 
 **This is the headline change for v102.** Run the canonical install path:
 
@@ -355,27 +530,89 @@ If a marker is missing, the reconciler errored on `stepCronJobs` (re-check §3.3
 cd /Users/cooperwrenn/wild-west-bots/instaclaw
 # Bake VM doesn't have a DB row — bypass DB pre-flight by SSHing directly
 BAKE_VM_IP="<from step 3.1>"
-scp -i $SSH_KEY scripts/install-gbrain.sh scripts/verify-gbrain-mcp.py \
+scp -i $SSH_KEY scripts/install-gbrain.sh scripts/verify-gbrain-mcp.py scripts/pglite-checkpoint.sh scripts/gbrain-patches/0001-add-checkpoint-mcp-tool.patch \
   openclaw@$BAKE_VM_IP:/tmp/
 
+# 2026-05-19: pin values bumped to commit 1d5f69f / version 0.36.3.0 (a8eb1aa5 — Phase J upgrade path + cron XDG fix).
+# DO NOT use the prior stale values (baf1a47 / 0.35.0.0). Verify the current pin in lib/vm-reconcile.ts:136-137
+# at bake time and use whatever is current — never copy from this checklist if the commit has bumped since.
 ssh -i $SSH_KEY openclaw@$BAKE_VM_IP \
-  "GBRAIN_PINNED_COMMIT=baf1a47 GBRAIN_PINNED_VERSION=0.35.0.0 bash /tmp/install-gbrain.sh"
+  "GBRAIN_PINNED_COMMIT=1d5f69f GBRAIN_PINNED_VERSION=0.36.3.0 bash /tmp/install-gbrain.sh"
+```
+
+**Pre-invocation check** (do this BEFORE running the ssh line above):
+```bash
+# Confirm the pin values in this checklist match the current source of truth.
+grep -E '^const GBRAIN_PINNED_(COMMIT|VERSION) = ' instaclaw/lib/vm-reconcile.ts
+# Expected:
+#   const GBRAIN_PINNED_COMMIT = "1d5f69f";
+#   const GBRAIN_PINNED_VERSION = "0.36.3.0";
+# If the values differ, USE THE VALUES FROM vm-reconcile.ts, not from this checklist line.
 ```
 
 Watch for `INSTALL_COMPLETE`. Expected output:
 ```
 PHASE_A_OK ... existing: V=missing T= S=missing P=0
 PHASE_B_OK bun=<version>
-PHASE_C_OK head=baf1a47 path=/home/openclaw/gbrain
-PHASE_D_OK gbrain=0.35.0.0 ...
+PHASE_C_OK head=1d5f69f path=/home/openclaw/gbrain
+PHASE_C2_OK patch_applied=add-checkpoint-mcp-tool
+PHASE_D_OK gbrain=0.36.3.0 ...
 PHASE_E_OK bearer_prefix=gbrain_... main_pid=... port=127.0.0.1:3131
 PHASE_F_OK tools=<≥40> ext_refused=yes loopback_health=200
 PHASE_G_OK transport=streamable-http gw_health=200 hot_reload_hits=<≥0>
 PHASE_H_OK RESULT_OK marker_ts=... put_tool=put_page retrieve_tool=get_page tools_count=<≥40>
+PHASE_I_OK
 INSTALL_COMPLETE
 ```
 
 **[v102 GATE]** If install fails, stop. Investigate. Bake is not gateable until install completes cleanly on the bake VM.
+
+**Critical sub-phase outputs to watch for:**
+
+- `PHASE_C2_OK` (not `PHASE_C2_WARN`) — confirms the CHECKPOINT MCP tool patch (`0001-add-checkpoint-mcp-tool.patch`) applied cleanly to the gbrain source tree. If you see `PHASE_C2_WARN no_patch_file` or `PHASE_C2_WARN patch_apply_failed`, the bake VM ships without the `checkpoint` MCP tool — Phase I's cron will install but be inert (calls a tool that doesn't exist), so every CHECKPOINT cron tick will log `FAILED` to `~/.openclaw/logs/pglite-checkpoint.log`. Without working CHECKPOINTs, Rule 54's pg_control staleness eventually corrupts brain.pglite on SIGKILL (~30 min uptime safety window per CLAUDE.md §54 nuance). **P0 — must be `PHASE_C2_OK` to proceed.**
+- `PHASE_I_OK` — confirms CHECKPOINT cron + ExecStop drop-in installed. P0 — required for production VMs to survive gateway restarts without PGLite corruption.
+
+### §3.5.5 — **[v106 NEW — P0]** Verify Phase C2 patch + Phase I CHECKPOINT install landed
+
+The §3.5 output includes `PHASE_C2_OK` and `PHASE_I_OK` (per the expected output above). But Phase C2 has a WARN-not-FATAL path (`install-gbrain.sh:737-759`) — meaning the install can `INSTALL_COMPLETE` with a degraded CHECKPOINT path. Without an explicit verification step, that degradation propagates to every VM provisioned from the snapshot. Direct verification:
+
+```bash
+ssh openclaw@$BAKE_VM_IP <<'EOF'
+echo "--- 1. CHECKPOINT MCP tool exists (Phase C2 patch landed) ---"
+# The patch adds src/core/checkpoint-operation.ts and registers it in src/core/operations.ts.
+# If C2 WARN'd, the file is absent or operations.ts doesn't reference it.
+ls -la ~/gbrain/src/core/checkpoint-operation.ts 2>/dev/null && echo "C2_PATCH_FILE ✓" || echo "C2_PATCH_FILE MISSING — bake-blocker"
+grep -q "checkpoint" ~/gbrain/src/core/operations.ts && echo "C2_PATCH_REGISTERED ✓" || echo "C2_PATCH_REGISTERED MISSING — bake-blocker"
+
+echo "--- 2. Phase I crontab entry present ---"
+crontab -l | grep -E "pglite-checkpoint" && echo "PHASE_I_CRON ✓" || echo "PHASE_I_CRON MISSING — bake-blocker"
+
+echo "--- 3. Phase I ExecStop drop-in present ---"
+cat ~/.config/systemd/user/gbrain.service.d/20-execstop-checkpoint.conf 2>&1 | head -5
+ls ~/.config/systemd/user/gbrain.service.d/20-execstop-checkpoint.conf >/dev/null 2>&1 \
+  && echo "PHASE_I_EXECSTOP ✓" || echo "PHASE_I_EXECSTOP MISSING — bake-blocker"
+
+echo "--- 4. pglite-checkpoint.sh script present and executable ---"
+test -x ~/.openclaw/scripts/pglite-checkpoint.sh && echo "PHASE_I_SCRIPT ✓" || echo "PHASE_I_SCRIPT MISSING — bake-blocker"
+
+echo "--- 5. Trial CHECKPOINT run (validates patch + script + bearer all wired) ---"
+bash ~/.openclaw/scripts/pglite-checkpoint.sh 2>&1 | tail -3
+# Expected last line: "ok latency_ms=<N>"
+# If "FAILED": either patch wasn't applied OR bearer is mismatched. Stop, investigate.
+
+echo "--- 6. CHECKPOINT log entry written ---"
+tail -1 ~/.openclaw/logs/pglite-checkpoint.log 2>/dev/null
+EOF
+```
+
+Required outcomes:
+- [ ] `C2_PATCH_FILE ✓` AND `C2_PATCH_REGISTERED ✓` (Phase C2 patch landed cleanly)
+- [ ] `PHASE_I_CRON ✓` (every-30-min CHECKPOINT cron installed)
+- [ ] `PHASE_I_EXECSTOP ✓` (systemd ExecStop hook installed — fires CHECKPOINT before SIGKILL)
+- [ ] `PHASE_I_SCRIPT ✓` (`pglite-checkpoint.sh` deployed and executable)
+- [ ] Trial CHECKPOINT call returns `ok latency_ms=<N>` — confirms the entire chain works end-to-end on the bake VM
+
+**Why this matters**: Rule 54 (CLAUDE.md) — without CHECKPOINT protection, gbrain SIGKILL on a long-uptime VM (>30 min pg_control drift) corrupts brain.pglite and produces a WASM Aborted() panic that requires manual pg_resetwal recovery. The 2026-05-18 vm-050 incident is the reference cautionary tale (1 of 9 edge VMs lost all gbrain memory). Phase I + Phase C2 together prevent this. Both must land at bake time so every VM provisioned from the snapshot has the protection from boot zero.
 
 ### §3.6 — Strip the bake-VM-specific bearer token from the snapshot
 
@@ -576,9 +813,9 @@ The bake's headline change. All 6 sub-checks must pass:
 
 | # | Check | Expected | Command |
 |---|---|---|---|
-| 16a | gbrain repo at canonical path | `~/gbrain/.git` exists, HEAD = baf1a47 | `cd ~/gbrain && git rev-parse --short HEAD` returns `baf1a47` |
+| 16a | gbrain repo at canonical path | `~/gbrain/.git` exists, HEAD = `1d5f69f` (or whatever `GBRAIN_PINNED_COMMIT` is at bake time per `lib/vm-reconcile.ts:136`) | `cd ~/gbrain && git rev-parse --short HEAD` returns the same value as `GBRAIN_PINNED_COMMIT` |
 | 16b | gbrain binary symlink | `~/.bun/bin/gbrain` exists, points at `~/gbrain/src/cli.ts` | `readlink ~/.bun/bin/gbrain` |
-| 16c | gbrain --version returns pinned | `0.35.0.0` (in output) | `gbrain --version \| grep -oE '[0-9]+(\.[0-9]+){3}'` |
+| 16c | gbrain --version returns pinned | `0.36.3.0` (or whatever `GBRAIN_PINNED_VERSION` is at bake time per `lib/vm-reconcile.ts:137`) | `gbrain --version \| grep -oE '[0-9]+(\.[0-9]+){3}'` |
 | 16d | PGLite initialized + clean | brain.pglite exists, config.json present, access_tokens empty | `test -d ~/.gbrain/brain.pglite && jq -r .engine ~/.gbrain/config.json` returns `pglite` |
 | 16e | systemd unit installed but INACTIVE | unit file exists, KillSignal=SIGKILL, service NOT active | `grep KillSignal ~/.config/systemd/user/gbrain.service && systemctl --user is-active gbrain.service` returns `inactive` |
 | 16f | openclaw.json has NO gbrain entry | `mcp.servers.gbrain` absent | `jq '.mcp.servers.gbrain // "absent"' ~/.openclaw/openclaw.json` returns `"absent"` |
@@ -613,7 +850,7 @@ curl -X POST -H "Authorization: Bearer $LINODE_API_TOKEN" \
   -d "{
     \"disk_id\": $DISK_ID,
     \"label\": \"instaclaw-base-v102-2026-05-23-gbrain-http\",
-    \"description\": \"OpenClaw <latest> + gbrain v0.35.0.0 HTTP sidecar pre-installed. 21/21 verified (15 base + 6 gbrain). Disk usage <6.0GB.\"
+    \"description\": \"OpenClaw <latest> + gbrain v0.36.3.0 (commit 1d5f69f) HTTP sidecar pre-installed (gbrain.service inactive+disabled — per-VM mint at first reconcile). Phase I CHECKPOINT cron + ExecStop hook present (Rule 54). 22/22 verified (15 base + 6 gbrain + Phase I/C2). Disk usage <6.0GB.\"
   }" \
   https://api.linode.com/v4/images
 
@@ -649,7 +886,7 @@ curl -X POST ... \
   -d "{\"label\":\"snapshot-soak-v102\",\"image\":\"private/<NEW_ID>\",...}"
 ```
 2. **SSH in. Run the 16-point verification (full, fresh — not relying on the bake VM's state).**
-3. **Manually run stepGbrain via the dry-run script** to confirm the four-state idempotency check reports `[dry-run] gbrain HTTP sidecar install (V=0.35.0.0 T=(none) S=inactive P=0)` — meaning V is correct (baked) but T/S/P need to be set per-VM.
+3. **Manually run stepGbrain via the dry-run script** to confirm the four-state idempotency check reports `[dry-run] gbrain HTTP sidecar install (V=0.36.3.0 T=(none) S=inactive P=0)` — meaning V is correct (baked) but T/S/P need to be set per-VM. (Replace `0.36.3.0` with the actual `GBRAIN_PINNED_VERSION` at bake time per `lib/vm-reconcile.ts:137`.)
 4. **Run the real install on the test VM** via `_install-gbrain-on-vm.ts` to validate the per-VM finalization path:
    - Phase A: idempotency mismatch → re-install
    - Phases B (Bun already present, no-op), C (git pull, no-op since at pinned commit), D (bun install fast)
@@ -668,7 +905,7 @@ Once soak is clean:
 1. **Cooper action:** update `LINODE_SNAPSHOT_ID` in Vercel env (production scope only) to `private/<NEW_ID>`. Per Rule 6: use `printf`, NOT `<<<` or `echo`, to avoid trailing newline.
 2. **Wait one provisioning cycle** — the next `cron/replenish-pool` run (every 5 min) will pick up new VMs from the new snapshot.
 3. **Verify a fresh provision** — query the latest provisioning event in `vm_lifecycle_log`. Confirm the new VM:
-   - Has `~/gbrain/.git` HEAD = baf1a47
+   - Has `~/gbrain/.git` HEAD = `1d5f69f` (or current `GBRAIN_PINNED_COMMIT` per `lib/vm-reconcile.ts:136`)
    - Has `gbrain.service` installed but inactive (needs first reconcile to mint token + flip openclaw.json)
    - The reconciler picks it up and finalizes within ~3-5 min
 
@@ -777,7 +1014,7 @@ This section captures the result of running `scripts/_pre-bake-check.ts` against
 
 - [x] **Integrity fix landed.** `f49b4e68 fix(manifest-integrity): strip JS comments before parsing cronMarkers` on origin/main.
 - [x] **LINODE_SNAPSHOT_ID matches expected source.** `private/38575292` in `.env.local`.
-- [x] **GBRAIN_PINNED_* alignment.** Both `lib/vm-reconcile.ts` and `scripts/_install-gbrain-on-vm.ts` resolve to `0.35.0.0`/`baf1a47`.
+- [x] **GBRAIN_PINNED_* alignment** _(at T-7 audit 2026-05-13)_. Both `lib/vm-reconcile.ts` and `scripts/_install-gbrain-on-vm.ts` resolved to `0.35.0.0`/`baf1a47` at audit time. **Bumped 2026-05-19 to `0.36.3.0`/`1d5f69f` via commit `a8eb1aa5` (Phase J upgrade path + cron XDG fix + embedding-dims fix).** Re-verify alignment at T-1 before bake; values may have advanced again.
 - [x] **gbrain install scripts parse cleanly.** Both `install-gbrain.sh` and `verify-gbrain-mcp.py` pass syntax check.
 - [x] **Linode API reachable.** `/v4/account` returns 200 for `coopergrantwrenn@gmail.com`.
 - [x] **Supabase reachable.** Fleet queries respond.
