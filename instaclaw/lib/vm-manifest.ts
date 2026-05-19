@@ -1420,8 +1420,67 @@ export const VM_MANIFEST = {
    * docs/prd/village-index-network-integration.md. Forces re-reconcile
    * across the 9 edge_city VMs so the step actually runs (other partners
    * gate-out cleanly at line 1).
+   *
+   * v106 (2026-05-19): gbrain SOUL routing canonicalization.
+   *  New reconciler step stepDeployGbrainSoulRouting (called right after
+   *  stepDeployGbrainSoulProtocol) REPLACES the legacy MEMORY.md-first
+   *  `## Memory Persistence (CRITICAL)` section in SOUL.md with the
+   *  gbrain-first GBRAIN_SOUL_ROUTING_V1 marker-bounded block. Pattern:
+   *  same gating + Python script structure as stepDeployGbrainSoulProtocol
+   *  (v102) but targets SOUL.md (not AGENTS.md) and uses REPLACE (not
+   *  INSERT) since the two versions occupy the same logical role —
+   *  coexistence would create contradictory routing for the agent.
+   *
+   *  Why: 2026-05-19 fleet audit found 8 of 9 edge_city VMs had vanilla
+   *  MEMORY.md-first guidance in SOUL.md's `## Memory Persistence` section
+   *  (sha 6010222d370f, bit-identical), despite having gbrain installed.
+   *  Only vm-050 had been hand-fixed via scripts/_push_gbrain_fix.ts on
+   *  2026-05-17. AGENTS.md's GBRAIN_MEMORY_PROTOCOL_V1 (v102) was working
+   *  fleet-wide, but agents read SOUL.md at session start — its
+   *  MEMORY.md-first content overrode the AGENTS.md gbrain guidance,
+   *  producing no persistent memory in practice for edge_city users.
+   *
+   *  Safety guards (Rule 22, 23, 27, 31, 39, 47, 59):
+   *   - Triple gate: vm.partner ∈ GBRAIN_PARTNER_ALLOWLIST,
+   *     gbrain.service active, GBRAIN_INSTALL_ENABLED env=true. Defense
+   *     in depth vs the latent VM-reassignment bug in v102's gate.
+   *   - Drift-check: sha256 of on-disk section MUST match a known-OK
+   *     value (vanilla 6010222d370f OR vm-050 hand-deploy 857b749d6187).
+   *     Anything else = user-customized = SKIP + P1 admin alert (6h
+   *     dedup per VM via instaclaw_admin_alert_log).
+   *   - Sentinel guard (Rule 23): in-memory canonical block must contain
+   *     {gbrain__put_page, gbrain__search, gbrain__submit_job, Memory
+   *     Persistence (CRITICAL)} before any write. Refuses to deploy
+   *     stale-module-cache regressions.
+   *   - Backup-before-write to ~/.openclaw/backups/v106-gbrain-soul-
+   *     routing-<ts>/SOUL.md (Rule 22 — recovery path).
+   *   - Atomic write (tmp + os.replace).
+   *   - Verify-after-write (marker grep on disk).
+   *
+   *  Companion fix (lib/ssh.ts configureOpenClaw): post-assembly conditional
+   *  injection of the same block at fresh-VM assignment time. Closes the
+   *  ~3-5min race window between assignment and first reconciler tick for
+   *  brand-new gbrain-eligible VMs. Bake snapshot (May 23) needs no
+   *  changes — its SOUL.md is rewritten at assignment time anyway.
+   *
+   *  Fleet rollout: reconcile-fleet picks up v106 next cycle. For each
+   *  VM at cv<106: stepDeployGbrainSoulRouting either replaces (vanilla/
+   *  vm-050 sha match) or skips with admin alert (drift). 9 edge VMs
+   *  drain in ~30 min. 137 non-gbrain VMs early-out at the partner-
+   *  allowlist gate (zero cost).
+   *
+   *  Detection note: after rollout, `scripts/_coverage-gbrain-soul-routing.ts`
+   *  reports 9/9 edge_city VMs with GBRAIN_SOUL_ROUTING_V1 marker present.
+   *  Anything less is regression. Coverage script also verifies content
+   *  BEFORE/AFTER the marker block is byte-identical (no identity loss).
+   *
+   *  Rollback: revert this commit. Marker blocks stay on-disk where they
+   *  landed (the step has no removal path; idempotent replay is a no-op).
+   *  Manual cleanup via the per-VM backup at ~/.openclaw/backups/v106-
+   *  gbrain-soul-routing-<ts>/SOUL.md if rollback must also reverse the
+   *  on-disk state.
    */
-  version: 105,
+  version: 106,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

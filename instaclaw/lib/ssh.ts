@@ -24,6 +24,8 @@ import {
   SOUL_STUB_CONSENSUS,
   EDGE_INSTACLAW_OVERLAY_MD,
 } from "./partner-content";
+import { injectGbrainSoulRoutingV1 } from "./workspace-templates-v2";
+import { GBRAIN_PARTNER_ALLOWLIST } from "./vm-reconcile";
 import {
   validateAcpApiKey, getAcpAuthUrl, pollAcpAuthStatus,
   fetchAcpAgents, createAcpAgent, registerAcpOffering,
@@ -6111,6 +6113,36 @@ export async function configureOpenClaw(
     if (config.partner === "consensus_2026" || config.partner === "edge_city") {
       soulContent += SOUL_STUB_CONSENSUS;
     }
+
+    // v106: gbrain SOUL routing — conditional inject at fresh-VM assignment.
+    //
+    // Why: without this, a new edge_city VM gets SOUL.md with the legacy
+    // MEMORY.md-first `## Memory Persistence (CRITICAL)` section, and the
+    // agent reads that content for ~3-5 min after assignment (until the
+    // reconciler's stepDeployGbrainSoulRouting runs on the next cycle). For
+    // a user who messages their bot in that window, the agent files first
+    // facts to MEMORY.md instead of gbrain. Closing the race.
+    //
+    // Gate matches stepDeployGbrainSoulRouting exactly:
+    //   - config.partner ∈ GBRAIN_PARTNER_ALLOWLIST (currently {"edge_city"})
+    //   - GBRAIN_INSTALL_ENABLED env var === "true"
+    //
+    // Note: we don't check gbrain.service active here (we ARE the configure
+    // step; service isn't installed until the next reconciler cycle). That's
+    // an acceptable race — if the agent reads SOUL.md and tries gbrain
+    // tools before gbrain installs, MCP returns "tool not found" and the
+    // routing block's "If gbrain is unavailable" clause kicks in. Within
+    // 3-5 min stepGbrain installs gbrain → tools work.
+    //
+    // See PRD docs/prd/gbrain-soul-routing-3-surface-analysis-2026-05-19.md.
+    if (
+      config.partner &&
+      GBRAIN_PARTNER_ALLOWLIST.has(config.partner) &&
+      process.env.GBRAIN_INSTALL_ENABLED === "true"
+    ) {
+      soulContent = injectGbrainSoulRoutingV1(soulContent);
+    }
+
     const soulB64 = Buffer.from(soulContent, 'utf-8').toString('base64');
     const capabilitiesB64 = Buffer.from(WORKSPACE_CAPABILITIES_MD, 'utf-8').toString('base64');
     const quickRefB64 = Buffer.from(WORKSPACE_QUICK_REFERENCE_MD, 'utf-8').toString('base64');

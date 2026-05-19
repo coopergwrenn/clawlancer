@@ -15,7 +15,7 @@
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
 import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, AGENTKIT_CLI_PINNED_VERSION, BANKR_SKILL_PATCH_MARKER, BANKR_SKILL_PATCH_DIRECTIVE, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, PRCTL_SUBREAPER_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
 import { INSTALL_GBRAIN_SH, VERIFY_GBRAIN_MCP_PY } from "./gbrain-scripts-content";
-import { GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK } from "./workspace-templates-v2";
+import { sendAdminAlertEmail } from "./email";
 import {
   DISPATCH_SCRIPTS,
   DISPATCH_SERVER_JS,
@@ -32,6 +32,13 @@ import {
 } from "./partner-content";
 import * as crypto from "crypto";
 import {
+  GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK,
+  GBRAIN_SOUL_ROUTING_V1_SECTION,
+  GBRAIN_SOUL_ROUTING_V1_BEGIN_MARKER,
+  GBRAIN_SOUL_ROUTING_V1_KNOWN_OK_SHAS,
+  GBRAIN_SOUL_ROUTING_V1_REQUIRED_SENTINELS,
+  GBRAIN_SOUL_ROUTING_V1_START_ANCHOR,
+  GBRAIN_SOUL_ROUTING_V1_END_ANCHOR,
   WORKSPACE_SOUL_MD_V2,
   WORKSPACE_AGENTS_MD_V2,
   WORKSPACE_TOOLS_MD_V2,
@@ -125,7 +132,11 @@ function keyRequiresGatewayRestart(key: string): boolean {
 // PRDs:
 //   - docs/prd/gbrain-fleet-rollout-2026-05-12.md §7 (original stepGbrain design)
 //   - docs/prd/gbrain-http-fleet-rewrite-plan-2026-05-16.md (HTTP rewrite plan)
-const GBRAIN_PARTNER_ALLOWLIST: ReadonlySet<string> = new Set(["edge_city"]);
+// Exported as of v106 so configureOpenClaw (lib/ssh.ts) can use the SAME
+// allowlist when deciding whether to inject the gbrain SOUL routing block
+// at fresh-VM assignment time. Single source of truth; future partner
+// additions (consensus_2026, eclipse, etc.) flow to both surfaces at once.
+export const GBRAIN_PARTNER_ALLOWLIST: ReadonlySet<string> = new Set(["edge_city"]);
 // HTTP sidecar architecture. Pin to a specific commit per Rule 35;
 // operator manually bumps after canary validation when newer version is desired.
 // History: stdio v0.28.1 (2ea5b71) → HTTP v0.35.0.0 (baf1a47) → v0.36.3.0 (1d5f69f).
@@ -642,6 +653,26 @@ export async function reconcileVM(
     // installed. This step closes that gap fleet-wide.
     currentStep = "gbrain-soul-protocol";
     await stepDeployGbrainSoulProtocol(ssh, result, dryRun);
+
+    // ── v106: gbrain SOUL.md routing canonicalization ──
+    // Replaces the legacy MEMORY.md-first `## Memory Persistence (CRITICAL)`
+    // section in SOUL.md with the gbrain-first GBRAIN_SOUL_ROUTING_V1 marker-
+    // bounded block. Mirrors stepDeployGbrainSoulProtocol's gating + Python
+    // pattern but targets SOUL.md (not AGENTS.md) and uses REPLACE (not
+    // INSERT) since the two versions occupy the same logical role —
+    // coexistence would create contradictory routing for the agent.
+    //
+    // Triple gate (defense in depth):
+    //   - vm.partner ∈ GBRAIN_PARTNER_ALLOWLIST (covers VM-reassignment edge case)
+    //   - gbrain.service active (matches stepDeployGbrainSoulProtocol)
+    //   - GBRAIN_INSTALL_ENABLED env var === "true"
+    //
+    // Drift-check: sha256 of the on-disk section must match a known-OK sha
+    // (vanilla MEMORY.md-first or vm-050 hand-deploy). Anything else → SKIP
+    // + P1 admin alert (6h dedup). See PRD gbrain-soul-routing-3-surface-
+    // analysis-2026-05-19.md.
+    currentStep = "gbrain-soul-routing";
+    await stepDeployGbrainSoulRouting(ssh, vm, result, dryRun);
 
     // ── Step 8f5: Edge skill InstaClaw overlay (edge_city VMs only) ──
     // Writes ~/.openclaw/skills/edge-esmeralda/INSTACLAW_OVERLAY.md with
@@ -7705,6 +7736,357 @@ out({"status": "ok", "inserted_at": inserted_at, "size_before": len(original), "
     return;
   }
   result.errors.push(`gbrain-soul-protocol: unexpected status=${parsed.status}`);
+}
+
+/**
+ * Fire-and-forget admin alert for `gbrain-soul-routing` drift, with 6h
+ * dedup per VM. Uses the same instaclaw_admin_alert_log pattern as
+ * sendVMReadyEmail (lib/email.ts:230).
+ *
+ * Drift here means: a VM's `## Memory Persistence (CRITICAL)` section
+ * sha doesn't match a known-OK value (vanilla MEMORY.md-first or vm-050
+ * hand-deploy). Either the user customized the section, or a future
+ * template change shifted the vanilla content and we forgot to add the
+ * new sha to KNOWN_OK_SHAS. Either way the operator should review and
+ * decide — never overwrite blindly.
+ *
+ * Best-effort: any failure (Supabase down, Resend down, env var missing)
+ * is logged but does NOT throw. The reconciler step's main flow continues.
+ */
+async function sendGbrainSoulRoutingDriftAlertDeduped(
+  vmName: string,
+  vmId: string,
+  observedSha: string,
+  contentSnippet: string,
+): Promise<void> {
+  try {
+    const alertKey = `gbrain_soul_routing_drift:${vmId}:${observedSha.slice(0, 12)}`;
+    const sb = getSupabase();
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+    const { data: existing } = await sb
+      .from("instaclaw_admin_alert_log")
+      .select("id")
+      .eq("alert_key", alertKey)
+      .gte("sent_at", sixHoursAgo)
+      .limit(1);
+    if (existing && existing.length > 0) return;
+
+    await sb.from("instaclaw_admin_alert_log").insert({
+      alert_key: alertKey,
+      vm_count: 1,
+      details: `gbrain-soul-routing drift on ${vmName}: sha=${observedSha.slice(0, 12)}`,
+    });
+
+    const knownShasFormatted = GBRAIN_SOUL_ROUTING_V1_KNOWN_OK_SHAS
+      .map((s) => "  " + s)
+      .join("\n");
+    const body = [
+      `gbrain-soul-routing step detected unexpected content in ~/.openclaw/workspace/SOUL.md`,
+      ``,
+      `VM: ${vmName} (id=${vmId})`,
+      `Section: \`## Memory Persistence (CRITICAL)\` ... (excl) \`## Task Completion Notifications\``,
+      `Observed sha: ${observedSha}`,
+      ``,
+      `Known-OK shas (reconciler will replace only these):`,
+      knownShasFormatted,
+      ``,
+      `What this means: the section content differs from both the vanilla`,
+      `MEMORY.md-first template and vm-050's hand-deployed gbrain-first`,
+      `content. Either (a) user manually customized this section, or`,
+      `(b) a deliberate template change shifted the canonical content and`,
+      `KNOWN_OK_SHAS in lib/workspace-templates-v2.ts needs the new sha.`,
+      ``,
+      `Reconciler refused to replace (Rule 22 — preserve user content).`,
+      `The VM stays on its current section. The marker block was NOT added.`,
+      ``,
+      `What to do:`,
+      `1. SSH into the VM. Read the section between the two headers.`,
+      `2. If user-customized: leave it. The agent on this VM uses custom routing.`,
+      `3. If it's a new vanilla we forgot to bless: add the sha to`,
+      `   GBRAIN_SOUL_ROUTING_V1_KNOWN_OK_SHAS and re-deploy.`,
+      ``,
+      `First 200 chars of observed section:`,
+      `--- snip ---`,
+      contentSnippet,
+      `--- /snip ---`,
+    ].join("\n");
+
+    await sendAdminAlertEmail(
+      `[P1] gbrain-soul-routing drift on ${vmName}`,
+      body,
+    );
+  } catch (err) {
+    logger.warn("gbrain-soul-routing-drift admin alert failed (continuing)", {
+      route: "lib/vm-reconcile/sendGbrainSoulRoutingDriftAlertDeduped",
+      vmName,
+      error: String(err).slice(0, 200),
+    });
+  }
+}
+
+/**
+ * stepDeployGbrainSoulRouting — v106 migration to canonicalize the gbrain
+ * memory routing block into SOUL.md on every gbrain-eligible VM.
+ *
+ * Why this exists: stepDeployGbrainSoulProtocol (v102) deployed the gbrain
+ * routing into AGENTS.md, but SOUL.md's `## Memory Persistence (CRITICAL)`
+ * section retained the OBSOLETE MEMORY.md-first guidance on 8 of 9 edge_city
+ * VMs. Agents read SOUL.md at session start; the contradictory routing
+ * (MEMORY.md-first in SOUL, gbrain-first in AGENTS) produced incoherent
+ * behavior. Only vm-050 had been hand-fixed via scripts/_push_gbrain_fix.ts
+ * on 2026-05-17.
+ *
+ * This step REPLACES the section (not INSERT, unlike stepDeployGbrainSoulProtocol).
+ * Reason: the two versions occupy the same logical role; keeping both leaves
+ * the agent with contradictory instructions. Replacement is destructive but
+ * safeguarded by:
+ *   - Rule 22 backup (~/.openclaw/backups/v106-gbrain-soul-routing-<ts>/SOUL.md)
+ *   - Rule 23 sentinel guard (refuses to write if canonical content is missing
+ *     known unique strings — defends against stale module cache regressions)
+ *   - Drift-check via sha256 of the on-disk section: only replaces if sha
+ *     matches GBRAIN_SOUL_ROUTING_V1_KNOWN_OK_SHAS (vanilla or vm-050).
+ *     Drift → SKIP + P1 admin alert (6h dedup) → never silently destructive.
+ *   - Atomic write (tmp + os.replace)
+ *   - Verify-after-write (marker grep)
+ *
+ * Triple gate (defense in depth — beyond stepDeployGbrainSoulProtocol's
+ * service-active-only gating, which has a latent VM-reassignment bug):
+ *   1. vm.partner ∈ GBRAIN_PARTNER_ALLOWLIST (covers reassign edge case)
+ *   2. gbrain.service active on the VM
+ *   3. GBRAIN_INSTALL_ENABLED env var === "true"
+ *
+ * Idempotency: GBRAIN_SOUL_ROUTING_V1 marker check. Skip if present.
+ *
+ * Source: workspace-templates-v2.GBRAIN_SOUL_ROUTING_V1_SECTION (~3.3KB,
+ * base64-decoded from vm-050's exact on-disk bytes; preserves legacy
+ * `\\`` escapes byte-for-byte so the drift-check vm-050 sha matches).
+ */
+async function stepDeployGbrainSoulRouting(
+  ssh: SSHConnection,
+  vm: VMRecord & { partner?: string | null; name?: string | null },
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // ── Gate 1: partner allowlist ──
+  if (!vm.partner || !GBRAIN_PARTNER_ALLOWLIST.has(vm.partner)) return;
+
+  // ── Gate 2: env var ──
+  if (process.env.GBRAIN_INSTALL_ENABLED !== "true") return;
+
+  // ── Gate 3: gbrain.service active ──
+  const probe = await ssh.execCommand(
+    `${HEAL_DBUS_PREFIX} && systemctl --user is-active gbrain.service 2>&1 | head -1`,
+    { execOptions: { timeout: 5_000 } } as any,
+  );
+  if ((probe.stdout || "").trim() !== "active") {
+    // Silent skip — gbrain hasn't been installed/started yet on this VM.
+    // Next cycle (after stepGbrain installs/starts it) will catch up.
+    return;
+  }
+
+  // ── Sentinel guard (Rule 23) — verify canonical block in-memory ──
+  // Refuses to write if our resolved canonical content is missing any of the
+  // required sentinels. Defends against the 2026-05-02 strip-thinking class
+  // of bug (stale module cache silently writing wrong content fleet-wide).
+  const missingSentinels = GBRAIN_SOUL_ROUTING_V1_REQUIRED_SENTINELS.filter(
+    (s) => !GBRAIN_SOUL_ROUTING_V1_SECTION.includes(s),
+  );
+  if (missingSentinels.length) {
+    result.errors.push(
+      `gbrain-soul-routing: in-memory canonical missing required sentinels [${missingSentinels.join(", ")}] — refusing to write. Restart reconciler to reload module state.`,
+    );
+    return;
+  }
+
+  // ── Marker probe (cheap idempotency) ──
+  const markerCheck = await ssh.execCommand(
+    `grep -cF '${GBRAIN_SOUL_ROUTING_V1_BEGIN_MARKER}' ~/.openclaw/workspace/SOUL.md 2>/dev/null || echo 0`,
+    { execOptions: { timeout: 5_000 } } as any,
+  );
+  if (parseInt((markerCheck.stdout || "0").trim(), 10) > 0) {
+    result.alreadyCorrect.push("gbrain-soul-routing (V1 marker present)");
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push("[dry-run] gbrain-soul-routing: would replace `## Memory Persistence (CRITICAL)` section with GBRAIN_SOUL_ROUTING_V1 marker-bounded block");
+    return;
+  }
+
+  // ── Python in-place transform with drift-check + backup + atomic write ──
+  // The TS-side passes config via base64 to avoid shell-escape issues. The
+  // Python script:
+  //   1. Reads SOUL.md
+  //   2. Finds start_anchor and end_anchor; if missing → status: anchors_missing
+  //   3. Computes sha256 of current_section = soul[start_idx:end_idx]
+  //   4. If sha ∉ KNOWN_OK_SHAS → status: drift_detected (skip + alert)
+  //   5. Backs up SOUL.md to ~/.openclaw/backups/v106-gbrain-soul-routing-<ts>/SOUL.md
+  //   6. Builds new_content = soul[:start_idx] + canonical_section + soul[end_idx:]
+  //   7. Atomic write (tmp + os.replace)
+  //   8. Verify-after-write (marker grep on disk)
+
+  const ts = Date.now();
+  const cfg = {
+    soul_path: "~/.openclaw/workspace/SOUL.md",
+    backup_path: `~/.openclaw/backups/v106-gbrain-soul-routing-${ts}/SOUL.md`,
+    canonical_section: GBRAIN_SOUL_ROUTING_V1_SECTION,
+    start_anchor: GBRAIN_SOUL_ROUTING_V1_START_ANCHOR,
+    end_anchor: GBRAIN_SOUL_ROUTING_V1_END_ANCHOR,
+    begin_marker: GBRAIN_SOUL_ROUTING_V1_BEGIN_MARKER,
+    known_ok_shas: [...GBRAIN_SOUL_ROUTING_V1_KNOWN_OK_SHAS],
+  };
+  const cfgB64 = Buffer.from(JSON.stringify(cfg), "utf-8").toString("base64");
+
+  const PATCH_PY = `
+import base64, hashlib, json, os, sys
+
+cfg = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
+
+soul_path = os.path.expanduser(cfg["soul_path"])
+backup_path = os.path.expanduser(cfg["backup_path"])
+
+def out(d):
+    print(json.dumps(d))
+    sys.exit(0)
+
+if not os.path.exists(soul_path):
+    out({"status": "missing"})
+
+with open(soul_path, "r", encoding="utf-8") as f:
+    content = f.read()
+
+# Idempotency double-check (the caller already checked, but races are possible)
+if cfg["begin_marker"] in content:
+    out({"status": "already-present"})
+
+# Locate section boundaries
+start_idx = content.find(cfg["start_anchor"])
+end_idx = content.find(cfg["end_anchor"])
+if start_idx < 0 or end_idx < 0 or end_idx <= start_idx:
+    out({
+        "status": "anchors_missing",
+        "start_found": start_idx >= 0,
+        "end_found": end_idx >= 0,
+    })
+
+# Drift check
+current_section = content[start_idx:end_idx]
+current_sha = hashlib.sha256(current_section.encode("utf-8")).hexdigest()
+if current_sha not in cfg["known_ok_shas"]:
+    snippet = current_section[:200].replace("\\n", " ")
+    out({
+        "status": "drift_detected",
+        "sha": current_sha,
+        "snippet": snippet,
+    })
+
+# Backup (Rule 22) — directory may not exist yet
+os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+with open(backup_path, "w", encoding="utf-8") as f:
+    f.write(content)
+
+# Build new content
+new_content = content[:start_idx] + cfg["canonical_section"] + content[end_idx:]
+
+# Atomic write
+tmp = soul_path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as f:
+    f.write(new_content)
+os.replace(tmp, soul_path)
+
+# Verify after write
+with open(soul_path, "r", encoding="utf-8") as f:
+    final = f.read()
+if cfg["begin_marker"] not in final:
+    out({"status": "verify_failed", "final_size": len(final)})
+
+out({
+    "status": "ok",
+    "size_before": len(content),
+    "size_after": len(new_content),
+    "section_sha_before": current_sha,
+})
+`;
+
+  const scriptB64 = Buffer.from(PATCH_PY, "utf-8").toString("base64");
+  const cmd = `python3 <(echo '${scriptB64}' | base64 -d) '${cfgB64}'`;
+  const r = await ssh.execCommand(cmd, { execOptions: { timeout: 30_000 } } as any);
+
+  if (r.code !== 0) {
+    result.errors.push(
+      `gbrain-soul-routing python failed rc=${r.code}: ${(r.stderr || r.stdout).slice(0, 200)}`,
+    );
+    return;
+  }
+
+  const lines = (r.stdout || "").split("\n").map((l: string) => l.trim()).filter(Boolean);
+  const lastLine = lines[lines.length - 1] ?? "";
+  let parsed: {
+    status?: string;
+    sha?: string;
+    snippet?: string;
+    size_before?: number;
+    size_after?: number;
+    section_sha_before?: string;
+    start_found?: boolean;
+    end_found?: boolean;
+    final_size?: number;
+  } = {};
+  try {
+    parsed = JSON.parse(lastLine);
+  } catch {
+    result.errors.push(`gbrain-soul-routing: could not parse python output: ${lastLine.slice(0, 200)}`);
+    return;
+  }
+
+  if (parsed.status === "missing") {
+    result.errors.push("gbrain-soul-routing: SOUL.md missing — configureOpenClaw should have created it");
+    return;
+  }
+  if (parsed.status === "already-present") {
+    result.alreadyCorrect.push("gbrain-soul-routing (marker found by python)");
+    return;
+  }
+  if (parsed.status === "anchors_missing") {
+    result.warnings.push(
+      `gbrain-soul-routing: section anchors missing (start_found=${parsed.start_found} end_found=${parsed.end_found}) — agent likely customized SOUL.md heavily. Skipping.`,
+    );
+    return;
+  }
+  if (parsed.status === "drift_detected") {
+    const observedSha = parsed.sha || "unknown";
+    const snippet = parsed.snippet || "";
+    // Push to warnings (NOT errors) per Rule 39 — drift on a paying-customer
+    // VM is operator-actionable but does NOT block cv-bump for the rest of
+    // the fleet. Fire admin alert (6h dedup per VM).
+    result.warnings.push(
+      `gbrain-soul-routing: drift detected (sha=${observedSha.slice(0, 12)}) — section was customized; admin alert dispatched. cv-bump proceeds.`,
+    );
+    // Fire-and-forget; do not await (don't slow down the reconcile cycle)
+    const displayName = vm.name ?? vm.id;
+    sendGbrainSoulRoutingDriftAlertDeduped(displayName, vm.id, observedSha, snippet)
+      .catch((err) => {
+        logger.warn("gbrain-soul-routing drift alert dispatch failed", {
+          route: "lib/vm-reconcile/stepDeployGbrainSoulRouting",
+          vmName: displayName,
+          error: String(err).slice(0, 200),
+        });
+      });
+    return;
+  }
+  if (parsed.status === "verify_failed") {
+    result.errors.push(
+      `gbrain-soul-routing: verify-after-write failed (final_size=${parsed.final_size})`,
+    );
+    return;
+  }
+  if (parsed.status === "ok") {
+    result.fixed.push(
+      `gbrain-soul-routing: replaced \`## Memory Persistence (CRITICAL)\` section (SOUL.md ${parsed.size_before} → ${parsed.size_after} bytes, prior sha=${(parsed.section_sha_before || "").slice(0, 12)})`,
+    );
+    return;
+  }
+  result.errors.push(`gbrain-soul-routing: unexpected status=${parsed.status}`);
 }
 
 /**

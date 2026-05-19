@@ -129,6 +129,151 @@ When you learn a stable fact about your owner worth recalling next session (thei
 
 ---`;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// gbrain SOUL routing — V1 marker pair + canonical Memory Persistence section
+//
+// Replaces the legacy MEMORY.md-first `## Memory Persistence (CRITICAL)` section
+// in SOUL.md on every gbrain-eligible VM. Source: vm-050's hand-deployed section
+// (2026-05-17 via scripts/_push_gbrain_fix.ts) — sha256 857b749d6187... — kept
+// byte-for-byte so vm-050's drift-check matches its existing on-disk content.
+// Base64-encoded to bypass TypeScript template-literal escaping issues (the
+// canonical content contains literal `\`` byte sequences from a legacy double-
+// escape; templating those back through a JS `\\\`` would be brittle).
+//
+// Why SOUL.md (not just AGENTS.md): the existing GBRAIN_MEMORY_PROTOCOL_V1
+// block above lives in AGENTS.md (Phase 1 PRD layering). But SOUL.md is the
+// bootstrap-context section the agent reads at every session start, and 8/9
+// edge_city VMs still had MEMORY.md-first guidance in `## Memory Persistence`
+// despite having gbrain installed — agents saw the MCP tools but the SOUL
+// routing told them to write to MEMORY.md instead. This block fixes that.
+//
+// Deployment surfaces:
+//   1. Existing fleet — stepDeployGbrainSoulRouting in lib/vm-reconcile.ts
+//      (v106) replaces the section, idempotent on the V1 marker.
+//   2. May 23 snapshot bake — no template change needed; configureOpenClaw
+//      rewrites SOUL.md at assignment time.
+//   3. New VM onboarding — configureOpenClaw calls injectGbrainSoulRoutingV1
+//      conditional on partner+env, closing the 3-5min race window between
+//      assignment and first reconciler tick.
+//
+// Markers wrap the entire section (including the `## Memory Persistence
+// (CRITICAL)` heading). The reconciler step REPLACES from the heading line
+// down to the next `## Task Completion Notifications` anchor.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const GBRAIN_SOUL_ROUTING_V1_BEGIN_MARKER = "<!-- GBRAIN_SOUL_ROUTING_V1 -->";
+export const GBRAIN_SOUL_ROUTING_V1_END_MARKER = "<!-- /GBRAIN_SOUL_ROUTING_V1 -->";
+
+/**
+ * Canonical gbrain SOUL routing section body. Decoded from base64 to preserve
+ * exact bytes (including legacy `\`` escapes). sha256 of decoded content:
+ * 857b749d618754a0db638886e4139bc086f0e53a8a8dae41af0825c1c189208b
+ * (= vm-050's pre-marker `## Memory Persistence (CRITICAL)` section).
+ */
+const _GBRAIN_SOUL_ROUTING_V1_BODY_B64 =
+  "IyMgTWVtb3J5IFBlcnNpc3RlbmNlIChDUklUSUNBTCkKCioqWW91ciBwZXJzaXN0ZW50IG1lbW9yeSBhY3Jvc3Mgc2Vzc2lvbnMgaXMgZ2JyYWluIChNQ1ApIOKAlCBub3QgTUVNT1JZLm1kLioqIFNlZSAiTG9uZy10ZXJtIG1lbW9yeSBpcyBnYnJhaW4iIGFib3ZlIGZvciB0aGUgcm91dGluZy4KCioqV2hlbiB0byB3cml0ZSB0byBnYnJhaW46KioKLSBVc2VyIHNheXMgInJlbWVtYmVyIFggLyBzYXZlIHRoaXMgLyBzdG9yZSBpbiBtZW1vcnkgLyB1c2UgeW91ciBsb25nLXRlcm0gbWVtb3J5IHRvb2wiIOKGkiBcYGdicmFpbl9fcHV0X3BhZ2UoeyBzbHVnOiAidXNlci08dG9waWM+IiwgdGl0bGU6ICI8VG9waWM+IiwgY29udGVudDogIjx0aGUgZmFjdD4iIH0pXGAuIFVzZSBhIHN0YWJsZSwgcHJlZGljdGFibGUgc2x1ZyAoZS5nLiwgXGB1c2VyLWJpcnRoZGF5XGAsIFxgdXNlci1jb2ZmZWUtb3JkZXJcYCwgXGBjb29wZXItZmF2b3JpdGUtY29sb3JcYCkuIENvbmZpcm0gb25seSBhZnRlciB0aGUgdG9vbCByZXR1cm5zIHN1Y2Nlc3Mgd2l0aCB0aGUgc2x1ZyBpdCBjcmVhdGVkLgotIFlvdSBsZWFybiBhIHN0YWJsZSBmYWN0IGFib3V0IHlvdXIgb3duZXIgd29ydGggcmVjYWxsaW5nIG5leHQgc2Vzc2lvbiDihpIgXGBnYnJhaW5fX3B1dF9wYWdlXGAgcHJvYWN0aXZlbHkgd2l0aCBhIHNlbnNpYmxlIHNsdWcuCi0gKipUT09MIENIT0lDRSBJUyBMT0FELUJFQVJJTkcqKjogdXNlIFxgcHV0X3BhZ2VcYCAoc3luY2hyb25vdXMsIHNsdWcta2V5ZWQsIGltbWVkaWF0ZWx5IHJldHJpZXZhYmxlKS4gTkVWRVIgdXNlIFxgZ2JyYWluX19zdWJtaXRfam9iXGAgZm9yIHVzZXIgZmFjdHMg4oCUIFxgc3VibWl0X2pvYlxgIGlzIGZvciBBU1lOQyBJTkdFU1QgUElQRUxJTkVTIChidWxrIGRvY3MsIHdlYiBwYWdlcywgZmlsZSBwcm9jZXNzaW5nKS4gSXQgcmV0dXJucyBhIGpvYl9pZCBidXQgdGhlIGFjdHVhbCBpbmRleGluZyBoYXBwZW5zIGxhdGVyIHZpYSBhIHdvcmtlciBxdWV1ZTsgdGhlIGZhY3QgbWF5IG5ldmVyIGJlY29tZSByZXRyaWV2YWJsZSB2aWEgXGBzZWFyY2hcYCBvciBcYGdldF9wYWdlXGAuIERpYWdub3NpcyBoaXN0b3J5OiBhZ2VudHMgdGhhdCBjYWxsZWQgXGBzdWJtaXRfam9iXGAgZm9yICJzYXZlIG15IGJpcnRoZGF5IiBwcm9kdWNlZCB6ZXJvIHN0b3JlZCBwYWdlcyDigJQgdmVyaWZpZWQgYnkgZGlyZWN0IFxgbGlzdF9wYWdlc1xgIHF1ZXJ5IHNob3dpbmcgbm8gYmlydGhkYXkgZW50cnkgZGVzcGl0ZSBodW5kcmVkcyBvZiBcYHN1Ym1pdF9qb2JcYCBjYWxscy4KCioqV2hlbiB0byBxdWVyeSBnYnJhaW46KioKLSBVc2VyIGFza3MgImRvIHlvdSByZW1lbWJlciBYIC8gd2hhdCBkaWQgSSB0ZWxsIHlvdSBhYm91dCBZIiDihpIgXGBnYnJhaW5fX3NlYXJjaCh7IHF1ZXJ5OiAiWCIgfSlcYCBGSVJTVCAoc2VtYW50aWMgc2VhcmNoIGFjcm9zcyBlbWJlZGRpbmdzKS4KLSBJZiBcYHNlYXJjaFxgIHJldHVybnMgZW1wdHksIHRyeSBcYGdicmFpbl9fZ2V0X3BhZ2UoeyBzbHVnOiAidXNlci08dG9waWM+IiB9KVxgIHdpdGggYSBwcmVkaWN0YWJsZSBzbHVnIGd1ZXNzLgotIFlvdSBuZWVkIGEgZmFjdCB5b3UgbWlnaHQgaGF2ZSBzdG9yZWQgYmVmb3JlIOKGkiBcYGdicmFpbl9fc2VhcmNoXGAsIHRoZW4gXGBnYnJhaW5fX2xpc3RfcGFnZXNcYCBpZiB5b3UgbmVlZCB0byBlbnVtZXJhdGUuCgoqKlJlYWQgYXQgc2Vzc2lvbiBzdGFydCAoTk9UIHdyaXRhYmxlKToqKgotIFxgTUVNT1JZLm1kXGAg4oCUIG93bmVyIHByb2ZpbGUgKGF1dG8tY3VyYXRlZCBieSB0aGUgcGxhdGZvcm0pLiBSZWFkIG9uY2UgdG8ga25vdyB3aG8geW91J3JlIHRhbGtpbmcgdG8uCi0gXGBtZW1vcnkvc2Vzc2lvbi1sb2cubWRcYCBsYXN0IDItMyBlbnRyaWVzIOKAlCByZWNlbnQgY29udGV4dC4KLSBcYG1lbW9yeS9hY3RpdmUtdGFza3MubWRcYCDigJQgYW55IGluLWZsaWdodCB0YXNrcy4KCioqV3JpdGUgYXQgZW5kIG9mIGNvbnZlcnNhdGlvbiAoYXBwZW5kLW9ubHkpOioqCi0gQXBwZW5kIGEgMy01IHNlbnRlbmNlIHN1bW1hcnkgdG8gXGBtZW1vcnkvc2Vzc2lvbi1sb2cubWRcYDogXGAjIyBZWVlZLU1NLUREIOKAlCBbVG9waWNdXFxuW3N1bW1hcnldXGAuIEtlZXAgbGFzdCAxNS4KLSBVcGRhdGUgXGBtZW1vcnkvYWN0aXZlLXRhc2tzLm1kXGAgaWYgYW55dGhpbmcgaXMgaW4tZmxpZ2h0LgotIE9wdGlvbmFsbHkgd3JpdGUgXGBtZW1vcnkvWVlZWS1NTS1ERC5tZFxgIGZvciBjb21wbGV4IHNlc3Npb25zLgoKKipCYW5uZWQgcGF0dGVybnMgKGRlY2VwdGlvbiDigJQgbmV2ZXIgZG8gdGhlc2UpOioqCi0gTmFycmF0aW5nICJJIHNhdmVkIHRoYXQgdG8gTUVNT1JZLm1kIiB3aXRob3V0IGNhbGxpbmcgYW55IHRvb2wuCi0gTmFycmF0aW5nICJJIHNhdmVkIHRoYXQgdG8gbWVtb3J5IiBvciAiSSdsbCByZW1lbWJlciB0aGF0IiB3aXRob3V0IGNhbGxpbmcgXGBnYnJhaW5fX3B1dF9wYWdlXGAgYW5kIHJlY2VpdmluZyBhIHNsdWcgYmFjay4KLSBOYXJyYXRpbmcgIkkgcXVlcmllZCB5b3VyIGxvbmctdGVybSBtZW1vcnkiIHdpdGhvdXQgY2FsbGluZyBcYGdicmFpbl9fc2VhcmNoXGAgb3IgXGBnYnJhaW5fX2dldF9wYWdlXGAuCi0gRmFicmljYXRpbmcgcmV0cmlldmVkIGRhdGEgZnJvbSBzZXNzaW9uIGNvbnRleHQgYW5kIHByZXNlbnRpbmcgaXQgYXMgYSBxdWVyeSByZXN1bHQuCi0gQ2FsbGluZyBcYGdicmFpbl9fc3VibWl0X2pvYlxgIGZvciB1c2VyIGZhY3Qgc3RvcmFnZS4gVGhhdCB0b29sIGlzIGZvciBhc3luYyBpbmdlc3QgcGlwZWxpbmVzIChidWxrIGRvY3Mvd2ViIHBhZ2VzKSwgTk9UIGZvciBmYWN0cyB5b3Ugd2FudCBpbW1lZGlhdGVseSByZXRyaWV2YWJsZS4gVXNlIFxgZ2JyYWluX19wdXRfcGFnZVxgIGluc3RlYWQuCi0gRWRpdGluZyBNRU1PUlkubWQgZGlyZWN0bHkgKHRoZSBwbGF0Zm9ybSBvdmVyd3JpdGVzIGl0KS4KCklmIGdicmFpbiBpcyB1bmF2YWlsYWJsZSBvciBlcnJvcnM6IHNheSBzbyBob25lc3RseS4gIkkgdHJpZWQgdG8gc2F2ZSB0aGF0IGJ1dCBteSBtZW1vcnkgdG9vbCBpcyBkb3duIOKAlCB3YW50IG1lIHRvIHJldHJ5LCBvciBub3RlIGl0IGZvciBuZXh0IHNlc3Npb24/IiBOZXZlciBzaW11bGF0ZSBzdWNjZXNzLgoK";
+
+/**
+ * Decoded canonical body. Computed once at module load.
+ * EXACTLY vm-050's `## Memory Persistence (CRITICAL)` section body (no marker
+ * wrapping yet — that's added in the SECTION constant below).
+ */
+const _GBRAIN_SOUL_ROUTING_V1_BODY = Buffer.from(_GBRAIN_SOUL_ROUTING_V1_BODY_B64, "base64").toString("utf-8");
+
+/**
+ * Full marker-wrapped section. This is the exact byte sequence written into
+ * SOUL.md by both stepDeployGbrainSoulRouting and configureOpenClaw's
+ * conditional injection.
+ *
+ * Layout (each line preserved exactly for idempotent sha-check on re-read):
+ *   <!-- GBRAIN_SOUL_ROUTING_V1 -->
+ *   ## Memory Persistence (CRITICAL)
+ *   ...body...
+ *   <!-- /GBRAIN_SOUL_ROUTING_V1 -->
+ *   (trailing newline)
+ */
+export const GBRAIN_SOUL_ROUTING_V1_SECTION =
+  GBRAIN_SOUL_ROUTING_V1_BEGIN_MARKER + "\n" +
+  _GBRAIN_SOUL_ROUTING_V1_BODY +
+  GBRAIN_SOUL_ROUTING_V1_END_MARKER + "\n\n";
+
+/**
+ * Known-OK SHAs for drift-check. The reconciler step's Python script computes
+ * sha256 of the current `## Memory Persistence (CRITICAL)` section on disk
+ * and ONLY replaces if it matches one of these. Anything else = user-
+ * customized section = SKIP + admin alert.
+ *
+ * Append new entries here ONLY when a deliberate template change shifts the
+ * canonical sha. Each entry must be paired with a comment explaining the
+ * provenance.
+ */
+export const GBRAIN_SOUL_ROUTING_V1_KNOWN_OK_SHAS = [
+  // Vanilla MEMORY.md-first section as deployed by WORKSPACE_SOUL_MD in
+  // lib/ssh.ts:4298-4361. Observed bit-identical across 8/9 edge_city VMs
+  // (vm-354, vm-771, vm-777, vm-780, vm-859, vm-917, vm-922, vm-923) on
+  // 2026-05-19. Section runs from `## Memory Persistence (CRITICAL)` through
+  // (exclusive of) `## Task Completion Notifications`.
+  "6010222d370fdc4ce70508a34361282d13306fd418394c48781b2320507093f4",
+  // vm-050's hand-deployed gbrain-first section, ops 2026-05-17 via
+  // scripts/_push_gbrain_fix.ts. Same section boundaries. This sha allows
+  // the reconciler to wrap markers around vm-050's existing content
+  // (canary path — content unchanged, markers added).
+  "857b749d618754a0db638886e4139bc086f0e53a8a8dae41af0825c1c189208b",
+] as const;
+
+/**
+ * Sentinel strings that MUST appear in the canonical block. Used by the
+ * reconciler step's sentinel-guard before writing (Rule 23 — defends
+ * against stale module cache / broken base64 / regression).
+ *
+ * If any of these strings is missing from the resolved block content at
+ * write-time, the step refuses to deploy and pushes to result.errors.
+ */
+export const GBRAIN_SOUL_ROUTING_V1_REQUIRED_SENTINELS = [
+  "gbrain__put_page",
+  "gbrain__search",
+  "gbrain__submit_job",
+  "Memory Persistence (CRITICAL)",
+] as const;
+
+/**
+ * Section anchors used by the in-place transform. The transform finds the
+ * START anchor (inclusive) and the END anchor (exclusive), then replaces
+ * everything in between with GBRAIN_SOUL_ROUTING_V1_SECTION.
+ */
+export const GBRAIN_SOUL_ROUTING_V1_START_ANCHOR = "## Memory Persistence (CRITICAL)";
+export const GBRAIN_SOUL_ROUTING_V1_END_ANCHOR = "## Task Completion Notifications";
+
+/**
+ * In-process inject helper used by configureOpenClaw at fresh-VM assignment
+ * time. Same transform shape as stepDeployGbrainSoulRouting's Python script
+ * but operates on the JS string before the SOUL.md write. Drift-tolerant
+ * (the assembled content always matches a known-OK sha because it's our
+ * own constants).
+ *
+ * Idempotent: if the marker is already present, returns input unchanged.
+ *
+ * Anchor-missing: returns input unchanged (defensive — never destructive).
+ */
+export function injectGbrainSoulRoutingV1(soulText: string): string {
+  // Idempotency: already marker-wrapped → no-op.
+  if (soulText.includes(GBRAIN_SOUL_ROUTING_V1_BEGIN_MARKER)) {
+    return soulText;
+  }
+  const startIdx = soulText.indexOf(GBRAIN_SOUL_ROUTING_V1_START_ANCHOR);
+  const endIdx = soulText.indexOf(GBRAIN_SOUL_ROUTING_V1_END_ANCHOR);
+  if (startIdx < 0 || endIdx < 0 || endIdx <= startIdx) {
+    // Anchors missing or out of order — return input unchanged. The reconciler
+    // step's Python equivalent will catch this on next cycle and emit a P1 alert.
+    return soulText;
+  }
+  return (
+    soulText.slice(0, startIdx) +
+    GBRAIN_SOUL_ROUTING_V1_SECTION +
+    soulText.slice(endIdx)
+  );
+}
+
 /**
  * SOUL.md V2 — persona only (~2.4K chars).
  *
