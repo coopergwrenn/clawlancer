@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-19
 
-Window: `9fb247ffbd1f275f74da6791d6fd677918d4f977` → `HEAD` (HEAD = `373e408c`)
+Window: `373e408c82a29536c23a60ecec3e9e548ba1e068` → `HEAD` (HEAD = `99eb2a6a`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 373e408c82a29536c23a60ecec3e9e548ba1e068 -->
+<!-- LAST_GENERATED_SHA: 99eb2a6abb2c49b1ae9bad24056273d9b74890e1 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
+- **Reconciler / manifest:** 1
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `ea87d11e` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-- `373e408c` 2026-05-19 — docs(claude.md): backfill v89-v95 + v102-v105 changelog entries + version-bump policy [1 files] _(ai-assisted)_
+- `99eb2a6a` 2026-05-19 — docs(prd): Phase 1 implementation plan — ChatGPT OAuth as second provider [1 files] _(multi: [reconciler, docs]; ai-assisted)_
+- `1e6c529b` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
 
-_(none)_
+- `99eb2a6a` 2026-05-19 — docs(prd): Phase 1 implementation plan — ChatGPT OAuth as second provider [1 files] _(multi: [reconciler, docs]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -43,18 +43,23 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `ea87d11e` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-- `373e408c` 2026-05-19 — docs(claude.md): backfill v89-v95 + v102-v105 changelog entries + version-bump policy [1 files] _(ai-assisted)_
+- `1e6c529b` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `99eb2a6a` 2026-05-19 — [reconciler, docs] — docs(prd): Phase 1 implementation plan — ChatGPT OAuth as second provider
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `373e408c` 2026-05-19 — docs(claude.md): backfill v89-v95 + v102-v105 changelog entries + version-bump policy
+- `99eb2a6a` 2026-05-19 — docs(prd): Phase 1 implementation plan — ChatGPT OAuth as second provider
 
 ## Appendix — every commit (chronological)
 
-- `ea87d11e` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-- `373e408c` 2026-05-19 — docs(claude.md): backfill v89-v95 + v102-v105 changelog entries + version-bump policy [1 files] _(ai-assisted)_
+- `1e6c529b` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `99eb2a6a` 2026-05-19 — docs(prd): Phase 1 implementation plan — ChatGPT OAuth as second provider [1 files] _(multi: [reconciler, docs]; ai-assisted)_
