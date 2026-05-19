@@ -316,6 +316,42 @@ async function verifyIndexMasterKey(value: string): Promise<VerifierResult> {
  * For now: shape check only (Bankr keys start with `bk_ptr_` per
  * existing convention in lib/bankr-provision.ts).
  */
+/**
+ * INDEX_WEBHOOK_SECRET — shared secret for HMAC-SHA256 verification of
+ * inbound Index Network `opportunity.accepted` webhooks at
+ * `/api/webhook/index-encounter`.
+ *
+ * Shape-only check: there's no live endpoint to probe — we OWN the
+ * receiver. Defense limited to:
+ *   - non-empty
+ *   - ≥32 chars (so a typo or accidental partial paste fails fast)
+ *   - alphanumeric / base64 / hex chars only (catches trailing-newline
+ *     Rule-6-style corruption since `\n` would fail the regex)
+ *
+ * Real verification = the test harness at scripts/_test-index-webhook.ts
+ * which signs a synthetic payload with this secret and POSTs to the
+ * deployed route. If the route returns 200, the secret is live and the
+ * receiver code is wired.
+ */
+async function verifyIndexWebhookSecret(value: string): Promise<VerifierResult> {
+  if (!value) return { ok: false, status: "not_configured" };
+  if (value.length < 32) {
+    return {
+      ok: false,
+      status: "shape_invalid",
+      error: "INDEX_WEBHOOK_SECRET suspiciously short (< 32 chars)",
+    };
+  }
+  if (!/^[A-Za-z0-9_\-=+/.]+$/.test(value)) {
+    return {
+      ok: false,
+      status: "shape_invalid",
+      error: "INDEX_WEBHOOK_SECRET contains unexpected characters — Rule 6 trailing-newline corruption?",
+    };
+  }
+  return { ok: true, status: "ok" };
+}
+
 async function verifyBankrPartnerKey(value: string): Promise<VerifierResult> {
   if (!value) return { ok: false, status: "not_configured" };
   if (!value.startsWith("bk_ptr_")) {
@@ -369,6 +405,12 @@ export const SECRET_VERIFIERS: SecretVerifier[] = [
     label: "Index Network — master signup x-api-key",
     partnerGate: "edge_city",
     verify: verifyIndexMasterKey,
+  },
+  {
+    envKey: "INDEX_WEBHOOK_SECRET",
+    label: "Index Network — HMAC shared secret for opportunity.accepted webhook (shape only — we own the receiver)",
+    partnerGate: "edge_city",
+    verify: verifyIndexWebhookSecret,
   },
 ];
 

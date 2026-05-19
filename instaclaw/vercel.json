@@ -46,6 +46,10 @@
       "schedule": "0 * * * *"
     },
     {
+      "path": "/api/cron/poll-index-opportunities",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/cloud-init-poll",
       "schedule": "*/5 * * * *"
     },
