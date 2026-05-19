@@ -1,29 +1,29 @@
 # Changelog — generated 2026-05-19
 
-Window: `a8eb1aa5c74265c98f47576d6fb6031f62bfca62` → `HEAD` (HEAD = `9fb247ff`)
-Total commits: 3
+Window: `9fb247ffbd1f275f74da6791d6fd677918d4f977` → `HEAD` (HEAD = `373e408c`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 9fb247ffbd1f275f74da6791d6fd677918d4f977 -->
+<!-- LAST_GENERATED_SHA: 373e408c82a29536c23a60ecec3e9e548ba1e068 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
 - **Infrastructure:** 0
-- **Feature (user-facing):** 1
-- **Edge City partner:** 1
-- **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 2
+- **Feature (user-facing):** 0
+- **Edge City partner:** 0
+- **Docs / PRD only:** 2
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-- `9fb247ff` 2026-05-19 — feat(edge): port Seref's redesign into instaclaw with real Supabase auth [36 files] _(multi: [feature, edge]; ai-assisted)_
-- `c4d00d00` 2026-05-19 — docs(rule-59): never defer after one failure — investigate, then ship the fix [1 files] _(multi: [edge, docs]; ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `5a9ca0b2` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `ea87d11e` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `373e408c` 2026-05-19 — docs(claude.md): backfill v89-v95 + v102-v105 changelog entries + version-bump policy [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -35,34 +35,26 @@ _(none)_
 
 _(none)_
 
-### Feature (user-facing) (1)
+### Feature (user-facing) (0)
 
-- `9fb247ff` 2026-05-19 — feat(edge): port Seref's redesign into instaclaw with real Supabase auth [36 files] _(multi: [feature, edge]; ai-assisted)_
+_(none)_
 
-### Edge City partner (1)
+### Edge City partner (0)
 
-- `c4d00d00` 2026-05-19 — docs(rule-59): never defer after one failure — investigate, then ship the fix [1 files] _(multi: [edge, docs]; ai-assisted)_
+_(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `5a9ca0b2` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `ea87d11e` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `373e408c` 2026-05-19 — docs(claude.md): backfill v89-v95 + v102-v105 changelog entries + version-bump policy [1 files] _(ai-assisted)_
 
-## Multi-category commits (2)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `c4d00d00` 2026-05-19 — [edge, docs] — docs(rule-59): never defer after one failure — investigate, then ship the fix
-- `9fb247ff` 2026-05-19 — [feature, edge] — feat(edge): port Seref's redesign into instaclaw with real Supabase auth
-
-## AI-assisted commits (2)
+## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `c4d00d00` 2026-05-19 — docs(rule-59): never defer after one failure — investigate, then ship the fix
-- `9fb247ff` 2026-05-19 — feat(edge): port Seref's redesign into instaclaw with real Supabase auth
+- `373e408c` 2026-05-19 — docs(claude.md): backfill v89-v95 + v102-v105 changelog entries + version-bump policy
 
 ## Appendix — every commit (chronological)
 
-- `5a9ca0b2` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-- `c4d00d00` 2026-05-19 — docs(rule-59): never defer after one failure — investigate, then ship the fix [1 files] _(multi: [edge, docs]; ai-assisted)_
-- `9fb247ff` 2026-05-19 — feat(edge): port Seref's redesign into instaclaw with real Supabase auth [36 files] _(multi: [feature, edge]; ai-assisted)_
+- `ea87d11e` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `373e408c` 2026-05-19 — docs(claude.md): backfill v89-v95 + v102-v105 changelog entries + version-bump policy [1 files] _(ai-assisted)_
