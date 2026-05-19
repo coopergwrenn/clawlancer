@@ -1,28 +1,30 @@
 # Changelog — generated 2026-05-19
 
-Window: `186e8e1fb205ab6c9fd37311f0ac82c50a6339d1` → `HEAD` (HEAD = `fbdab2c6`)
-Total commits: 2
+Window: `fbdab2c69fa5d22969274992757fc700e84e9b1c` → `HEAD` (HEAD = `a543897f`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: fbdab2c69fa5d22969274992757fc700e84e9b1c -->
+<!-- LAST_GENERATED_SHA: a543897f19d098251faf25d0c90e665387fb3fc3 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 2
 - **Feature (user-facing):** 0
-- **Edge City partner:** 1
+- **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 2
 - Merge commits: 0
 
 ## What changed for users
 
-- `fbdab2c6` 2026-05-19 — docs(prd): Edge Esmeralda master PRD — single source of truth post-2026-05-19 meeting [1 files] _(multi: [edge, docs]; ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `b9f55907` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `27aa70f1` 2026-05-19 — chore(chatgpt-oauth): promote migration to migrations/ — applied to prod 2026-05-19 [2 files] _(ai-assisted)_
+- `a543897f` 2026-05-19 — fix(bake): live-validation findings — pin extraction + UX + dry-run guards [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `6218e04a` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -30,35 +32,38 @@ Total commits: 2
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (2)
 
-_(none)_
+- `27aa70f1` 2026-05-19 — chore(chatgpt-oauth): promote migration to migrations/ — applied to prod 2026-05-19 [2 files] _(ai-assisted)_
+- `a543897f` 2026-05-19 — fix(bake): live-validation findings — pin extraction + UX + dry-run guards [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
 _(none)_
 
-### Edge City partner (1)
+### Edge City partner (0)
 
-- `fbdab2c6` 2026-05-19 — docs(prd): Edge Esmeralda master PRD — single source of truth post-2026-05-19 meeting [1 files] _(multi: [edge, docs]; ai-assisted)_
+_(none)_
 
 ### Docs / PRD only (1)
 
-- `b9f55907` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `6218e04a` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `fbdab2c6` 2026-05-19 — [edge, docs] — docs(prd): Edge Esmeralda master PRD — single source of truth post-2026-05-19 meeting
+- `a543897f` 2026-05-19 — [infrastructure, docs] — fix(bake): live-validation findings — pin extraction + UX + dry-run guards
 
-## AI-assisted commits (1)
+## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `fbdab2c6` 2026-05-19 — docs(prd): Edge Esmeralda master PRD — single source of truth post-2026-05-19 meeting
+- `27aa70f1` 2026-05-19 — chore(chatgpt-oauth): promote migration to migrations/ — applied to prod 2026-05-19
+- `a543897f` 2026-05-19 — fix(bake): live-validation findings — pin extraction + UX + dry-run guards
 
 ## Appendix — every commit (chronological)
 
-- `b9f55907` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-- `fbdab2c6` 2026-05-19 — docs(prd): Edge Esmeralda master PRD — single source of truth post-2026-05-19 meeting [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `6218e04a` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `27aa70f1` 2026-05-19 — chore(chatgpt-oauth): promote migration to migrations/ — applied to prod 2026-05-19 [2 files] _(ai-assisted)_
+- `a543897f` 2026-05-19 — fix(bake): live-validation findings — pin extraction + UX + dry-run guards [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
