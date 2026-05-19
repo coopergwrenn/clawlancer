@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-19
 
-Window: `78ef5037a3e0ff5932302ad5bab7e93345cdbce6` → `HEAD` (HEAD = `f2f19c67`)
+Window: `f2f19c678c3cb411212cf91994a05d03529d8ccb` → `HEAD` (HEAD = `b427daa8`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: f2f19c678c3cb411212cf91994a05d03529d8ccb -->
+<!-- LAST_GENERATED_SHA: b427daa85dfbc6f739ead4c2c3b65411d533eee9 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `f2f19c67` 2026-05-19 — chore(migrations): promote 20260519180000_matchpool_index_opportunity — applied to prod [2 files] _(ai-assisted)_
-- `43ac3f15` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `b427daa8` 2026-05-19 — feat(edge): scripts/_force-edge-overlay-deploy.ts — fast-forward overlay propagation [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `c42f7b39` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `f2f19c67` 2026-05-19 — chore(migrations): promote 20260519180000_matchpool_index_opportunity — applied to prod [2 files] _(ai-assisted)_
+- `b427daa8` 2026-05-19 — feat(edge): scripts/_force-edge-overlay-deploy.ts — fast-forward overlay propagation [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `43ac3f15` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `c42f7b39` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `b427daa8` 2026-05-19 — [infrastructure, edge] — feat(edge): scripts/_force-edge-overlay-deploy.ts — fast-forward overlay propagation
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `f2f19c67` 2026-05-19 — chore(migrations): promote 20260519180000_matchpool_index_opportunity — applied to prod
+- `b427daa8` 2026-05-19 — feat(edge): scripts/_force-edge-overlay-deploy.ts — fast-forward overlay propagation
 
 ## Appendix — every commit (chronological)
 
-- `43ac3f15` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-- `f2f19c67` 2026-05-19 — chore(migrations): promote 20260519180000_matchpool_index_opportunity — applied to prod [2 files] _(ai-assisted)_
+- `c42f7b39` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `b427daa8` 2026-05-19 — feat(edge): scripts/_force-edge-overlay-deploy.ts — fast-forward overlay propagation [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
