@@ -1,10 +1,12 @@
-# Snapshot Bake v104 — May 23-25 — Checklist
+# Snapshot Bake v105 — May 23-25 — Checklist
 
 **Status:** PLAN. Bake window 2026-05-23 → 2026-05-25. Esmeralda go-live 2026-05-30.
-**Target snapshot label:** `instaclaw-base-v104-2026-05-23-gbrain-http` (or similar dated label)
+**Target snapshot label:** `instaclaw-base-v105-2026-05-23-gbrain-http` (or similar dated label)
 **Predecessor snapshot:** `private/38575292` (current `LINODE_SNAPSHOT_ID`)
-**Rollback window:** keep `private/38575292` available for 1 week after v104 ships (2026-06-01 minimum)
-**Single biggest delta vs v79:** gbrain v0.35.0.0 HTTP sidecar pre-installed; v100-v104 reconciler fixes pre-applied
+**Rollback window:** keep `private/38575292` available for 1 week after v105 ships (2026-06-01 minimum)
+**Single biggest delta vs v79:** gbrain v0.35.0.0 HTTP sidecar pre-installed; v82-v105 reconciler fixes pre-applied (16 manifest version bumps)
+
+> **Version-tag convention in this doc:** `[v102 NEW]` / `[v104 NEW]` / `[v105 NEW]` tags in the §3.x walk are **historical attribution** showing which manifest version first introduced that gate or step. They are NOT "still new in this version" — they document the audit trail for future operators. The file's overall **target** is whatever `VM_MANIFEST.version` reads at bake-time (v105 at file rename 2026-05-19; bake-day operator must re-confirm before clicking Provision).
 
 > **Bake from a FRESH g6-nanode-1, never from a production VM.** See `snapshot-bake-runbook.md` §−1 for the reasoning. vm-050 (and any customer VM) is explicitly unsuitable: 24 GB disk > 6144 MB image cap, customer-specific identity baked in, partner state leakage, baked API keys, gbrain PGLite with 40 MB user memories. The canonical path provisions a fresh nanode from `LINODE_SNAPSHOT_ID`, reconciles it to the current manifest, installs gbrain via `install-gbrain.sh`, runs `_prebake-cleanup.sh`, validates with `_postbake-validation.ts --mode=bake`, then imagizes.
 
@@ -851,7 +853,7 @@ Final verdict after T-7 blocker resolution work:
 | vm-354 30-min soak | Unchecked | Unchecked | Cooper-action before T+0 |
 | Anthropic project-key cap | Unverified | Unverified | Cooper-action before T+0 |
 
-**Manifest drift since the T-7 audit:** the manifest has bumped through **v102** (orphan-tool_use repair — first file rename of this checklist), **v103** (`944068db feat(reconcile): stepUfwRules + Rule 57` — ufw 9100/tcp fleet-wide enforcement), **v104** (`0ab38404 refactor(reconcile): ensureUfwAllow helper` — file renamed to current `snapshot-bake-v104-checklist.md`), then **v105** (`652e732d feat(reconcile): stepIndexProvision + manifest v105` — Index Network MCP for edge_city). The bake target on 5/23 will be whatever manifest version is current then. The `_pre-bake-check.ts` script is version-agnostic — it reads `VM_MANIFEST.version` dynamically and adjusts its cv-lag and integrity-check thresholds accordingly.
+**Manifest drift since the T-7 audit:** the manifest has bumped through **v102** (orphan-tool_use repair — first file rename of this checklist), **v103** (`944068db feat(reconcile): stepUfwRules + Rule 57` — ufw 9100/tcp fleet-wide enforcement), **v104** (`0ab38404 refactor(reconcile): ensureUfwAllow helper` — second file rename), then **v105** (`652e732d feat(reconcile): stepIndexProvision + manifest v105` — Index Network MCP for edge_city; file renamed to current `snapshot-bake-v105-checklist.md` 2026-05-19). The bake target on 5/23 will be whatever manifest version is current then. The `_pre-bake-check.ts` script is version-agnostic — it reads `VM_MANIFEST.version` dynamically and adjusts its cv-lag and integrity-check thresholds accordingly.
 
 **Bake-prep status: COMPLETE except for 3 operator-action items** (vm-354 soak, Anthropic cap, HEAD pull). All scriptable CRITICAL gates either pass cleanly OR show only the historical 1-stale-bundle-alert artifact that aged out of the 24h window by 2026-05-17 19:30 UTC.
 

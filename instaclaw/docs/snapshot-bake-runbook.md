@@ -1,5 +1,19 @@
 # Snapshot Bake Runbook — fresh-nanode path (canonical)
 
+> **2026-05-19 update**: this runbook is the underlying reconcileVM mechanics
+> reference. For the **bake-day procedural checklist** (currently targeting
+> manifest **v105**), use [`snapshot-bake-v105-checklist.md`](./snapshot-bake-v105-checklist.md).
+> The checklist supersedes this runbook for §3.x execution; this runbook's
+> §2 (reconcileVM) and §4 (`_prebake-cleanup.sh`) remain the canonical
+> mechanism reference.
+>
+> Many code-example commands below still use `bake-v95` as a synthetic VM
+> label and reference v95-era manifest gates. **For an actual bake, replace
+> `v95` with the current manifest version** (read from `VM_MANIFEST.version`).
+> Section headers (`§2 — Reconcile v79 → v105`) have been bulk-updated to
+> v105 today; in-code `bake-v95` synthetic VM labels and pre-2026-05-19
+> changelog entries retained for audit-trail.
+
 > **Audience**: operator (Cooper). Read this end-to-end before starting.
 >
 > **Why this exists**: the 2026-05-12 vm-050 audit established that baking
@@ -17,15 +31,15 @@
 
 | Field | Value |
 |---|---|
-| Target manifest version | **v95** (from `lib/vm-manifest.ts:1127`) |
+| Target manifest version | **v105** (from `lib/vm-manifest.ts:1127`) |
 | Source snapshot (rollback target) | **`private/38575292`** (v79, baked 2026-05-03) |
-| New image label | `instaclaw-base-v95-<short-desc>` |
+| New image label | `instaclaw-base-v105-<short-desc>` |
 | Region | `us-east` |
 | Bake VM type | **g6-nanode-1** (NOT dedicated-2 — see §−1) |
 | Test VM type (verification) | `g6-nanode-1` (cheap) |
 | Reconcile manifest version source | `main` branch of this repo |
 | Catch-up script branch | `feat/gbrain-stepGbrain-phase4c` (not on main yet) |
-| Bake VM tag | `instaclaw,snapshot-bake,v95-bake-<date>` |
+| Bake VM tag | `instaclaw,snapshot-bake,v105-bake-<date>` |
 
 ## §−1 — Why not vm-050 (or any production VM)
 
@@ -121,7 +135,7 @@ curl -sS -X POST https://api.linode.com/v4/linode/instances \
   -H "Content-Type: application/json" \
   -d "$(cat <<JSON
 {
-  "label": "snapshot-bake-v95-$(date -u +%Y%m%d)",
+  "label": "snapshot-bake-v105-$(date -u +%Y%m%d)",
   "region": "us-east",
   "type": "g6-nanode-1",
   "image": "${LINODE_SNAPSHOT_ID:-private/38575292}",
@@ -177,9 +191,9 @@ ssh -i /tmp/vm-050-key -o StrictHostKeyChecking=no openclaw@$BAKE_IP \
 # Save the SHA256:... part — needed for §7 validation
 ```
 
-## §2 — Reconcile v79 → v95
+## §2 — Reconcile v79 → v105
 
-> **Goal**: push the bake VM from v79 baseline to v95 manifest using the same
+> **Goal**: push the bake VM from v79 baseline to v105 manifest using the same
 > code path the production cron uses, so the image inherits battle-tested
 > state.
 
@@ -378,7 +392,7 @@ ssh -i /tmp/vm-050-key -o StrictHostKeyChecking=no openclaw@$BAKE_IP \
 ```bash
 scp -i /tmp/vm-050-key scripts/_prebake-cleanup.sh openclaw@$BAKE_IP:/tmp/
 ssh -i /tmp/vm-050-key openclaw@$BAKE_IP 'bash /tmp/_prebake-cleanup.sh --dry-run' \
-  | tee /tmp/bake-v95-dryrun.log
+  | tee /tmp/bake-v105-dryrun.log
 ```
 
 Review the dry-run output. Anything surprising (e.g., a file you wanted to keep was scheduled for deletion) → fix the script before proceeding. **Do not skip this step.**
@@ -387,7 +401,7 @@ Review the dry-run output. Anything surprising (e.g., a file you wanted to keep 
 
 ```bash
 ssh -i /tmp/vm-050-key openclaw@$BAKE_IP 'sudo -v && bash /tmp/_prebake-cleanup.sh --confirm' \
-  | tee /tmp/bake-v95-cleanup.log
+  | tee /tmp/bake-v105-cleanup.log
 ```
 
 **Expected**: ends with `═══ Cleanup complete — VM is ready to image ═══` and disk usage AFTER ≤ 5900 MB.
@@ -423,7 +437,7 @@ EOF
 ```bash
 npx tsx scripts/_postbake-validation.ts \
   --vm-ip=$BAKE_IP --mode=bake --max-disk-mb=5900 \
-  | tee /tmp/bake-v95-validation.log
+  | tee /tmp/bake-v105-validation.log
 ```
 
 **Gate**: exit code 0, "ALL CHECKS PASS". If any P0 fails → DO NOT bake. Investigate.
@@ -481,8 +495,8 @@ curl -sS -X POST https://api.linode.com/v4/images \
   -d "$(cat <<JSON
 {
   "disk_id": ${DISK_ID},
-  "label": "instaclaw-base-v95-<short-desc>",
-  "description": "OpenClaw 2026.4.26, Node v22.22.2, manifest v95. \
+  "label": "instaclaw-base-v105-<short-desc>",
+  "description": "OpenClaw 2026.4.26, Node v22.22.2, manifest v105. \
 Built from v79 (private/38575292) via clean fresh-nanode reconcile. \
 Includes: build-essential, prctl-subreaper@0.1.1, TasksMax=120, \
 v95 ack-ux 9 config keys, bootstrapMaxChars=40000, ack-watchdog.py Layer 3, \
@@ -490,7 +504,7 @@ gbrain 0.28.1 (bun 1.3.13, empty PGLite, MCP wired). \
 Per-VM state scrubbed via _prebake-cleanup.sh; validated via _postbake-validation.ts."
 }
 JSON
-)" | tee /tmp/bake-v95-image.json
+)" | tee /tmp/bake-v105-image.json
 ```
 
 Capture the `id` → `NEW_SNAPSHOT_ID = private/<that-id>`.
@@ -498,7 +512,7 @@ Capture the `id` → `NEW_SNAPSHOT_ID = private/<that-id>`.
 ### 6.5 — Wait for image to become available
 
 ```bash
-NEW_IMAGE_ID=$(python3 -c 'import json;print(json.load(open("/tmp/bake-v95-image.json"))["id"])')
+NEW_IMAGE_ID=$(python3 -c 'import json;print(json.load(open("/tmp/bake-v105-image.json"))["id"])')
 for i in $(seq 1 30); do
   s=$(curl -sS -H "Authorization: Bearer $LINODE_API_TOKEN" \
     https://api.linode.com/v4/images/$NEW_IMAGE_ID \
@@ -577,13 +591,13 @@ done
 ### 7.4 — Run validation in test mode
 
 ```bash
-BAKE_FP=$(grep SHA256 /tmp/bake-v95-validation.log | head -1 | awk '{print $2}')
+BAKE_FP=$(grep SHA256 /tmp/bake-v105-validation.log | head -1 | awk '{print $2}')
 # OR record from §1.3:
 # BAKE_FP=$(cat /tmp/bake-fp.txt | awk '{print $2}')
 
 npx tsx scripts/_postbake-validation.ts \
   --vm-ip=$TEST_IP --mode=test --bake-vm-fingerprint=$BAKE_FP \
-  | tee /tmp/test-v95-validation.log
+  | tee /tmp/test-v105-validation.log
 ```
 
 **Gates**:
@@ -680,9 +694,9 @@ Add an entry to the "Manifest Version Changelog" section in `CLAUDE.md`:
 ```markdown
 ### Snapshot v95 baked — 2026-05-12
 
-- **Image**: `private/<NEW_IMAGE_ID>` (instaclaw-base-v95-…)
+- **Image**: `private/<NEW_IMAGE_ID>` (instaclaw-base-v105-…)
 - **Built from**: v79 (`private/38575292`)
-- **Contents**: OpenClaw 2026.4.26, Node v22.22.2, manifest v95.
+- **Contents**: OpenClaw 2026.4.26, Node v22.22.2, manifest v105.
   - v86 TasksMax=120, v87 prctl-subreaper@0.1.1, v88 build-essential
   - v89-v94 SOUL.md platform identity + partner-stub migration
   - v95 ack-ux Layer 1+2+3 (👀 reaction, streaming preview, ack-watchdog cron)
@@ -783,7 +797,7 @@ After clearing, re-run `_postbake-validation.ts` from §5.
 [ ] §3.2  gbrain install: INSTALL_COMPLETE (no FATAL_*)
 [ ] §3.3  gbrain end-to-end verified (symlink, MCP entry, env vars, PGLite)
 [ ] §4.1  ~/.snapshot-bake-mode marker created
-[ ] §4.2  _prebake-cleanup.sh --dry-run reviewed (saved to /tmp/bake-v95-dryrun.log)
+[ ] §4.2  _prebake-cleanup.sh --dry-run reviewed (saved to /tmp/bake-v105-dryrun.log)
 [ ] §4.3  _prebake-cleanup.sh --confirm OK; disk usage <5900MB
 [ ] §4.4  Spot checks: secrets gone, sessions empty, gbrain pglite empty, identity reset, partner gone
 [ ] §5    _postbake-validation.ts --mode=bake: ALL P0 PASS
