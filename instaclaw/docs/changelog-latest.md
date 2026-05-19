@@ -1,33 +1,20 @@
 # Changelog — generated 2026-05-19
 
-Window: `d97bf0334e872800b7020f9bb8dd67fdbc8139a8` → `HEAD` (HEAD = `2eedeb3e`)
+Window: `2eedeb3e9485c0743298148393ce446d0948ad8c` → `HEAD` (HEAD = `3cfd7a52`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 2eedeb3e9485c0743298148393ce446d0948ad8c -->
+<!-- LAST_GENERATED_SHA: 3cfd7a52a757cc7a8293c56eac14c9fa44ceb82e -->
 
 ## Summary
 
-- **Manifest version bumps:** 1
-  - Range: v108 → v108
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Manifest version bumps:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
-
-## Manifest version timeline
-
-### v108 — 2026-05-19 — `2eedeb3e`
-
-feat(v107): gbrain canary gating mechanism — fleet rollout Phase 1 prep
-
-> Adds the per-VM `gbrain_enabled BOOLEAN` column + `isGbrainEligibleForVM`
-> helper to enable phased gbrain rollout to the 137 non-edge VMs ahead of
-> Edge Esmeralda (May 30). Phase 1 canary = 17 Pro/Power VMs (PRD:
-> docs/prd/gbrain-fleet-rollout-canary-2026-05-19.md). Phase 2 = +30 mid-tier
-> mix. Phase 3 = remaining ~90 (fleet-wide).
 
 ## What changed for users
 
@@ -35,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `2eedeb3e` 2026-05-19 — feat(v107): gbrain canary gating mechanism — fleet rollout Phase 1 prep [7 files] _(**MANIFEST v108**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
-- `f48125fd` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `3cfd7a52` 2026-05-19 — fix(edge-overlay): EDGE_INSTACLAW_OVERLAY_MD — drop deprecated Sola/Social Layer mention (v108 changelog entry) [2 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `8ed77ada` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `2eedeb3e` 2026-05-19 — feat(v107): gbrain canary gating mechanism — fleet rollout Phase 1 prep [7 files] _(**MANIFEST v108**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `3cfd7a52` 2026-05-19 — fix(edge-overlay): EDGE_INSTACLAW_OVERLAY_MD — drop deprecated Sola/Social Layer mention (v108 changelog entry) [2 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -58,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `f48125fd` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `8ed77ada` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `2eedeb3e` 2026-05-19 — [reconciler, infrastructure, edge] — feat(v107): gbrain canary gating mechanism — fleet rollout Phase 1 prep
+- `3cfd7a52` 2026-05-19 — [infrastructure, edge, docs] — fix(edge-overlay): EDGE_INSTACLAW_OVERLAY_MD — drop deprecated Sola/Social Layer mention (v108 changelog entry)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `2eedeb3e` 2026-05-19 — feat(v107): gbrain canary gating mechanism — fleet rollout Phase 1 prep
+- `3cfd7a52` 2026-05-19 — fix(edge-overlay): EDGE_INSTACLAW_OVERLAY_MD — drop deprecated Sola/Social Layer mention (v108 changelog entry)
 
 ## Appendix — every commit (chronological)
 
-- `f48125fd` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-- `2eedeb3e` 2026-05-19 — feat(v107): gbrain canary gating mechanism — fleet rollout Phase 1 prep [7 files] _(**MANIFEST v108**; multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `8ed77ada` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `3cfd7a52` 2026-05-19 — fix(edge-overlay): EDGE_INSTACLAW_OVERLAY_MD — drop deprecated Sola/Social Layer mention (v108 changelog entry) [2 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
