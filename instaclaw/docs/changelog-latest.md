@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-19
 
-Window: `2eedeb3e9485c0743298148393ce446d0948ad8c` → `HEAD` (HEAD = `3cfd7a52`)
+Window: `3cfd7a52a757cc7a8293c56eac14c9fa44ceb82e` → `HEAD` (HEAD = `78ef5037`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 3cfd7a52a757cc7a8293c56eac14c9fa44ceb82e -->
+<!-- LAST_GENERATED_SHA: 78ef5037a3e0ff5932302ad5bab7e93345cdbce6 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `3cfd7a52` 2026-05-19 — fix(edge-overlay): EDGE_INSTACLAW_OVERLAY_MD — drop deprecated Sola/Social Layer mention (v108 changelog entry) [2 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
-- `8ed77ada` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `78ef5037` 2026-05-19 — fix(edge): dedup edge-esmeralda git-pull cron — root cause + one-shot cleanup [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `035405ba` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `78ef5037` 2026-05-19 — fix(edge): dedup edge-esmeralda git-pull cron — root cause + one-shot cleanup [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `3cfd7a52` 2026-05-19 — fix(edge-overlay): EDGE_INSTACLAW_OVERLAY_MD — drop deprecated Sola/Social Layer mention (v108 changelog entry) [2 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `8ed77ada` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `035405ba` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `3cfd7a52` 2026-05-19 — [infrastructure, edge, docs] — fix(edge-overlay): EDGE_INSTACLAW_OVERLAY_MD — drop deprecated Sola/Social Layer mention (v108 changelog entry)
+- `78ef5037` 2026-05-19 — [reconciler, infrastructure, edge] — fix(edge): dedup edge-esmeralda git-pull cron — root cause + one-shot cleanup
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `3cfd7a52` 2026-05-19 — fix(edge-overlay): EDGE_INSTACLAW_OVERLAY_MD — drop deprecated Sola/Social Layer mention (v108 changelog entry)
+- `78ef5037` 2026-05-19 — fix(edge): dedup edge-esmeralda git-pull cron — root cause + one-shot cleanup
 
 ## Appendix — every commit (chronological)
 
-- `8ed77ada` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-- `3cfd7a52` 2026-05-19 — fix(edge-overlay): EDGE_INSTACLAW_OVERLAY_MD — drop deprecated Sola/Social Layer mention (v108 changelog entry) [2 files] _(multi: [infrastructure, edge, docs]; ai-assisted)_
+- `035405ba` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `78ef5037` 2026-05-19 — fix(edge): dedup edge-esmeralda git-pull cron — root cause + one-shot cleanup [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
