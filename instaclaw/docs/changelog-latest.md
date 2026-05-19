@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-19
 
-Window: `5262c52b72f166a3f3e9fe5659335886493c962b` → `HEAD` (HEAD = `597c9899`)
+Window: `597c9899c5463faee3cbd0ffa80f78e253798ef4` → `HEAD` (HEAD = `98a8b0fa`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 597c9899c5463faee3cbd0ffa80f78e253798ef4 -->
+<!-- LAST_GENERATED_SHA: 98a8b0fa211202f9ea7ea27aab43fd2cd0d90967 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `597c9899` 2026-05-19 — fix(edgeos): authenticateOTP 404→no_account + harden test script [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `fed75350` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `98a8b0fa` 2026-05-19 — docs(prd): 3-surface gbrain SOUL routing analysis [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+- `30b1ee6e` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `98a8b0fa` 2026-05-19 — docs(prd): 3-surface gbrain SOUL routing analysis [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `597c9899` 2026-05-19 — fix(edgeos): authenticateOTP 404→no_account + harden test script [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `fed75350` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `30b1ee6e` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `597c9899` 2026-05-19 — [infrastructure, edge] — fix(edgeos): authenticateOTP 404→no_account + harden test script
+- `98a8b0fa` 2026-05-19 — [reconciler, edge, docs] — docs(prd): 3-surface gbrain SOUL routing analysis
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `597c9899` 2026-05-19 — fix(edgeos): authenticateOTP 404→no_account + harden test script
+- `98a8b0fa` 2026-05-19 — docs(prd): 3-surface gbrain SOUL routing analysis
 
 ## Appendix — every commit (chronological)
 
-- `fed75350` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-- `597c9899` 2026-05-19 — fix(edgeos): authenticateOTP 404→no_account + harden test script [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `30b1ee6e` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `98a8b0fa` 2026-05-19 — docs(prd): 3-surface gbrain SOUL routing analysis [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
