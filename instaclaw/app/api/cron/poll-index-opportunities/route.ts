@@ -1,37 +1,31 @@
 /**
- * GET /api/cron/poll-index-opportunities — Path C fallback for Index→Village.
+ * GET /api/cron/poll-index-opportunities — Path C, PRIMARY path for
+ * Index→Village (per Yanek 2026-05-19: Index doesn't have outbound webhooks).
  *
- * Polls `GET {INDEX_API_URL}/api/networks/:id/opportunities?status=accepted`
- * every cron tick (1 min via vercel.json), feeds each new accepted opportunity
+ * Polls Yanek's dedicated Edge-City endpoint:
+ *
+ *     POST {INDEX_API_URL}/api/networks/:networkId/opportunities?status=accepted
+ *     Headers: x-api-key: {INDEX_NETWORK_MASTER_KEY}
+ *     Body:    {} (empty — filter is in the query string)
+ *
+ * Yes, POST for a read operation — Yanek confirmed this is the exact shape.
+ * He added a separate endpoint that accepts x-api-key auth (vs the documented
+ * GET version which requires AuthGuard / session). The path is identical;
+ * only the method differs.
+ *
+ * Every cron tick (1 min via vercel.json), feeds each accepted opportunity
  * to `recordIndexMatch`. Idempotent across runs via the
- * matchpool_outcomes_index_opportunity_unique constraint (Path A webhook
- * deliveries and our polled writes deduplicate on the same constraint, so
- * running both simultaneously is safe).
- *
- * Why this exists:
- *   Index Network's documented API doesn't include outbound webhooks (see
- *   PRD §8 + the audit reading the upstream api-reference.md). Path A (the
- *   webhook receiver) is the preferred path BUT requires Yanek to ship
- *   outbound webhook support on his side. This poller is the fallback that
- *   works against Index's existing pull-based API.
+ * `matchpool_outcomes_index_opportunity_unique` partial-UNIQUE index — so
+ * replaying the same opportunity is a no-op, and running this alongside
+ * Path A (the webhook receiver, kept in case Yanek adds outbound webhooks
+ * later) is safe.
  *
  * Gating:
  *
- *   Disabled by default. Flip on with `INDEX_POLLER_ENABLED=true` in Vercel
- *   env when (a) Yanek says outbound webhooks aren't coming OR (b) we want
- *   defense-in-depth alongside Path A. The cron entry in vercel.json runs
- *   every minute regardless; the route's first check short-circuits when
- *   the flag is unset.
- *
- * Auth assumption (needs Yanek confirmation):
- *
- *   The Index signup endpoint accepts master-key auth via `x-api-key`.
- *   This poller assumes the network-scoped opportunities endpoint accepts
- *   the same. If Yanek confirms it does NOT (requires session/agent key),
- *   we'd need to either (a) get a service-account API key from Index or
- *   (b) cycle through our 9 stored `index_api_key` values from
- *   `instaclaw_vms`. The poller's `auth` flag below lets us flip strategy
- *   without changing call sites.
+ *   ENABLED BY DEFAULT (as of Yanek's 2026-05-19 confirmation). Cooper can
+ *   still disable via `INDEX_POLLER_ENABLED=false` env var if needed — the
+ *   flag check below treats EXACT "false" as off; everything else (unset,
+ *   "true", "1", "yes") is on.
  *
  * Failure modes:
  *
@@ -59,8 +53,6 @@ import { getIndexEnv } from "@/lib/index-network-client";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const POLL_LIMIT = 50;
-
 export async function GET(req: NextRequest) {
   // ── Auth: CRON_SECRET Bearer (existing /api/cron/* pattern) ──
   const authHeader = req.headers.get("authorization");
@@ -68,9 +60,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  // ── Feature flag ──
-  if (process.env.INDEX_POLLER_ENABLED !== "true") {
-    return NextResponse.json({ skipped: "INDEX_POLLER_ENABLED!=true" });
+  // ── Feature flag: default-on per Yanek's 2026-05-19 confirmation that
+  // Path C is the primary path. Only the explicit string "false" disables. ──
+  if (process.env.INDEX_POLLER_ENABLED === "false") {
+    return NextResponse.json({ skipped: "INDEX_POLLER_ENABLED=false" });
   }
 
   const indexEnv = getIndexEnv();
@@ -87,15 +80,26 @@ export async function GET(req: NextRequest) {
     "https://protocol.index.network"
   ).replace(/\/+$/, "");
 
-  const url = `${apiBase}/api/networks/${indexEnv.networkId}/opportunities?status=accepted&limit=${POLL_LIMIT}`;
+  // Yanek's confirmed endpoint shape:
+  //   POST /api/networks/:networkId/opportunities?status=accepted
+  //   Header: x-api-key: <master>
+  //   Body:   {} — empty; filter is in the query string
+  //
+  // Limit isn't documented as a query param for THIS endpoint (it's documented
+  // on the GET variant which we're not using); omit it. If volume grows past
+  // what the endpoint returns per call we'll revisit.
+  const url = `${apiBase}/api/networks/${indexEnv.networkId}/opportunities?status=accepted`;
 
   let res: Response;
   try {
     res = await fetch(url, {
+      method: "POST",
       headers: {
         "x-api-key": indexEnv.masterKey,
+        "Content-Type": "application/json",
         Accept: "application/json",
       },
+      body: "{}",
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
