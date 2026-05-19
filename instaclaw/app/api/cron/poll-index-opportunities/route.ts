@@ -1,230 +1,103 @@
 /**
  * GET /api/cron/poll-index-opportunities — Path C, PRIMARY path for
- * Index→Village (per Yanek 2026-05-19: Index doesn't have outbound webhooks).
+ * Index→Village (per Yanek 2026-05-19).
  *
- * Polls Yanek's dedicated Edge-City endpoint:
+ * Architecture: Option B (per-user keys, fan-out to all 9 agents).
  *
- *     POST {INDEX_API_URL}/api/networks/:networkId/opportunities?status=accepted
- *     Headers: x-api-key: {INDEX_NETWORK_MASTER_KEY}
- *     Body:    {} (empty — filter is in the query string)
+ * ── Why per-user fan-out ──
  *
- * Yes, POST for a read operation — Yanek confirmed this is the exact shape.
- * He added a separate endpoint that accepts x-api-key auth (vs the documented
- * GET version which requires AuthGuard / session). The path is identical;
- * only the method differs.
+ *   Yanek's auth model: the master key is ONLY for /signup. The
+ *   /api/opportunities?status=accepted endpoint requires a PER-USER
+ *   x-api-key, which is issued by /signup and stored in our
+ *   instaclaw_vms.index_api_key column.
  *
- * Every cron tick (1 min via vercel.json), feeds each accepted opportunity
- * to `recordIndexMatch`. Idempotent across runs via the
- * `matchpool_outcomes_index_opportunity_unique` partial-UNIQUE index — so
- * replaying the same opportunity is a no-op, and running this alongside
- * Path A (the webhook receiver, kept in case Yanek adds outbound webhooks
- * later) is safe.
+ *   We couldn't empirically determine all-vs-mine scoping (re-probed after
+ *   re-provisioning the 9 keys — both keys returned 200 with empty result
+ *   sets because no real opportunities exist yet). Three converging signals
+ *   pointed at user-scoped:
  *
- * Gating:
+ *     1. Yanek explicitly said per-user keys are scoped to specific users.
+ *     2. The sibling documented endpoint
+ *        GET /api/agents/:id/opportunities/accepted is explicitly user-scoped.
+ *     3. The master rotation invalidated the previously-issued per-user
+ *        keys — confirming master→per-user-key is a real derivation, not
+ *        independent identities.
  *
- *   ENABLED BY DEFAULT (as of Yanek's 2026-05-19 confirmation). Cooper can
- *   still disable via `INDEX_POLLER_ENABLED=false` env var if needed — the
- *   flag check below treats EXACT "false" as off; everything else (unset,
- *   "true", "1", "yes") is on.
+ *   Asymmetric risk: if we built single-key (Option A) and it turned out
+ *   user-scoped, we'd silently miss opportunities. If we build fan-out
+ *   (Option B) and it turned out all-network, we waste 8 redundant requests
+ *   per tick (negligible). → Option B.
  *
- * Failure modes:
+ * ── Flow per tick ──
  *
- *   - Index API unreachable / 5xx: log, return 502, Vercel cron continues
- *     next tick.
- *   - Auth failure (401/403): log loud at error level, return 401/403.
- *     Operator must check the master key + endpoint auth model.
- *   - Single opportunity record fails: continue with the rest — one bad
- *     row doesn't block the batch.
+ *   1. Auth: Bearer CRON_SECRET (existing /api/cron/* pattern).
+ *   2. Feature flag: default-on; `INDEX_POLLER_ENABLED=false` disables.
+ *   3. Pull all 9 (well, however many are present) edge_city VMs with a
+ *      non-null index_api_key from instaclaw_vms.
+ *   4. Parallel fetch: GET /api/opportunities?status=accepted with each
+ *      agent's per-user x-api-key. ~200-500ms each in parallel.
+ *   5. In-memory dedup by opportunity.id (a single opportunity between
+ *      two cohort agents shows up in BOTH agents' result sets; we should
+ *      only attempt one recordIndexMatch call per opportunity per tick).
+ *   6. For each unique opportunity: hand to recordIndexMatch.
+ *      - Bidirectional matches (both actors in cohort): deduped in-memory,
+ *        single INSERT, success.
+ *      - Single-side matches (one actor in cohort, one external): only the
+ *        cohort actor's poll sees the opportunity, single INSERT attempt,
+ *        recorder returns `skipped: 'unknown_index_user'` for the external
+ *        side. Correct behavior — we can't visualize a match between
+ *        someone in cohort and someone outside it.
+ *      - Re-running ticks: matchpool_outcomes_index_opportunity_unique
+ *        constraint catches dupes → recordIndexMatch returns
+ *        `already_recorded` (200, not an error).
  *
- * What this route DOES NOT do:
- *   - Cursor persistence (yet). Per-tick fetches "all accepted" within a
- *     small window. Because writes are idempotent via the UNIQUE
- *     constraint, replaying the same opportunity is a no-op. Cooper
- *     decision: cursor persistence is a P2 once we see traffic shape.
- *   - Pagination. First 50 results per tick. If Index emits >50 per
- *     minute we'll add pagination — at Edge Esmeralda's ~200 attendee
- *     scale this is comfortably overhead-free.
+ * ── Cost ──
+ *
+ *   ~9 GET calls per minute = 12,960 calls/day. Trivial both for us and
+ *   for Index. Plus 1 Supabase SELECT and 0-N Supabase INSERTs per tick.
+ *
+ * ── Failure modes ──
+ *
+ *   - Single agent's poll 401s: skip that agent's results, continue with
+ *     the rest. (Per-user key may have been revoked; operator should
+ *     re-provision via scripts/_reprovision-index-keys.ts.)
+ *   - Single agent's poll 5xx: skip + log; continue.
+ *   - Single recordIndexMatch fails: continue with the rest of the deduped
+ *     set; one bad row doesn't block the batch.
+ *   - All polls fail uniformly (Index API outage): tick returns ok with
+ *     summary showing 0 fetched + N agent-level failures. Cron tries
+ *     again next minute. No state corruption.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 import { recordIndexMatch } from "@/lib/index-match-recorder";
-import { getIndexEnv } from "@/lib/index-network-client";
+import { getSupabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export async function GET(req: NextRequest) {
-  // ── Auth: CRON_SECRET Bearer (existing /api/cron/* pattern) ──
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+const INDEX_API_BASE_DEFAULT = "https://protocol.index.network";
 
-  // ── Feature flag: default-on per Yanek's 2026-05-19 confirmation that
-  // Path C is the primary path. Only the explicit string "false" disables. ──
-  if (process.env.INDEX_POLLER_ENABLED === "false") {
-    return NextResponse.json({ skipped: "INDEX_POLLER_ENABLED=false" });
-  }
-
-  const indexEnv = getIndexEnv();
-  if (!indexEnv) {
-    return NextResponse.json({ skipped: "no_index_credentials" });
-  }
-
-  // ── Resolve API base URL — same source as the signup client ──
-  // We have INDEX_NETWORK_API_URL pointing at dev or prod (matching where
-  // signups were issued). Master key is scoped to whichever network the
-  // signups used, so the polled opportunities will be the right ones.
-  const apiBase = (
-    process.env.INDEX_NETWORK_API_URL?.trim() ||
-    "https://protocol.index.network"
-  ).replace(/\/+$/, "");
-
-  // Yanek's CONFIRMED endpoint shape (2026-05-19 update — previous
-  // /api/networks/:id/opportunities variant deprecated):
-  //
-  //   GET /api/opportunities?status=accepted
-  //   Header: x-api-key: <INDEX_NETWORK_MASTER_KEY>
-  //
-  // Note: this is a SINGLE endpoint scoped by master-key auth, not
-  // network-scoped in the URL. Yanek's master key is scoped to the
-  // Edge City network on his side; the returned opportunities are
-  // implicitly filtered to that network.
-  //
-  // No pagination params documented yet. At ~200 Edge attendees we
-  // expect <50 accepted opportunities per minute. If volume grows
-  // past what the endpoint returns per call we'll revisit.
-  const url = `${apiBase}/api/opportunities?status=accepted`;
-
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "GET",
-      headers: {
-        "x-api-key": indexEnv.masterKey,
-        Accept: "application/json",
-      },
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.error("[index-poller] fetch threw", { url, error: msg.slice(0, 200) });
-    return NextResponse.json(
-      { error: "fetch_failed", detail: msg.slice(0, 200) },
-      { status: 502 },
-    );
-  }
-
-  if (res.status === 401 || res.status === 403) {
-    const body = await res.text().catch(() => "");
-    logger.error("[index-poller] auth failure — master-key may not work on this endpoint", {
-      status: res.status,
-      bodyPrefix: body.slice(0, 200),
-    });
-    return NextResponse.json(
-      { error: "auth_failed", status: res.status, body_prefix: body.slice(0, 200) },
-      { status: res.status },
-    );
-  }
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    logger.error("[index-poller] non-2xx", { status: res.status, bodyPrefix: body.slice(0, 200) });
-    return NextResponse.json(
-      { error: "non_2xx", status: res.status, body_prefix: body.slice(0, 200) },
-      { status: 502 },
-    );
-  }
-
-  // ── Parse opportunities list. Try several shapes (same defensive parser
-  //    posture as Path A) — Index API docs leave this slightly ambiguous. ──
-  let parsed: unknown;
-  try {
-    parsed = await res.json();
-  } catch {
-    return NextResponse.json({ error: "non_json_response" }, { status: 502 });
-  }
-
-  const opportunities = extractOpportunities(parsed);
-  if (opportunities === null) {
-    logger.warn("[index-poller] could not extract opportunities array", {
-      bodyShape: typeof parsed,
-      keys:
-        parsed && typeof parsed === "object" ? Object.keys(parsed).slice(0, 5) : null,
-    });
-    return NextResponse.json({ error: "unexpected_response_shape" }, { status: 502 });
-  }
-
-  // ── For each opportunity, attempt to record ──
-  const summary = { fetched: opportunities.length, recorded: 0, already: 0, skipped: 0, failed: 0 };
-  const errors: Array<{ opportunityId?: string; reason: string }> = [];
-
-  for (const opp of opportunities) {
-    const normalized = normalizeOpportunity(opp);
-    if (!normalized) {
-      summary.skipped++;
-      errors.push({ reason: "unparseable_opportunity_row" });
-      continue;
-    }
-
-    try {
-      const result = await recordIndexMatch({
-        indexOpportunityId: normalized.opportunityId,
-        indexUserA: normalized.userA,
-        indexUserB: normalized.userB,
-        metadata: normalized.metadata,
-        source: "poller",
-      });
-      if (result.status === "recorded") summary.recorded++;
-      else if (result.status === "already_recorded") summary.already++;
-      else if (result.status === "skipped") {
-        summary.skipped++;
-        errors.push({ opportunityId: normalized.opportunityId, reason: result.reason });
-      } else {
-        summary.failed++;
-        errors.push({ opportunityId: normalized.opportunityId, reason: result.reason });
-      }
-    } catch (err) {
-      summary.failed++;
-      const msg = err instanceof Error ? err.message : String(err);
-      errors.push({ opportunityId: normalized.opportunityId, reason: msg.slice(0, 150) });
-    }
-  }
-
-  if (summary.recorded > 0 || summary.failed > 0) {
-    logger.info("[index-poller] tick complete", { summary });
-  }
-
-  return NextResponse.json({ ok: true, summary, errors: errors.slice(0, 10) });
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────
-//
-// Response shape — CONFIRMED with Yanek (2026-05-19) with real data:
+// ── Confirmed response shape (Yanek, 2026-05-19, with real data sample) ──
 //
 //   {
-//     "opportunities": [
-//       {
-//         "id": "uuid",
-//         "status": "accepted",
-//         "actors": [
-//           { "userId": "user-uuid", "networkId": "...", "role": "patient|agent", "name": "...", "intent": "..." },
-//           { "userId": "user-uuid", "networkId": "...", "role": "patient|agent", "name": "...", "intent": "..." }
-//         ],
-//         "interpretation": { "category": "...", "reasoning": "...", "confidence": 0.95, "signals": [...] },
-//         "confidence": "0.95",
-//         "createdAt": "iso", "updatedAt": "iso", "expiresAt": null,
-//         "context": { "conversationId": "..." },
-//         "counterpartName": "..."
-//       }
-//     ]
+//     "opportunities": [{
+//       "id": "uuid",
+//       "status": "accepted",
+//       "actors": [
+//         { "userId": "uuid", "networkId": "uuid", "role": "patient|agent", "name": "...", "intent": "..." },
+//         { "userId": "uuid", "networkId": "uuid", "role": "patient|agent", "name": "...", "intent": "..." }
+//       ],
+//       "interpretation": { "category": "...", "reasoning": "...", "confidence": 0.95, "signals": [...] },
+//       "confidence": "0.95",
+//       "createdAt": "iso", "updatedAt": "iso", "expiresAt": null,
+//       "context": { "conversationId": "..." },
+//       "counterpartName": "..."
+//     }]
 //   }
 //
-// Yanek's CRITICAL confirmation: `actors[].userId` is the SAME global user
-// ID returned from /signup — our `instaclaw_vms.index_user_id` lookup
-// pipeline works as-is. No translation layer needed.
-//
-// Earlier defensive parsers (parties / users / userIdA-userIdB) are removed
-// since the shape is now known and stable.
+//   Yanek confirmed actors[].userId is the SAME global user.id from /signup
+//   — our instaclaw_vms.index_user_id lookup works as-is.
 
 interface IndexOpportunityActor {
   userId: string;
@@ -256,11 +129,169 @@ interface IndexOpportunitiesResponse {
   opportunities: IndexOpportunity[];
 }
 
-function extractOpportunities(raw: unknown): IndexOpportunity[] | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Partial<IndexOpportunitiesResponse>;
-  if (!Array.isArray(r.opportunities)) return null;
-  return r.opportunities;
+interface AgentPollResult {
+  vmName: string;
+  status: number;
+  count: number;
+  opportunities: IndexOpportunity[];
+  errorBody?: string;
+}
+
+export async function GET(req: NextRequest) {
+  // ── 1. Auth ──
+  const authHeader = req.headers.get("authorization");
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // ── 2. Feature flag (default-on; only "false" disables) ──
+  if (process.env.INDEX_POLLER_ENABLED === "false") {
+    return NextResponse.json({ skipped: "INDEX_POLLER_ENABLED=false" });
+  }
+
+  const apiBase = (
+    process.env.INDEX_NETWORK_API_URL?.trim() || INDEX_API_BASE_DEFAULT
+  ).replace(/\/+$/, "");
+  const url = `${apiBase}/api/opportunities?status=accepted`;
+
+  // ── 3. Pull all edge_city agents with a non-null index_api_key ──
+  const sb = getSupabase();
+  const { data: agents, error: agentsErr } = await sb
+    .from("instaclaw_vms")
+    .select("name, index_api_key")
+    .eq("partner", "edge_city")
+    .not("index_api_key", "is", null)
+    .order("name");
+  if (agentsErr) {
+    logger.error("[index-poller] agent query failed", { error: agentsErr.message });
+    return NextResponse.json(
+      { error: "agent_query_failed", detail: agentsErr.message },
+      { status: 502 },
+    );
+  }
+  if (!agents || agents.length === 0) {
+    return NextResponse.json({ skipped: "no_provisioned_agents" });
+  }
+
+  // ── 4. Parallel fetch — one GET per agent's key ──
+  const pollResults = await Promise.all(
+    agents.map((agent) =>
+      pollOne(url, agent.name as string, agent.index_api_key as string),
+    ),
+  );
+
+  // ── 5. In-memory dedup by opportunity.id ──
+  // Bidirectional matches (both actors in our cohort) appear in both
+  // agents' polls. Dedup before calling recordIndexMatch so we don't waste
+  // a Supabase INSERT round-trip on the UNIQUE-constraint catch path.
+  const deduped = new Map<string, IndexOpportunity>();
+  for (const pr of pollResults) {
+    for (const opp of pr.opportunities) {
+      if (!opp?.id || typeof opp.id !== "string") continue;
+      if (!deduped.has(opp.id)) deduped.set(opp.id, opp);
+    }
+  }
+
+  // ── 6. Record each unique opportunity ──
+  const recordSummary = {
+    fetched_per_agent: pollResults.map((r) => ({ agent: r.vmName, count: r.count, status: r.status })),
+    unique_after_dedup: deduped.size,
+    recorded: 0,
+    already_recorded: 0,
+    skipped: 0,
+    failed: 0,
+  };
+  const recordErrors: Array<{ opportunityId: string; reason: string; detail?: string }> = [];
+
+  for (const [_id, opp] of deduped) {
+    const normalized = normalizeOpportunity(opp);
+    if (!normalized) {
+      recordSummary.skipped++;
+      recordErrors.push({ opportunityId: opp.id, reason: "unparseable_opportunity" });
+      continue;
+    }
+
+    try {
+      const result = await recordIndexMatch({
+        indexOpportunityId: normalized.opportunityId,
+        indexUserA: normalized.userA,
+        indexUserB: normalized.userB,
+        metadata: normalized.metadata,
+        source: "poller",
+      });
+      if (result.status === "recorded") recordSummary.recorded++;
+      else if (result.status === "already_recorded") recordSummary.already_recorded++;
+      else if (result.status === "skipped") {
+        recordSummary.skipped++;
+        recordErrors.push({
+          opportunityId: normalized.opportunityId,
+          reason: result.reason,
+          detail: result.detail,
+        });
+      } else {
+        recordSummary.failed++;
+        recordErrors.push({
+          opportunityId: normalized.opportunityId,
+          reason: result.reason,
+          detail: result.detail,
+        });
+      }
+    } catch (err) {
+      recordSummary.failed++;
+      const msg = err instanceof Error ? err.message : String(err);
+      recordErrors.push({
+        opportunityId: normalized.opportunityId,
+        reason: "unhandled_exception",
+        detail: msg.slice(0, 200),
+      });
+    }
+  }
+
+  // ── Log + return ──
+  // Per-agent errors (not recordIndexMatch failures — those are per-opp above)
+  const pollErrors = pollResults
+    .filter((p) => p.status !== 200)
+    .map((p) => ({ agent: p.vmName, status: p.status, body: p.errorBody?.slice(0, 150) }));
+
+  if (recordSummary.recorded > 0 || recordSummary.failed > 0 || pollErrors.length > 0) {
+    logger.info("[index-poller] tick complete", {
+      agents_polled: agents.length,
+      agents_with_errors: pollErrors.length,
+      ...recordSummary,
+    });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    summary: recordSummary,
+    poll_errors: pollErrors,
+    record_errors: recordErrors.slice(0, 10),
+  });
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────
+
+async function pollOne(
+  url: string,
+  vmName: string,
+  apiKey: string,
+): Promise<AgentPollResult> {
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "x-api-key": apiKey, Accept: "application/json" },
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      return { vmName, status: res.status, count: 0, opportunities: [], errorBody: body };
+    }
+    const parsed = (await res.json()) as Partial<IndexOpportunitiesResponse>;
+    const opps = Array.isArray(parsed.opportunities) ? parsed.opportunities : [];
+    return { vmName, status: 200, count: opps.length, opportunities: opps };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { vmName, status: 0, count: 0, opportunities: [], errorBody: msg.slice(0, 150) };
+  }
 }
 
 interface NormalizedOpportunity {
@@ -297,10 +328,6 @@ function normalizeOpportunity(opp: IndexOpportunity): NormalizedOpportunity | nu
   }
   if (!userA || !userB) return null;
 
-  // Score mapping for the matchpool_outcomes columns:
-  //   - rrf_score, mutual_score: not present in Yanek's response; stay NULL
-  //   - deliberation_score: nearest semantic match for interpretation.confidence
-  //     (or the top-level "confidence" string if interpretation.confidence absent)
   const deliberationScore =
     typeof opp.interpretation?.confidence === "number"
       ? opp.interpretation.confidence
