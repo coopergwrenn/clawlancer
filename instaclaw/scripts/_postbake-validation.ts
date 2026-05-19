@@ -998,6 +998,35 @@ async function run() {
         "P2", ["bake"], true, "");
     }
 
+    // 30k.2 — pglite-checkpoint.sh script + cron + ExecStop hook
+    // (commit 3f9b3015 — installed by install-gbrain.sh Phase I).
+    // Without these, a fresh VM from the snapshot has no scheduled CHECKPOINT
+    // and no ExecStop CHECKPOINT — pg_control will stale within hours and
+    // any SIGKILL/OOM/reboot panics PGLite (mass-corruption risk per Rule 54).
+    // The bake VM should have all three present so the snapshot ships with
+    // the protection mechanism baked in.
+    const checkpointScript = (await exec(c, `test -x ~/.openclaw/scripts/pglite-checkpoint.sh && echo Y || echo N`)).stdout.trim();
+    record("PGLite CHECKPOINT script present + executable (Rule 54)",
+      "P0", ["bake", "test"],
+      checkpointScript === "Y",
+      checkpointScript === "Y" ? "" : "~/.openclaw/scripts/pglite-checkpoint.sh missing or non-executable");
+
+    const checkpointCron = parseInt(
+      (await exec(c, `crontab -l 2>/dev/null | grep -c "pglite-checkpoint.sh"`)).stdout.trim() || "0",
+      10,
+    );
+    record("PGLite CHECKPOINT cron entry installed (every 30 min, Rule 54)",
+      "P0", ["bake", "test"],
+      checkpointCron >= 1,
+      `crontab matches: ${checkpointCron} (expected ≥1)`);
+
+    const gbrainDropIns = (await exec(c, `cat ~/.config/systemd/user/gbrain.service.d/*.conf 2>/dev/null; cat ~/.config/systemd/user/gbrain.service 2>/dev/null`)).stdout;
+    const execStopPresent = /ExecStop=.*pglite-checkpoint\.sh/.test(gbrainDropIns);
+    record("PGLite CHECKPOINT ExecStop hook installed in gbrain.service (Rule 54)",
+      "P0", ["bake", "test"],
+      execStopPresent,
+      execStopPresent ? "" : "gbrain.service has no ExecStop=...pglite-checkpoint.sh hook — SIGKILL on reboot/OOM will leave stale pg_control");
+
     // ─── 29. Bun-in-gateway-PATH (audit P1 follow-up) ─────────────────────
     // Map §11 known-risk. Gbrain's shebang is `#!/usr/bin/env bun` — without bun on the
     // gateway's PATH at process-spawn time, MCP-call from gateway to gbrain fails.

@@ -260,13 +260,89 @@ EOF
 
 Validated post-bake by `_postbake-validation.ts` §30a (NodeSource absent + nodejs held).
 
-### §3.3 — Extract + deploy manifest files (15 min)
+### §3.3 — **[v104 REWRITE]** Reconcile bake VM to current manifest via `auditVMConfig` (15-30 min)
 
-Per CLAUDE.md step 4. Run `node /tmp/extract-manifest-files.mjs .` from project root to get all manifest files to `/tmp/snapshot-files/`, then SCP to the bake VM.
+**Why this changed from CLAUDE.md's manual SCP path:** the original CLAUDE.md "Snapshot Creation Process" predates the reconciler. It used `extract-manifest-files.mjs` + manual SCP to lay down workspace files + manual cron install. That path **does not run the 50+ `configSettings` config-set commands**, **does not write the systemd override.conf** for v86/v100 changes, **does not run `stepUfwRules` (v103)** or `ensureUfwAllow 8765` (v104), and **does not run `stepDeployGbrainSoulProtocol` (v102)**. Result: manual SCP gives you templates but not v82-v105 manifest semantics. The reconciler path runs every step the production cron runs — same battle-tested code path, no operator-managed-list to keep in sync.
+
+```bash
+# From local laptop. Reconciles the bake VM through every manifest step
+# in strict mode (verify-after-set on each config write). Uses the same
+# reconcileVM function the production cron uses.
+cd /Users/cooperwrenn/wild-west-bots/instaclaw
+BAKE_VM_IP="<from step 3.1>"
+
+# Acquire the production cron lock first so we don't race with reconcile-fleet
+npx tsx -e '
+import { tryAcquireCronLock } from "./lib/cron-lock";
+import { readFileSync } from "fs";
+for (const f of [".env.local",".env.ssh-key"]) {
+  for (const l of readFileSync(f,"utf-8").split("\n")) {
+    const m=l.match(/^([^#=]+)=(.*)$/);
+    if(m && !process.env[m[1].trim()]) process.env[m[1].trim()]=m[2].trim().replace(/^["\047]|["\047]$/g,"");
+  }
+}
+const ok = await tryAcquireCronLock("reconcile-fleet", 4*3600, "bake-vNNN");
+console.log(ok ? "lock acquired (4h TTL)" : "BUSY — abort");
+process.exit(ok ? 0 : 1);
+'
+
+# Reconcile the bake VM (strict-mode = verify-after-set on every config write)
+BAKE_VM_IP=$BAKE_VM_IP npx tsx -e '
+import { auditVMConfig } from "./lib/ssh";
+import { readFileSync } from "fs";
+for (const f of [".env.local",".env.ssh-key"]) {
+  for (const l of readFileSync(f,"utf-8").split("\n")) {
+    const m=l.match(/^([^#=]+)=(.*)$/);
+    if(m && !process.env[m[1].trim()]) process.env[m[1].trim()]=m[2].trim().replace(/^["\047]|["\047]$/g,"");
+  }
+}
+const vm = {
+  id: "bake-vm",                       // synthetic — not in DB
+  ip_address: process.env.BAKE_VM_IP,
+  ssh_port: 22,
+  ssh_user: "openclaw",
+  partner: null,                       // base snapshot — no partner (Index/edge skill etc. all skip)
+  api_mode: "all_inclusive",
+} as any;
+const r = await auditVMConfig(vm, { strict: true, dryRun: false, skipGatewayRestart: false });
+console.log(JSON.stringify({
+  fixed_count: r.fixed?.length || 0,
+  already_correct_count: r.alreadyCorrect?.length || 0,
+  errors: r.errors || [],
+  strictErrors: r.strictErrors || [],
+  gatewayRestarted: r.gatewayRestarted,
+}, null, 2));
+process.exit((r.errors?.length || 0) === 0 && (r.strictErrors?.length || 0) === 0 ? 0 : 1);
+'
+```
+
+**[v104 GATE]** Exit code must be 0. `errors` array must be empty. `strictErrors` array must be empty. If anything fails, **DO NOT** proceed — fix the error class first. Common failures + remediation:
+- `npm install -g openclaw` not installed: re-run §3.2.
+- `gcc` missing: `sudo apt install build-essential` (was added in v88).
+- `prctl-subreaper` install fails: check `npm config get registry`; verify `~/.npm` writable.
+- `ufw allow 9100/tcp` fails: confirm `ufw` is installed (apt install ufw if not).
+
+This step gives you: all v82-v105 manifest config keys, systemd override.conf (TasksMax=120, MemoryMax=3500M, no RuntimeMaxSec, ExecStartPre startup-repair-active), prctl-subreaper installed + drop-in, build-essential, ufw rules for 9100 + 8765, all workspace files (SOUL/AGENTS/CAPS/TOOLS/IDENT-template/USER-template/HEARTBEAT/MEMORY-template/EARN/QUICK-REFERENCE/WALLET), all skills (bankr + consensus-2026 + agentbook + dgclaw + the 17 static skills), cron entries, gateway-health-textfile script + cron, and dispatch-server + browser-relay infrastructure.
+
+**[v104 RELEASE]** Release the reconcile-fleet lock when §3.10 (imagize) completes:
+```bash
+npx tsx -e '
+import { releaseCronLock } from "./lib/cron-lock";
+// (env-loading boilerplate as above)
+await releaseCronLock("reconcile-fleet");
+'
+```
 
 ### §3.4 — Install all crons (5 min)
 
-Per CLAUDE.md step 5. All 7 cron jobs must be present. **[v102]** No new crons added for gbrain — gbrain.service is a systemd unit, not a cron.
+**[v104 NOTE]** The reconciler in §3.3 already runs `stepCronJobs` and installs all the manifest-managed crons. This section is now a verify step, not a fresh install:
+
+```bash
+ssh openclaw@$BAKE_VM_IP "crontab -l" | grep -E "strip-thinking|auto-approve|push-heartbeat|openclaw memory index|SHM_CLEANUP|gateway-health-textfile|pglite-checkpoint"
+# expect all 7+ markers present
+```
+
+If a marker is missing, the reconciler errored on `stepCronJobs` (re-check §3.3 output) — do NOT proceed.
 
 ### §3.5 — **[v102 NEW]** Install gbrain HTTP sidecar (~80s)
 
@@ -382,6 +458,75 @@ ssh openclaw@$BAKE_VM_IP "
 ```
 
 Expected: file absent, gbrain entry absent, service inactive + disabled, access_tokens count 0, `recovery.signal` absent (`No such file or directory`), WAL segment count ≤ 2.
+
+### §3.6.5 — **[v104 NEW]** Run `_prebake-cleanup.sh` to wipe per-VM contamination (10 min)
+
+**Without this step, the snapshot ships with secrets, sessions, partner state, browser cookies, and bash history baked in.** This is the canonical broader cleanup — `_prebake-cleanup.sh` has 20 sections covering everything `§3.6` (gbrain-only) doesn't.
+
+Per CLAUDE.md Rule 4 — always dry-run first.
+
+```bash
+# Mark the VM as bake-mode (script refuses to run without this)
+ssh openclaw@$BAKE_VM_IP 'touch ~/.snapshot-bake-mode'
+
+# SCP the cleanup script + DRY-RUN first
+scp -i $SSH_KEY scripts/_prebake-cleanup.sh openclaw@$BAKE_VM_IP:/tmp/
+ssh openclaw@$BAKE_VM_IP 'bash /tmp/_prebake-cleanup.sh --dry-run' \
+  | tee /tmp/bake-prebake-cleanup-dryrun.log
+
+# Review the dry-run output. Anything surprising → fix the script first, do
+# NOT proceed. Specifically watch for files you wanted to keep being scheduled
+# for deletion.
+
+# Real wipe
+ssh openclaw@$BAKE_VM_IP 'sudo -v && bash /tmp/_prebake-cleanup.sh --confirm' \
+  | tee /tmp/bake-prebake-cleanup-real.log
+```
+
+**Expected**: log ends with `═══ Cleanup complete — VM is ready to image ═══` and disk usage after ≤ 5900 MB.
+
+**What this wipes** (cross-referenced from `_prebake-cleanup.sh` headers):
+
+| § | Wipes |
+|---|---|
+| 1 | Running services (gateway + crons + browser + gbrain pkill -9) |
+| 2 | Secrets: `.env`, `auth-profiles.json`, `gateway.systemd.env`, `xmtp/`, `identity/` |
+| 3 | Scrub `openclaw.json` — replace gateway.auth.token with `REPLACE_ON_CONFIGURE`, scrub MCP env keys |
+| 4 | All sessions + per-user `agents/main/agent/MEMORY.md` + `SOUL.md` (the per-user variant) + session-backups + sessions-archive + sessions-backup |
+| 5 | `~/.gbrain/brain.pglite` (recreated empty on first gbrain serve) |
+| 6 | Reset workspace identity files (IDENTITY.md / USER.md / WALLET.md per-user) — KEEP SOUL/AGENTS/CAPS/TOOLS/HEARTBEAT/MEMORY-template fleet-wide |
+| 7 | Chromium profile (cookies, login data, history, autofill) |
+| 8 | Partner-specific: `~/.openclaw/skills/edge-esmeralda`, `~/dgclaw-skill`, `edge-city-privacy-bypass` SSH keys |
+| 9 | Telegram polling state (`~/.openclaw/telegram/`) |
+| 10 | Stale locks + per-VM subdirs (`cron/`, `delivery-queue/`, `devices/`, `polymarket/`, `flows/`, `acpx/`) |
+| 11 | Personal experiment scripts in `$HOME` (`bean-*`, `analyze_situation.js`, `base-memecoin-*`) |
+| 12 | `*.bak*` + `*.predit-*` + `openclaw.json.clobbered.*` proliferation |
+| 13 | Crontab: drop partner-specific + duplicate entries |
+| 14 | Shell history (`~/.bash_history`, `~/.ssh/known_hosts`) |
+| 15 | Logs: `sudo journalctl --vacuum-time=2d` + rotated `/var/log/*.gz` + `*.1` + `*.old` |
+| 16 | Caches: `~/.npm`, `~/.cache`, `/root/.cache`, `/var/lib/apt/lists` |
+| 17 | `/tmp/*` |
+
+**Spot-check after cleanup** — these MUST report empty/missing/`REPLACE_ON_CONFIGURE`:
+
+```bash
+ssh openclaw@$BAKE_VM_IP <<'EOF'
+echo "--- secrets present? (all should be 'no such file') ---"
+ls ~/.openclaw/.env ~/.openclaw/agents/main/agent/auth-profiles.json \
+   ~/.openclaw/gateway.systemd.env ~/.openclaw/xmtp ~/.openclaw/identity 2>&1 | head
+echo "--- sessions count (must be 0) ---"
+ls ~/.openclaw/agents/main/sessions/ 2>/dev/null | wc -l
+echo "--- gbrain pglite (must be absent) ---"
+ls ~/.gbrain/brain.pglite 2>&1 | head -1
+echo "--- partner state (must all be absent) ---"
+ls ~/.openclaw/skills/edge-esmeralda 2>&1 | head -1
+grep 'edge-city' ~/.ssh/authorized_keys 2>&1 | head -1
+echo "--- gateway.auth.token (must be REPLACE_ON_CONFIGURE) ---"
+python3 -c "import json; print(json.load(open('$HOME/.openclaw/openclaw.json'))['gateway']['auth']['token'])"
+EOF
+```
+
+**[v104 GATE]** If anything surprising present, **DO NOT** proceed — fix the cleanup script or investigate. The `_postbake-validation.ts --mode=bake` in §3.8 also enforces these but catching them here saves an iteration.
 
 ### §3.7 — Clean caches (5 min)
 
