@@ -130,13 +130,10 @@ export async function createIndexIntent(args: {
   const toolArgs: Record<string, unknown> = { description: desc };
   if (networkId) toolArgs.networkId = networkId;
 
-  // Inline MCP call. The lib/index-mcp-client.ts client class has an
-  // as-yet-undiagnosed bug — same x-api-key and body shape succeed inline
-  // but fail through the class with "Invalid API key" on tools/call. See
-  // scripts/_side-by-side-mcp.ts for the smoking-gun comparison. Until
-  // root-caused, all create_intent paths go through this inline helper
-  // (which mirrors the pattern in scripts/_probe-mcp-auth-variants.ts
-  // variant 1, the only one that consistently works).
+  // TODO(P1, 2026-05-19): Inline MCP call — workaround for IndexMcpClient
+  // class bug (see lib/index-mcp-client.ts file header for repro).
+  // Replace this inline call with IndexMcpClient once the bug is rooted out.
+  // Same workaround duplicated in scripts/_test-intent-creation.ts.
   const mcpRes = await inlineMcpToolCall(
     vm.index_api_key as string,
     "create_intent",

@@ -33,8 +33,11 @@ for (const l of readFileSync(
 }
 
 import { createIndexIntent } from "../lib/index-intent-creator";
-// Use inline MCP helper — same as lib/index-intent-creator.ts uses while
-// the IndexMcpClient class bug is open.
+// TODO(P1, 2026-05-19): inline MCP helper duplicated here because the
+// IndexMcpClient class in lib/index-mcp-client.ts returns "Invalid API key"
+// on tools/call despite the same inputs working inline (see file header
+// of lib/index-mcp-client.ts for the bug repro). Reinstate the client class
+// + delete this duplicate when the bug is fixed.
 import crypto from "crypto";
 async function callIndexMcpTool(args: {
   apiKey: string;

@@ -1,3 +1,19 @@
+// ⚠️ KNOWN BUG (P1, 2026-05-19): This client class is NOT in active use.
+// Empirical reproduction: same x-api-key + body shape succeeds when called
+// inline (see scripts/_probe-mcp-auth-variants.ts variant 1) but fails
+// through this class with `{ "isError": true, content: [...Invalid API key...] }`.
+// Confirmed across multiple keys; not a key validity issue.
+//
+// Workaround: lib/index-intent-creator.ts inlines the bare initialize +
+// tools/call pattern with explicit fetch/JSON-RPC handling, bypassing
+// this class. Same ~130 LOC duplicated in scripts/_test-intent-creation.ts.
+//
+// When the root cause is found (likely something in rawCall's header
+// construction or session-handling between initialize and tools/call —
+// maybe related to the `arguments` field encoding or response stream
+// consumption order), reinstate this class and replace the inline
+// helpers in both files.
+
 /**
  * Server-side MCP-over-HTTP client for Yanek's Index Network MCP server.
  *

@@ -1,0 +1,212 @@
+/**
+ * Smoke test for notifyIndexMatch — three modes:
+ *
+ *   1. DRY-RUN (default): print the message that WOULD be sent for a
+ *      synthetic match between two cohort users. No DB writes, no
+ *      Telegram calls. Use this to review the copy.
+ *
+ *   2. --insert-test-row: INSERT a real matchpool_outcomes row with
+ *      synthetic data and call notifyIndexMatch. Verifies the full
+ *      DB → notifier → Telegram path. Sends ACTUAL messages to the
+ *      cohort users (only those with telegram_chat_id populated will
+ *      receive). Cleans up the row afterward.
+ *
+ *   3. --target=vmname: address a specific cohort VM as recipient.
+ *      Useful for testing with your own bot's chat. Defaults to
+ *      instaclaw-vm-859 (Katherine Jones — confirmed chat_id populated).
+ *
+ * Usage:
+ *   npx tsx scripts/_test-match-notification.ts
+ *   npx tsx scripts/_test-match-notification.ts --insert-test-row
+ *   npx tsx scripts/_test-match-notification.ts --insert-test-row --target=instaclaw-vm-859
+ */
+import { readFileSync } from "fs";
+import { createClient } from "@supabase/supabase-js";
+
+for (const l of readFileSync(
+  "/Users/cooperwrenn/wild-west-bots/instaclaw/.env.local",
+  "utf-8",
+).split("\n")) {
+  const m = l.match(/^([^#=]+)=(.*)$/);
+  if (m && !process.env[m[1].trim()]) {
+    process.env[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, "");
+  }
+}
+
+import { buildMatchNotificationMessage, notifyIndexMatch } from "../lib/index-match-notifier";
+
+const argv = process.argv.slice(2);
+const insertReal = argv.includes("--insert-test-row");
+const targetFlag = argv.find((a) => a.startsWith("--target="))?.replace("--target=", "");
+
+async function main() {
+  console.log("\n=== Match-notification smoke test ===\n");
+
+  // ── Mode 1: dry-run preview ──
+  // Always print the canonical message shape so we can review the copy.
+  console.log("=== DRY-RUN: message preview (canonical case with reasoning) ===\n");
+  const previewFull = buildMatchNotificationMessage({
+    counterpartName: "Seref Yarar",
+    counterpartIntent: "building agent-to-agent messaging infrastructure for multi-agent systems",
+    reasoning:
+      "The edge city directory noticed a strong overlap between both parties' intent signals around multi-agent coordination and discovery protocols.",
+  });
+  console.log("---");
+  console.log(previewFull);
+  console.log("---");
+  console.log();
+
+  console.log("=== DRY-RUN: message preview (no reasoning) ===\n");
+  const previewMinimal = buildMatchNotificationMessage({
+    counterpartName: "Alex Komoroske",
+    counterpartIntent: "co-founder and CEO of Common Tools, building resonant computing infrastructure",
+    reasoning: null,
+  });
+  console.log("---");
+  console.log(previewMinimal);
+  console.log("---");
+  console.log();
+
+  console.log("=== DRY-RUN: message preview (long reasoning — gets omitted as jargon) ===\n");
+  const previewJargon = buildMatchNotificationMessage({
+    counterpartName: "Some Researcher",
+    counterpartIntent: "vector embeddings, retrieval-augmented generation, dense semantic retrieval research",
+    reasoning:
+      "User A's intent expressed via natural language describes work on retrieval-augmented generation systems with a focus on dense semantic retrieval; the discovery engine evaluated bidirectional intent vectors at cosine similarity 0.87, well above the 0.65 threshold for opportunity proposal in this network's index, and confirmed the complementarity dimension via cross-projection along the multi-agent coordination axis where both parties expressed interest.",
+  });
+  console.log("---");
+  console.log(previewJargon);
+  console.log("---");
+  console.log();
+
+  if (!insertReal) {
+    console.log("Run with --insert-test-row to actually fire end-to-end (will send real Telegram messages to cohort users with chat_id populated).");
+    return;
+  }
+
+  // ── Mode 2: insert + fire ──
+  const sb = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+
+  // Pick a recipient with chat_id populated (so Telegram actually fires).
+  const targetVmName = targetFlag ?? "instaclaw-vm-859";
+  const { data: recipientVm } = await sb
+    .from("instaclaw_vms")
+    .select("name, assigned_to, index_user_id, telegram_chat_id")
+    .eq("name", targetVmName)
+    .single();
+  if (!recipientVm?.telegram_chat_id) {
+    console.error(`✗ ${targetVmName} has no telegram_chat_id; cannot test real fire. Pick a different --target.`);
+    process.exit(1);
+  }
+
+  // Pick a counterpart (any other cohort VM with index_user_id).
+  const { data: counterparts } = await sb
+    .from("instaclaw_vms")
+    .select("name, assigned_to, index_user_id")
+    .eq("partner", "edge_city")
+    .not("index_user_id", "is", null)
+    .neq("name", targetVmName)
+    .limit(1);
+  if (!counterparts || counterparts.length === 0) {
+    console.error("✗ no other cohort VM available as counterpart");
+    process.exit(2);
+  }
+  const counterpart = counterparts[0];
+
+  // Look up the counterpart user's display name so the notification reads naturally
+  const { data: counterpartUser } = await sb
+    .from("instaclaw_users")
+    .select("name")
+    .eq("id", counterpart.assigned_to as string)
+    .single();
+  const counterpartName = counterpartUser?.name ?? counterpart.name ?? "someone in the directory";
+
+  console.log("=== INSERT + fire ===");
+  console.log(`Recipient : ${recipientVm.name}  chat_id=${recipientVm.telegram_chat_id}`);
+  console.log(`Counterpart: ${counterpart.name} (${counterpartName})`);
+  console.log();
+
+  // Synthetic Index opportunity ID (won't conflict with anything real).
+  const opportunityId = crypto.randomUUID();
+
+  // INSERT a matchpool_outcomes row. Use existing outreach_log_id linkage
+  // pattern from the earlier smoke test (or our new index_opportunity_id).
+  const { data: row, error: insertErr } = await sb
+    .from("matchpool_outcomes")
+    .insert({
+      source_user_id: recipientVm.assigned_to,
+      candidate_user_id: counterpart.assigned_to,
+      match_engine: "index",
+      agent_action: "proposed",
+      index_opportunity_id: opportunityId,
+      reason_text: "[NOTIFICATION SMOKE 2026-05-19] real Telegram fire — safe to delete",
+    })
+    .select("outcome_id")
+    .single();
+  if (insertErr || !row) {
+    console.error("✗ INSERT failed:", insertErr);
+    process.exit(3);
+  }
+  console.log(`Inserted outcome_id=${row.outcome_id}`);
+
+  // Fire the notifier. Synthetic Index opportunity object — actors[]
+  // must match the index_user_ids we stored so the recipient resolves
+  // its counterpart correctly.
+  const syntheticOpportunity = {
+    id: opportunityId,
+    actors: [
+      {
+        userId: recipientVm.index_user_id as string,
+        role: "agent" as const,
+        name: "(this is you)",
+        intent: "(your stored intent here)",
+      },
+      {
+        userId: counterpart.index_user_id as string,
+        role: "patient" as const,
+        name: counterpartName,
+        intent: "building Edge City attendee infrastructure — this is a smoke test, please disregard if you got this message",
+      },
+    ],
+    interpretation: {
+      reasoning:
+        "This is a smoke test of the notification pipeline. The matchpool_outcomes row will be deleted shortly after this message lands.",
+    },
+  };
+
+  const notifyRes = await notifyIndexMatch({
+    outcomeId: row.outcome_id,
+    sourceUserId: recipientVm.assigned_to as string,
+    candidateUserId: counterpart.assigned_to as string,
+    opportunity: syntheticOpportunity,
+  });
+  console.log("Notify result:");
+  console.log(`  source    : ${JSON.stringify(notifyRes.source)}`);
+  console.log(`  candidate : ${JSON.stringify(notifyRes.candidate)}`);
+
+  // Wait briefly then verify notified_*_at columns landed
+  await new Promise((r) => setTimeout(r, 500));
+  const { data: verifyRow } = await sb
+    .from("matchpool_outcomes")
+    .select("notified_source_at, notified_candidate_at")
+    .eq("outcome_id", row.outcome_id)
+    .single();
+  console.log(`Row after notify: source=${verifyRow?.notified_source_at} candidate=${verifyRow?.notified_candidate_at}`);
+
+  // ── Cleanup ──
+  console.log("\n=== Cleanup ===");
+  const { error: deleteErr } = await sb
+    .from("matchpool_outcomes")
+    .delete()
+    .eq("outcome_id", row.outcome_id);
+  if (deleteErr) console.warn("⚠ cleanup failed:", deleteErr.message);
+  else console.log(`✓ deleted ${row.outcome_id}`);
+}
+
+main().catch((e) => {
+  console.error("✗ test threw:", e);
+  process.exit(99);
+});

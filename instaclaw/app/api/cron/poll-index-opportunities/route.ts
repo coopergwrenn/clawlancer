@@ -71,6 +71,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 import { recordIndexMatch } from "@/lib/index-match-recorder";
+import { notifyIndexMatch } from "@/lib/index-match-notifier";
 import { getSupabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -200,8 +201,20 @@ export async function GET(req: NextRequest) {
     already_recorded: 0,
     skipped: 0,
     failed: 0,
+    // Per-side notification outcomes. Telegram delivery happens AFTER
+    // recordIndexMatch returns 'recorded' (we don't re-notify on
+    // already_recorded). Per-side because partial failures retry just
+    // the failed side on the next tick (notified_*_at column-backed
+    // idempotency — see lib/index-match-notifier.ts).
+    notify_source_delivered: 0,
+    notify_source_skipped: 0,
+    notify_source_failed: 0,
+    notify_candidate_delivered: 0,
+    notify_candidate_skipped: 0,
+    notify_candidate_failed: 0,
   };
   const recordErrors: Array<{ opportunityId: string; reason: string; detail?: string }> = [];
+  const notifyErrors: Array<{ opportunityId: string; side: "source" | "candidate"; reason: string; detail?: string }> = [];
 
   for (const [_id, opp] of deduped) {
     const normalized = normalizeOpportunity(opp);
@@ -219,9 +232,56 @@ export async function GET(req: NextRequest) {
         metadata: normalized.metadata,
         source: "poller",
       });
-      if (result.status === "recorded") recordSummary.recorded++;
-      else if (result.status === "already_recorded") recordSummary.already_recorded++;
-      else if (result.status === "skipped") {
+      if (result.status === "recorded") {
+        recordSummary.recorded++;
+        // Fire-and-await Telegram notifications to both sides.
+        // The notifier is internally per-side idempotent — running on
+        // a re-recorded match (which shouldn't happen due to UNIQUE
+        // constraint but defense in depth) is a no-op.
+        try {
+          const notifyRes = await notifyIndexMatch({
+            outcomeId: result.outcomeId,
+            sourceUserId: result.sourceUserId,
+            candidateUserId: result.candidateUserId,
+            opportunity: opp,
+          });
+          tallyNotifyResult(notifyRes.source, "source", recordSummary, notifyErrors, normalized.opportunityId);
+          tallyNotifyResult(notifyRes.candidate, "candidate", recordSummary, notifyErrors, normalized.opportunityId);
+        } catch (err) {
+          // Notifier exception — the match is still recorded (good); just
+          // the notification failed. Both sides will be retried on the
+          // next tick because notified_*_at stays NULL.
+          const msg = err instanceof Error ? err.message : String(err);
+          notifyErrors.push({ opportunityId: normalized.opportunityId, side: "source", reason: "notifier_exception", detail: msg.slice(0, 200) });
+          notifyErrors.push({ opportunityId: normalized.opportunityId, side: "candidate", reason: "notifier_exception", detail: msg.slice(0, 200) });
+        }
+      } else if (result.status === "already_recorded") {
+        recordSummary.already_recorded++;
+        // ALSO fire notify here for the case where a prior tick recorded
+        // the match but the notification path failed transiently. The
+        // notifier reads notified_*_at to skip already-delivered sides;
+        // only the actually-pending sides get retried.
+        try {
+          const sb2 = getSupabase();
+          const { data: row } = await sb2
+            .from("matchpool_outcomes")
+            .select("source_user_id, candidate_user_id, notified_source_at, notified_candidate_at")
+            .eq("outcome_id", result.outcomeId)
+            .maybeSingle();
+          if (row && (!row.notified_source_at || !row.notified_candidate_at)) {
+            const notifyRes = await notifyIndexMatch({
+              outcomeId: result.outcomeId,
+              sourceUserId: row.source_user_id as string,
+              candidateUserId: row.candidate_user_id as string,
+              opportunity: opp,
+            });
+            tallyNotifyResult(notifyRes.source, "source", recordSummary, notifyErrors, normalized.opportunityId);
+            tallyNotifyResult(notifyRes.candidate, "candidate", recordSummary, notifyErrors, normalized.opportunityId);
+          }
+        } catch (err) {
+          /* swallow — already_recorded means downstream state is fine */
+        }
+      } else if (result.status === "skipped") {
         recordSummary.skipped++;
         recordErrors.push({
           opportunityId: normalized.opportunityId,
@@ -266,6 +326,7 @@ export async function GET(req: NextRequest) {
     summary: recordSummary,
     poll_errors: pollErrors,
     record_errors: recordErrors.slice(0, 10),
+    notify_errors: notifyErrors.slice(0, 10),
   });
 }
 
@@ -349,4 +410,37 @@ function normalizeOpportunity(opp: IndexOpportunity): NormalizedOpportunity | nu
       reasoning: opp.interpretation?.reasoning ?? null,
     },
   };
+}
+
+// ── Notify tally helper ─────────────────────────────────────────────
+import type { NotifySideResult } from "@/lib/index-match-notifier";
+
+function tallyNotifyResult(
+  result: NotifySideResult,
+  side: "source" | "candidate",
+  summary: {
+    notify_source_delivered: number;
+    notify_source_skipped: number;
+    notify_source_failed: number;
+    notify_candidate_delivered: number;
+    notify_candidate_skipped: number;
+    notify_candidate_failed: number;
+  },
+  errors: Array<{ opportunityId: string; side: "source" | "candidate"; reason: string; detail?: string }>,
+  opportunityId: string,
+): void {
+  if (result.status === "delivered") {
+    if (side === "source") summary.notify_source_delivered++;
+    else summary.notify_candidate_delivered++;
+  } else if (result.status === "already_notified") {
+    // Don't count — neither delivered nor skipped this tick.
+  } else if (result.status === "skipped") {
+    if (side === "source") summary.notify_source_skipped++;
+    else summary.notify_candidate_skipped++;
+    errors.push({ opportunityId, side, reason: result.reason });
+  } else if (result.status === "failed") {
+    if (side === "source") summary.notify_source_failed++;
+    else summary.notify_candidate_failed++;
+    errors.push({ opportunityId, side, reason: result.reason, detail: result.detail });
+  }
 }
