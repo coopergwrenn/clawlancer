@@ -1,19 +1,19 @@
-# Changelog — generated 2026-05-18
+# Changelog — generated 2026-05-19
 
-Window: `9adbb0c8611746d4666b0c39a163faeddfbce338` → `HEAD` (HEAD = `86fddea3`)
+Window: `86fddea3c296f59fcf759aae4315bda9d7eb9b0e` → `HEAD` (HEAD = `05c1f028`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 86fddea3c296f59fcf759aae4315bda9d7eb9b0e -->
+<!-- LAST_GENERATED_SHA: 05c1f028ff343f7e201982d11056780707ca1576 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
-- AI-assisted commits (co-authored): 1
+- **Docs / PRD only:** 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `69032eb7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `86fddea3` 2026-05-18 — docs(rule-54): empirical validation of 30-min cron interval (Test 17) [1 files] _(ai-assisted)_
+- `ba4af8fd` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `05c1f028` 2026-05-19 — bake(v104): close gaps A + B + G from end-to-end audit [2 files] _(multi: [infrastructure, docs])_
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `05c1f028` 2026-05-19 — bake(v104): close gaps A + B + G from end-to-end audit [2 files] _(multi: [infrastructure, docs])_
 
 ### Feature (user-facing) (0)
 
@@ -43,18 +43,17 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `69032eb7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `86fddea3` 2026-05-18 — docs(rule-54): empirical validation of 30-min cron interval (Test 17) [1 files] _(ai-assisted)_
+- `ba4af8fd` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (1)
+## Multi-category commits (1)
 
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+These touch more than one category root and are listed in every applicable section above.
 
-- `86fddea3` 2026-05-18 — docs(rule-54): empirical validation of 30-min cron interval (Test 17)
+- `05c1f028` 2026-05-19 — [infrastructure, docs] — bake(v104): close gaps A + B + G from end-to-end audit
 
 ## Appendix — every commit (chronological)
 
-- `69032eb7` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
-- `86fddea3` 2026-05-18 — docs(rule-54): empirical validation of 30-min cron interval (Test 17) [1 files] _(ai-assisted)_
+- `ba4af8fd` 2026-05-18 — chore(changelog): auto-update [skip ci] [2 files]
+- `05c1f028` 2026-05-19 — bake(v104): close gaps A + B + G from end-to-end audit [2 files] _(multi: [infrastructure, docs])_
