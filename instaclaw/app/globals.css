@@ -663,3 +663,93 @@ html.lenis body {
   50%  { width: 80%; opacity: 1; }
   100% { width: 20%; opacity: 0.4; }
 }
+
+/* ── Edge palette + typography — scoped to /edge ─────────────────────────
+ *
+ * Variables only apply inside the <div data-theme="edge"> wrapper in
+ * app/edge/layout.tsx, so the dark instaclaw.io theme (declared at :root
+ * above) is unaffected outside /edge.
+ *
+ * Tailwind v4's `font-sans` / `font-display` classes resolve to var(--font-sans)
+ * / var(--font-display) lazily at the element's context, so overriding the
+ * variables within this selector swaps the fonts only for Edge components.
+ *
+ * Palette / keyframes mirror Seref Yarar's edgeclaw-site design (ported via
+ * the edge-landing-collab repo). See app/edge/layout.tsx for the per-VM-shape
+ * --edge-* aliases (those are the names Seref's components actually read).
+ */
+[data-theme="edge"] {
+  --cream: #f4ede0;
+  --cream-warm: #ede2cf;
+  --cream-soft: #faf5ea;
+  --forest: #1f2d1c;
+  --forest-deep: #0f1a12;
+  --forest-mid: #2d3f29;
+  --sage: #dde5cc;
+  --sage-mid: #c5d1ae;
+  --sage-deep: #7a9168;
+  --sage-light: #a8c0a1;
+  --ink: #29311e;
+  --ink-soft: rgba(26, 24, 20, 0.78);
+  --ink-faded: rgba(26, 24, 20, 0.55);
+  --sky: #c8dde6;
+  --sky-soft: #e8eef0;
+  --sky-mid: #92b1bd;
+  --rose: #d4a89c;
+  --gold: #c9a961;
+  --rule: rgba(26, 24, 20, 0.18);
+  --rule-soft: rgba(26, 24, 20, 0.08);
+
+  /* Font cascade — Seref's components use Tailwind `font-sans` and
+   * `font-[family-name:var(--font-display)]`. Both resolve through these
+   * variables inside the edge scope, so Inter / etc. don't leak in. */
+  --font-sans: var(--font-edge-sans), "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-edge-display), "EB Garamond", Georgia, "Times New Roman", serif;
+
+  /* Body text inside /edge — assert with !important so it beats the
+   * Inter className that Next applied at the body level. */
+  font-family: var(--font-sans);
+}
+
+/* Section title — used as a className across most Seref components. */
+[data-theme="edge"] .section-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-style: normal;
+  font-size: clamp(36px, 4.4vw, 56px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0;
+}
+
+[data-theme="edge"] .eyebrow {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* Keyframes referenced by Seref's Edge components.
+ * Defined globally because @keyframes can't be scoped via a selector — they
+ * only fire when an element explicitly references them by name. */
+@keyframes floaty {
+  0%, 100% { transform: translate(-50%, -50%); }
+  50%      { transform: translate(-50%, calc(-50% - 18px)); }
+}
+
+@keyframes ringPulse {
+  0%   { transform: scale(1);   opacity: 0.8; }
+  100% { transform: scale(2.4); opacity: 0;   }
+}
+
+@keyframes typingBlink {
+  0%, 100% { opacity: 0.3; transform: translateY(0);    }
+  50%      { opacity: 1;   transform: translateY(-2px); }
+}
+
+@keyframes edge-live-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%      { opacity: 0.4; transform: scale(0.85); }
+}

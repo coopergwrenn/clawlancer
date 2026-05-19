@@ -1,24 +1,25 @@
-import { LenisProvider } from "@/components/landing/lenis-provider";
-
 /**
- * /edge — pure Edge brand chrome.
+ * /edge — pure Edge brand chrome with the edgeclaw-site cream/forest palette.
  *
- * Pulled out of (marketing) so we escape SiteHeader (InstaClaw orange + nav)
- * and SiteFooter (InstaClaw links). The page renders its own minimal
- * Edge-styled header + footer, per partner PRD §5.1: "pre-signup pure Edge
- * brand, Powered by InstaClaw in footer only."
+ * Scroll behavior is intentionally the browser's native scroll — we removed
+ * the LenisProvider wrapper that the rest of the marketing site uses, so the
+ * cinematic in HealdsburgMap is the only thing that ever modifies scroll, and
+ * only over its own section. The (marketing) route-group layout still wraps
+ * non-/edge pages in LenisProvider, so smooth-scroll elsewhere is unchanged.
  *
- * LenisProvider kept for smooth scroll (matches the rest of the marketing
- * site UX).
- *
- * CSS variables for the Edge palette:
- *   --edge-bg          warm off-white page background
- *   --edge-ink         near-black warm body color
+ * CSS variables for the Edge palette (single source of truth so styling never
+ * leaks into a parent shell):
+ *   --edge-bg          warm cream page background
+ *   --edge-ink         warm dark olive body text
  *   --edge-ink-soft    muted variant for secondary copy
- *   --edge-olive       dark olive — primary brand accent (button + heading hits)
- *   --edge-olive-hover deeper olive for button hover
- *   --edge-sage        light sage — hover/secondary surface
+ *   --edge-olive       deep forest — primary CTA + heading hits
+ *   --edge-olive-hover deeper forest for button hover
+ *   --edge-sage        light sage — secondary surface
  *   --edge-line        hairline border color
+ *
+ * The values are aligned with globals.css ([data-theme="edge"] block —
+ * --cream, --forest-deep, --sage, etc.) so EdgeCityClient and the new
+ * section components share a single palette.
  */
 export default function EdgeLayout({
   children,
@@ -26,27 +27,26 @@ export default function EdgeLayout({
   children: React.ReactNode;
 }) {
   return (
-    <LenisProvider>
-      <div
-        data-theme="edge"
-        style={
-          {
-            "--edge-bg": "#FAFAF7",
-            "--edge-ink": "#0E0F0B",
-            "--edge-ink-soft": "#5A5C53",
-            "--edge-olive": "#29311E",
-            "--edge-olive-hover": "#1B210F",
-            "--edge-sage": "#E4F0D2",
-            "--edge-line": "rgba(14, 15, 11, 0.10)",
-            "--edge-line-soft": "rgba(14, 15, 11, 0.06)",
-            background: "var(--edge-bg)",
-            color: "var(--edge-ink)",
-            minHeight: "100vh",
-          } as React.CSSProperties
-        }
-      >
-        {children}
-      </div>
-    </LenisProvider>
+    <div
+      data-theme="edge"
+      style={
+        {
+          "--edge-bg": "#f4ede0",
+          "--edge-ink": "#29311e",
+          "--edge-ink-soft": "rgba(26, 24, 20, 0.78)",
+          "--edge-olive": "#0f1a12",
+          "--edge-olive-hover": "#2d3f29",
+          "--edge-sage": "#dde5cc",
+          "--edge-sage-light": "#a8c0a1",
+          "--edge-line": "rgba(26, 24, 20, 0.18)",
+          "--edge-line-soft": "rgba(26, 24, 20, 0.08)",
+          background: "var(--edge-bg)",
+          color: "var(--edge-ink)",
+          minHeight: "100vh",
+        } as React.CSSProperties
+      }
+    >
+      {children}
+    </div>
   );
 }

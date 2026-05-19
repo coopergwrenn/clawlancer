@@ -1,5 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Instrument_Serif } from "next/font/google";
+import {
+  Inter,
+  Instrument_Serif,
+  EB_Garamond,
+  Space_Grotesk,
+} from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
@@ -13,6 +18,25 @@ const instrumentSerif = Instrument_Serif({
   style: ["normal", "italic"],
   variable: "--font-serif",
   display: "optional",
+});
+
+// EB Garamond + Space Grotesk are scoped to /edge via the [data-theme="edge"]
+// block in globals.css — they're declared here at the root so next/font can
+// optimize the load, but the body className doesn't reference them so the
+// rest of instaclaw.io keeps using Inter as the default.
+const ebGaramond = EB_Garamond({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  style: ["normal", "italic"],
+  variable: "--font-edge-display",
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-edge-sans",
+  display: "swap",
 });
 
 export const viewport: Viewport = {
@@ -77,7 +101,9 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${inter.className} ${instrumentSerif.variable}`}>
+      <body
+        className={`${inter.className} ${instrumentSerif.variable} ${ebGaramond.variable} ${spaceGrotesk.variable}`}
+      >
         <Providers>{children}</Providers>
       </body>
     </html>
