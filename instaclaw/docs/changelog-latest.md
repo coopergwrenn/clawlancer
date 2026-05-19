@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-19
 
-Window: `82ef44cbe90303bfb751edc77bd25a213e458e0c` → `HEAD` (HEAD = `32ce1c77`)
+Window: `32ce1c77e93a7cfee3e153240927950082583c1e` → `HEAD` (HEAD = `f0b1cfb8`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 32ce1c77e93a7cfee3e153240927950082583c1e -->
+<!-- LAST_GENERATED_SHA: f0b1cfb870fa0f9486d8620d1fc9c3d2f1089919 -->
 
 ## Summary
 
@@ -11,18 +11,19 @@ Total commits: 2
 - **Reconciler / manifest:** 0
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
-- **Edge City partner:** 1
-- **Docs / PRD only:** 1
+- **Edge City partner:** 0
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-- `32ce1c77` 2026-05-19 — docs(changelog): v106 entry in CLAUDE.md Manifest Version Changelog [1 files] _(multi: [edge, docs]; ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `138d5c99` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `78a4e45f` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `f0b1cfb8` 2026-05-19 — docs(prd): Phase 1 design document — Login with ChatGPT [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -38,27 +39,22 @@ _(none)_
 
 _(none)_
 
-### Edge City partner (1)
+### Edge City partner (0)
 
-- `32ce1c77` 2026-05-19 — docs(changelog): v106 entry in CLAUDE.md Manifest Version Changelog [1 files] _(multi: [edge, docs]; ai-assisted)_
+_(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `138d5c99` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `32ce1c77` 2026-05-19 — [edge, docs] — docs(changelog): v106 entry in CLAUDE.md Manifest Version Changelog
+- `78a4e45f` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `f0b1cfb8` 2026-05-19 — docs(prd): Phase 1 design document — Login with ChatGPT [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `32ce1c77` 2026-05-19 — docs(changelog): v106 entry in CLAUDE.md Manifest Version Changelog
+- `f0b1cfb8` 2026-05-19 — docs(prd): Phase 1 design document — Login with ChatGPT
 
 ## Appendix — every commit (chronological)
 
-- `138d5c99` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-- `32ce1c77` 2026-05-19 — docs(changelog): v106 entry in CLAUDE.md Manifest Version Changelog [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `78a4e45f` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `f0b1cfb8` 2026-05-19 — docs(prd): Phase 1 design document — Login with ChatGPT [1 files] _(ai-assisted)_
