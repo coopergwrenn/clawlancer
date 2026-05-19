@@ -1946,6 +1946,80 @@ Poll `GET /v4/images/{IMAGE_ID}` until status=available. Verify size < 6144MB.
 
 Single source of truth for what each `VM_MANIFEST.version` bump contains. Used for release notes, fleet-drift debugging, and post-mortems. Append-only — never rewrite history. Update at the same time as the version bump itself.
 
+### Version-bump policy (when to bump `VM_MANIFEST.version`)
+
+`VM_MANIFEST.version` is the gate the reconciler uses to decide which VMs need to re-reconcile. The cron's filter at `app/api/cron/reconcile-fleet/route.ts` is `lt("config_version", VM_MANIFEST.version)` — so a bump forces every caught-up VM back into the candidate queue. Picking the right bucket prevents both (a) silent stale-fleet drift (no bump when there should be one — Rule 47 territory) and (b) needless fleet thrash (a bump when nothing actually needs to propagate, ~150 reconciles + restarts for cosmetic reasons).
+
+**MUST bump** — any change that needs to reach every existing VM via the reconciler:
+
+- Any change to `configSettings` (new key, removed key, changed value, changed default).
+- Any change to a `files[]` entry's `content`, `path`, `mode`, `marker`, `requiredSentinels`, or `templateKey` — including embedded scripts (`STRIP_THINKING_SCRIPT`, `WORKSPACE_SOUL_MD`, etc.) consumed by a `templateKey` reference.
+- Any new reconciler step in `lib/vm-reconcile.ts` (the orchestrator's call site list expands, and existing VMs at the prior cv haven't run the new step).
+- Any new `cronJobs[]` entry, or change to an existing entry's command or schedule.
+- Any change to `systemdOverrides` content.
+- Any change to `systemPackages`, `npmGlobals`, or other manifest arrays that drive idempotent install steps.
+- Any change to `requiredEnvVars`, `envVarDefaults`, or `SECRET_ENV_VAR_SOURCES` that callers expect to land on existing VMs (note: secret-value rotations use `SECRET_VERSION` instead — see "rotating secrets" runbook).
+- Any version-gated behavior in a reconciler step (e.g., a step that switches between two code paths based on `vm.config_version`).
+- Any change that's documented in this changelog. If a change is interesting enough to write an entry, it's interesting enough to gate via cv.
+
+**OPTIONAL bump** — judgment call; bump if you want a single coordinated rollout, skip if it's truly inert:
+
+- Pure refactors that preserve byte-for-byte semantics (e.g., extracting a helper function with identical behavior — the v104 `ensureUfwAllow` extraction is the reference example; it bumped because the dispatch step's behavior changed, not because the extraction itself needed it).
+- Error-classification reclassification (moving a `result.errors.push` to `result.warnings.push` per Rule 39 — bump if you want the reclassification visible in the changelog timeline, skip if the immediate behavior change is the same).
+- Comment-only changes in a `files[]` content that's bash/python/markdown (the comment IS user-visible on disk, so technically content changed — but if it's truly comments-only with no behavior change, no need to thrash the fleet).
+- Documentation-only changes to docblocks ABOVE the `version:` field in `vm-manifest.ts` (these don't affect anything on disk).
+
+**MUST NOT bump** — fleet thrash for no benefit, costs ~150 reconciles + gateway restarts:
+
+- Cosmetic edits to `vm-manifest.ts` itself (formatting, import ordering, JSDoc rewording).
+- Edits to files that aren't consumed by `vm-manifest.ts:files[]` or `templateKey` references (CLAUDE.md, PRDs under `instaclaw/docs/`, scripts under `instaclaw/scripts/`, any path that doesn't ship to a VM).
+- Comment-only changes to TS source files where the comment isn't echoed to disk.
+- Pre-deploy housekeeping (gitignore, package.json devDeps, CI changes, test-only additions).
+- "Just to be safe, bump it" — if you can't name a specific reconciler step that needs to run, the bump is wrong. Use the file-drift cron (Rule 47) for template-only updates that don't merit a version gate.
+
+**Detection rule**: every PR that touches `lib/vm-manifest.ts` outside the docblock must (a) bump the version OR (b) add a PR-description note explaining why it's a MUST-NOT bump. CI rule on the wishlist; for now treat as a code-review checkbox. Conversely, every PR that bumps the version must add a changelog entry below (newest first) — silent bumps produce orphan version numbers that future operators can't reason about.
+
+**Pairing with Rule 47 (file-drift cron)**: a template change that doesn't bump the manifest version still needs to reach existing caught-up VMs. The file-drift cron at `app/api/cron/file-drift/route.ts` runs `stepFiles` continuously (no version gate) so any `files[]` content change propagates within ~3-5 minutes regardless. The version bump is what locks the change to a cv — "cv=N means this file content" — and what blocks new VMs at older snapshots from regressing the change.
+
+### v105 — 2026-05-18 (stepIndexProvision — Index Network MCP for edge_city)
+
+- **Manifest change**: `VM_MANIFEST.version` bumped 104 → 105. New reconciler step `stepIndexProvision` (partner-gated to `edge_city`). Adds 4 nullable columns to `instaclaw_vms` (`index_user_id`, `index_api_key`, `index_provisioned_at`, `index_provisioned_failed_at`) — migration at `supabase/pending_migrations/20260518210000_vm_index_network_columns.sql`, applied to prod 2026-05-18 BEFORE deploy (per Rule 56). Step calls Index Network `POST /signup` once per VM (per-tick re-call would invalidate the in-use `apiKey` per Yanek's idempotency contract), caches the returned credentials in the new DB columns, writes `mcp.servers.index` via `openclaw mcp set` (hot-reloadable per Rule 32 — no gateway restart needed).
+- **Why**: Edge Esmeralda 2026 (2026-05-30, ~1000 attendees) needs every edge_city agent to be able to express user intents through Index Network's discovery protocol and receive bilateral-negotiated opportunities back. Without provisioning, edge_city agents have the env vars but no MCP server wiring, so the LLM sees no `index_*` tools and can't participate in the protocol.
+- **Partner gate**: line 1 of the step returns `alreadyCorrect: true` for any VM where `vm.partner !== "edge_city"`. Other partners (and unpartnered VMs) gate out cleanly at zero cost — no API call, no DB write.
+- **Failure mode**: Rule 39 — Index is optional. Failures push to `result.warnings`, not `result.errors`. cv-bump proceeds; a paying customer doesn't get blocked behind a partner-API hiccup.
+- **Fleet rollout**: reconcile-fleet picks up v105 next cycle. Forces re-reconcile across the 9 edge_city VMs (all at cv≤104 after the v103/v104 propagation window). Non-edge VMs early-out at the gate.
+- **Detection note**: after rollout, `SELECT name, index_user_id IS NOT NULL AS provisioned FROM instaclaw_vms WHERE partner='edge_city'` should show 9/9 `provisioned=true`. Probe via `_verify-edge-readiness.ts` for end-to-end check (MCP wired in openclaw.json + env vars present + DB columns populated).
+- **PRD**: `docs/prd/village-index-network-integration.md`.
+- **Rollback**: revert the commit. Existing `index_user_id` values stay in DB (additional re-call would invalidate them per Yanek; safer to leave). Removing the MCP entry from `openclaw.json` requires a separate `openclaw mcp delete` call — not auto-undone by reconciler.
+
+### v104 — 2026-05-18 (ensureUfwAllow helper; Rule 57 anti-pattern closure in dispatch)
+
+- **Manifest change**: `VM_MANIFEST.version` bumped 103 → 104. Extracted the v103 `probe-add-verify` ufw logic from `stepUfwRules` into a reusable `ensureUfwAllow(ssh, port, protocol, result, vm)` helper at `lib/vm-reconcile.ts`. `stepDispatchServer` now uses it for `ufw allow 8765/tcp`, closing the prior `sudo ufw allow 8765/tcp || true` line that silently swallowed every failure mode and only ran on redeploy.
+- **Why**: Rule 39 audit of three reconciler steps Cooper flagged surfaced a Rule 57 anti-pattern in `stepDispatchServer` — the `|| true` masked failures and didn't propagate them to `result.warnings`, so any ufw misconfiguration on a dispatch-enabled VM stayed invisible until external probing. Behaviorally identical to the v103 ufw-9100/tcp gap (8 VMs ufw-drifted while node_exporter bound locally — 1-4 days of false-positive `VMUnreachable` noise).
+- **Behavior**: helper does grep-then-add + post-add verify (Rule 23 / Rule 57). Idempotent. Failures push to `result.warnings`, not `result.errors` — monitoring/dispatch is non-critical (Rule 39).
+- **Fleet rollout**: forces re-reconcile across VMs that already reached cv=103 in the v103 propagation window, so the dispatch fix reaches them too. Without the bump, only cv<103 VMs would pick it up via the reconciler's `lt(config_version, 104)` filter.
+- **Detection note**: after rollout, sample 5 dispatch-enabled VMs and grep `sudo ufw status numbered | grep 8765` for the explicit ALLOW rule. If absent on a cv=104 VM, the helper failed silently — check `result.warnings` for that VM.
+- **Rollback**: revert the commit. The helper extraction is byte-for-byte equivalent in behavior to the prior v103 inline code; only the dispatch step's failure-surfacing changes back to the silent `|| true`.
+
+### v103 — 2026-05-18 (stepUfwRules + Rule 57 — enforce ufw 9100/tcp fleet-wide)
+
+- **Manifest change**: `VM_MANIFEST.version` bumped 102 → 103. New reconciler step `stepUfwRules` runs `sudo ufw allow 9100/tcp` (probe → add → verify) on every VM. Three coordinated pieces in the same commit: (a) the new step, (b) `stepNodeExporter` now verifies external reachability via the textfile-collector path (was local-bind-only), (c) Rule 57 added to CLAUDE.md documenting the "verify-the-effect-not-the-call" pattern for firewall mutations.
+- **Why**: 2026-05-18 IR triage on `VMUnreachable` alerts found 8 VMs whose `node_exporter` was bound locally and serving `/metrics`, but ufw was dropping connections from the monitoring VM at port 9100. 1-4 days of `VMUnreachable` noise that masked the real P1 (vm-748 disk pressure customer-down). Root cause: prior reconciler verified the `ss -tln | grep :9100` local bind succeeded, but never that Prometheus could externally reach it.
+- **Failure mode**: Rule 39 — monitoring-only. Failures push to `result.warnings`. cv-bump proceeds.
+- **Sentinel guard**: per Rule 23, the step probes `sudo ufw status numbered | grep -E "9100/tcp.*ALLOW"` after the add. If the post-add probe doesn't find the rule (e.g., ufw inactive, sudo password required, ufw mid-reload), the failure surfaces as a `result.warnings` push instead of false success.
+- **Fleet rollout**: reconcile-fleet picks up v103 next cycle. Drains the cv<103 cohort over ~2-3h with `CONFIG_AUDIT_BATCH_SIZE=3`.
+- **Detection note**: after rollout, the monitoring VM's Prometheus `up{job=~"node_exporter"}` should show >99% green steady-state. Any VMs still showing `up=0` with `node_exporter` locally bound are candidates for the same gap (ufw inactive, drop-in rule conflict).
+- **Rollback**: revert the commit. The `ufw allow 9100/tcp` rules added by prior reconciles stay in place (ufw rule removal needs an explicit `sudo ufw delete allow 9100/tcp` — not auto-undone).
+
+### v102 — 2026-05-17 (canonicalize gbrain memory protocol into AGENTS.md fleet-wide)
+
+- **Manifest change**: `VM_MANIFEST.version` bumped 101 → 102. New reconciler step `stepDeployGbrainSoulProtocol` writes the gbrain memory protocol block into `~/.openclaw/workspace/AGENTS.md` on every VM where gbrain is installed. Marker-guarded (`GBRAIN_MEMORY_PROTOCOL_V1`) for idempotency. Source-of-truth constant: `lib/workspace-templates-v2.ts:GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK`.
+- **Why**: 2026-05-17 SOUL.md canary diagnosis found a 7-of-8 distribution gap on edge_city VMs. vm-050 had the gbrain protocol from a manual ops script (`_push_gbrain_fix.ts`); the other 7 edge_city VMs had ZERO gbrain instructions in SOUL.md/AGENTS.md despite having gbrain installed. Agents saw the MCP tools but had no routing telling them WHEN to use them — so MEMORY.md / `save_memory` / `recall_memory` weren't being used in practice on those VMs.
+- **Behavior**: step reads the existing AGENTS.md, checks for the `GBRAIN_MEMORY_PROTOCOL_V1` marker. If absent, append-inserts the canonical block. If present, no-op (idempotent). VMs without gbrain installed skip the step entirely (gate: `if (!gbrainInstalled) return alreadyCorrect`).
+- **Fleet rollout**: reconcile-fleet picks up v102 next cycle. Drains the cv<102 cohort within ~3-4h.
+- **Detection note**: after rollout, `grep -l GBRAIN_MEMORY_PROTOCOL_V1 ~/.openclaw/workspace/AGENTS.md` should exit 0 on every gbrain-installed VM. Probe via `scripts/_audit-gbrain-protocol-coverage.ts`.
+- **Rollback**: revert the commit. The protocol block remains on-disk in the VMs already patched (the step doesn't have a delete path). Manual cleanup via `sed` if the rollback truly needs to reverse the on-disk state.
+
 ### v101 — 2026-05-16 (Startup orphan tool_use repair)
 
 - **Manifest change**: `VM_MANIFEST.version` bumped 100 → 101. Appended `python3 /home/openclaw/.openclaw/scripts/strip-thinking.py --startup-repair-active 2>&1 || true` to the existing `ExecStartPre` chain in `systemdOverrides`. Extended `STRIP_THINKING_SCRIPT` with `run_startup_orphan_repair`, `_run_startup_repair_all_active`, `_find_session_last_turn_orphans`, `_build_synthetic_tool_result_event`, `_orphan_repair_backup`, and CLI dispatch on `--startup-repair-active` / `--startup-repair <path>`. Added two Rule-23 sentinels: `def run_startup_orphan_repair` and `ORPHAN_REPAIR:`.
@@ -2035,6 +2109,79 @@ Single source of truth for what each `VM_MANIFEST.version` bump contains. Used f
 - **Cache-miss tax**: ~210 chars added above the OPENCLAW_CACHE_BOUNDARY in SOUL.md → one-time ~5-10s cache rebuild per VM on the first turn after the new content lands. Across ~240 VMs that's a one-time minor latency bump distributed over the next hours, not a sustained cost.
 - **Detection note**: after rollout, sample 10 VMs and grep `~/.openclaw/workspace/AGENTS.md` for the literal string `"Recurring Tasks (Crons) — list first, never duplicate"`. If absent from a cv=96 VM, that's a Rule 23 lying-DB regression (would suggest stale-module-cache on reconciler).
 - **Rollback**: revert the commit. Reconciler restores prior SOUL.md / AGENTS.md content idempotently via the V2 markers. cv-decrement script can re-mark affected VMs as cv=95-eligible if forcing re-reconcile.
+
+### v95 — 2026-05-12 (Agent acknowledgment UX — three-layer Telegram feedback)
+
+- **Manifest change**: `VM_MANIFEST.version` bumped 93 → 95 (single bump from v93 — v94 was a local-only working state for L1+L2 that never landed; v95 ships L1+L2+L3 together). Added 4 `messages.*` config keys (L1) + 5 `channels.telegram.streaming.*` keys (L2) + 1 new `cronJobs[]` entry for `ack-watchdog.py` (L3). New embedded script `ACK_WATCHDOG_SCRIPT` with Rule-23 sentinels.
+- **Why**: 2026-05-11 — Cooper sent `@edgecitybot` "whats on the schedule rn for edge city?", bot replied 3 minutes later with an excellent answer but ZERO visible feedback during the wait. Edge Esmeralda (1000 attendees, 2026-05-30) would have churned that experience at scale.
+- **Three layers, independently rollback-able**:
+  - **L1 (reactions + status emoji transitions)** — 4 `messages.*` config keys. Telegram `setMessageReaction` lands 👀 on the user's inbound message within ~300ms; `statusReactionController` transitions through phase emojis (👀 → 🤔 → 🔍 → ✍️ → ✅) as work progresses.
+  - **L2 (streaming preview)** — 5 `channels.telegram.streaming.*` config keys. OpenClaw sends a placeholder and edits as the model streams. CRITICAL pin: `streaming.preview.toolProgress=false` (v68 leak guard — prevents raw tool-call output from leaking to Telegram users).
+  - **L3 (slow-warning watchdog)** — `ack-watchdog.py` cron at `* * * * *`. Detects stalls >30s (sends "Thinking through this one — give me ~30s.") and hard-fails >180s ("Hit my limit on this one — taking too long. Mind retrying or rephrasing?"). Read-only on session state (Rules 22, 30). Per-turn idempotent dedup.
+- **Hot-reload taxonomy** (Rule 32 — corrected mid-canary): 5 `channels.telegram.streaming.*` keys HOT-RELOAD (1-3s after set). 4 `messages.*` keys DO NOT hot-reload (closure capture at `bot-msflwCEW.js:5473`). Reconciler auto-restarts via `RESTART_REQUIRED_CONFIG_PREFIXES = ["messages."]` (commit `320ecb25`).
+- **Verified on vm-050 canary** (2026-05-11/12): L1 — 👀 reaction lands within 1s; status transitions confirmed visually. L2 — 0 leak matches across v68/v94 patterns over 3hr post-test journal audit (`scripts/_audit-v94-leak-grep.ts`). L3 — 30/30 parser unit tests pass (`scripts/_test-ack-watchdog-parser.py`); 32KB→1MB tail bug caught and fixed during canary.
+- **Fleet rollout**: reconcile-fleet picks up v95 next cycle. For each cv<95 VM: stepConfigSettings pushes 9 keys → `result.gatewayRestartNeeded=true` triggered by `messages.*` changes → stepFiles deploys `ack-watchdog.py` with `requiredSentinels` guard → stepCronJobs adds the watchdog cron idempotently → stepGatewayRestart fires (Rule-5 verified, loads `messages.*` keys) → cv → 95.
+- **Tooling shipped**: `scripts/ack-watchdog.py` (source of truth; `lib/ssh.ts` embeds copy), `scripts/_test-ack-watchdog-parser.py` (30 unit tests), `scripts/_canary-v94-ack-ux.ts` (per-VM canary, defaults `--restart`), `scripts/_audit-v94-leak-grep.ts` (post-deploy regression check).
+- **PRD**: `docs/prd/agent-acknowledgment-ux-2026-05-11.md` (~2000 lines).
+- **Rollback**: each layer independently. L1 = revert 4 `messages.*` keys. L2 = `streaming.mode → "off"` (same lever as v68). L3 = remove cron entry from manifest, `ack-watchdog.py` stays inert on disk.
+
+### v93 — 2026-05-11 (partner-stub APPEND branch + budget-aware over-budget check)
+
+- **Manifest change**: `VM_MANIFEST.version` bumped 92 → 93. Updated `stepRewriteSoulPartnerSections`'s Python: when the old section header is absent, append the partner-stub at EOF (`text.rstrip() + new_section`) instead of no-op'ing. New status value `"appended"` treated identically to `"patched"` for cv-bump purposes; idempotency unchanged (marker check is still first). Budget read from `VM_MANIFEST.configSettings` now (was hardcoded 35K) — tracks the emergency 35K→40K bump from commit `0f796218`.
+- **Why**: v92's step treated `old-not-found` as a no-op (mirroring the v67 routing-patch semantics where missing-old indicated user customization). For partner sections that turns out to be wrong — partner sections are auto-installed by `configureOpenClaw`, and a missing section means the VM was provisioned BEFORE the section existed in the template OR a configure failure left it out. Either way we want to add it.
+- **Canary on the 5 edge_city VMs (2026-05-11)** found three distinct states:
+  - vm-771, vm-859, vm-354 — both partner sections present (size 37,467b). v92 patched works fine.
+  - vm-050 — Edge section MISSING, Consensus present. v92 patches only consensus, leaves vm-050 without Edge context.
+  - vm-777 — both sections MISSING. v92 no-ops entirely.
+- **Fleet rollout**: manifest bump forces reconciler to re-process all VMs at cv<93, including vm-354 (currently at cv=92 from canary — early-outs at "already-patched" thanks to the marker). The other 4 edge VMs hit either "patched" (sections present) or "appended" (sections missing). Both paths deploy the stubs.
+- **Detection note**: after rollout, `grep -c "Edge City" ~/.openclaw/workspace/SOUL.md` should be exactly 1 on every edge_city VM. Zero = step didn't run; >1 = duplicate append (idempotency regression).
+- **Rollback**: revert the commit. The marker guard means subsequent reconciles see the patched/appended state as `alreadyCorrect`; rollback doesn't auto-remove the partner stubs (the step has no delete path).
+
+### v92 — 2026-05-11 (partner SOUL.md sections moved out of bootstrap context + 35K→40K emergency bandaid)
+
+- **Manifest change**: `VM_MANIFEST.version` bumped 91 → 92. Two new reconciler steps: (a) `stepRewriteSoulPartnerSections` — surgical SOUL.md edit on existing partner VMs (follows v67 routing-patch pattern: marker-based idempotency, Python in-place replace via tmp+rename, backup to `~/.openclaw/backups/v92-<ts>/SOUL.md`, verify-after-write, `pushFailed` gate on errors). (b) `stepDeployEdgeOverlay` — writes `INSTACLAW_OVERLAY.md` to edge_city VMs (sha-verified deploy, idempotent skip on match). Source of truth: `lib/partner-content.ts`. Companion emergency bandaid (commit `0f796218`) bumped `BOOTSTRAP_MAX_CHARS` from 35000 → 40000 to stop the bleeding while the surgical fix landed.
+- **Why**: pre-v92 edge_city VMs had 36,054 chars of SOUL.md content vs the 35,000-char `BOOTSTRAP_MAX_CHARS` ceiling — the last ~1,054 chars (the Edge onboarding interview tail + the entire Consensus section) were silently truncated from the agent's bootstrap context. Affected all 5 edge_city VMs live in production. Agents simply couldn't see the partner content they were supposed to embody.
+- **Fix shape**: replace the ~1,286-char inline Edge section and ~451-char inline Consensus section in SOUL.md with ~220-char stubs that point the agent at on-disk skill files (read on demand, NOT at bootstrap). New edge_city VM SOUL.md size: ~34,771 chars (~229 chars headroom). The ~735-char onboarding interview + community norms + proactivity directive that used to live in SOUL.md is moved to a new `INSTACLAW_OVERLAY.md` alongside Tule's upstream `edge-esmeralda/SKILL.md` — additive, untracked by upstream's 30-min cron pull.
+- **Audit script**: `scripts/_audit-soul-md-size.ts`.
+- **P1 follow-up** (post-Esmeralda): deep trim of `WORKSPACE_SOUL_MD` (21K chars) + `SOUL_MD_INTELLIGENCE_SUPPLEMENT` (8.7K chars) which are the real bootstrap-budget bloat. This v92 fix is the short-term unblocker for Edge Esmeralda (May 30); the structural fix is a separate larger surgery.
+- **Detection note**: `_audit-soul-md-size.ts` on the fleet — every VM should be <40,000 chars total bootstrap. Anything over is a regression.
+- **Rollback**: revert the commits. The bandaid bump (35K→40K) can stay independently if the surgical fix needs rollback — they're logically independent.
+
+### v91 — 2026-05-07 (SOUL.md Platform block V1 → V2 + Bankr wallet coverage gap)
+
+- **Manifest change**: `VM_MANIFEST.version` bumped 90 → 91. `WORKSPACE_SOUL_MD` (`lib/ssh.ts`) and `WORKSPACE_SOUL_MD_V2` (`lib/workspace-templates-v2.ts`) updated to ship the V2 Platform block inline (so fresh provisions get it directly without needing the reconciler patch). `lib/vm-reconcile.ts:stepInstaClawIdentityPatch` upgraded to do V1→V2 in-place strip+replace (the existing append-style insert can't replace existing rows; same surgical pattern as `stepV67RoutingTablePatch`). Post-patch invariant: Platform-section count == 1 (catches botched strips).
+- **Why**: Doug Rathell (vm-725) reported his agent refused to launch a token, framing it as a regulatory/scam concern. V1's Platform block was descriptive ("InstaClaw ships token launches") and didn't override the model's default crypto-caution reflex. Plus the fleet audit found the WRONG path was being taken — agents trying `bankr launch` from the VM CLI with personal user-keys, getting 403s.
+- **V2 (INSTACLAW_PLATFORM_V2 marker) adds**:
+  - "Token launches are a core feature, not a regulatory concern" subsection: explicit "do not refuse" directive (per Rule 28) + the right path (dashboard at `instaclaw.io`, NOT `bankr launch` CLI from the VM).
+- **Bankr wallet coverage gap** (ships in the same window, separate code path): `/api/vm/assign` now also calls `provisionBankrWallet` (was Stripe-webhook-only, leaving World mini-app users without a wallet). Existing 165 broken VMs backfilled via `scripts/_phase2-backfill-bankr-wallets.ts`. New cron at `/api/cron/provision-missing-bankr-wallets` (every 30 min) catches any future regression. Doc: `docs/bankr-wallet-coverage-gap-2026-05-07.md`.
+- **Fleet rollout**: reconcile-fleet picks up v91 next cycle. For each cv<91 VM, the V1→V2 strip+replace runs and verifies. Cv-bump gated on `result.errors` empty.
+- **Detection note**: after rollout, `grep -c INSTACLAW_PLATFORM_V2 ~/.openclaw/workspace/SOUL.md` should be exactly 1 on every VM. Zero = step didn't run; >1 = strip-replace botched.
+- **Rollback**: revert the commit. The on-disk V2 block stays where it landed; revert restores V1 inline in fresh provisions but doesn't auto-undo the surgical edits.
+
+### v90 — 2026-05-07 (Four-layer session-overflow reliability fix)
+
+- **Manifest change**: `VM_MANIFEST.version` bumped 89 → 90. 7 new `agents.defaults.compaction.*` config keys (Layer 2). Extended `STRIP_THINKING_SCRIPT` with `compact_session_in_place_lines`, `_extract_large_tool_results_to_cache`, `_purge_old_tool_cache` (Layers 1 + 3). New Rule-23 sentinels: `compact_session_in_place_lines`, `SESSION COMPACTED:`, `_extract_large_tool_results_to_cache`, `LAYER3_EXTRACTED:`.
+- **Why**: 2026-05-06 vm-729 (Notboredclaw) outage — a >200KB session jsonl was archived + `os.remove`'d, leaving only metadata terminators (`model.completed`, `trace.artifacts`, `session.ended`). The agent then sent an empty messages array to Anthropic → 400 "messages: at least one message is required" → in-memory FailoverManager cooldown loop → user saw "Something went wrong" on every message. The customer experience was catastrophic and (more alarmingly) the agent was apparently making unauthorized trades during the chaos.
+- **Research-backed plan** (Cooper-directed deep research session 2026-05-07): surveyed OpenAI Responses API server-side compaction, Anthropic `clear_tool_uses_20250919` + `compact_20260112`, Semantic Kernel `ChatHistoryReducer` (function-call pairing protection), AutoGen "memory pointer pattern", and OpenClaw's own built-in compaction module. **Universal pattern: NEVER NUKE.** Trim while preserving (a) `tool_use`/`tool_result` pairing, (b) recent context, (c) the original prompt. Codified as Rule 30.
+- **Layer 1 — strip-thinking.py** replaces destructive Phase 1 archive with `compact_session_in_place_lines`. Preserves the first user message + last 5 turn pairs; computes safe drop boundaries via `_find_safe_turn_starts` (tracks pending `tool_use_id` set, never splits a pair). Atomic write via tmp + `os.replace`. Forensic backup via `_backup_session_file` before any drop. Phase A: aggressive truncation of older-than-recent-10 tool_results to 500 chars. Phase B: drop oldest turn pair, repeat until under threshold.
+- **Layer 2 — OpenClaw native compaction tuning**: this manifest block. `mode=safeguard`, `maxActiveTranscriptBytes=150000`, `recentTurnsPreserve=10`, `qualityGuard.{enabled,maxRetries=2}`, `notifyUser=true`, `truncateAfterCompaction=true`. Goal: OpenClaw's LLM-summarizing compactor fires at 150KB BEFORE Layer 1's byte trigger ever needs to. Layer 1 is now the safety net for cases where the LLM compactor times out or 5xx's.
+- **Layer 3 — memory pointer pattern** in strip-thinking.py: `_extract_large_tool_results_to_cache`. tool_results > 20KB go to `~/.openclaw/workspace/tool-cache/<sha>.txt` with a short inline reference. Stops browser screenshots, polymarket dumps, hyperliquid orderbooks from stuffing the active context. Cache files age out via `_purge_old_tool_cache` (7d retention, called from `daily_hygiene`). Content-addressable via sha256 for natural dedup of identical tool outputs.
+- **Layer 4 — persistent memory writes on every compaction**: `_ensure_recent_summary_before_archive` (existing `PRE_ARCHIVE_SUMMARY_V1` hook) is now also called BEFORE compaction, not just before archive. Haiku generates a summary that lands in MEMORY.md + session-log.md so the agent retains cross-session knowledge of dropped content even if Layer 1's turn-drop fires.
+- **Fleet rollout**: reconcile-fleet picks up v90 next cycle. Each cv<90 VM gets the 7 config keys + script update. Per Rule 32, `agents.defaults.compaction.*` likely closure-captured (not hot-reload) — reconciler adds `agents.` to `RESTART_REQUIRED_CONFIG_PREFIXES` if not already.
+- **Detection note**: after rollout, `journalctl --user -u openclaw-gateway | grep -E "SESSION COMPACTED|LAYER3_EXTRACTED"` should show activity on busy VMs. Zero matches over a week on a heavy-tool-use VM = the new path isn't engaging (likely a sentinel-grep miss or stale module cache, per Rule 23).
+- **PRD**: codified in CLAUDE.md as Rule 30.
+- **Rollback**: revert the commit. The 4 layers are independently regressed at their respective config keys / script removals. Layer 1's safety net stays in place if rollback is partial.
+
+### v89 — 2026-05-06 (InstaClaw platform identity fix — "I'm an OpenClaw agent" bug)
+
+- **Manifest change**: `VM_MANIFEST.version` bumped 88 → 89. New "## Platform" section inserted before "## My Identity" in `WORKSPACE_SOUL_MD` (`lib/ssh.ts`) and `WORKSPACE_SOUL_MD_V2` (`lib/workspace-templates-v2.ts`). New reconciler step `stepInstaClawIdentityPatch` (called as step 8f3 right after `stepV67RoutingTablePatch`). Marker-guarded (`INSTACLAW_PLATFORM_V1`).
+- **Why**: 2026-05-06 user complaint (HotTubLee) — agents identify as "OpenClaw agents" and describe InstaClaw as a third-party platform they "don't have set up." The SOUL.md template's "## My Identity" section was a near-empty placeholder ("identity develops naturally through conversation"), so the agent had no foundational statement of platform identity. When asked about InstaClaw features, it accurately reported the runtime layer it sees (OpenClaw) and disclaimed everything else — which from the user's perspective is the agent denying its own product.
+- **Section content**: names InstaClaw as the hosting platform; clarifies OpenClaw is the runtime kernel (not the identity); tells the agent to read `CAPABILITIES.md` + `EARN.md` as the single source of truth for what it can do (and not to hallucinate features that aren't documented).
+- **Surgical patch shape**: same kind of in-place-replace template gap as v67 (no manifest mode supports row-replacement in append-managed files). The step uses a surgical Python patch via tmp+rename, idempotent via the `INSTACLAW_PLATFORM_V1` marker, V2-aware (skips V2-migrated VMs since their template already has it inline). Anchor: "## My Identity" header (universally present on V1 SOUL.md and remains the user-customizable personality section). User customizations under "## My Identity" are untouched — Platform section is INSERTED ABOVE the anchor.
+- **Anchor-not-found semantics**: treated as `alreadyCorrect` (don't break customizations). If the user has fully replaced the SOUL.md template with their own, we don't auto-inject — let the user opt in by restoring the anchor.
+- **Fleet rollout**: reconcile-fleet picks up v89 next cycle. Per Rule 23, the embedded script literal is sentinel-grepped before write; stale-module-cache regressions surface as errors instead of silent old-file writes.
+- **Detection note**: after rollout, sample 5 VMs and `grep -c INSTACLAW_PLATFORM_V1 ~/.openclaw/workspace/SOUL.md` — should be 1 on every V1 VM. V2-migrated VMs already have the section inline; their cv=89 is reached without the step doing anything.
+- **Rollback**: revert the commit. The Platform section stays on-disk where it landed; rollback doesn't auto-remove (the step has no delete path). Manual cleanup via `sed` if absolutely needed.
 
 ### v88 — 2026-05-05 (build-essential added to systemPackages)
 
