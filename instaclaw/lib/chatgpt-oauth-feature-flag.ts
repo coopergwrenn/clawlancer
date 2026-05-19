@@ -42,9 +42,15 @@ export function chatGPTOAuthDisabledPayload(): {
     type: "error",
     error: {
       type: "feature_disabled",
+      // Worded carefully: the kill-switch graceful-downgrade cron will
+      // tear down existing connections within ~15 min of flag-flip, so we
+      // do NOT claim "existing accounts continue to work" — that was the
+      // original Day 1 phrasing and proved misleading once the cron + the
+      // disconnect helper landed in Day 2. Honest message instead.
       message:
-        "ChatGPT subscription connection is temporarily unavailable. " +
-        "Existing connected accounts continue to work. Please try again later.",
+        "ChatGPT subscription connection is temporarily disabled across InstaClaw. " +
+        "Your agent is running on Claude in the meantime. " +
+        "Reconnect later from Settings once ChatGPT support is restored.",
     },
   };
 }

@@ -42,6 +42,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { isChatGPTOAuthEnabled } from "@/lib/chatgpt-oauth-feature-flag";
+import { disconnectUser } from "@/lib/openai-oauth-db";
 
 // Per CLAUDE.md Rule 11 — Vercel Pro max for any route that might call
 // external services or do heavy work. Downgrade work is cheap but we
@@ -136,11 +137,16 @@ export async function GET(req: NextRequest): Promise<NextResponse<DowngradeResul
 
   for (const user of candidates) {
     try {
-      await downgradeOneUser(user.id, supabase);
+      // disconnectUser is the SINGLE source of truth for "tear down a
+      // user's OAuth state" — shared with /api/auth/openai/disconnect.
+      // Both surfaces behave identically (Rule 14 — same shape as
+      // lib/billing-status.ts for billing classification).
+      await disconnectUser(user.id, supabase);
       processed++;
       logger.info("openai-oauth-graceful-downgrade: user downgraded", {
         userId: user.id,
         email: user.email?.slice(0, 16) ?? "(none)",
+        source: "kill_switch_cron",
       });
     } catch (err) {
       failed++;
@@ -163,72 +169,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<DowngradeResul
   return NextResponse.json(result);
 }
 
-/**
- * Downgrade one user from chatgpt_oauth mode back to all_inclusive.
- *
- * Order of operations (each is idempotent):
- *   1. UPDATE instaclaw_vms SET api_mode='all_inclusive' WHERE assigned_to=user.id
- *      AND api_mode='chatgpt_oauth'.
- *   2. UPDATE instaclaw_vms SET default_model='claude-sonnet-4-6'
- *      WHERE assigned_to=user.id AND default_model LIKE 'openai-codex/%'.
- *   3. UPDATE instaclaw_users SET openai_oauth_*=NULL,
- *      openai_token_version = openai_token_version + 1
- *      WHERE id=user.id. The version bump triggers reconciler to remove
- *      the openai-codex:default profile from disk on every VM.
- *
- * Returns nothing on success. Throws on any failure (caller catches).
- */
-async function downgradeOneUser(
-  userId: string,
-  supabase: ReturnType<typeof getSupabase>,
-): Promise<void> {
-  // Step 1: VM api_mode
-  const { error: vmErr } = await supabase
-    .from("instaclaw_vms")
-    .update({ api_mode: "all_inclusive" })
-    .eq("assigned_to", userId)
-    .eq("api_mode", "chatgpt_oauth");
-  if (vmErr) throw new Error(`vm api_mode update failed: ${vmErr.message}`);
-
-  // Step 2: VM default_model — only if it was an openai-codex model.
-  // Use .like to match prefix; PostgREST translates to SQL LIKE.
-  const { error: modelErr } = await supabase
-    .from("instaclaw_vms")
-    .update({ default_model: "claude-sonnet-4-6" })
-    .eq("assigned_to", userId)
-    .like("default_model", "openai-codex/%");
-  if (modelErr) throw new Error(`vm default_model update failed: ${modelErr.message}`);
-
-  // Step 3: NULL the user's OAuth fields + bump version. The bump is
-  // an RPC call because PostgREST doesn't support "col = col + 1" in a
-  // straight update. We use a simple raw expression via rpc-style
-  // update with the current value + 1.
-  //
-  // First read current version (separate query — race is fine, we
-  // accept that a concurrent reconcile could push one stale-version
-  // write; the next tick reconverges).
-  const { data: u, error: readErr } = await supabase
-    .from("instaclaw_users")
-    .select("openai_token_version")
-    .eq("id", userId)
-    .single();
-  if (readErr) throw new Error(`user read failed: ${readErr.message}`);
-
-  const currentVersion = (u?.openai_token_version as number | undefined) ?? 0;
-  const { error: userErr } = await supabase
-    .from("instaclaw_users")
-    .update({
-      openai_oauth_access_token: null,
-      openai_oauth_refresh_token: null,
-      openai_oauth_id_token_claims: null,
-      openai_oauth_expires_at: null,
-      openai_oauth_last_refresh_at: null,
-      openai_oauth_account_id: null,
-      openai_oauth_originator: null,
-      chatgpt_plan_type: null,
-      chatgpt_plan_last_seen_at: null,
-      openai_token_version: currentVersion + 1,
-    })
-    .eq("id", userId);
-  if (userErr) throw new Error(`user nullify failed: ${userErr.message}`);
-}
+// `downgradeOneUser` was inlined here in Day 1; refactored to call
+// `disconnectUser` from lib/openai-oauth-db.ts (Day 2) so the
+// disconnect API and this cron share a single source of truth.
+// Behavior is identical — same three writes in the same order.
