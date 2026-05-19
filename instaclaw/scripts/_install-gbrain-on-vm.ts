@@ -25,9 +25,15 @@ import { createClient } from "@supabase/supabase-js";
 // lib/vm-reconcile.ts:GBRAIN_PINNED_{COMMIT,VERSION}. The wrapper duplicates
 // these here rather than importing from lib/ because scripts/ runs outside
 // Next.js bundle context.
-// Bumped from stdio v0.28.1 (commit 2ea5b71) to HTTP v0.35.0.0 (baf1a47).
-const GBRAIN_PINNED_COMMIT = "baf1a47";
-const GBRAIN_PINNED_VERSION = "0.35.0.0";
+// 2026-05-19: bumped to v0.36.3.0 (1d5f69f) after vm-050 in-place upgrade canary.
+// v0.36.x requires GBRAIN_EMBEDDING_DIMENSIONS=1536 env var alongside the existing
+// GBRAIN_EMBEDDING_MODEL — without it, gateway.ts falls back to DEFAULT 1280-dim
+// (ZE zembed-1) which mismatches our 1536-dim PGLite column. Phase E5 main unit
+// + a 30-embedding-dimensions.conf drop-in (Phase J upgrade-mode) handle both
+// fresh install and existing-VM upgrade paths.
+// History: stdio v0.28.1 (2ea5b71) → HTTP v0.35.0.0 (baf1a47) → v0.36.3.0 (1d5f69f).
+const GBRAIN_PINNED_COMMIT = "1d5f69f";
+const GBRAIN_PINNED_VERSION = "0.36.3.0";
 
 // ── Env loading ──
 for (const f of [

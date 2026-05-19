@@ -126,11 +126,15 @@ function keyRequiresGatewayRestart(key: string): boolean {
 //   - docs/prd/gbrain-fleet-rollout-2026-05-12.md §7 (original stepGbrain design)
 //   - docs/prd/gbrain-http-fleet-rewrite-plan-2026-05-16.md (HTTP rewrite plan)
 const GBRAIN_PARTNER_ALLOWLIST: ReadonlySet<string> = new Set(["edge_city"]);
-// HTTP sidecar architecture — bumped from stdio era (2ea5b71 / 0.28.1).
-// Pin to a specific commit per Rule 35; operator manually bumps after
-// canary validation when newer version is desired.
-const GBRAIN_PINNED_COMMIT = "baf1a47";
-const GBRAIN_PINNED_VERSION = "0.35.0.0";
+// HTTP sidecar architecture. Pin to a specific commit per Rule 35;
+// operator manually bumps after canary validation when newer version is desired.
+// History: stdio v0.28.1 (2ea5b71) → HTTP v0.35.0.0 (baf1a47) → v0.36.3.0 (1d5f69f).
+// 2026-05-19: bumped to v0.36.3.0 after vm-050 in-place-upgrade canary.
+// v0.36.x requires GBRAIN_EMBEDDING_DIMENSIONS=1536 env var alongside the existing
+// GBRAIN_EMBEDDING_MODEL — install-gbrain.sh Phase E5 (fresh) + Phase J (upgrade)
+// both write the env. Without it, gateway.ts falls back to 1280-dim ZE default.
+const GBRAIN_PINNED_COMMIT = "1d5f69f";
+const GBRAIN_PINNED_VERSION = "0.36.3.0";
 // 240s leaves ~60s headroom under reconcile-fleet's Vercel maxDuration=300s
 // for the rest of reconcileVM. Normal install (bun already present): ~70s.
 // Cold install (bun not present): ~165s. Both fit comfortably.
@@ -1731,16 +1735,20 @@ async function stepGbrain(
 
   // ── Parse output (last-match wins for FATAL_; first-match for OK/COMPLETE) ──
   //
-  // Three success terminals:
+  // Four success terminals:
   //   ALREADY_INSTALLED  — Phase A's 5-invariant check passed; no work done
   //   BEARER_SYNCED       — Phase A6 surgical recovery (bearer mismatch resolved
   //                         without brain wipe, vm-050-class state). Added
   //                         2026-05-18 per Rule 58.
+  //   UPGRADE_COMPLETE    — Phase J in-place version upgrade succeeded (brain
+  //                         preserved, version bumped). Added 2026-05-19 for
+  //                         v0.35.0.0 → v0.36.3.0 upgrade path.
   //   INSTALL_COMPLETE    — full Phase B-H install ran successfully
   //
   // Plus FATAL_* (last-match wins) for any failure.
   const alreadyMatch = stdout.match(/^ALREADY_INSTALLED\s+(.+)$/m);
   const bearerSyncedMatch = stdout.match(/^BEARER_SYNCED\s+(.+)$/m);
+  const upgradeCompleteMatch = stdout.match(/^UPGRADE_COMPLETE\s+(.+)$/m);
   const completeMatch = stdout.match(/^INSTALL_COMPLETE/m);
   const fatalMatches = Array.from(stdout.matchAll(/^FATAL_(\S+)(?:\s+(.+))?$/gm));
   const lastFatal = fatalMatches.length > 0 ? fatalMatches[fatalMatches.length - 1] : null;
@@ -1767,6 +1775,22 @@ async function stepGbrain(
       vmId: vm.id,
       version: GBRAIN_PINNED_VERSION,
       detail: bearerSyncedMatch[1],
+    });
+    return;
+  }
+
+  if (upgradeCompleteMatch) {
+    // Phase J in-place version upgrade — gbrain advanced from old version to
+    // GBRAIN_PINNED_VERSION while preserving the brain.pglite data dir.
+    // Patch reapplied; CHECKPOINT cron + ExecStop drop-ins untouched (orthogonal).
+    // GBRAIN_EMBEDDING_DIMENSIONS=1536 drop-in written for v0.36.x compat.
+    result.fixed.push(`gbrain upgraded to v${GBRAIN_PINNED_VERSION} (Phase J in-place, brain preserved): ${upgradeCompleteMatch[1]}`);
+    logger.info('stepGbrain: in-place upgrade complete', {
+      route: 'stepGbrain',
+      vmId: vm.id,
+      version: GBRAIN_PINNED_VERSION,
+      commit: GBRAIN_PINNED_COMMIT,
+      detail: upgradeCompleteMatch[1],
     });
     return;
   }

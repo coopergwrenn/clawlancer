@@ -4,7 +4,9 @@
 # Source of truth: instaclaw/docs/prd/gbrain-http-fleet-rewrite-plan-2026-05-16.md
 # Implements:      CLAUDE.md Rule 35 (HTTP sidecar architecture)
 # Supersedes:      stdio v0.28.1 installer (commit 2ea5b71 era, May 2026)
-# Pinned target:   gbrain v0.35.0.0 (commit baf1a47)
+# Pinned target:   gbrain v0.36.3.0 (commit 1d5f69f)
+#                  Previous: v0.35.0.0 (baf1a47). Bumped 2026-05-19 after
+#                  in-place-upgrade canary on vm-050 validated the path.
 #
 # Architecture summary (why HTTP sidecar):
 #   The stdio architecture spawned `gbrain serve` per agent session, which paid a
@@ -22,19 +24,27 @@
 # _install-gbrain-on-vm.ts and lib/vm-reconcile.ts:stepGbrain both pattern-match
 # against them):
 #   PHASE_X_START / PHASE_X_OK / FATAL_*           on every phase boundary
-#   ALREADY_INSTALLED                              when idempotency check passes
-#   INSTALL_COMPLETE                               on full successful end-to-end
+#   ALREADY_INSTALLED                              when 5-invariant idempotency passes
+#   BEARER_SYNCED                                  when Phase A6 surgical recovery ran
+#   UPGRADE_COMPLETE                               when Phase J in-place upgrade ran
+#   INSTALL_COMPLETE                               on full Phase B-H install end-to-end
 #   RESULT_OK / RESULT_FAIL                        from verify-gbrain-mcp.py at H
 #
 # Phases:
-#   A  pre-flight (backup + key checks + disk ≥10GB + idempotency early-exit)
-#   B  install Bun (with unzip prereq) [preserved from stdio era]
+#   A  pre-flight (backup + key checks + disk ≥10GB + 5-invariant idempotency early-exit)
+#   A6 bearer-mismatch surgical recovery (Rule 58 — preserves brain, no wipe)
+#   J  in-place version upgrade (preserves brain.pglite) — triggers when EXISTING
+#      version differs from GBRAIN_PINNED_VERSION AND brain has data. Skips B-H.
+#      Has full rollback path on failure. New 2026-05-19 for v0.35→v0.36 upgrades.
+#   B  install Bun (with unzip prereq) [preserved from stdio era — FRESH install only]
 #   C  clone gbrain to ~/gbrain (CANONICAL path per Garry's INSTALL_FOR_AGENTS.md)
+#   C2 apply instaclaw patches (checkpoint MCP tool — CLAUDE.md Rule 54)
 #   D  bun install + bun link + 4-segment version verify
-#   E  PGLite fresh init + bearer token mint + systemd unit + sidecar start
+#   E  PGLite fresh init + bearer token mint + systemd unit + sidecar start (WIPES brain)
 #   F  HTTP smoke test (/health, /mcp initialize+tools/list with bearer, ext-IP refusal)
 #   G  wire openclaw mcp set gbrain (streamable-http) + verify-after-set + hot-reload + gateway health
 #   H  real round-trip via verify-gbrain-mcp.py (HTTP harness) — the load-bearing gate
+#   I  install CHECKPOINT cron + ExecStop drop-in (CLAUDE.md Rule 54)
 #
 # Exit code catalog (operator-debugging contract — preserved + extended from stdio era):
 #   0   success (INSTALL_COMPLETE) or ALREADY_INSTALLED
@@ -65,6 +75,19 @@
 #  25   FATAL_BEARER_SYNC_* (FAILED / VERIFY_FAILED / GATEWAY_UNHEALTHY)
 #       — Phase A surgical recovery path (BEARER_MISMATCH_DETECTED) ran but failed.
 #       See "Phase A6: bearer-mismatch surgical recovery" below for details.
+#  26   FATAL_UPGRADE_PRECHECK_FAILED, FATAL_UPGRADE_BACKUP_FAILED
+#       — Phase J: pre-flight or brain backup failed before any state change.
+#  27   FATAL_UPGRADE_CHECKOUT_FAILED — Phase J: git checkout of target commit failed.
+#  28   FATAL_UPGRADE_BUN_FAILED — Phase J: bun install failed on new version.
+#  29   FATAL_UPGRADE_NO_PATCH — Phase J: patch file not co-deployed.
+#  30   FATAL_UPGRADE_PATCH_INCOMPATIBLE — Phase J: patch doesn't apply to new operations.ts;
+#       needs rebase. Rollback to old version executed automatically.
+#  31   FATAL_UPGRADE_PATCH_APPLY_FAILED — Phase J: patch --check passed but apply or verify failed.
+#  32   FATAL_UPGRADE_FAILED — Phase J: new gbrain didn't reach healthy /health=200.
+#       Rollback executed; check rollback_health for current state.
+#  33   FATAL_UPGRADE_VERSION_MISMATCH — Phase J: post-restart gbrain reports unexpected version.
+#  34   FATAL_UPGRADE_VERIFY_PUT_PAGE_FAILED — Phase J: write round-trip failed
+#       post-upgrade. Likely embedding-config issue. NO auto-rollback; operator investigates.
 #
 # Co-deployed file requirement:
 #   verify-gbrain-mcp.py must be uploaded by the TS wrapper alongside this script,
@@ -72,7 +95,7 @@
 #   FATAL_VERIFY_PY_MISSING if absent — refuses to silently skip the gate.
 #
 # Usage (from TS wrapper or stepGbrain reconciler step):
-#   GBRAIN_PINNED_COMMIT=baf1a47 GBRAIN_PINNED_VERSION=0.35.0.0 bash install-gbrain.sh
+#   GBRAIN_PINNED_COMMIT=1d5f69f GBRAIN_PINNED_VERSION=0.36.3.0 bash install-gbrain.sh
 
 set +e   # don't auto-exit; we handle errors per-phase with explicit exit codes
 source ~/.nvm/nvm.sh 2>/dev/null
@@ -308,6 +331,311 @@ if [ "$EXISTING_VERSION" = "$GBRAIN_PINNED_VERSION" ] && \
 fi
 
 echo "PHASE_A_OK backup=$TARBALL disk_avail_kb=$DISK_AVAIL_KB existing: V=$EXISTING_VERSION T=$EXISTING_TRANSPORT S=$EXISTING_SERVICE P=$EXISTING_PORT bearer_disk=${EXISTING_DISK_BEARER:0:14}... bearer_gw=${EXISTING_GW_BEARER:0:14}..."
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE J: in-place version upgrade (preserves brain.pglite)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Triggers when an EXISTING gbrain install needs to move to a different
+# GBRAIN_PINNED_COMMIT/VERSION without losing user data. Distinct from the
+# Phase B-H fresh-install path (which wipes brain.pglite in Phase E2).
+#
+# Trigger conditions (all three must hold):
+#   - EXISTING_VERSION != "missing"           (gbrain is installed at some version)
+#   - EXISTING_VERSION != GBRAIN_PINNED_VERSION  (a different version than target)
+#   - brain.pglite/PG_VERSION exists   (real brain with data, not stub)
+#
+# If ANY of those fail → fall through to Phase B-H (fresh install/wipe path).
+#
+# Procedure (numbered for matching to rollback path):
+#   J1.  pre-flight: ensure gbrain.service is active
+#   J2.  force CHECKPOINT via MCP (bound pg_control freshness for safe restart)
+#   J3.  backup brain.pglite to ~/.gbrain/brain.pglite.pre-upgrade-<ts>.tar.gz
+#   J4.  save OLD_HEAD for rollback + record pre-upgrade page_count for verify
+#   J5.  stop gbrain.service cleanly (ExecStop fires another CHECKPOINT)
+#   J6.  revert patch (git checkout -- operations.ts + rm checkpoint-operation.ts)
+#   J7.  git fetch + checkout target commit
+#   J8.  bun install (postinstall apply-migrations runs against the brain)
+#   J9.  reapply patch (git apply --check first; on fail → ROLLBACK)
+#   J10. write/update GBRAIN_EMBEDDING_DIMENSIONS=1536 drop-in (idempotent)
+#   J11. start gbrain.service
+#   J12. verify: /health 200, version matches target, put_page round-trip works
+#
+# Rollback triggers (any of):
+#   - patch --check fails on new commit (J9)
+#   - gbrain doesn't come healthy on new version (J11)
+#   - put_page round-trip fails (J12)
+#
+# Rollback procedure:
+#   R1. stop gbrain (clean if alive, SIGKILL if crash-looping)
+#   R2. git checkout OLD_HEAD
+#   R3. bun install (back to old deps)
+#   R4. reapply patch (same patch — works idempotently on old version)
+#   R5. start gbrain
+#   R6. verify /health 200
+#   R7. if still failing: restore brain.pglite from pre-upgrade tarball + retry
+#   R8. emit FATAL_UPGRADE_FAILED with rollback outcome
+#
+# Detection — only run Phase J under the right conditions.
+NEED_UPGRADE=0
+if [ "$EXISTING_VERSION" != "missing" ] && \
+   [ "$EXISTING_VERSION" != "$GBRAIN_PINNED_VERSION" ] && \
+   [ -f "$HOME/.gbrain/brain.pglite/PG_VERSION" ]; then
+  NEED_UPGRADE=1
+fi
+
+if [ "$NEED_UPGRADE" = "1" ]; then
+  echo "PHASE_J_START existing=$EXISTING_VERSION target=$GBRAIN_PINNED_VERSION arch=in-place-upgrade"
+
+  # ─── J1: pre-flight — gbrain.service must be active for CHECKPOINT to work ───
+  if [ "$EXISTING_SERVICE" != "active" ]; then
+    echo "  J1: gbrain.service not active (state=$EXISTING_SERVICE); attempting start..."
+    systemctl --user start gbrain.service 2>&1
+    sleep 5
+    NEW_STATE=$(systemctl --user is-active gbrain.service 2>&1)
+    if [ "$NEW_STATE" != "active" ]; then
+      echo "FATAL_UPGRADE_PRECHECK_FAILED state=$NEW_STATE — service won't start, can't CHECKPOINT cleanly"
+      echo "  hint: this VM may need pg_resetwal recovery before any upgrade attempt"
+      exit 26
+    fi
+  fi
+
+  # ─── J2: force CHECKPOINT to bound pg_control staleness ───
+  J_BEARER=$(cat "$HOME/.gbrain/openclaw-bearer-token.txt" 2>/dev/null)
+  if [ -z "$J_BEARER" ]; then
+    echo "FATAL_UPGRADE_PRECHECK_FAILED no_bearer — can't call CHECKPOINT MCP"
+    exit 26
+  fi
+  J_CHECKPOINT_RESP=$(curl -sS -X POST http://127.0.0.1:3131/mcp \
+    -H "Authorization: Bearer $J_BEARER" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json,text/event-stream" \
+    --max-time 30 \
+    -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"checkpoint","arguments":{}}}' 2>&1)
+  if echo "$J_CHECKPOINT_RESP" | grep -qF '\"ok\": true'; then
+    echo "  J2: CHECKPOINT ok (pg_control fresh)"
+  else
+    echo "  J2: WARN CHECKPOINT did not succeed; tail=$(echo "$J_CHECKPOINT_RESP" | head -c 150)"
+    echo "  hint: gbrain may be at older version without checkpoint MCP tool — proceeding anyway"
+  fi
+
+  # ─── J3: backup brain.pglite (tarball, rotated retention) ───
+  J_BACKUP="$HOME/.gbrain/brain.pglite.pre-upgrade-$TS.tar.gz"
+  tar czf "$J_BACKUP" -C "$HOME/.gbrain" brain.pglite 2>/dev/null
+  if [ ! -s "$J_BACKUP" ]; then
+    echo "FATAL_UPGRADE_BACKUP_FAILED path=$J_BACKUP"
+    exit 26
+  fi
+  J_BACKUP_SIZE=$(du -h "$J_BACKUP" | cut -f1)
+  echo "  J3: backup=$J_BACKUP size=$J_BACKUP_SIZE"
+  # Rotation: keep 3 most recent pre-upgrade backups
+  ls -t "$HOME/.gbrain"/brain.pglite.pre-upgrade-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm -f
+
+  # ─── J4: snapshot OLD_HEAD + pre-upgrade stats for rollback + verify ───
+  cd "$HOME/gbrain"
+  OLD_HEAD=$(git rev-parse HEAD)
+  echo "  J4: old_head=$OLD_HEAD"
+  # page_count via MCP (for post-upgrade integrity check)
+  J_STATS=$(curl -sS -X POST http://127.0.0.1:3131/mcp \
+    -H "Authorization: Bearer $J_BEARER" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json,text/event-stream" \
+    --max-time 15 \
+    -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_stats","arguments":{}}}' 2>&1)
+  PAGE_COUNT_PRE=$(echo "$J_STATS" | grep -oE '\\"page_count\\": *[0-9]+' | grep -oE '[0-9]+' | head -1)
+  PAGE_COUNT_PRE=${PAGE_COUNT_PRE:-unknown}
+  echo "  J4: page_count_pre=$PAGE_COUNT_PRE"
+
+  # ─── J5: stop gbrain cleanly (ExecStop fires CHECKPOINT, then SIGKILL) ───
+  systemctl --user stop gbrain.service 2>&1
+  sleep 3
+  systemctl --user reset-failed gbrain.service 2>&1 > /dev/null
+  echo "  J5: stopped (state=$(systemctl --user is-active gbrain.service))"
+
+  # ─── J6: revert patch — clean working tree for git operations ───
+  git checkout -- src/core/operations.ts 2>&1 | tail -2
+  rm -f src/core/checkpoint-operation.ts
+  J_STATUS=$(git status --short)
+  if [ -n "$J_STATUS" ]; then
+    echo "  J6: WARN working tree not clean post-revert: $J_STATUS"
+    # Force clean — discard any other working-tree changes that aren't ours
+    git checkout -- . 2>&1 | tail -2
+  fi
+  echo "  J6: patch reverted, working tree clean"
+
+  # ─── J7: git fetch + checkout target commit ───
+  git fetch origin 2>&1 | tail -3
+  git checkout "$GBRAIN_PINNED_COMMIT" 2>&1 | tail -3
+  J_NEW_HEAD=$(git rev-parse HEAD)
+  if [ "${J_NEW_HEAD:0:7}" != "${GBRAIN_PINNED_COMMIT:0:7}" ]; then
+    echo "FATAL_UPGRADE_CHECKOUT_FAILED expected=$GBRAIN_PINNED_COMMIT got=$J_NEW_HEAD"
+    # ROLLBACK to OLD_HEAD
+    git checkout "$OLD_HEAD" 2>&1 | tail -2
+    bun install 2>&1 | tail -3 > /dev/null
+    # Reapply patch on old version
+    PATCH_FILE_R=""
+    for c in "/tmp/0001-add-checkpoint-mcp-tool.patch" "$(dirname "${BASH_SOURCE[0]}")/gbrain-patches/0001-add-checkpoint-mcp-tool.patch"; do
+      [ -s "$c" ] && PATCH_FILE_R="$c" && break
+    done
+    [ -n "$PATCH_FILE_R" ] && git apply "$PATCH_FILE_R" 2>&1 | tail -2
+    systemctl --user start gbrain.service 2>&1
+    exit 27
+  fi
+  echo "  J7: checked out $J_NEW_HEAD"
+
+  # ─── J8: bun install (apply-migrations runs against brain) ───
+  echo "  J8: bun install..."
+  J_BUN_OUT=$(timeout 300 bun install 2>&1 | tail -10)
+  J_BUN_RC=${PIPESTATUS[0]}
+  echo "$J_BUN_OUT"
+  if [ "$J_BUN_RC" -ne 0 ]; then
+    echo "FATAL_UPGRADE_BUN_FAILED rc=$J_BUN_RC — rolling back"
+    git checkout "$OLD_HEAD" 2>&1 | tail -2
+    bun install 2>&1 | tail -3 > /dev/null
+    systemctl --user start gbrain.service 2>&1
+    exit 28
+  fi
+
+  # ─── J9: reapply patch (--check first, ROLLBACK if fails) ───
+  PATCH_FILE_J=""
+  for c in "/tmp/0001-add-checkpoint-mcp-tool.patch" "$(dirname "${BASH_SOURCE[0]}")/gbrain-patches/0001-add-checkpoint-mcp-tool.patch"; do
+    [ -s "$c" ] && PATCH_FILE_J="$c" && break
+  done
+  if [ -z "$PATCH_FILE_J" ]; then
+    echo "FATAL_UPGRADE_NO_PATCH — rolling back"
+    git checkout "$OLD_HEAD" 2>&1 | tail -2
+    bun install 2>&1 | tail -3 > /dev/null
+    systemctl --user start gbrain.service 2>&1
+    exit 29
+  fi
+  if ! git apply --check "$PATCH_FILE_J" 2>&1; then
+    echo "FATAL_UPGRADE_PATCH_INCOMPATIBLE — patch needs rebase against $GBRAIN_PINNED_VERSION operations.ts; rolling back"
+    git checkout "$OLD_HEAD" 2>&1 | tail -2
+    bun install 2>&1 | tail -3 > /dev/null
+    git apply "$PATCH_FILE_J" 2>&1 | tail -3
+    systemctl --user start gbrain.service 2>&1
+    exit 30
+  fi
+  git apply --verbose "$PATCH_FILE_J" 2>&1 | tail -5
+  J_APPLY_RC=${PIPESTATUS[0]}
+  # Verify-after-apply per Rule 58 discipline
+  J_HAS_FILE=$([ -f src/core/checkpoint-operation.ts ] && echo 1 || echo 0)
+  J_HAS_IMPORT=$(grep -c "import { checkpoint } from " src/core/operations.ts)
+  if [ "$J_APPLY_RC" -ne 0 ] || [ "$J_HAS_FILE" != "1" ] || [ "$J_HAS_IMPORT" != "1" ]; then
+    echo "FATAL_UPGRADE_PATCH_APPLY_FAILED rc=$J_APPLY_RC file=$J_HAS_FILE import=$J_HAS_IMPORT — rolling back"
+    git checkout -- src/core/operations.ts 2>&1 | tail -2
+    rm -f src/core/checkpoint-operation.ts
+    git checkout "$OLD_HEAD" 2>&1 | tail -2
+    bun install 2>&1 | tail -3 > /dev/null
+    git apply "$PATCH_FILE_J" 2>&1 | tail -3
+    systemctl --user start gbrain.service 2>&1
+    exit 31
+  fi
+  echo "  J9: patch reapplied cleanly"
+
+  # ─── J10: write/update GBRAIN_EMBEDDING_DIMENSIONS=1536 drop-in (idempotent) ───
+  J_DIMS_DROPIN="$HOME/.config/systemd/user/gbrain.service.d/30-embedding-dimensions.conf"
+  mkdir -p "$(dirname "$J_DIMS_DROPIN")"
+  cat > "$J_DIMS_DROPIN" <<EOF
+# v0.36.x requires GBRAIN_EMBEDDING_DIMENSIONS env var alongside GBRAIN_EMBEDDING_MODEL.
+# Without it, gateway.ts falls back to DEFAULT_EMBEDDING_DIMENSIONS=1280 (ZE zembed-1
+# default), producing 1280-dim vectors that mismatch PGLite's 1536-dim 'embedding'
+# column. Written by install-gbrain.sh Phase J during in-place upgrade.
+[Service]
+Environment=GBRAIN_EMBEDDING_DIMENSIONS=1536
+EOF
+  systemctl --user daemon-reload 2>&1
+  echo "  J10: dims drop-in written; effective env includes:"
+  systemctl --user show gbrain.service --property=Environment --value | tr ',' '\n' | grep -E "EMBEDDING" | sed 's/^/    /'
+
+  # ─── J11: start gbrain.service on new version ───
+  systemctl --user start gbrain.service 2>&1
+  J_HEALTHY=0
+  for i in $(seq 1 30); do
+    HTTP=$(curl -sf -o /tmp/_j_health.json -w "%{http_code}" --max-time 2 http://127.0.0.1:3131/health 2>/dev/null)
+    STATE=$(systemctl --user is-active gbrain.service)
+    NR=$(systemctl --user show gbrain.service --property=NRestarts --value)
+    if [ "$HTTP" = "200" ] && [ "$STATE" = "active" ]; then
+      J_HEALTHY=1
+      echo "  J11: ready after $((i*2))s (NRestarts=$NR)"
+      break
+    fi
+    if [ "$NR" -gt 5 ] 2>/dev/null; then
+      echo "  J11: CRASH LOOP NRestarts=$NR"
+      break
+    fi
+    sleep 2
+  done
+
+  if [ "$J_HEALTHY" != "1" ]; then
+    echo "FATAL_UPGRADE_START_FAILED — rolling back to $OLD_HEAD"
+    systemctl --user stop gbrain.service 2>&1
+    systemctl --user reset-failed gbrain.service 2>&1
+    git checkout -- src/core/operations.ts 2>&1 | tail -2
+    rm -f src/core/checkpoint-operation.ts
+    git checkout "$OLD_HEAD" 2>&1 | tail -2
+    bun install 2>&1 | tail -3 > /dev/null
+    git apply "$PATCH_FILE_J" 2>&1 | tail -3
+    # If brain was corrupted, restore from backup
+    systemctl --user start gbrain.service
+    sleep 5
+    H_BACK=$(curl -sf -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:3131/health 2>/dev/null)
+    if [ "$H_BACK" != "200" ]; then
+      echo "  rollback start failed; restoring brain from tarball $J_BACKUP"
+      systemctl --user stop gbrain.service 2>&1
+      mv "$HOME/.gbrain/brain.pglite" "$HOME/.gbrain/brain.pglite.upgrade-failure-$TS"
+      tar xzf "$J_BACKUP" -C "$HOME/.gbrain"
+      systemctl --user start gbrain.service
+      sleep 5
+      H_BACK=$(curl -sf -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:3131/health 2>/dev/null)
+    fi
+    echo "FATAL_UPGRADE_FAILED rollback_health=$H_BACK"
+    exit 32
+  fi
+
+  # ─── J12: verify version + put_page round-trip ───
+  J_NEW_VER=$(gbrain --version 2>&1 | head -1)
+  if ! echo "$J_NEW_VER" | grep -qF "$GBRAIN_PINNED_VERSION"; then
+    echo "FATAL_UPGRADE_VERSION_MISMATCH expected=$GBRAIN_PINNED_VERSION got=$J_NEW_VER"
+    exit 33
+  fi
+  # Slug must be lowercase + hyphens + digits per v0.36's validatePageSlug.
+  # $TS uses YYYYMMDDTHHMMSSZ format which contains uppercase T/Z — invalid.
+  # Use epoch seconds for an all-numeric slug suffix.
+  J_TEST_SLUG="upgrade-verify-$(date -u +%s)"
+  J_VERIFY=$(curl -sS -X POST http://127.0.0.1:3131/mcp \
+    -H "Authorization: Bearer $J_BEARER" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json,text/event-stream" \
+    --max-time 30 \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"put_page\",\"arguments\":{\"slug\":\"$J_TEST_SLUG\",\"content\":\"Upgrade verification page for Phase J on $TS.\"}}}" 2>&1)
+  if ! echo "$J_VERIFY" | grep -qF "created_or_updated"; then
+    echo "FATAL_UPGRADE_VERIFY_PUT_PAGE_FAILED — embedding dim mismatch or other write failure"
+    echo "  response tail: $(echo "$J_VERIFY" | head -c 300)"
+    # Don't auto-rollback — operator should investigate. The upgrade left state that
+    # NEEDS attention but the brain is preserved via backup.
+    exit 34
+  fi
+
+  # Verify page_count survived (or grew by 1 from the verify page)
+  J_STATS_POST=$(curl -sS -X POST http://127.0.0.1:3131/mcp \
+    -H "Authorization: Bearer $J_BEARER" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json,text/event-stream" \
+    --max-time 15 \
+    -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_stats","arguments":{}}}' 2>&1)
+  PAGE_COUNT_POST=$(echo "$J_STATS_POST" | grep -oE '\\"page_count\\": *[0-9]+' | grep -oE '[0-9]+' | head -1)
+  echo "  J12: page_count pre=$PAGE_COUNT_PRE post=$PAGE_COUNT_POST"
+
+  echo "UPGRADE_COMPLETE old=$EXISTING_VERSION new=$GBRAIN_PINNED_VERSION old_head=$OLD_HEAD new_head=$J_NEW_HEAD page_count=$PAGE_COUNT_POST backup=$J_BACKUP"
+
+  # Phase J is a complete-install-equivalent — skip the Phase B-H fresh-install path.
+  # The cron + ExecStop drop-ins should already be in place from prior install or
+  # Phase I from a prior install-gbrain.sh run; Phase J doesn't re-install them
+  # since they're orthogonal to the version upgrade. If they need re-deploying,
+  # operator runs install-gbrain.sh again and Phase A's idempotency check passes.
+  exit 0
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE B: install Bun (with unzip prereq) — preserved verbatim from stdio era
@@ -757,6 +1085,11 @@ Environment=HOME=$HOME
 Environment=OPENAI_API_KEY=$OPENAI_KEY
 Environment=ANTHROPIC_API_KEY=$ANTHROPIC_KEY
 Environment=GBRAIN_EMBEDDING_MODEL=openai:text-embedding-3-large
+# v0.36.x: BOTH env vars required. Without GBRAIN_EMBEDDING_DIMENSIONS, gateway.ts
+# falls back to DEFAULT_EMBEDDING_DIMENSIONS=1280 (ZE zembed-1 default), producing
+# 1280-dim vectors via OpenAI Matryoshka truncation that mismatch PGLite's 1536-dim
+# 'embedding' column. Bug surfaced on 2026-05-19 vm-050 v0.36.3.0 canary.
+Environment=GBRAIN_EMBEDDING_DIMENSIONS=1536
 Environment=GBRAIN_ANTHROPIC_MAX_INFLIGHT=3
 ExecStart=$HOME/.bun/bin/gbrain serve --http --port 3131
 Restart=always
