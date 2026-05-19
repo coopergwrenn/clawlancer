@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-19
 
-Window: `597c9899c5463faee3cbd0ffa80f78e253798ef4` → `HEAD` (HEAD = `98a8b0fa`)
+Window: `98a8b0fa211202f9ea7ea27aab43fd2cd0d90967` → `HEAD` (HEAD = `7501ab51`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 98a8b0fa211202f9ea7ea27aab43fd2cd0d90967 -->
+<!-- LAST_GENERATED_SHA: 7501ab51fff8272de7694a2a5800a67d560495a8 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `98a8b0fa` 2026-05-19 — docs(prd): 3-surface gbrain SOUL routing analysis [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
-- `30b1ee6e` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `7501ab51` 2026-05-19 — fix(index): wire to Yanek's CONFIRMED Path C shape (GET, /api/opportunities, actors[]) [3 files] _(ai-assisted)_
+- `e3ce1ede` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `98a8b0fa` 2026-05-19 — docs(prd): 3-surface gbrain SOUL routing analysis [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `7501ab51` 2026-05-19 — fix(index): wire to Yanek's CONFIRMED Path C shape (GET, /api/opportunities, actors[]) [3 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `30b1ee6e` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `98a8b0fa` 2026-05-19 — [reconciler, edge, docs] — docs(prd): 3-surface gbrain SOUL routing analysis
+- `e3ce1ede` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `98a8b0fa` 2026-05-19 — docs(prd): 3-surface gbrain SOUL routing analysis
+- `7501ab51` 2026-05-19 — fix(index): wire to Yanek's CONFIRMED Path C shape (GET, /api/opportunities, actors[])
 
 ## Appendix — every commit (chronological)
 
-- `30b1ee6e` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-- `98a8b0fa` 2026-05-19 — docs(prd): 3-surface gbrain SOUL routing analysis [1 files] _(multi: [reconciler, edge, docs]; ai-assisted)_
+- `e3ce1ede` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `7501ab51` 2026-05-19 — fix(index): wire to Yanek's CONFIRMED Path C shape (GET, /api/opportunities, actors[]) [3 files] _(ai-assisted)_
