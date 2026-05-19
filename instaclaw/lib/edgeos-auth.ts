@@ -190,6 +190,7 @@ export type AuthenticateOTPSuccess = {
 
 export type AuthenticateOTPFailureStatus =
   | "invalid_code" // 401 — wrong or expired code
+  | "no_account" // 404 — email isn't in EdgeOS (e.g., they never signed up at demo.dev.edgeos.world)
   | "validation_error" // 422 — bad format (not 6 digits, bad email, etc.)
   | "rate_limited" // 429 — too many attempts
   | "network"
@@ -267,6 +268,14 @@ export async function authenticateOTP(
 
   if (res.status === 401) {
     return { ok: false, status: "invalid_code", httpStatus: res.status, raw: bodyText.slice(0, 500) };
+  }
+  // 404 = email isn't a registered EdgeOS user. Empirically confirmed
+  // 2026-05-19 against api.dev.edgeos.world: bogus email returns
+  // 404 {"detail":"User not found"}. Map to no_account so the caller can
+  // surface the actionable "go sign up at demo.dev.edgeos.world" message
+  // instead of a generic "unknown error".
+  if (res.status === 404) {
+    return { ok: false, status: "no_account", httpStatus: res.status, raw: bodyText.slice(0, 500) };
   }
   if (res.status === 422) {
     return { ok: false, status: "validation_error", httpStatus: res.status, raw: bodyText.slice(0, 500) };

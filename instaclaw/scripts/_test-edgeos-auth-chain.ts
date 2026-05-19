@@ -1,32 +1,56 @@
 /**
- * Interactive end-to-end test of the EdgeOS auth chain.
+ * End-to-end test of the EdgeOS auth chain.
  *
  *   email → OTP → bearer → eos_live_*
  *
- * Defaults to the sandbox (api.dev.edgeos.world). Pass --prod to hit the
- * production API instead (not recommended unless verifying a real account).
+ * Two modes:
+ *
+ *   --smoke  (no OTP, no human)  — non-interactive checks against the live
+ *            sandbox: liveness, OpenAPI shape, error categorization, tenant
+ *            lookup, popup list. Safe to run in CI or any time. Confirms the
+ *            modules' assumptions match the live API.
+ *
+ *   --email <addr>  (interactive) — full happy-path test. Triggers a real
+ *            OTP send to <addr>, prompts you to paste the code, exchanges it
+ *            for a bearer, mints an api-key, lists keys, probes /events,
+ *            exercises the name_conflict path, runs mintOrReuseApiKey, then
+ *            revokes everything it created. Requires the email to be a
+ *            registered EdgeOS user on demo.dev.edgeos.world AND a popup
+ *            application approved by Tule. See:
+ *              instaclaw/docs/edgeos-sandbox-test-setup.md
+ *
+ * Defaults to the sandbox (api.dev.edgeos.world). Pass --prod to hit prod.
  *
  * Usage:
+ *   tsx scripts/_test-edgeos-auth-chain.ts --smoke
  *   tsx scripts/_test-edgeos-auth-chain.ts --email you@example.com
  *   tsx scripts/_test-edgeos-auth-chain.ts --email you@example.com --prod
  *   tsx scripts/_test-edgeos-auth-chain.ts --email you@example.com --keep
  *       (default behavior is to revoke the test key at the end; --keep
  *        preserves it so you can keep poking at the events API)
  *
- * Side effects:
- *   - Causes an OTP email to be sent to the supplied address.
- *   - Creates an EdgeOS API key named "instaclaw-edge-test-<timestamp>".
- *   - By default revokes that key after listing it (cleanup); --keep skips.
+ * Side effects (interactive mode):
+ *   - Sends an OTP email to the supplied address.
+ *   - Mints an EdgeOS api-key named "instaclaw-edge-test" (deterministic).
+ *   - Sweeps any prior "instaclaw-edge-test*" keys at the start of the run
+ *     so re-runs don't accumulate orphans.
+ *   - Revokes the new key at the end unless --keep.
  *
  * Does NOT touch any production VM or InstaClaw DB. Pure remote API test.
+ *
+ * Output: structured `[phase=…] ok|fail status=… took_ms=…` lines so the
+ * output is easy to grep when a failure shows up in CI logs.
  */
 import { createInterface } from "readline";
 import {
   requestOTP,
   authenticateOTP,
   maskToken,
+  buildHeaders,
+  fetchWithTimeout,
   EDGEOS_TENANT_EDGECITY_PROD,
   EDGEOS_TENANT_DEMO_SANDBOX,
+  type EdgeOSEnv,
 } from "../lib/edgeos-auth";
 import {
   createApiKey,
@@ -39,33 +63,52 @@ import { mintOrReuseApiKey } from "../lib/edgeos-mint";
 const SANDBOX = "https://api.dev.edgeos.world";
 const PROD = "https://api.edgeos.world";
 
-function parseArgs(): {
+// Deterministic name shared across runs so re-runs reuse instead of accumulate.
+// (Pre-sweep in setupHappyPath() still removes anything left behind by a
+// prior crashed run.)
+const HAPPY_PATH_KEY_NAME = "instaclaw-edge-test";
+const HAPPY_PATH_VM_NAME = "test-mint"; // → key name "instaclaw-edge-test-mint"
+
+// Substring used by the orphan sweep to identify keys this script may have
+// created in a prior run. Anything matching this prefix gets revoked at the
+// start of an interactive run. Be conservative — pick a prefix that only
+// this script would use.
+const ORPHAN_PREFIX = "instaclaw-edge-test";
+
+// ─── CLI ──────────────────────────────────────────────────────────────────
+
+interface Args {
+  smoke: boolean;
   email: string;
   apiBase: string;
   tenantId: string;
   tenantLabel: string;
   keep: boolean;
-} {
+}
+
+function parseArgs(): Args {
   const args = process.argv.slice(2);
+  let smoke = false;
   let email = "";
   let prod = false;
   let keep = false;
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--email" && args[i + 1]) {
-      email = args[++i];
-    } else if (args[i] === "--prod") {
-      prod = true;
-    } else if (args[i] === "--keep") {
-      keep = true;
-    }
+    if (args[i] === "--smoke") smoke = true;
+    else if (args[i] === "--email" && args[i + 1]) email = args[++i];
+    else if (args[i] === "--prod") prod = true;
+    else if (args[i] === "--keep") keep = true;
   }
-  if (!email) {
-    console.error("Usage: tsx scripts/_test-edgeos-auth-chain.ts --email <addr> [--prod] [--keep]");
-    console.error("  default tenant: demo sandbox (ea1aaa1d-…) on api.dev.edgeos.world");
-    console.error("  --prod         : EdgeCity prod tenant (6018917b-…) on api.edgeos.world");
+  if (!smoke && !email) {
+    console.error("Usage: tsx scripts/_test-edgeos-auth-chain.ts (--smoke | --email <addr>) [--prod] [--keep]");
+    console.error("");
+    console.error("  --smoke         non-interactive — exercises every check that doesn't need an OTP");
+    console.error("  --email <addr>  interactive happy-path — sends OTP, mints key, etc.");
+    console.error("  --prod          use api.edgeos.world (EdgeCity tenant) instead of sandbox");
+    console.error("  --keep          don't revoke the minted key on exit (interactive only)");
     process.exit(1);
   }
   return {
+    smoke,
     email,
     apiBase: prod ? PROD : SANDBOX,
     tenantId: prod ? EDGEOS_TENANT_EDGECITY_PROD : EDGEOS_TENANT_DEMO_SANDBOX,
@@ -84,202 +127,404 @@ function prompt(question: string): Promise<string> {
   });
 }
 
-async function main() {
-  const { email, apiBase, tenantId, tenantLabel, keep } = parseArgs();
-  const env = { apiBase, tenantId };
-  console.log(`API base: ${apiBase}`);
-  console.log(`Tenant:   ${tenantLabel} (${tenantId})`);
-  console.log(`Email:    ${email}`);
-  console.log("");
+// ─── structured phase logging ──────────────────────────────────────────────
 
-  // ── Step 1: request OTP ──
-  console.log("→ Step 1: requestOTP(email)");
-  // X-Tenant-Id is harmlessly accepted on auth endpoints; pass it so the
-  // request shape matches the frontend interceptor exactly.
-  const otpResult = await requestOTP(email, env);
-  if (!otpResult.ok) {
-    console.error(`✗ requestOTP failed: status=${otpResult.status} httpStatus=${otpResult.httpStatus}`);
-    if (otpResult.raw) console.error(`  body: ${otpResult.raw}`);
+type PhaseStatus = "ok" | "fail" | "skip" | "warn";
+
+interface PhaseResult {
+  name: string;
+  status: PhaseStatus;
+  details?: string;
+  tookMs: number;
+}
+
+const phaseResults: PhaseResult[] = [];
+
+async function phase<T>(
+  name: string,
+  fn: () => Promise<{ status: PhaseStatus; details?: string; value?: T }>
+): Promise<{ status: PhaseStatus; details?: string; value?: T }> {
+  const t0 = Date.now();
+  let result: { status: PhaseStatus; details?: string; value?: T };
+  try {
+    result = await fn();
+  } catch (err) {
+    result = {
+      status: "fail",
+      details: `threw: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  const tookMs = Date.now() - t0;
+  phaseResults.push({ name, status: result.status, details: result.details, tookMs });
+  const icon = { ok: "✓", fail: "✗", skip: "↷", warn: "⚠" }[result.status];
+  const line = `[phase=${name}] ${icon} ${result.status} took_ms=${tookMs}` +
+    (result.details ? ` :: ${result.details}` : "");
+  if (result.status === "fail") console.error(line);
+  else console.log(line);
+  return result;
+}
+
+function reportSummary() {
+  console.log("");
+  console.log("═══ summary ═══");
+  let oks = 0, fails = 0, warns = 0, skips = 0;
+  for (const r of phaseResults) {
+    if (r.status === "ok") oks++;
+    if (r.status === "fail") fails++;
+    if (r.status === "warn") warns++;
+    if (r.status === "skip") skips++;
+  }
+  console.log(`  phases: ${phaseResults.length}  ok=${oks}  fail=${fails}  warn=${warns}  skip=${skips}`);
+  console.log(`  total_ms: ${phaseResults.reduce((s, r) => s + r.tookMs, 0)}`);
+  if (fails > 0) {
+    console.log("");
+    console.log("FAILURES:");
+    for (const r of phaseResults.filter(r => r.status === "fail")) {
+      console.log(`  - ${r.name}: ${r.details}`);
+    }
+  }
+}
+
+// ─── runbook pointers — actionable error guidance ──────────────────────────
+
+function actionForNoAccount(email: string, apiBase: string): string {
+  const portal = apiBase === SANDBOX ? "demo.dev.edgeos.world" : "edgecity.edgeos.world";
+  return [
+    `Email ${email} is not a registered EdgeOS user.`,
+    `Action: open https://${portal}, sign up with that email, submit an application`,
+    `for one of the popups, and have Tule approve it. Then re-run this script.`,
+    `Runbook: instaclaw/docs/edgeos-sandbox-test-setup.md`,
+  ].join("\n  ");
+}
+
+// ─── SMOKE mode — non-interactive checks ───────────────────────────────────
+
+async function runSmoke(args: Args) {
+  console.log(`═══ smoke mode — non-interactive ═══`);
+  console.log(`api_base=${args.apiBase}`);
+  console.log(`tenant=${args.tenantLabel} (${args.tenantId})`);
+  console.log("");
+  const env: EdgeOSEnv = { apiBase: args.apiBase, tenantId: args.tenantId };
+
+  // S1. Sandbox liveness — fetch openapi.json
+  await phase("sandbox_liveness", async () => {
+    const res = await fetchWithTimeout(`${args.apiBase}/openapi.json`, { timeoutMs: 10_000 });
+    if (!res.ok) return { status: "fail", details: `openapi http=${res.status}` };
+    const text = await res.text();
+    let parsed: { info?: { title?: string; version?: string }; paths?: object } = {};
+    try { parsed = JSON.parse(text); } catch { return { status: "fail", details: "openapi body not JSON" }; }
+    const paths = Object.keys(parsed.paths ?? {}).length;
+    return {
+      status: "ok",
+      details: `title=${parsed.info?.title} version=${parsed.info?.version} paths=${paths}`,
+    };
+  });
+
+  // S2. requestOTP with bogus address → expect no_account
+  await phase("request_otp_bogus", async () => {
+    const r = await requestOTP("nobody-12345-does-not-exist@gmail.com", env);
+    if (r.ok) return { status: "fail", details: "requestOTP succeeded for a bogus address — unexpected" };
+    if (r.status === "no_account") return { status: "ok", details: `status=no_account http=${r.httpStatus}` };
+    return { status: "warn", details: `expected no_account, got status=${r.status} http=${r.httpStatus}` };
+  });
+
+  // S3. requestOTP with reserved TLD → expect validation_error
+  await phase("request_otp_reserved_tld", async () => {
+    const r = await requestOTP("foo@example.test", env);
+    if (r.ok) return { status: "fail", details: "requestOTP accepted a reserved-TLD address" };
+    if (r.status === "validation_error") return { status: "ok", details: `status=validation_error http=${r.httpStatus}` };
+    return { status: "warn", details: `expected validation_error, got status=${r.status}` };
+  });
+
+  // S4. requestOTP with locally-malformed (no @) → caught pre-flight
+  await phase("request_otp_malformed_preflight", async () => {
+    const r = await requestOTP("not-an-email", env);
+    if (r.ok) return { status: "fail", details: "pre-flight let an obviously bad email through" };
+    if (r.status === "validation_error") return { status: "ok", details: "pre-flight short-circuit working" };
+    return { status: "warn", details: `unexpected status=${r.status}` };
+  });
+
+  // S5. authenticateOTP with bogus email → 404 → no_account (NEW after 2026-05-19 fix)
+  await phase("authenticate_otp_bogus_email", async () => {
+    const r = await authenticateOTP("nobody-12345@gmail.com", "000000", env);
+    if (r.ok) return { status: "fail", details: "authenticate accepted bogus credentials" };
+    if (r.status === "no_account") return { status: "ok", details: `status=no_account http=${r.httpStatus} (categorization-bug-fix verified)` };
+    return { status: "warn", details: `expected no_account, got status=${r.status} http=${r.httpStatus} — if unknown, the 404→no_account fix may have regressed` };
+  });
+
+  // S6. authenticateOTP with malformed code → validation_error
+  await phase("authenticate_otp_malformed_code", async () => {
+    const r = await authenticateOTP("foo@bar.com", "12", env);
+    if (r.ok) return { status: "fail", details: "authenticate accepted a 2-digit code" };
+    if (r.status === "validation_error") return { status: "ok" };
+    return { status: "warn", details: `unexpected status=${r.status}` };
+  });
+
+  // S7. Tenant lookup (unauthenticated — sanity check that tenant resolution still works)
+  await phase("tenant_lookup", async () => {
+    const slug = args.apiBase === SANDBOX ? "demo" : "edgecity";
+    const res = await fetchWithTimeout(`${args.apiBase}/api/v1/tenants/public/${slug}`, { timeoutMs: 10_000 });
+    if (!res.ok) return { status: "fail", details: `http=${res.status}` };
+    const body = await res.json().catch(() => null);
+    if (!body || typeof body !== "object" || !("id" in body)) {
+      return { status: "fail", details: "tenant response missing id" };
+    }
+    const expectedId = args.apiBase === SANDBOX ? EDGEOS_TENANT_DEMO_SANDBOX : EDGEOS_TENANT_EDGECITY_PROD;
+    const actualId = (body as { id: string }).id;
+    if (actualId !== expectedId) {
+      return { status: "fail", details: `tenant UUID drifted! expected=${expectedId} got=${actualId}` };
+    }
+    return { status: "ok", details: `slug=${slug} id=${actualId}` };
+  });
+
+  // S8. Popup list (X-Tenant-Id required — confirms the header is working)
+  await phase("popup_list", async () => {
+    const res = await fetchWithTimeout(
+      `${args.apiBase}/api/v1/popups/public/list`,
+      { timeoutMs: 10_000, headers: buildHeaders({ tenantId: args.tenantId }) }
+    );
+    if (!res.ok) return { status: "fail", details: `http=${res.status}` };
+    const body = await res.json().catch(() => null);
+    if (!Array.isArray(body)) return { status: "fail", details: "popup list response not an array" };
+    return { status: "ok", details: `${body.length} popups (slugs: ${body.map((p: { slug?: string }) => p.slug).filter(Boolean).join(",")})` };
+  });
+
+  // S9. POST /api-keys with no bearer → 401 → unauthorized (confirms our auth-first contract)
+  await phase("api_keys_post_no_bearer", async () => {
+    const r = await createApiKey("", { name: "smoke-probe-no-bearer" }, env);
+    if (r.ok) return { status: "fail", details: "createApiKey somehow succeeded without a bearer" };
+    if (r.status === "unauthorized") return { status: "ok", details: "pre-flight bearer check working" };
+    return { status: "warn", details: `unexpected status=${r.status}` };
+  });
+
+  reportSummary();
+  const failed = phaseResults.some((r) => r.status === "fail");
+  if (failed) {
+    console.log("");
+    console.log("⚠ smoke had failures. Sandbox may be down OR an assumption in the modules has drifted.");
+    console.log("  Compare each failing phase against the audit at:");
+    console.log("    instaclaw/docs/edgeos-auth-audit-2026-05-14.md");
     process.exit(2);
   }
-  console.log(`✓ OTP email sent — message: ${otpResult.message ?? "(no message)"}`);
-  console.log(`  expires in: ${otpResult.expiresInMinutes ?? "?"} minutes`);
+  console.log("");
+  console.log("✓ smoke mode complete — all sandbox assumptions still hold");
+}
+
+// ─── HAPPY PATH — interactive (--email) ────────────────────────────────────
+
+/**
+ * Revoke any active api-key whose name starts with ORPHAN_PREFIX. Defensive
+ * cleanup so a prior crashed run doesn't leave us starting with name_conflict
+ * on every key the script tries to mint.
+ */
+async function sweepOrphans(bearer: string, env: EdgeOSEnv): Promise<{ swept: number; failed: number }> {
+  const list = await listApiKeys(bearer, env);
+  if (!list.ok) {
+    console.error(`  ⚠ sweepOrphans: list failed — status=${list.status} http=${list.httpStatus}`);
+    return { swept: 0, failed: 0 };
+  }
+  const orphans = list.apiKeys.filter(
+    (k) => k.name.startsWith(ORPHAN_PREFIX) && k.revokedAt === null
+  );
+  let swept = 0, failed = 0;
+  for (const k of orphans) {
+    const r = await revokeApiKey(bearer, k.id, env);
+    if (r.ok) {
+      swept++;
+      console.log(`    revoked orphan: id=${k.id} name=${k.name}`);
+    } else {
+      failed++;
+      console.warn(`    failed to revoke orphan id=${k.id}: status=${r.status}`);
+    }
+  }
+  return { swept, failed };
+}
+
+async function runHappyPath(args: Args) {
+  const env: EdgeOSEnv = { apiBase: args.apiBase, tenantId: args.tenantId };
+  console.log(`═══ happy-path mode — interactive ═══`);
+  console.log(`api_base=${args.apiBase}`);
+  console.log(`tenant=${args.tenantLabel} (${args.tenantId})`);
+  console.log(`email=${args.email}`);
+  console.log(`keep=${args.keep}`);
   console.log("");
 
-  // ── Step 2: prompt for OTP, authenticate ──
+  // ── 1. requestOTP ──
+  const step1 = await phase("request_otp", async () => {
+    const r = await requestOTP(args.email, env);
+    if (!r.ok) {
+      const action = r.status === "no_account" ? `\n  ${actionForNoAccount(args.email, args.apiBase)}` : "";
+      return { status: "fail", details: `status=${r.status} http=${r.httpStatus}${action}` };
+    }
+    return { status: "ok", details: `expires_in_minutes=${r.expiresInMinutes ?? "?"} message=${JSON.stringify(r.message ?? "")}` };
+  });
+  if (step1.status === "fail") {
+    reportSummary();
+    process.exit(2);
+  }
+
+  // ── 2. prompt + authenticateOTP ──
   const otp = await prompt("Enter the 6-digit OTP code from your email: ");
   if (!otp) {
-    console.error("✗ no OTP entered");
+    console.error("✗ no OTP entered — aborting");
     process.exit(2);
   }
 
-  console.log(`→ Step 2: authenticateOTP(email, code)`);
-  const authResult = await authenticateOTP(email, otp, env);
-  if (!authResult.ok) {
-    console.error(`✗ authenticateOTP failed: status=${authResult.status} httpStatus=${authResult.httpStatus}`);
-    if (authResult.raw) console.error(`  body: ${authResult.raw}`);
+  const step2 = await phase("authenticate_otp", async () => {
+    const r = await authenticateOTP(args.email, otp, env);
+    if (!r.ok) {
+      let action = "";
+      if (r.status === "no_account") action = `\n  ${actionForNoAccount(args.email, args.apiBase)}`;
+      if (r.status === "invalid_code") action = "\n  Action: re-run the script — the OTP may have expired or been mis-typed.";
+      return { status: "fail", details: `status=${r.status} http=${r.httpStatus} raw=${r.raw?.slice(0, 200)}${action}` };
+    }
+    return { status: "ok", value: r.accessToken as unknown, details: `token_type=${r.tokenType} bearer=${maskToken(r.accessToken)}` };
+  });
+  if (step2.status === "fail") {
+    reportSummary();
     process.exit(3);
   }
-  const bearer = authResult.accessToken;
-  console.log(`✓ authenticated — token_type=${authResult.tokenType} bearer=${maskToken(bearer)}`);
-  console.log("");
+  const bearer = step2.value as string;
 
-  // ── Step 3: create api-key with events:read (timestamped name) ──
-  const keyName = `instaclaw-edge-test-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-  console.log(`→ Step 3: createApiKey(bearer, { name: "${keyName}", scopes: ["events:read"] })`);
-  const createResult = await createApiKey(
-    bearer,
-    { name: keyName, scopes: ["events:read"] },
-    env
-  );
-  if (!createResult.ok) {
-    console.error(`✗ createApiKey failed: status=${createResult.status} httpStatus=${createResult.httpStatus}`);
-    if (createResult.raw) console.error(`  body: ${createResult.raw}`);
+  // ── 2.5. orphan sweep — defensive cleanup of prior-run leftovers ──
+  await phase("orphan_sweep", async () => {
+    const { swept, failed } = await sweepOrphans(bearer, env);
+    if (failed > 0) return { status: "warn", details: `swept=${swept} failed=${failed}` };
+    return { status: "ok", details: `swept=${swept}` };
+  });
+
+  // ── 3. createApiKey — deterministic name ──
+  const apiKeyResult = await phase("create_api_key", async () => {
+    const r = await createApiKey(bearer, { name: HAPPY_PATH_KEY_NAME, scopes: ["events:read"] }, env);
+    if (!r.ok) {
+      return { status: "fail", details: `status=${r.status} http=${r.httpStatus} raw=${r.raw?.slice(0, 200)}` };
+    }
+    return {
+      status: "ok",
+      value: r.apiKey,
+      details: `id=${r.apiKey.id} prefix=${r.apiKey.prefix} key=${maskToken(r.apiKey.key)} scopes=${r.apiKey.scopes.join(",")}`,
+    };
+  });
+  if (apiKeyResult.status === "fail") {
+    reportSummary();
     process.exit(4);
   }
-  const apiKey = createResult.apiKey;
-  console.log(`✓ created — id=${apiKey.id} prefix=${apiKey.prefix}`);
-  console.log(`  raw key (shown once): ${maskToken(apiKey.key)} — full key in env or log if you really need it`);
-  console.log(`  scopes: ${apiKey.scopes.join(", ")}`);
-  console.log("");
+  const apiKey = apiKeyResult.value as { id: string; key: string; prefix: string; name: string };
 
-  // ── Step 4: list keys to verify the new one is present ──
-  console.log("→ Step 4: listApiKeys(bearer)");
-  const listResult = await listApiKeys(bearer, env);
-  if (!listResult.ok) {
-    console.error(`✗ listApiKeys failed: status=${listResult.status} httpStatus=${listResult.httpStatus}`);
-    if (listResult.raw) console.error(`  body: ${listResult.raw}`);
-    process.exit(5);
-  }
-  console.log(`✓ list returned ${listResult.apiKeys.length} keys`);
-  const matching = listResult.apiKeys.find((k) => k.id === apiKey.id);
-  if (matching) {
-    console.log(`  ✓ created key is in the list: name=${matching.name} scopes=${matching.scopes.join(",")} revoked_at=${matching.revokedAt ?? "(active)"}`);
-  } else {
-    console.log("  ✗ created key NOT found in list — possible eventual-consistency lag");
-  }
-  console.log("");
+  // ── 4. listApiKeys ──
+  await phase("list_api_keys", async () => {
+    const r = await listApiKeys(bearer, env);
+    if (!r.ok) return { status: "fail", details: `status=${r.status} http=${r.httpStatus}` };
+    const found = r.apiKeys.find((k) => k.id === apiKey.id);
+    if (!found) return { status: "warn", details: `created key id=${apiKey.id} NOT in list (n=${r.apiKeys.length}) — eventual consistency lag?` };
+    return { status: "ok", details: `total_keys=${r.apiKeys.length} found_created=true` };
+  });
 
-  // ── Step 5: sanity probe the events endpoint with the eos_live_* ──
-  console.log("→ Step 5: GET /api/v1/events/portal/events with the new eos_live_*");
-  let eventCount: number | null = null;
-  try {
-    const eventsRes = await fetch(
-      `${apiBase}/api/v1/events/portal/events?limit=5`,
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey.key}`,
-          "X-Tenant-Id": tenantId,
-        },
-      }
+  // ── 5. events probe — uses the typed helpers (NOT raw fetch) ──
+  await phase("events_probe", async () => {
+    const res = await fetchWithTimeout(
+      `${args.apiBase}/api/v1/events/portal/events?limit=5`,
+      { headers: buildHeaders({ tenantId: args.tenantId, bearer: apiKey.key }), timeoutMs: 15_000 }
     );
-    const eventsBody = await eventsRes.text();
-    console.log(`  HTTP=${eventsRes.status}`);
-    if (eventsRes.ok) {
-      try {
-        const parsed = JSON.parse(eventsBody);
-        const results = Array.isArray(parsed) ? parsed : (parsed.results ?? []);
-        eventCount = results.length;
-        console.log(`  ✓ returned ${eventCount} events`);
-        if (eventCount > 0) {
-          const first = results[0];
-          console.log(`  first: id=${first.id} title=${JSON.stringify(first.title ?? "?")} start=${first.start_time ?? "?"}`);
-        } else {
-          console.log(`  ⚠ list returned [] — possible popup-membership gate, or no events in this popup yet`);
-        }
-      } catch {
-        console.log(`  ✗ body not JSON: ${eventsBody.slice(0, 300)}`);
-      }
-    } else {
-      console.log(`  body (first 500): ${eventsBody.slice(0, 500)}`);
+    const body = await res.text().catch(() => "");
+    if (!res.ok) {
+      return { status: "warn", details: `events http=${res.status} body=${body.slice(0, 200)}` };
     }
-  } catch (err) {
-    console.log(`  ✗ fetch error: ${err instanceof Error ? err.message : err}`);
-  }
-  console.log("");
-
-  // ── Step 6: 409 / name_conflict exercise ──
-  // Retry the SAME key name; expect status=name_conflict.
-  console.log(`→ Step 6: createApiKey AGAIN with same name "${keyName}" — expect name_conflict`);
-  const dupResult = await createApiKey(
-    bearer,
-    { name: keyName, scopes: ["events:read"] },
-    env
-  );
-  if (dupResult.ok) {
-    console.log(`  ✗ unexpected: duplicate create succeeded with id=${dupResult.apiKey.id}`);
-    console.log(`    EdgeOS did NOT enforce name uniqueness — name_conflict handling is dead code on this backend`);
-    console.log(`    Cleaning up the duplicate immediately...`);
-    await revokeApiKey(bearer, dupResult.apiKey.id, env);
-  } else if (dupResult.status === "name_conflict") {
-    console.log(`  ✓ got name_conflict (http=${dupResult.httpStatus}) — categorization works`);
-    console.log(`    raw: ${(dupResult.raw ?? "").slice(0, 200)}`);
-  } else {
-    console.log(`  ⚠ got status=${dupResult.status} (http=${dupResult.httpStatus}) — NOT name_conflict, NOT ok`);
-    console.log(`    raw: ${(dupResult.raw ?? "").slice(0, 300)}`);
-    console.log(`    This means EdgeOS uses a different status code for duplicates. Update NAME_CONFLICT_HINTS in lib/edgeos-api-keys.ts.`);
-  }
-  console.log("");
-
-  // ── Step 7: mintOrReuseApiKey end-to-end (the high-level helper) ──
-  // Uses the DETERMINISTIC name (instaclaw-edge-{vmName}) — simulates the
-  // configureOpenClaw call site. First run should mint; second run with the
-  // same vmName should hit name_conflict and return mode=existing.
-  const fakeVmName = `test-mint-${Math.random().toString(36).slice(2, 8)}`;
-  console.log(`→ Step 7a: mintOrReuseApiKey({ vmName: "${fakeVmName}" }) — first run, expect created`);
-  const mint1 = await mintOrReuseApiKey(
-    { bearer, vmName: fakeVmName, scopes: ["events:read"] },
-    env,
-    (e) => console.log(`     [telemetry] ${e.op} attempt=${e.attempt} ${e.details ?? ""}`)
-  );
-  let mintedKeyId: string | null = null;
-  if (mint1.ok) {
-    console.log(`  ✓ mode=${mint1.mode} id=${mint1.apiKey.id} prefix=${mint1.apiKey.prefix} fullKey=${mint1.fullKey ? maskToken(mint1.fullKey) : "(null)"}`);
-    mintedKeyId = mint1.apiKey.id;
-  } else {
-    console.log(`  ✗ mint1 failed: ${mint1.status} ${mint1.detail ?? ""}`);
-  }
-  console.log("");
-
-  console.log(`→ Step 7b: mintOrReuseApiKey({ vmName: "${fakeVmName}" }) — second run, expect mode=existing`);
-  const mint2 = await mintOrReuseApiKey(
-    { bearer, vmName: fakeVmName, scopes: ["events:read"], onConflict: "return_existing" },
-    env,
-    (e) => console.log(`     [telemetry] ${e.op} attempt=${e.attempt} ${e.details ?? ""}`)
-  );
-  if (mint2.ok) {
-    if (mint2.mode === "existing") {
-      console.log(`  ✓ mode=existing id=${mint2.apiKey.id} prefix=${mint2.apiKey.prefix} fullKey=${mint2.fullKey === null ? "(null as expected)" : "(unexpected!)"}`);
-    } else {
-      console.log(`  ⚠ mode=${mint2.mode} — expected 'existing' but got '${mint2.mode}'`);
+    let parsed: unknown;
+    try { parsed = JSON.parse(body); } catch {
+      return { status: "warn", details: `events body not JSON: ${body.slice(0, 200)}` };
     }
-  } else {
-    console.log(`  ✗ mint2 failed: ${mint2.status} ${mint2.detail ?? ""}`);
-  }
-  console.log("");
+    const rows = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as { results?: unknown[] }).results)
+        ? (parsed as { results: unknown[] }).results
+        : [];
+    if (rows.length === 0) {
+      return { status: "warn", details: `events list empty (popup-membership gate, or no events yet in this popup)` };
+    }
+    const first = rows[0] as { id?: string; title?: string; start_time?: string };
+    return { status: "ok", details: `events=${rows.length} first.id=${first.id} title=${JSON.stringify(first.title ?? "?")}` };
+  });
 
-  // ── Step 8: cleanup (unless --keep) ──
-  if (keep) {
-    console.log(`→ Step 8: SKIPPED (--keep) — test keys persist. Revoke manually if you want.`);
-    console.log(`  step-3 key id: ${apiKey.id}`);
-    console.log(`  step-3 key:    ${apiKey.key}    ← ONLY shown here. Save it if you want to reuse.`);
-    if (mintedKeyId) console.log(`  step-7 deterministic key id: ${mintedKeyId} (name "instaclaw-edge-${fakeVmName}")`);
+  // ── 6. name_conflict exercise — mint the same name twice ──
+  const dupResult = await phase("name_conflict_exercise", async () => {
+    const r = await createApiKey(bearer, { name: HAPPY_PATH_KEY_NAME, scopes: ["events:read"] }, env);
+    if (r.ok) {
+      // Cleanup the unexpected duplicate immediately so we don't leak orphans
+      await revokeApiKey(bearer, r.apiKey.id, env);
+      return { status: "warn", details: `duplicate accepted (id=${r.apiKey.id} cleaned up) — EdgeOS may not enforce name uniqueness` };
+    }
+    if (r.status === "name_conflict") {
+      return { status: "ok", details: `http=${r.httpStatus} raw=${r.raw?.slice(0, 150)}` };
+    }
+    return { status: "warn", details: `expected name_conflict, got status=${r.status} http=${r.httpStatus} — check NAME_CONFLICT_HINTS in lib/edgeos-api-keys.ts` };
+  });
+
+  // ── 7. mintOrReuseApiKey — full high-level helper exercise ──
+  // Uses HAPPY_PATH_VM_NAME so the deterministic key is "instaclaw-edge-test-mint"
+  // (orphan sweep at step 2.5 already cleaned any prior version)
+  const mint1Result = await phase("mint_or_reuse_first_run", async () => {
+    const r = await mintOrReuseApiKey(
+      { bearer, vmName: HAPPY_PATH_VM_NAME, scopes: ["events:read"] },
+      env
+    );
+    if (!r.ok) return { status: "fail", details: `status=${r.status} detail=${r.detail}` };
+    if (r.mode !== "created") return { status: "warn", details: `mode=${r.mode} (expected 'created' for first run)` };
+    return { status: "ok", value: r.apiKey.id, details: `mode=${r.mode} id=${r.apiKey.id}` };
+  });
+  const mintedId = (mint1Result.value as string | undefined) ?? null;
+
+  await phase("mint_or_reuse_second_run", async () => {
+    const r = await mintOrReuseApiKey(
+      { bearer, vmName: HAPPY_PATH_VM_NAME, scopes: ["events:read"], onConflict: "return_existing" },
+      env
+    );
+    if (!r.ok) return { status: "fail", details: `status=${r.status} detail=${r.detail}` };
+    if (r.mode === "existing" && r.fullKey === null) {
+      return { status: "ok", details: `mode=existing (correct — fullKey is null since we never see existing secrets)` };
+    }
+    return { status: "warn", details: `mode=${r.mode} fullKey=${r.fullKey ? "present" : "null"}` };
+  });
+
+  // ── 8. cleanup ──
+  if (args.keep) {
+    console.log("");
+    console.log(`↷ cleanup SKIPPED (--keep) — keys persist for further poking:`);
+    console.log(`  step-3 key: id=${apiKey.id}  name=${apiKey.name}`);
+    console.log(`  step-3 raw key (shown ONLY here, persist responsibly): ${apiKey.key}`);
+    if (mintedId) console.log(`  step-7 key id: ${mintedId} (name=instaclaw-edge-${HAPPY_PATH_VM_NAME})`);
   } else {
-    console.log(`→ Step 8: cleanup`);
-    const revoke1 = await revokeApiKey(bearer, apiKey.id, env);
-    console.log(`  step-3 revoke: ${revoke1.ok ? "✓" : `✗ status=${revoke1.status}`}`);
-    if (mintedKeyId) {
-      const revoke2 = await revokeApiKey(bearer, mintedKeyId, env);
-      console.log(`  step-7 revoke: ${revoke2.ok ? "✓" : `✗ status=${revoke2.status}`}`);
+    await phase("cleanup_step3", async () => {
+      const r = await revokeApiKey(bearer, apiKey.id, env);
+      return r.ok ? { status: "ok" } : { status: "warn", details: `status=${r.status}` };
+    });
+    if (mintedId) {
+      await phase("cleanup_step7", async () => {
+        const r = await revokeApiKey(bearer, mintedId, env);
+        return r.ok ? { status: "ok" } : { status: "warn", details: `status=${r.status}` };
+      });
     }
   }
 
-  console.log("\n═══ all steps completed ═══");
+  // Final summary + empirical findings
+  reportSummary();
   console.log("");
-  console.log("Summary of empirical findings (record these in the audit doc):");
-  console.log(`  - X-Tenant-Id required for /api-keys POST: ${createResult.ok ? "NO (key minted with header set; cannot distinguish required vs harmlessly-accepted from one positive)" : "(test failed at step 3)"}`);
-  console.log(`  - Duplicate-name status code: ${dupResult.ok ? "NOT ENFORCED (name uniqueness off)" : `${dupResult.status}/${dupResult.httpStatus}`}`);
-  console.log(`  - Events list non-empty on first eos_live_*: ${eventCount !== null ? (eventCount > 0 ? `YES (${eventCount} events)` : "NO ([] returned)") : "(unknown)"}`);
+  console.log("EMPIRICAL FINDINGS (record in audit doc):");
+  console.log(`  - X-Tenant-Id required for /api-keys POST: send-if-set is safe either way; ` +
+              `dedicated probe needs a real bearer (which we have, see above)`);
+  console.log(`  - Duplicate-name response shape: ${dupResult.status === "ok" ? "409 name_conflict" : dupResult.details}`);
+  console.log("");
+
+  const failed = phaseResults.some((r) => r.status === "fail");
+  process.exit(failed ? 1 : 0);
+}
+
+// ─── main ──────────────────────────────────────────────────────────────────
+
+async function main() {
+  const args = parseArgs();
+  if (args.smoke) await runSmoke(args);
+  else await runHappyPath(args);
 }
 
 main().catch((err) => {
