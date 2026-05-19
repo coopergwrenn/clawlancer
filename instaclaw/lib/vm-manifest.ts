@@ -1479,8 +1479,70 @@ export const VM_MANIFEST = {
    *  Manual cleanup via the per-VM backup at ~/.openclaw/backups/v106-
    *  gbrain-soul-routing-<ts>/SOUL.md if rollback must also reverse the
    *  on-disk state.
+   *
+   * v107 (2026-05-19): gbrain fleet rollout — canary gating mechanism.
+   *  New `gbrain_enabled BOOLEAN` column on instaclaw_vms (migration at
+   *  supabase/migrations/20260519220000_vm_gbrain_enabled.sql, applied
+   *  to prod 2026-05-19 BEFORE this code landed per Rule 56). New helper
+   *  `isGbrainEligibleForVM(vm)` in lib/vm-reconcile.ts is the single
+   *  source of truth for gbrain-eligibility decisions. Three-state column:
+   *  NULL = follow partner allowlist (pre-v107 behavior preserved);
+   *  true = explicit canary opt-in; false = explicit rollback hatch.
+   *
+   *  Why: phased gbrain rollout to the 137 non-edge VMs ahead of Edge
+   *  Esmeralda (May 30). Phase 1 canary = 17 Pro/Power VMs (PRD:
+   *  docs/prd/gbrain-fleet-rollout-canary-2026-05-19.md). Phase 2 = +30.
+   *  Phase 3 = remaining ~90. Cooper's directive: phased, not big-bang;
+   *  abort gracefully at any phase boundary.
+   *
+   *  Refactored 4 callsites to use the helper:
+   *   - stepGbrain (line ~1677) — install gate
+   *   - stepDeployGbrainSoulProtocol (line ~7644) — AGENTS.md inject gate
+   *   - stepDeployGbrainSoulRouting (line ~7919) — SOUL.md replace gate
+   *   - configureOpenClaw inject (lib/ssh.ts ~6140) — fresh-VM assignment gate
+   *
+   *  Reconcile-fleet route's VM select query extended to include
+   *  gbrain_enabled (app/api/cron/reconcile-fleet/route.ts:409).
+   *
+   *  Fleet rollout: v107 forces re-reconcile across all 146 healthy+assigned
+   *  VMs (including the 24 already at cv=106). For most: gates either short-
+   *  circuit at line 1 (non-eligible) or hit marker-present idempotent skip
+   *  (already-deployed edge). For the 17 canary VMs that get `gbrain_enabled
+   *  = true` set after deploy: stepGbrain installs gbrain (~70-165s per VM),
+   *  then stepDeployGbrainSoulProtocol + stepDeployGbrainSoulRouting deploy
+   *  the SOUL/AGENTS content. cv → 107.
+   *
+   *  Behavior preservation: pre-v107 fleet behavior is identical to post-v107
+   *  with `gbrain_enabled = NULL` (the default for all 137 non-edge VMs at
+   *  deploy moment). Canary VMs ONLY get gbrain when explicitly enabled via
+   *  the subsequent `UPDATE instaclaw_vms SET gbrain_enabled = true ...`.
+   *
+   *  Detection note: `scripts/_monitor-gbrain-canary.ts` aggregates per-VM
+   *  signals (gbrain.service state, /health, NRestarts, pg_control freshness,
+   *  gateway health, memory/disk) vs pre-deploy baseline. Run every 1-6h
+   *  during 48h soak.
+   *
+   *  Phase 3 (fleet-wide) future change: when ready, ALTER COLUMN
+   *  gbrain_enabled SET DEFAULT TRUE, then UPDATE ... SET gbrain_enabled
+   *  = true WHERE gbrain_enabled IS NULL. Single-statement collapse to
+   *  fleet-wide enablement. The helper continues to honor explicit FALSE
+   *  for any VM we need to hold back.
+   *
+   *  Rollback: per-VM via `UPDATE ... SET gbrain_enabled = false` + SSH stop
+   *  gbrain.service (no brain.pglite wipe — Rule 22 / Rule 54). Cohort-wide:
+   *  same UPDATE on the 17 cohort names + parallel SSH. Code rollback:
+   *  revert this commit; column stays harmless in DB (default NULL = pre-v107
+   *  behavior).
+   *
+   *  v108 (2026-05-19): EDGE_INSTACLAW_OVERLAY_MD copy fix — replace the
+   *  "Social Layer for events, EdgeOS for attendees" parenthetical (Sola is
+   *  deprecated for Esmeralda 2026; EdgeOS is canonical for both) with a
+   *  cleaner "edge-esmeralda skill — EdgeOS-backed" framing. Single-file
+   *  content change in lib/partner-content.ts. stepDeployEdgeOverlay does
+   *  SHA-verified push to the 9 edge_city VMs within ~3min via the reconciler
+   *  cron. No code-path change; pure copy.
    */
-  version: 106,
+  version: 108,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

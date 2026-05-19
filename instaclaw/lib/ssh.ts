@@ -25,7 +25,7 @@ import {
   EDGE_INSTACLAW_OVERLAY_MD,
 } from "./partner-content";
 import { injectGbrainSoulRoutingV1 } from "./workspace-templates-v2";
-import { GBRAIN_PARTNER_ALLOWLIST } from "./vm-reconcile";
+import { GBRAIN_PARTNER_ALLOWLIST, isGbrainEligibleForVM } from "./vm-reconcile";
 import {
   validateAcpApiKey, getAcpAuthUrl, pollAcpAuthStatus,
   fetchAcpAgents, createAcpAgent, registerAcpOffering,
@@ -6135,9 +6135,15 @@ export async function configureOpenClaw(
     // 3-5 min stepGbrain installs gbrain → tools work.
     //
     // See PRD docs/prd/gbrain-soul-routing-3-surface-analysis-2026-05-19.md.
+    // v107: use isGbrainEligibleForVM helper for single source of truth with
+    // the reconciler. configureOpenClaw runs at fresh-VM assignment time
+    // before any operator UPDATE of gbrain_enabled, so the helper sees
+    // gbrain_enabled=undefined → falls back to partner-allowlist (same as
+    // pre-v107 behavior). When a non-edge VM is later canary-enabled via DB
+    // UPDATE, the reconciler's stepDeployGbrainSoulRouting handles injection
+    // on its next cycle (configureOpenClaw doesn't re-run for canary opts).
     if (
-      config.partner &&
-      GBRAIN_PARTNER_ALLOWLIST.has(config.partner) &&
+      isGbrainEligibleForVM({ partner: config.partner }) &&
       process.env.GBRAIN_INSTALL_ENABLED === "true"
     ) {
       soulContent = injectGbrainSoulRoutingV1(soulContent);

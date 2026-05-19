@@ -137,6 +137,31 @@ function keyRequiresGatewayRestart(key: string): boolean {
 // at fresh-VM assignment time. Single source of truth; future partner
 // additions (consensus_2026, eclipse, etc.) flow to both surfaces at once.
 export const GBRAIN_PARTNER_ALLOWLIST: ReadonlySet<string> = new Set(["edge_city"]);
+
+/**
+ * v107 canary-rollout gating helper.
+ *
+ * Three-state semantics on `instaclaw_vms.gbrain_enabled`:
+ *   - true  → explicitly enable (canary cohort or post-canary opt-in)
+ *   - false → explicitly disable (rollback hatch for VMs with known issues)
+ *   - NULL  → follow partner allowlist (pre-v107 behavior preserved)
+ *
+ * Used by stepGbrain, stepDeployGbrainSoulProtocol,
+ * stepDeployGbrainSoulRouting, and configureOpenClaw's conditional inject.
+ * Single source of truth — when the canary expands to fleet-wide, only
+ * this function (and the DB column values) need to change.
+ *
+ * PRD: docs/prd/gbrain-fleet-rollout-canary-2026-05-19.md.
+ */
+export function isGbrainEligibleForVM(
+  vm: { partner?: string | null; gbrain_enabled?: boolean | null },
+): boolean {
+  // Explicit overrides take precedence over partner-allowlist default.
+  if (vm.gbrain_enabled === false) return false; // explicit disable (rollback hatch)
+  if (vm.gbrain_enabled === true) return true; // explicit enable (canary cohort)
+  // NULL → fall back to partner allowlist (current behavior preserved)
+  return Boolean(vm.partner && GBRAIN_PARTNER_ALLOWLIST.has(vm.partner));
+}
 // HTTP sidecar architecture. Pin to a specific commit per Rule 35;
 // operator manually bumps after canary validation when newer version is desired.
 // History: stdio v0.28.1 (2ea5b71) → HTTP v0.35.0.0 (baf1a47) → v0.36.3.0 (1d5f69f).
@@ -1643,13 +1668,13 @@ async function stepExecStartAlignment(
  */
 async function stepGbrain(
   ssh: SSHConnection,
-  vm: VMRecord & { partner?: string | null },
+  vm: VMRecord & { partner?: string | null; gbrain_enabled?: boolean | null },
   result: ReconcileResult,
   dryRun: boolean,
   strict: boolean,
 ): Promise<void> {
-  // ── Gate 1: partner allowlist ──
-  if (!vm.partner || !GBRAIN_PARTNER_ALLOWLIST.has(vm.partner)) return;
+  // ── Gate 1: gbrain eligibility (partner allowlist OR explicit canary opt-in) ──
+  if (!isGbrainEligibleForVM(vm)) return;
 
   // ── Gate 2: strict mode timeout incompatibility ──
   // Strict has a 180s deadline; gbrain install needs ~70-165s. Non-strict
@@ -7611,12 +7636,12 @@ out({
  */
 async function stepDeployGbrainSoulProtocol(
   ssh: SSHConnection,
-  vm: VMRecord & { partner?: string | null },
+  vm: VMRecord & { partner?: string | null; gbrain_enabled?: boolean | null },
   result: ReconcileResult,
   dryRun: boolean,
 ): Promise<void> {
-  // ── Gate 1: partner allowlist (cheapest check first) ──
-  if (!vm.partner || !GBRAIN_PARTNER_ALLOWLIST.has(vm.partner)) return;
+  // ── Gate 1: gbrain eligibility (partner allowlist OR explicit canary opt-in) ──
+  if (!isGbrainEligibleForVM(vm)) return;
 
   // ── Gate 2: env var (pauses entire gbrain content surface) ──
   if (process.env.GBRAIN_INSTALL_ENABLED !== "true") return;
@@ -7886,12 +7911,12 @@ async function sendGbrainSoulRoutingDriftAlertDeduped(
  */
 async function stepDeployGbrainSoulRouting(
   ssh: SSHConnection,
-  vm: VMRecord & { partner?: string | null; name?: string | null },
+  vm: VMRecord & { partner?: string | null; name?: string | null; gbrain_enabled?: boolean | null },
   result: ReconcileResult,
   dryRun: boolean,
 ): Promise<void> {
-  // ── Gate 1: partner allowlist ──
-  if (!vm.partner || !GBRAIN_PARTNER_ALLOWLIST.has(vm.partner)) return;
+  // ── Gate 1: gbrain eligibility (partner allowlist OR explicit canary opt-in) ──
+  if (!isGbrainEligibleForVM(vm)) return;
 
   // ── Gate 2: env var ──
   if (process.env.GBRAIN_INSTALL_ENABLED !== "true") return;
