@@ -22,34 +22,35 @@
  *   Per Rule 13 we're in middleware's selfAuthAPIs allow-list — the
  *   middleware lets unauth requests through; this handler does the auth.
  *
- * ── Payload (best-guess shape) ──
+ * ── Payload — aligned to Yanek's confirmed Path C shape ──
  *
- *   The Index API docs don't yet describe outbound webhook payloads.
- *   The parser accepts the shape we'd expect from their internal vocabulary:
+ *   Yanek confirmed (2026-05-19) that Index does NOT have outbound webhooks
+ *   today. Path C (the cron poller) is the primary path. This route stays
+ *   in place as dead code in case he adds outbound webhooks later.
+ *
+ *   If/when he does add outbound webhooks, we expect (and parse) the same
+ *   per-opportunity shape Path C polls — wrapped in a single-opportunity
+ *   envelope rather than an array:
  *
  *   {
- *     "event": "opportunity.accepted",  // string, optional, advisory
- *     "occurredAt": "2026-05-30T12:00:00Z",  // ISO, optional
- *     "data": {
- *       "opportunityId": "uuid",       // required
- *       "networkId": "uuid",           // optional (advisory only)
- *       "parties": [                   // array of >=2 parties
- *         { "userId": "uuid", "role": "proposer" },
- *         { "userId": "uuid", "role": "responder" }
+ *     "event": "opportunity.accepted",            // advisory, ignored by parser
+ *     "occurredAt": "2026-05-30T12:00:00Z",       // advisory
+ *     "data": {                                   // single opportunity object
+ *       "id": "uuid",
+ *       "status": "accepted",
+ *       "actors": [
+ *         { "userId": "uuid", "role": "patient|agent", ... },
+ *         { "userId": "uuid", "role": "patient|agent", ... }
  *       ],
- *       "scores": {                    // optional
- *         "rrf": 0.87,
- *         "mutual": 0.92,
- *         "deliberation": 0.78
- *       }
+ *       "interpretation": { "category", "reasoning", "confidence", "signals" },
+ *       "confidence": "0.95",
+ *       "createdAt": "iso", "updatedAt": "iso"
  *     }
  *   }
  *
- *   `parseEvent()` ALSO accepts a few common alternate shapes (top-level
- *   opportunityId, `users[]` instead of `parties[]`, flat
- *   userIdA/userIdB) so the day-one ping has a chance of working even if
- *   Yanek's exact shape differs. Failed parses return 400 with the field
- *   list expected — Yanek's first 400 tells us how to adapt.
+ *   `parseEvent()` accepts the opportunity either wrapped in `data` or
+ *   at the top level. No other shape variants — the parser mirrors the
+ *   poller's `normalizeOpportunity` exactly.
  *
  * ── Response ──
  *
@@ -164,9 +165,9 @@ export async function POST(req: NextRequest) {
         status: "error",
         reason: "unparseable_payload",
         detail:
-          "Expected one of: { data: { opportunityId, parties:[{userId},{userId}] } } | " +
-          "{ data: { opportunityId, users: [...] } } | " +
-          "{ opportunityId, userIdA, userIdB }",
+          "Expected: { data?: { id, status, actors: [{userId,role}, ...] } } " +
+          "or the opportunity at the top level. Roles 'agent' / 'patient' " +
+          "are recognized for ordering but not required.",
       },
       { status: 400 },
     );
@@ -190,97 +191,74 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Normalize the incoming event into the shape our recorder needs. Accepts
- * several plausible payload shapes — see header comment for details. Returns
- * null when no shape matches.
+ * Normalize the incoming event into the shape our recorder needs.
  *
- * This is the single place that needs to be updated when Yanek confirms
- * the actual outbound payload format.
+ * Mirrors Path C's `normalizeOpportunity` exactly — same confirmed Yanek
+ * shape, just unwrapped from either `{data: ...}` or top-level. If Index
+ * ever adds outbound webhooks, this will Just Work as long as they emit
+ * the same per-opportunity payload as the poller endpoint returns.
  */
+interface IndexOpportunityActor {
+  userId?: string;
+  role?: string;
+}
+
+interface IndexOpportunity {
+  id?: string;
+  actors?: IndexOpportunityActor[];
+  interpretation?: { reasoning?: string; confidence?: number };
+  confidence?: string;
+}
+
 function parseEvent(raw: unknown): NormalizedEvent | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
 
-  // Try `data: { ... }` envelope first (most idiomatic).
-  const candidates = [o.data, o] as Array<Record<string, unknown> | undefined>;
+  // Accept either { data: opportunity } or { opportunity at top level }.
+  const candidates: IndexOpportunity[] = [];
+  if (o.data && typeof o.data === "object") candidates.push(o.data as IndexOpportunity);
+  candidates.push(o as IndexOpportunity);
 
-  for (const c of candidates) {
-    if (!c || typeof c !== "object") continue;
+  for (const opp of candidates) {
+    if (!opp.id || typeof opp.id !== "string") continue;
+    if (!Array.isArray(opp.actors) || opp.actors.length < 2) continue;
 
-    // opportunityId — accept both opportunityId and opportunity_id and id
-    const opportunityId =
-      asStr(c.opportunityId) ?? asStr(c.opportunity_id) ?? asStr(c.id);
-    if (!opportunityId) continue;
+    // Role pairing: agent → source, patient → candidate.
+    const agent = opp.actors.find((a) => a.role === "agent");
+    const patient = opp.actors.find((a) => a.role === "patient");
 
-    // Two parties — try { parties: [{userId},{userId}] } | { users: [...] } | flat
     let userA: string | null = null;
     let userB: string | null = null;
-
-    const partyList = Array.isArray(c.parties)
-      ? (c.parties as Array<Record<string, unknown>>)
-      : Array.isArray(c.users)
-        ? (c.users as Array<Record<string, unknown>>)
-        : null;
-
-    if (partyList && partyList.length >= 2) {
-      // Prefer role=proposer/responder when present; else first two.
-      const proposer = partyList.find(
-        (p) => asStr(p.role) === "proposer" || asStr(p.role) === "accepter",
-      );
-      const responder = partyList.find(
-        (p) =>
-          asStr(p.role) === "responder" ||
-          asStr(p.role) === "counterparty" ||
-          asStr(p.role) === "candidate",
-      );
-      if (proposer && responder) {
-        userA = asStr(proposer.userId) ?? asStr(proposer.user_id) ?? asStr(proposer.id);
-        userB = asStr(responder.userId) ?? asStr(responder.user_id) ?? asStr(responder.id);
-      } else {
-        // No role info — take the first two parties.
-        const p0 = partyList[0];
-        const p1 = partyList[1];
-        userA = asStr(p0.userId) ?? asStr(p0.user_id) ?? asStr(p0.id);
-        userB = asStr(p1.userId) ?? asStr(p1.user_id) ?? asStr(p1.id);
-      }
+    if (agent?.userId && patient?.userId && agent.userId !== patient.userId) {
+      userA = agent.userId;
+      userB = patient.userId;
     } else {
-      // Flat shape: userIdA/userIdB OR sourceUserId/candidateUserId
-      userA =
-        asStr(c.userIdA) ??
-        asStr(c.user_id_a) ??
-        asStr(c.sourceUserId) ??
-        asStr(c.source_user_id);
-      userB =
-        asStr(c.userIdB) ??
-        asStr(c.user_id_b) ??
-        asStr(c.candidateUserId) ??
-        asStr(c.candidate_user_id);
+      userA = opp.actors[0]?.userId ?? null;
+      userB = opp.actors[1]?.userId ?? null;
     }
-
     if (!userA || !userB) continue;
 
-    // Pull optional metadata (scores + reasoning). All optional; null-safe.
-    const scoresRaw = (c.scores ?? c.score) as
-      | { rrf?: number; mutual?: number; deliberation?: number }
-      | undefined;
-    const reasoning = asStr(c.reasoning);
+    // Score mapping: same as Path C.
+    const deliberation =
+      typeof opp.interpretation?.confidence === "number"
+        ? opp.interpretation.confidence
+        : opp.confidence
+          ? Number.parseFloat(opp.confidence)
+          : null;
 
     return {
-      opportunityId,
+      opportunityId: opp.id,
       userA,
       userB,
       metadata: {
-        rrfScore: scoresRaw?.rrf ?? null,
-        mutualScore: scoresRaw?.mutual ?? null,
-        deliberationScore: scoresRaw?.deliberation ?? null,
-        reasoning: reasoning ?? null,
+        rrfScore: null,
+        mutualScore: null,
+        deliberationScore:
+          deliberation !== null && Number.isFinite(deliberation) ? deliberation : null,
+        reasoning: opp.interpretation?.reasoning ?? null,
       },
     };
   }
 
   return null;
-}
-
-function asStr(v: unknown): string | null {
-  return typeof v === "string" && v.length > 0 ? v : null;
 }

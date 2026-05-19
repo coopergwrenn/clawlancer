@@ -80,26 +80,30 @@ export async function GET(req: NextRequest) {
     "https://protocol.index.network"
   ).replace(/\/+$/, "");
 
-  // Yanek's confirmed endpoint shape:
-  //   POST /api/networks/:networkId/opportunities?status=accepted
-  //   Header: x-api-key: <master>
-  //   Body:   {} — empty; filter is in the query string
+  // Yanek's CONFIRMED endpoint shape (2026-05-19 update — previous
+  // /api/networks/:id/opportunities variant deprecated):
   //
-  // Limit isn't documented as a query param for THIS endpoint (it's documented
-  // on the GET variant which we're not using); omit it. If volume grows past
-  // what the endpoint returns per call we'll revisit.
-  const url = `${apiBase}/api/networks/${indexEnv.networkId}/opportunities?status=accepted`;
+  //   GET /api/opportunities?status=accepted
+  //   Header: x-api-key: <INDEX_NETWORK_MASTER_KEY>
+  //
+  // Note: this is a SINGLE endpoint scoped by master-key auth, not
+  // network-scoped in the URL. Yanek's master key is scoped to the
+  // Edge City network on his side; the returned opportunities are
+  // implicitly filtered to that network.
+  //
+  // No pagination params documented yet. At ~200 Edge attendees we
+  // expect <50 accepted opportunities per minute. If volume grows
+  // past what the endpoint returns per call we'll revisit.
+  const url = `${apiBase}/api/opportunities?status=accepted`;
 
   let res: Response;
   try {
     res = await fetch(url, {
-      method: "POST",
+      method: "GET",
       headers: {
         "x-api-key": indexEnv.masterKey,
-        "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: "{}",
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -194,14 +198,69 @@ export async function GET(req: NextRequest) {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
+//
+// Response shape — CONFIRMED with Yanek (2026-05-19) with real data:
+//
+//   {
+//     "opportunities": [
+//       {
+//         "id": "uuid",
+//         "status": "accepted",
+//         "actors": [
+//           { "userId": "user-uuid", "networkId": "...", "role": "patient|agent", "name": "...", "intent": "..." },
+//           { "userId": "user-uuid", "networkId": "...", "role": "patient|agent", "name": "...", "intent": "..." }
+//         ],
+//         "interpretation": { "category": "...", "reasoning": "...", "confidence": 0.95, "signals": [...] },
+//         "confidence": "0.95",
+//         "createdAt": "iso", "updatedAt": "iso", "expiresAt": null,
+//         "context": { "conversationId": "..." },
+//         "counterpartName": "..."
+//       }
+//     ]
+//   }
+//
+// Yanek's CRITICAL confirmation: `actors[].userId` is the SAME global user
+// ID returned from /signup — our `instaclaw_vms.index_user_id` lookup
+// pipeline works as-is. No translation layer needed.
+//
+// Earlier defensive parsers (parties / users / userIdA-userIdB) are removed
+// since the shape is now known and stable.
 
-function extractOpportunities(raw: unknown): Array<Record<string, unknown>> | null {
+interface IndexOpportunityActor {
+  userId: string;
+  networkId?: string;
+  role?: "patient" | "agent";
+  name?: string;
+  intent?: string;
+}
+
+interface IndexOpportunity {
+  id: string;
+  status: string;
+  actors: IndexOpportunityActor[];
+  interpretation?: {
+    category?: string;
+    reasoning?: string;
+    confidence?: number;
+    signals?: unknown[];
+  };
+  confidence?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  expiresAt?: string | null;
+  context?: { conversationId?: string };
+  counterpartName?: string;
+}
+
+interface IndexOpportunitiesResponse {
+  opportunities: IndexOpportunity[];
+}
+
+function extractOpportunities(raw: unknown): IndexOpportunity[] | null {
   if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-  if (Array.isArray(r.opportunities)) return r.opportunities as Array<Record<string, unknown>>;
-  if (Array.isArray(r.data)) return r.data as Array<Record<string, unknown>>;
-  if (Array.isArray(r.items)) return r.items as Array<Record<string, unknown>>;
-  return null;
+  const r = raw as Partial<IndexOpportunitiesResponse>;
+  if (!Array.isArray(r.opportunities)) return null;
+  return r.opportunities;
 }
 
 interface NormalizedOpportunity {
@@ -216,52 +275,51 @@ interface NormalizedOpportunity {
   };
 }
 
-function normalizeOpportunity(opp: Record<string, unknown>): NormalizedOpportunity | null {
-  const opportunityId = asStr(opp.id) ?? asStr(opp.opportunityId) ?? asStr(opp.opportunity_id);
-  if (!opportunityId) return null;
+function normalizeOpportunity(opp: IndexOpportunity): NormalizedOpportunity | null {
+  if (!opp.id || typeof opp.id !== "string") return null;
+  if (!Array.isArray(opp.actors) || opp.actors.length < 2) return null;
 
-  // Parties — same flexible parser as Path A's payload normalizer.
-  const partyList = Array.isArray(opp.parties)
-    ? (opp.parties as Array<Record<string, unknown>>)
-    : Array.isArray(opp.users)
-      ? (opp.users as Array<Record<string, unknown>>)
-      : null;
-  if (!partyList || partyList.length < 2) return null;
+  // Role pairing semantics (from Yanek): one actor is "agent" (initiator),
+  // one is "patient" (recipient). Map to source/candidate consistently —
+  // if roles are present, agent → source, patient → candidate. If they're
+  // both the same role or roles are missing, fall back to array order.
+  const agent = opp.actors.find((a) => a.role === "agent");
+  const patient = opp.actors.find((a) => a.role === "patient");
 
-  const proposer = partyList.find(
-    (p) => asStr(p.role) === "proposer" || asStr(p.role) === "accepter",
-  );
-  const responder = partyList.find(
-    (p) =>
-      asStr(p.role) === "responder" ||
-      asStr(p.role) === "counterparty" ||
-      asStr(p.role) === "candidate",
-  );
-  const userA = proposer
-    ? asStr(proposer.userId) ?? asStr(proposer.user_id) ?? asStr(proposer.id)
-    : asStr(partyList[0].userId) ?? asStr(partyList[0].user_id) ?? asStr(partyList[0].id);
-  const userB = responder
-    ? asStr(responder.userId) ?? asStr(responder.user_id) ?? asStr(responder.id)
-    : asStr(partyList[1].userId) ?? asStr(partyList[1].user_id) ?? asStr(partyList[1].id);
+  let userA: string | null = null;
+  let userB: string | null = null;
+  if (agent && patient && agent.userId && patient.userId && agent.userId !== patient.userId) {
+    userA = agent.userId;
+    userB = patient.userId;
+  } else {
+    userA = opp.actors[0]?.userId ?? null;
+    userB = opp.actors[1]?.userId ?? null;
+  }
   if (!userA || !userB) return null;
 
-  const scores = opp.scores as
-    | { rrf?: number; mutual?: number; deliberation?: number }
-    | undefined;
+  // Score mapping for the matchpool_outcomes columns:
+  //   - rrf_score, mutual_score: not present in Yanek's response; stay NULL
+  //   - deliberation_score: nearest semantic match for interpretation.confidence
+  //     (or the top-level "confidence" string if interpretation.confidence absent)
+  const deliberationScore =
+    typeof opp.interpretation?.confidence === "number"
+      ? opp.interpretation.confidence
+      : opp.confidence
+        ? Number.parseFloat(opp.confidence)
+        : null;
 
   return {
-    opportunityId,
+    opportunityId: opp.id,
     userA,
     userB,
     metadata: {
-      rrfScore: scores?.rrf ?? null,
-      mutualScore: scores?.mutual ?? null,
-      deliberationScore: scores?.deliberation ?? null,
-      reasoning: asStr(opp.reasoning) ?? null,
+      rrfScore: null,
+      mutualScore: null,
+      deliberationScore:
+        deliberationScore !== null && Number.isFinite(deliberationScore)
+          ? deliberationScore
+          : null,
+      reasoning: opp.interpretation?.reasoning ?? null,
     },
   };
-}
-
-function asStr(v: unknown): string | null {
-  return typeof v === "string" && v.length > 0 ? v : null;
 }

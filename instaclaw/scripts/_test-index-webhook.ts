@@ -134,14 +134,33 @@ async function main() {
   const happyPayload = {
     event: "opportunity.accepted",
     occurredAt: new Date().toISOString(),
+    // Shape mirrors Yanek's confirmed Path C response (per-opportunity).
+    // If Index ever adds outbound webhooks, expected envelope is this.
     data: {
-      opportunityId,
-      networkId: process.env.INDEX_NETWORK_ID,
-      parties: [
-        { userId: vmA.index_user_id, role: "proposer" },
-        { userId: vmB.index_user_id, role: "responder" },
+      id: opportunityId,
+      status: "accepted",
+      actors: [
+        {
+          userId: vmA.index_user_id,
+          networkId: process.env.INDEX_NETWORK_ID,
+          role: "agent",
+          name: "smoke test A",
+        },
+        {
+          userId: vmB.index_user_id,
+          networkId: process.env.INDEX_NETWORK_ID,
+          role: "patient",
+          name: "smoke test B",
+        },
       ],
-      scores: { rrf: 0.87, mutual: 0.92, deliberation: 0.78 },
+      interpretation: {
+        category: "smoke-test",
+        reasoning: "synthetic test from scripts/_test-index-webhook.ts",
+        confidence: 0.95,
+      },
+      confidence: "0.95",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     },
   };
   const body = JSON.stringify(happyPayload);
@@ -224,10 +243,11 @@ async function main() {
     const skipPayload = {
       event: "opportunity.accepted",
       data: {
-        opportunityId: genUuid(),
-        parties: [
-          { userId: genUuid(), role: "proposer" },
-          { userId: vmB.index_user_id, role: "responder" },
+        id: genUuid(),
+        status: "accepted",
+        actors: [
+          { userId: genUuid(), role: "agent" },
+          { userId: vmB.index_user_id, role: "patient" },
         ],
       },
     };
