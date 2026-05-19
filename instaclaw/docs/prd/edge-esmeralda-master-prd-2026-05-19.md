@@ -544,17 +544,96 @@ CLAUDE.md memory + the v1 /edge backup landing page documented:
 
 ---
 
-## K. Open questions for Cooper
+## K. Open questions — resolved 2026-05-19 (Claude recommendations; Cooper to override anything wrong)
 
-1. **Exact form fields** (B2) — confirm 5-field v0 set or adjust.
-2. **Cron-job baseline audit** — which existing crons on a fresh edge VM are infra vs user-facing? Need a pre-launch sweep to be sure we don't ship the "spammy by default" UX the meeting was worried about.
-3. **Reverse proxy / domain routing** — meeting mentioned proxying an `/agent-village` path to the Edge site via Webflow. Who's checking? Status?
-4. **Skills repo name + ownership** — meeting said someone volunteered to lead the split. Confirm who.
-5. **Geo / Nick production access** — meeting flagged outstanding access requests. Status?
-6. **ChatGPT history import scope on day-one** — Phase 1 plan exists but the user-facing UX surface (button placement, copy, error handling) needs UI design.
-7. **Visualization parallel work** — meeting referenced parallel viz work. Is that the edgeclaw-village (above) or something else?
-8. **Model default policy** — when a user has OpenAI OAuth connected, do we switch to GPT-4o automatically? Or expose as a setting?
-9. **Privacy section on /edge** — restore it in Seref's redesign, or get explicit sign-off to drop?
+For each: **recommendation**, **why**, **assumption** (the leap that could be wrong).
+
+### K1. Exact form fields (B2)
+
+**Recommendation:** 7-field v0; form happens POST-OAuth (interstitial → Google OAuth → form → /connect).
+
+1. Display name (text, prefilled from Google)
+2. What are you excited about for Edge Esmeralda? (open text, 280 chars)
+3. What are you building / working on? (open text, 280 chars)
+4. Who do you want to meet? (open text, 280 chars)
+5. Which weeks are you attending? (multi-select: 4 week ranges)
+6. Telegram handle (optional — for warm first-message framing)
+7. Notification cadence (radio: "1 morning brief at 9 AM PT" default / more / less / off)
+
+**Why:** Mirrors the existing 4-question Telegram intake so the conversational follow-up reads coherent. Weeks-attending is load-bearing for matching. Cadence in the form (not the bot) satisfies §E1's "ask preference" without re-asking on first message.
+
+**Assumption:** Form is post-OAuth. If pre-OAuth desired, drop name + add email.
+
+### K2. Cron baseline audit (spammy by default?)
+
+**Recommendation:** Nothing on a fresh edge VM today sends user-facing messages. Meeting's concern is forward-looking, not retroactive. Only addition for launch: morning brief, default-on, respecting Q1's cadence pref.
+
+**Why:** vm-050 cron audit shows all current entries are infra (strip-thinking, vm-watchdog, silence-watchdog, auto-approve-pairing, push-heartbeat, workspace-index, openclaw memory index, gateway-health-textfile, edge-esmeralda git pull). Zero user-facing crons.
+
+**Assumption:** Other 8 edge VMs match vm-050's cron footprint (will verify during the §P0-3 cleanup sweep below).
+
+### K3. Reverse proxy / `/agent-village` Webflow routing
+
+**Recommendation:** SKIP the proxy. Edge canonical page at `edgecity.live/agentvillage` (their stack); plain hyperlink → `instaclaw.io/edge`.
+
+**Why:** Reverse-proxying instaclaw under the Edge domain breaks Stripe checkout (absolute domain), Google OAuth redirect_uri allow-listing, and cookie/session scoping — all silently. A hyperlink has none of those failure modes.
+
+**Assumption:** Edge team can build their canonical page on their own stack. If a domain co-location constraint forces it, fallback: CNAME `agentvillage.edgecity.live` → Vercel project (custom domain, not proxy).
+
+### K4. Skills repo name + ownership
+
+**Recommendation:** Defer (Cooper's directive). When greenlit, name `instaclaw-skills` (or `edgeclaw-skills` if Edge-led). Owner = the meeting volunteer.
+
+**Why:** §C2 split is P1, not launch-blocking. Hosted users get skills via configureOpenClaw either way.
+
+**Assumption:** Volunteer is on the Edge team (Timour or Seref). Cooper to confirm.
+
+### K5. Geo / Nick production access
+
+**Recommendation:** Defer pending Cooper clarifying what Nick actually needs. The four plausible asks:
+- Supabase read-only role → grantable
+- Per-user EdgeOS token → wait for §D3
+- Production fleet SSH → no (privacy bridge prohibits)
+- Match-outcomes webhook → already exists at `app/api/match/v1/outcome/route.ts`
+
+**Why:** Granting wrong = privacy violation. Granting nothing = blocks integration. Need the actual ask before deciding.
+
+**Assumption:** Nick wants Supabase-read-shaped access. Holding until Cooper confirms.
+
+### K6. ChatGPT history import UI surface
+
+**Recommendation:** Add a `connect-chatgpt` phase to OnboardingWizard.tsx between `bot-verify` and `tour`. Clearly skippable. Settings dashboard also exposes the connect button.
+
+**Why:** Pre-signup is too early (no user_id). During-signup is too many auth steps. Post-bot-verify is the moment perceived value is highest — user is about to chat, "your history" CTA lands.
+
+**Assumption:** `lib/openai-oauth.ts` ships backend primitives only (confirmed via read); UI is on us. ChatGPT OAuth terminal owns the backend; we own the wizard surface.
+
+### K7. Parallel viz work
+
+**Recommendation:** Assume "parallel viz" = `edgeclaw-village` only. Single viz repo, single Vercel deploy, active commits by Cooper through 2026-05-18.
+
+**Why:** No second viz project found in the repo or recent commit history. Meeting phrasing plausibly refers to Cooper's village work + Seref's /edge redesign — both accounted for.
+
+**Assumption:** No undisclosed third viz project (e.g., on-site projector display). Cooper to surface if so.
+
+### K8. Model default policy when OpenAI OAuth connected
+
+**Recommendation:** **Auto-switch on OAuth completion** to user's best available OpenAI model (GPT-5 if subscriber, GPT-4o fallback). Expose dashboard setting for users who want to force Sonnet/specific GPT variant.
+
+**Why:** OAuth = explicit signal of "I want to use my ChatGPT." Forcing a settings hop after is friction that violates least-surprise. Edge team's Sonnet-quality concern is addressed the moment user opts in. Setting still exists for testing / force-pinning.
+
+**Assumption:** ChatGPT OAuth terminal exposes a `preferred_provider` field or model-switch hook. If they ship only token storage, the auto-switch logic is a small InstaClaw follow-up — but the principle lands now.
+
+### K9. Privacy section on /edge — restore or document drop?
+
+**Recommendation:** **Restore**, in Seref's visual style (sage-card-grid section between `<Features />` and `<PlazaSection />`).
+
+**Why:** The 4 principles (per-VM isolation, Maximum Privacy Mode, anonymized research, granular opt-in) were product positioning, not decoration. Three load-bearing reasons:
+1. Audience is sophisticated — AI/cypherpunk/governance researchers expect privacy posture; absence reads as carelessness.
+2. Maximum Privacy Mode is a real differentiator (operators can't read conversations when on).
+3. Vendrov's pre-registered hypotheses claim anonymization — the landing should make that contract visible.
+
+**Assumption:** Seref dropped during the visual rewrite, not strategically. If deliberate, Cooper documents the drop with rationale.
 
 ---
 
