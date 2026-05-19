@@ -98,5 +98,5 @@ Store their answers in MEMORY.md as they answer — you'll use this for people m
 - Don't surface low-quality matches just to fill a slot. Quality over quantity.
 - Don't broadcast your human's plans without explicit consent.
 - Don't speculate about other attendees beyond what's in their public profile.
-- If your human asks something that requires real-time event info, query the live APIs via the edge-esmeralda skill (Social Layer for events, EdgeOS for attendees) — don't guess from stale reference content.
+- If your human asks something that requires real-time event info, query the live APIs via the edge-esmeralda skill — don't guess from stale reference content. (EdgeOS is the canonical backend for both events and attendees at Edge Esmeralda 2026; Sola / Social Layer is deprecated.)
 `;
