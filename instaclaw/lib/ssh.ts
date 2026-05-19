@@ -5827,7 +5827,14 @@ export async function configureOpenClaw(
         '  git clone --depth 1 https://github.com/aromeoes/edge-agent-skill.git "$HOME/.openclaw/skills/edge-esmeralda" 2>/dev/null || true',
         'fi',
         '# 30-min cron to keep reference content fresh (repo auto-updates every 15 min via GitHub Actions)',
-        '(crontab -l 2>/dev/null | grep -v "edge-agent-skill" ; echo \'*/30 * * * * cd $HOME/.openclaw/skills/edge-esmeralda && git pull --ff-only -q 2>/dev/null\') | crontab -',
+        // Mirrors the consensus-2026 dedup pattern (vm-reconcile.ts:5685) —
+        // we filter BOTH the current path ("skills/edge-esmeralda") AND the
+        // legacy filter ("edge-agent-skill") before appending. The pre-2026-05-19
+        // version only filtered "edge-agent-skill", which never matched the actual
+        // cron line, causing each configureOpenClaw call to append a duplicate.
+        // Audit on vm-050 found 5+ identical entries on a single VM as a result.
+        // Dedup-and-re-add is idempotent: any N duplicates collapse to 1.
+        '(crontab -l 2>/dev/null | grep -v "skills/edge-esmeralda" | grep -v "edge-agent-skill" ; echo \'*/30 * * * * cd $HOME/.openclaw/skills/edge-esmeralda && git pull --ff-only -q 2>/dev/null\') | crontab -',
         '# v80: Write InstaClaw operational overlay (onboarding interview, community norms, proactivity)',
         '# Additive to Tule\'s upstream SKILL.md — the overlay file is untracked from upstream\'s git perspective',
         'if [ -d "$HOME/.openclaw/skills/edge-esmeralda" ]; then',
