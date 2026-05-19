@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-19
 
-Window: `60d3667595a9b899d62a7302a68e55e34580d386` → `HEAD` (HEAD = `5d3a604a`)
+Window: `5d3a604a08639c0885d10cc14b74bd2c09b95734` → `HEAD` (HEAD = `b0417220`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 5d3a604a08639c0885d10cc14b74bd2c09b95734 -->
+<!-- LAST_GENERATED_SHA: b0417220a80241567dae569efa09f9196271be07 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `5d3a604a` 2026-05-19 — feat(index): poller Option B — per-user-key fan-out across 9 edge_city agents [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `a505395a` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `47e9dddc` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `b0417220` 2026-05-19 — docs(prd): Phase 0.5 spike — OpenClaw natively supports ChatGPT OAuth [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `5d3a604a` 2026-05-19 — feat(index): poller Option B — per-user-key fan-out across 9 edge_city agents [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -43,23 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `a505395a` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `5d3a604a` 2026-05-19 — [infrastructure, edge] — feat(index): poller Option B — per-user-key fan-out across 9 edge_city agents
+- `47e9dddc` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `b0417220` 2026-05-19 — docs(prd): Phase 0.5 spike — OpenClaw natively supports ChatGPT OAuth [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `5d3a604a` 2026-05-19 — feat(index): poller Option B — per-user-key fan-out across 9 edge_city agents
+- `b0417220` 2026-05-19 — docs(prd): Phase 0.5 spike — OpenClaw natively supports ChatGPT OAuth
 
 ## Appendix — every commit (chronological)
 
-- `a505395a` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
-- `5d3a604a` 2026-05-19 — feat(index): poller Option B — per-user-key fan-out across 9 edge_city agents [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `47e9dddc` 2026-05-19 — chore(changelog): auto-update [skip ci] [2 files]
+- `b0417220` 2026-05-19 — docs(prd): Phase 0.5 spike — OpenClaw natively supports ChatGPT OAuth [1 files] _(ai-assisted)_
