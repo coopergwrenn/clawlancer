@@ -25,6 +25,7 @@ import {
   getDeviceFlow,
   getFreshPendingFlow,
   markDeviceFlowCompleted,
+  markDeviceFlowCompletedWithRetry,
   markDeviceFlowFailed,
   storeOAuthTokens,
 } from "../lib/openai-oauth-db";
@@ -207,12 +208,30 @@ console.log("1. storeOAuthTokens:");
   );
   const decryptedAccess = decryptSecret(
     String((captured as Record<string, unknown>).openai_oauth_access_token),
+    USER_ID, // AAD must match what storeOAuthTokens used (which is userId)
   );
   assert(decryptedAccess === completed.tokens.accessToken, "access token decrypts to original");
   const decryptedRefresh = decryptSecret(
     String((captured as Record<string, unknown>).openai_oauth_refresh_token),
+    USER_ID, // same — AAD = userId
   );
   assert(decryptedRefresh === completed.tokens.refreshToken, "refresh token decrypts to original");
+
+  // P2-B regression guard: the encrypted access_token MUST NOT decrypt
+  // under a different user's id. If this passes (i.e., decrypts under
+  // wrong-id), the AAD binding is broken and cross-user token theft
+  // becomes possible via DB write.
+  const WRONG_USER = "user-zzz-different";
+  let wrongAadThrew = false;
+  try {
+    decryptSecret(
+      String((captured as Record<string, unknown>).openai_oauth_access_token),
+      WRONG_USER,
+    );
+  } catch {
+    wrongAadThrew = true;
+  }
+  assert(wrongAadThrew, "access token does NOT decrypt under wrong userId AAD (tenant isolation)");
   assert(
     (captured as Record<string, unknown>).chatgpt_plan_type === "pro",
     "denormalized plan_type written",
@@ -598,6 +617,75 @@ console.log("\n15. getConnectedSummary not connected:");
   assert(s.connected === false, "connected=false when access_token NULL");
   assert(s.email === undefined, "no email when not connected");
   assert(s.planType === undefined, "no plan when not connected");
+}
+
+// 16. markDeviceFlowCompletedWithRetry — succeeds on first attempt
+console.log("\n16. markDeviceFlowCompletedWithRetry first-attempt success:");
+{
+  const { sb } = makeMockSupabase({
+    "instaclaw_oauth_device_flows.update": () => ({ data: null, error: null }),
+  });
+  const result = await markDeviceFlowCompletedWithRetry("flow-1", sb, { backoffMs: 0 });
+  assert(result.success === true, "success=true on first attempt");
+  assert(result.attempts === 1, "attempts=1 (no retry needed)");
+  assert(result.lastError === undefined, "no lastError");
+}
+
+// 17. markDeviceFlowCompletedWithRetry — succeeds on 2nd attempt after 1st fails
+console.log("\n17. markDeviceFlowCompletedWithRetry recovers on retry:");
+{
+  let attemptCount = 0;
+  const { sb } = makeMockSupabase({
+    "instaclaw_oauth_device_flows.update": () => {
+      attemptCount++;
+      if (attemptCount === 1) {
+        return { data: null, error: { message: "transient connection blip" } };
+      }
+      return { data: null, error: null };
+    },
+  });
+  const result = await markDeviceFlowCompletedWithRetry("flow-2", sb, { backoffMs: 0 });
+  assert(result.success === true, "success=true after retry");
+  assert(result.attempts === 2, "attempts=2 (1 fail + 1 success)");
+  assert(attemptCount === 2, "actually retried exactly once");
+}
+
+// 18. markDeviceFlowCompletedWithRetry — all attempts fail
+console.log("\n18. markDeviceFlowCompletedWithRetry exhausts retries:");
+{
+  let attemptCount = 0;
+  const { sb } = makeMockSupabase({
+    "instaclaw_oauth_device_flows.update": () => {
+      attemptCount++;
+      return { data: null, error: { message: `permanent failure #${attemptCount}` } };
+    },
+  });
+  const result = await markDeviceFlowCompletedWithRetry("flow-3", sb, { backoffMs: 0 });
+  assert(result.success === false, "success=false after all retries fail");
+  assert(result.attempts === 3, "attempts=3 (default maxAttempts)");
+  assert(attemptCount === 3, "actually tried 3 times");
+  assert(
+    typeof result.lastError === "string" && /permanent failure/.test(result.lastError),
+    "lastError captures most recent error",
+  );
+}
+
+// 19. markDeviceFlowCompletedWithRetry — custom maxAttempts
+console.log("\n19. markDeviceFlowCompletedWithRetry custom maxAttempts:");
+{
+  let attemptCount = 0;
+  const { sb } = makeMockSupabase({
+    "instaclaw_oauth_device_flows.update": () => {
+      attemptCount++;
+      return { data: null, error: { message: "fail" } };
+    },
+  });
+  const result = await markDeviceFlowCompletedWithRetry("flow-4", sb, {
+    maxAttempts: 5,
+    backoffMs: 0,
+  });
+  assert(result.attempts === 5, "respects maxAttempts=5");
+  assert(attemptCount === 5, "actually attempted 5 times");
 }
 
 // ─── Summary ─────────────────────────────────────────────────────────────

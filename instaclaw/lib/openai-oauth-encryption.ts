@@ -8,8 +8,9 @@
  *   - Each encrypted column stores `<keyId>$<base64(IV+TAG+CIPHERTEXT)>`.
  *   - The keyId is encoded INTO the string, so no companion `<field>_keyId`
  *     column is needed. One DB column per encrypted field.
- *   - `decryptSecret(s)` is self-sufficient — it parses the keyId from the
- *     prefix, loads the right key, decrypts. Version migration is automatic.
+ *   - `decryptSecret(s, aad)` is self-sufficient w.r.t. key version — it
+ *     parses the keyId from the prefix, loads the right key, decrypts.
+ *     Version migration is automatic.
  *
  * Why a separate file from freeze-encryption.ts:
  *   - Different env-var prefix (OPENAI_OAUTH_KEY_* vs FREEZE_ARCHIVE_KEY_*).
@@ -37,12 +38,35 @@
  * Overhead per encrypt: 28 bytes raw + base64 expansion (~37 chars), plus
  * the "v1$" prefix. For a 2 KB JWT this is ~3 KB encoded. Negligible.
  *
+ * ─── AAD BINDING (mandatory) ─────────────────────────────────────────────
+ *
+ * encryptSecret(plaintext, aad) and decryptSecret(serialized, aad) BOTH
+ * require an `aad` (Additional Authenticated Data) string. For OAuth
+ * tokens stored on instaclaw_users, the aad MUST be the user_id. This
+ * binds the ciphertext to the user record cryptographically:
+ *
+ *   - Encrypting under user A's aad and decrypting under user B's aad
+ *     produces an auth-tag failure → DecryptError.
+ *   - A DB-write attacker who swaps user A's encrypted token into user
+ *     B's row cannot make it decrypt under B's aad — the swap is
+ *     detected at the cipher layer, not just by application logic.
+ *
+ * The aad is authenticated but NOT encrypted (that's the standard AEAD
+ * pattern — the user_id is already in plain sight on the user row, but
+ * the AAD ensures the ciphertext was bound to it at encrypt time).
+ *
+ * AAD is mandatory (no default). Callers must explicitly choose the
+ * binding context. Empty-string aad throws — silently binding to nothing
+ * defeats the purpose.
+ *
  * Failure semantics:
  *   - encryptSecret(): throws if OPENAI_OAUTH_KEY_CURRENT or its key var
- *                      is unset/malformed.
- *   - decryptSecret(): throws DecryptError on auth-tag failure or malformed
- *                      input. Throws KeyMissingError on unknown key id.
- *                      Throws KeyIdInvalidError on malformed prefix.
+ *                      is unset/malformed. Throws if aad is empty.
+ *   - decryptSecret(): throws DecryptError on auth-tag failure (wrong
+ *                      key, wrong aad, tamper, or corrupt blob) or
+ *                      malformed input. Throws KeyMissingError on
+ *                      unknown key id. Throws KeyIdInvalidError on
+ *                      malformed prefix.
  *
  * Test coverage: scripts/_test-openai-oauth-encryption.ts.
  */
@@ -59,6 +83,13 @@ const KEY_ID_PREFIX = "v";
 const ENV_PREFIX = "OPENAI_OAUTH_KEY_";
 const ENV_CURRENT = `${ENV_PREFIX}CURRENT`;
 const SEPARATOR = "$";
+
+/**
+ * AAD used by the round-trip selfTest(). Internal — never use this as the
+ * aad for a real token; tokens MUST use a context-meaningful value like
+ * the user_id.
+ */
+const SELFTEST_AAD = "openai-oauth-encryption-selftest";
 
 // ─── Errors ──────────────────────────────────────────────────────────────
 
@@ -144,23 +175,53 @@ export function getCurrentKeyId(): string {
   return id;
 }
 
+// ─── AAD validation ──────────────────────────────────────────────────────
+
+/**
+ * Validate the Additional Authenticated Data parameter. AAD is mandatory
+ * and must be a non-empty string. Silently binding to an empty buffer
+ * would defeat the security guarantee — make the misuse impossible.
+ */
+function validateAad(aad: string): Buffer {
+  if (typeof aad !== "string") {
+    throw new TypeError(
+      `AAD must be a string, got ${typeof aad}. For OAuth tokens, pass the user_id.`,
+    );
+  }
+  if (aad.length === 0) {
+    throw new TypeError(
+      "AAD must be a non-empty string. Empty AAD binds the ciphertext to nothing — " +
+        "use the user_id for OAuth tokens (the scoping invariant we want enforced).",
+    );
+  }
+  return Buffer.from(aad, "utf-8");
+}
+
 // ─── Operations ──────────────────────────────────────────────────────────
 
 /**
- * Encrypt a plaintext string under the current key (OPENAI_OAUTH_KEY_CURRENT).
+ * Encrypt a plaintext string under the current key (OPENAI_OAUTH_KEY_CURRENT)
+ * with AAD binding. The aad MUST be the same value passed to decryptSecret
+ * later — for OAuth tokens, this is the user_id.
  *
- * @param plaintext - String to encrypt. Empty string is valid (returns the
- *                    cipher prefix for an empty payload).
+ * @param plaintext - String to encrypt. Empty string is valid (the cipher
+ *                    output is just the IV + tag with no ciphertext bytes).
+ * @param aad - Mandatory binding context. For OAuth tokens stored on
+ *              instaclaw_users, pass the user_id. Authenticated by the
+ *              auth tag but not encrypted. Empty string throws.
  * @returns "<keyId>$<base64(IV+TAG+ENC)>" — store this in the DB column.
  */
-export function encryptSecret(plaintext: string): string {
+export function encryptSecret(plaintext: string, aad: string): string {
   if (typeof plaintext !== "string") {
     throw new TypeError(`encryptSecret: plaintext must be a string, got ${typeof plaintext}`);
   }
+  const aadBuf = validateAad(aad);
   const keyId = getCurrentKeyId();
   const key = loadKey(keyId);
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: TAG_BYTES });
+  // setAAD MUST be called before update()/final() per Node crypto docs.
+  cipher.setAAD(aadBuf);
   const plaintextBuf = Buffer.from(plaintext, "utf-8");
   const encrypted = Buffer.concat([cipher.update(plaintextBuf), cipher.final()]);
   const authTag = cipher.getAuthTag();
@@ -171,20 +232,28 @@ export function encryptSecret(plaintext: string): string {
 /**
  * Decrypt a serialized string produced by encryptSecret. The keyId is
  * parsed from the "v<N>$" prefix; the correct key is loaded automatically.
- * Old-version blobs continue to decrypt after key rotation.
+ * Old-version blobs continue to decrypt after key rotation, AS LONG AS
+ * the same aad is provided.
+ *
+ * If you encrypted with aad="user-A-id" and decrypt with aad="user-B-id",
+ * the auth-tag check fails → DecryptError. This is the cross-user-tenant
+ * isolation guarantee.
  *
  * @param serialized - The full "<keyId>$<base64>" string from the DB.
+ * @param aad - Mandatory binding context. Must match the value passed to
+ *              encryptSecret. For OAuth tokens, pass the user_id.
  * @returns The original plaintext string.
- * @throws DecryptError on tamper/corruption/wrong key.
+ * @throws DecryptError on auth-tag failure (wrong key, wrong aad, tamper, corruption).
  * @throws KeyMissingError if the requested key version isn't in env.
  * @throws KeyIdInvalidError on malformed prefix.
  */
-export function decryptSecret(serialized: string): string {
+export function decryptSecret(serialized: string, aad: string): string {
   if (typeof serialized !== "string") {
     throw new TypeError(
       `decryptSecret: serialized must be a string, got ${typeof serialized}`,
     );
   }
+  const aadBuf = validateAad(aad);
   const sepIdx = serialized.indexOf(SEPARATOR);
   if (sepIdx <= 0) {
     throw new DecryptError(
@@ -208,6 +277,8 @@ export function decryptSecret(serialized: string): string {
   const authTag = wire.subarray(IV_BYTES, IV_BYTES + TAG_BYTES);
   const encrypted = wire.subarray(IV_BYTES + TAG_BYTES);
   const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: TAG_BYTES });
+  // setAAD MUST be called before setAuthTag/update/final per Node crypto docs.
+  decipher.setAAD(aadBuf);
   decipher.setAuthTag(authTag);
   try {
     const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
@@ -216,22 +287,24 @@ export function decryptSecret(serialized: string): string {
     const msg = err instanceof Error ? err.message : String(err);
     throw new DecryptError(
       `AES-GCM authentication failed (key_id=${keyId}). Likely causes: ` +
-        `(1) wrong key for this blob, (2) blob was tampered with after encryption, ` +
-        `(3) blob is corrupt. Underlying: ${msg.slice(0, 120)}`,
+        `(1) wrong key for this blob, (2) wrong AAD (e.g., decrypting user A's ` +
+        `ciphertext with user B's id), (3) blob was tampered with after encryption, ` +
+        `(4) blob is corrupt. Underlying: ${msg.slice(0, 120)}`,
     );
   }
 }
 
 /**
- * Round-trip self-test. Encrypts + decrypts a synthetic payload to verify
- * the current key is configured and usable. Throws on any failure.
+ * Round-trip self-test. Encrypts + decrypts a synthetic payload with a
+ * constant internal AAD to verify the current key is configured and usable.
+ * Throws on any failure.
  *
  * Call this at process boot or from a doctor endpoint. Cheap (~1ms).
  */
 export function selfTest(): { keyId: string; ok: true } {
   const probe = `selfTest-${Date.now()}-${randomBytes(8).toString("hex")}`;
-  const ciphertext = encryptSecret(probe);
-  const recovered = decryptSecret(ciphertext);
+  const ciphertext = encryptSecret(probe, SELFTEST_AAD);
+  const recovered = decryptSecret(ciphertext, SELFTEST_AAD);
   if (recovered !== probe) {
     throw new Error(
       `openai-oauth-encryption selfTest: round-trip produced different bytes ` +

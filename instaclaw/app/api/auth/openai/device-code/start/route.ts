@@ -6,34 +6,39 @@
  * the route handler, which MUST do its own auth check; this is the
  * NextAuth-style pattern shared with /api/auth/world-id/* siblings).
  *
- * Decision tree:
+ * ─── Response shape standard (P2-A) ──────────────────────────────────────
  *
- *   1. Feature flag off → 503 with structured "feature_disabled" body.
- *      The graceful-downgrade cron is concurrently cleaning up any
- *      existing connected users; we shouldn't start new flows.
+ * ALL responses match `{ status: string, message?: string, ...extras }`.
+ * The UI state machine is a simple `switch (response.status)`.
  *
- *   2. User already has a fresh pending flow (status=pending AND
- *      expires_at > NOW)  → return THAT flow. Avoids minting a new
- *      OpenAI device code on every "I clicked Connect again" click,
- *      saves an OpenAI API call, and means the user sees the same
- *      code they were already looking at.
+ *   status               | http | extras       | meaning
+ *   ---------------------|------|--------------|------------------------------
+ *   "pending"            | 200  | flow         | flow created or reused; show code
+ *   "connected"          | 200  | summary      | user already connected
+ *   "feature_disabled"   | 503  | -            | kill switch on
+ *   "unauthorized"       | 401  | -            | no session
+ *   "codex_not_enabled"  | 400  | -            | user's OpenAI account lacks device-code
+ *   "upstream_timeout"   | 502  | -            | OpenAI auth service hung past timeout
+ *   "service_unavailable"| 503  | -            | other OpenAI failure / network
  *
- *   3. User is already connected (has un-expired access token) →
- *      return { status: "already_connected", summary } so the modal
- *      can show "Connected as <email>" + a Disconnect button. The
- *      "reconnect to a different OpenAI account" workflow goes via
- *      /disconnect → /start (deliberate two-step so we never leak a
- *      live token to a new account).
+ * ─── Decision tree (P1-B) ────────────────────────────────────────────────
  *
- *   4. Otherwise: startDeviceFlow() against OpenAI, persist the row
- *      via createOrReuseDeviceFlow, return { status: "started", flow }.
+ * decideStartAction (in lib/openai-oauth-route-helpers.ts) checks state
+ * in THIS order:
  *
- * The "started" response is the minimum the UI needs to display the
- * code + verification URL + polling deadline + per-request interval.
+ *   1. Already connected? → return { status: "connected", summary }
+ *   2. Fresh pending flow exists? → return { status: "pending", flow }
+ *   3. Else mint new flow → return { status: "pending", flow }
  *
- * Errors are mapped to user-facing strings — every error message should
- * be helpful per Cooper's Day 1 instruction ("every error message should
- * be helpful"). We never surface raw Supabase or fetch error bodies.
+ * Connected wins over pending — see decideStartAction's header for why
+ * (audit finding P1-B: prior code checked pending first, shadowing
+ * connected state when a previous markDeviceFlowCompleted had failed).
+ *
+ * ─── Timeout handling (P1-C) ─────────────────────────────────────────────
+ *
+ * If startDeviceFlow throws OpenAIRequestTimeoutError (OpenAI's auth
+ * endpoint hung past 10s), we return HTTP 502 with status="upstream_timeout".
+ * Other errors fall through to 503 "service_unavailable".
  */
 
 import { NextResponse } from "next/server";
@@ -44,14 +49,13 @@ import {
   isChatGPTOAuthEnabled,
   chatGPTOAuthDisabledPayload,
 } from "@/lib/chatgpt-oauth-feature-flag";
-import { startDeviceFlow } from "@/lib/openai-oauth";
+import { startDeviceFlow, OpenAIRequestTimeoutError } from "@/lib/openai-oauth";
 import {
   createOrReuseDeviceFlow,
-  getFreshPendingFlow,
-  getConnectedSummary,
   type DeviceFlowRow,
   type ConnectedSummary,
 } from "@/lib/openai-oauth-db";
+import { decideStartAction } from "@/lib/openai-oauth-route-helpers";
 
 // Per-user state — never cache.
 export const dynamic = "force-dynamic";
@@ -61,8 +65,8 @@ export const dynamic = "force-dynamic";
 // well over what's reachable here but matches Rule 11 across the codebase.
 export const maxDuration = 300;
 
-interface StartedResponse {
-  status: "started";
+interface PendingResponse {
+  status: "pending";
   flow: {
     id: string;
     user_code: string;
@@ -72,20 +76,22 @@ interface StartedResponse {
   };
 }
 
-interface AlreadyConnectedResponse {
-  status: "already_connected";
+interface ConnectedResponse {
+  status: "connected";
   summary: ConnectedSummary;
 }
 
 interface ErrorResponse {
-  status: "error";
-  error: {
-    type: string;
-    message: string;
-  };
+  status:
+    | "unauthorized"
+    | "feature_disabled"
+    | "codex_not_enabled"
+    | "upstream_timeout"
+    | "service_unavailable";
+  message: string;
 }
 
-type Response = StartedResponse | AlreadyConnectedResponse | ErrorResponse;
+type Response = PendingResponse | ConnectedResponse | ErrorResponse;
 
 export async function POST(): Promise<NextResponse<Response>> {
   // 1. Auth (Rule 13 — middleware bypasses /api/auth/*, handler enforces)
@@ -93,11 +99,8 @@ export async function POST(): Promise<NextResponse<Response>> {
   if (!session?.user?.id) {
     return NextResponse.json(
       {
-        status: "error",
-        error: {
-          type: "unauthorized",
-          message: "Sign in to connect your ChatGPT subscription.",
-        },
+        status: "unauthorized",
+        message: "Sign in to connect your ChatGPT subscription.",
       },
       { status: 401 },
     );
@@ -106,39 +109,25 @@ export async function POST(): Promise<NextResponse<Response>> {
 
   // 2. Feature-flag gate
   if (!isChatGPTOAuthEnabled()) {
-    return NextResponse.json(
-      {
-        status: "error",
-        error: {
-          type: "feature_disabled",
-          message: chatGPTOAuthDisabledPayload().error.message,
-        },
-      },
-      { status: 503 },
-    );
+    return NextResponse.json(chatGPTOAuthDisabledPayload(), { status: 503 });
   }
 
   const supabase = getSupabase();
 
   try {
-    // 3. Pending-flow short circuit. Returns the live flow without an
-    //    OpenAI API call so re-opens of the modal show the same code.
-    const pending = await getFreshPendingFlow(userId, supabase);
-    if (pending) {
-      return NextResponse.json(toStartedResponse(pending));
+    // 3. Decide what to do. Single helper, single source of truth for
+    //    the decision order. Connected-first per P1-B.
+    const action = await decideStartAction(userId, supabase);
+
+    if (action.kind === "already_connected") {
+      return NextResponse.json({ status: "connected", summary: action.summary });
     }
 
-    // 4. Already-connected short circuit. UI shows the "connected" state
-    //    and offers a Disconnect button.
-    const summary = await getConnectedSummary(userId, supabase);
-    if (summary.connected) {
-      return NextResponse.json({
-        status: "already_connected",
-        summary,
-      });
+    if (action.kind === "reuse_pending") {
+      return NextResponse.json(toPendingResponse(action.flow));
     }
 
-    // 5. New flow. startDeviceFlow throws on OpenAI 404/5xx/network;
+    // 4. Mint new. startDeviceFlow throws on OpenAI 404/5xx/network/timeout;
     //    createOrReuseDeviceFlow handles the rare race where two parallel
     //    requests both reach this point.
     const started = await startDeviceFlow();
@@ -154,26 +143,40 @@ export async function POST(): Promise<NextResponse<Response>> {
       expiresAt: flow.expires_at,
     });
 
-    return NextResponse.json(toStartedResponse(flow));
+    return NextResponse.json(toPendingResponse(flow));
   } catch (err) {
+    // P1-C: dedicated branch for OpenAI timeouts → 502 (Bad Gateway).
+    // Distinguishes "OpenAI is slow/down" from generic "we couldn't do
+    // it" so the UI can show a more accurate retry message.
+    if (err instanceof OpenAIRequestTimeoutError) {
+      logger.warn("openai-oauth: device-code start upstream timeout", {
+        userId,
+        message: err.message,
+      });
+      return NextResponse.json(
+        {
+          status: "upstream_timeout",
+          message:
+            "OpenAI's auth service is taking too long to respond. Please try again in a moment.",
+        },
+        { status: 502 },
+      );
+    }
+
     const msg = err instanceof Error ? err.message : String(err);
     logger.error("openai-oauth: device-code start failed", {
       userId,
       error: msg.slice(0, 400),
     });
 
-    // Map a few well-known causes to dedicated user messages. Everything
-    // else falls through to "service_unavailable" so the user retries.
+    // Map a few well-known causes to dedicated user messages.
     if (/Codex access enabled/i.test(msg)) {
       return NextResponse.json(
         {
-          status: "error",
-          error: {
-            type: "codex_not_enabled",
-            message:
-              "Your ChatGPT account doesn't have device-code login enabled. " +
-              "In ChatGPT → Settings → Security, enable 'Device code authorization for Codex', then try again.",
-          },
+          status: "codex_not_enabled",
+          message:
+            "Your ChatGPT account doesn't have device-code login enabled. " +
+            "In ChatGPT → Settings → Security, enable 'Device code authorization for Codex', then try again.",
         },
         { status: 400 },
       );
@@ -181,22 +184,19 @@ export async function POST(): Promise<NextResponse<Response>> {
 
     return NextResponse.json(
       {
-        status: "error",
-        error: {
-          type: "service_unavailable",
-          message:
-            "Couldn't start the ChatGPT connection. Please try again in a minute — " +
-            "OpenAI's auth service may be briefly unavailable.",
-        },
+        status: "service_unavailable",
+        message:
+          "Couldn't start the ChatGPT connection. Please try again in a minute — " +
+          "OpenAI's auth service may be briefly unavailable.",
       },
       { status: 503 },
     );
   }
 }
 
-function toStartedResponse(flow: DeviceFlowRow): StartedResponse {
+function toPendingResponse(flow: DeviceFlowRow): PendingResponse {
   return {
-    status: "started",
+    status: "pending",
     flow: {
       id: flow.id,
       user_code: flow.user_code,

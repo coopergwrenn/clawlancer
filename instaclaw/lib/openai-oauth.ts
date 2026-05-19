@@ -90,6 +90,56 @@ const DEFAULT_INTERVAL_MS = 5_000;
  */
 const DEFAULT_USER_AGENT = "instaclaw/0.1.0 (openai-oauth-client)";
 
+/**
+ * Per-request timeout for ALL OAuth fetches. 10s is generous for an
+ * auth endpoint (Phase 0 measurements showed p95 < 2s). Without this,
+ * a hung OpenAI endpoint would let our routes run until Vercel kills
+ * them at maxDuration (300s) — 5 minutes of user-facing latency.
+ *
+ * Override per-call via OpsCallOpts.timeoutMs (used by tests).
+ */
+export const OPENAI_AUTH_TIMEOUT_MS = 10_000;
+
+/**
+ * Thrown by startDeviceFlow when the OpenAI device-auth endpoint times
+ * out. Routes should map this to HTTP 502 (Bad Gateway — upstream
+ * unavailable). Other helpers (pollDeviceFlow, refreshAccessToken)
+ * handle their own timeouts internally and return typed result objects
+ * instead of throwing.
+ */
+export class OpenAIRequestTimeoutError extends Error {
+  constructor(endpoint: string, timeoutMs: number) {
+    super(
+      `OpenAI auth endpoint timed out after ${timeoutMs}ms: ${endpoint}. ` +
+        "OpenAI's auth service may be briefly unavailable.",
+    );
+    this.name = "OpenAIRequestTimeoutError";
+  }
+}
+
+/**
+ * Classify any thrown error as a timeout (true) or other (false). Node's
+ * native fetch throws a DOMException with name="TimeoutError" when the
+ * signal from AbortSignal.timeout fires; some adapters wrap it in
+ * TypeError with .cause. We check both shapes.
+ */
+function isTimeoutError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  if ("name" in err && (err as { name?: unknown }).name === "TimeoutError") return true;
+  if ("cause" in err) {
+    const cause = (err as { cause?: unknown }).cause;
+    if (
+      cause &&
+      typeof cause === "object" &&
+      "name" in cause &&
+      (cause as { name?: unknown }).name === "TimeoutError"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function issuer(): string {
   return (process.env.OPENAI_OAUTH_ISSUER || DEFAULT_ISSUER).replace(/\/+$/, "");
 }
@@ -175,6 +225,12 @@ type FetchImpl = typeof fetch;
 
 interface OpsCallOpts {
   fetchImpl?: FetchImpl;
+  /**
+   * Override the default OPENAI_AUTH_TIMEOUT_MS for this single call.
+   * Tests use this to drive deterministic timeout scenarios; production
+   * callers should leave it unset and accept the 10s default.
+   */
+  timeoutMs?: number;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -279,14 +335,26 @@ function tokenSetFromResponse(body: Record<string, unknown>): TokenSet | null {
  */
 export async function startDeviceFlow(opts: OpsCallOpts = {}): Promise<DeviceCodeStart> {
   const fetchFn = opts.fetchImpl ?? fetch;
-  const response = await fetchFn(`${issuer()}/api/accounts/deviceauth/usercode`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "User-Agent": userAgent(),
-    },
-    body: JSON.stringify({ client_id: OPENAI_CODEX_CLIENT_ID }),
-  });
+  const timeoutMs = opts.timeoutMs ?? OPENAI_AUTH_TIMEOUT_MS;
+  const endpoint = `${issuer()}/api/accounts/deviceauth/usercode`;
+  let response: Response;
+  try {
+    response = await fetchFn(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": userAgent(),
+      },
+      body: JSON.stringify({ client_id: OPENAI_CODEX_CLIENT_ID }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (isTimeoutError(err)) {
+      // Route handler catches OpenAIRequestTimeoutError → returns 502.
+      throw new OpenAIRequestTimeoutError(endpoint, timeoutMs);
+    }
+    throw err;
+  }
   const bodyText = await response.text();
   if (!response.ok) {
     if (response.status === 404) {
@@ -344,16 +412,29 @@ export async function pollDeviceFlow(
     throw new TypeError("pollDeviceFlow: userCode required");
   }
   const fetchFn = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? OPENAI_AUTH_TIMEOUT_MS;
 
-  // Step 1: poll for the auth code.
-  const pollRes = await fetchFn(`${issuer()}/api/accounts/deviceauth/token`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "User-Agent": userAgent(),
-    },
-    body: JSON.stringify({ device_auth_id: deviceAuthId, user_code: userCode }),
-  });
+  // Step 1: poll for the auth code. On timeout, return pending — the
+  // browser's next poll cycle (typically 5s later) will retry. This is
+  // safer than returning an error to the user: a transient OpenAI
+  // hiccup shouldn't drop the user out of the flow.
+  let pollRes: Response;
+  try {
+    pollRes = await fetchFn(`${issuer()}/api/accounts/deviceauth/token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": userAgent(),
+      },
+      body: JSON.stringify({ device_auth_id: deviceAuthId, user_code: userCode }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (isTimeoutError(err)) {
+      return { status: "pending" };
+    }
+    throw err;
+  }
   const pollText = await pollRes.text();
 
   // Still waiting. 403 and 404 are both "user hasn't authorized yet."
@@ -385,6 +466,16 @@ export async function pollDeviceFlow(
   }
 
   const tokens = await exchangeAuthCodeInternal(authorizationCode, codeVerifier, opts);
+  if (tokens.status === "timeout") {
+    // Exchange-fetch timed out AFTER OpenAI gave us the auth code. The
+    // code itself was effectively consumed at OpenAI's end (subsequent
+    // /deviceauth/token polls will return 403 → mapped to pending).
+    // Returning pending here means the user keeps polling; they'll see
+    // pending forever until clock-expires_at fires. Not ideal but the
+    // safer choice — never silently lose tokens, never confuse the user
+    // with a generic "error" when the OpenAI side is just slow.
+    return { status: "pending" };
+  }
   if (tokens.status === "failed") {
     return { status: "error", message: tokens.message };
   }
@@ -409,22 +500,39 @@ async function exchangeAuthCodeInternal(
   authorizationCode: string,
   codeVerifier: string,
   opts: OpsCallOpts = {},
-): Promise<{ status: "success"; tokens: TokenSet } | { status: "failed"; message: string }> {
+): Promise<
+  | { status: "success"; tokens: TokenSet }
+  | { status: "failed"; message: string }
+  | { status: "timeout" }
+> {
   const fetchFn = opts.fetchImpl ?? fetch;
-  const response = await fetchFn(`${issuer()}/oauth/token`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": userAgent(),
-    },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      client_id: OPENAI_CODEX_CLIENT_ID,
-      code: authorizationCode,
-      code_verifier: codeVerifier,
-      redirect_uri: DEVICE_REDIRECT_URI,
-    }).toString(),
-  });
+  const timeoutMs = opts.timeoutMs ?? OPENAI_AUTH_TIMEOUT_MS;
+  let response: Response;
+  try {
+    response = await fetchFn(`${issuer()}/oauth/token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": userAgent(),
+      },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: OPENAI_CODEX_CLIENT_ID,
+        code: authorizationCode,
+        code_verifier: codeVerifier,
+        redirect_uri: DEVICE_REDIRECT_URI,
+      }).toString(),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (isTimeoutError(err)) {
+      return { status: "timeout" };
+    }
+    return {
+      status: "failed",
+      message: `code→token exchange network error: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
   const bodyText = await response.text();
   if (!response.ok) {
     return {
@@ -476,6 +584,7 @@ export async function refreshAccessToken(
     throw new TypeError("refreshAccessToken: refreshToken required");
   }
   const fetchFn = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? OPENAI_AUTH_TIMEOUT_MS;
   let response: Response;
   try {
     response = await fetchFn(`${issuer()}/oauth/token`, {
@@ -489,9 +598,19 @@ export async function refreshAccessToken(
         client_id: OPENAI_CODEX_CLIENT_ID,
         refresh_token: refreshToken,
       }).toString(),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
-    // Network errors are transient — the cron will retry on the next tick.
+    if (isTimeoutError(err)) {
+      // Distinct message so the refresh cron's logs (Day 16-18) can
+      // bucket "timeout" separately from generic network errors.
+      return {
+        status: "failed",
+        reason: "other",
+        message: `OpenAI auth service timeout (${timeoutMs}ms)`,
+      };
+    }
+    // Other network errors — transient; the cron retries on next tick.
     return {
       status: "failed",
       reason: "other",

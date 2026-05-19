@@ -382,6 +382,112 @@ console.log("\n6. refreshAccessToken:");
   if (result.status === "failed") assertEq(result.reason, "other", "missing fields → reason=other");
 }
 
+// ─── Timeout behavior (P1-C) ─────────────────────────────────────────────
+//
+// A fetch impl that hangs forever but honors AbortSignal — when the
+// signal aborts, it rejects with the same DOMException-shape error that
+// Node's native fetch produces on AbortSignal.timeout firing.
+//
+// The `setInterval` keepalive is load-bearing: AbortSignal.timeout's
+// internal timer is unref'd, so without something keeping the event loop
+// alive, Node exits before the timeout fires. Real fetch holds a network
+// socket which serves the same role; in this mock we need a heartbeat.
+function hangingFetch(): typeof fetch {
+  return (async (_url: unknown, init?: { signal?: AbortSignal }) => {
+    return new Promise<Response>((_resolve, reject) => {
+      if (init?.signal?.aborted) {
+        reject(init.signal.reason);
+        return;
+      }
+      const keepalive = setInterval(() => {}, 10_000);
+      init?.signal?.addEventListener("abort", () => {
+        clearInterval(keepalive);
+        reject(init.signal!.reason);
+      });
+    });
+  }) as unknown as typeof fetch;
+}
+
+console.log("\n--- 4. startDeviceFlow timeout ---");
+{
+  const { OpenAIRequestTimeoutError } = await import("../lib/openai-oauth");
+  let threw: unknown = null;
+  try {
+    await startDeviceFlow({ fetchImpl: hangingFetch(), timeoutMs: 50 });
+  } catch (err) {
+    threw = err;
+  }
+  assert(
+    threw instanceof OpenAIRequestTimeoutError,
+    "startDeviceFlow timeout → throws OpenAIRequestTimeoutError",
+  );
+  if (threw instanceof Error) {
+    assert(
+      /timed out after 50ms/.test(threw.message),
+      "error message includes timeout duration + endpoint",
+    );
+  }
+}
+
+console.log("\n--- 5. pollDeviceFlow timeout on poll fetch ---");
+{
+  const result = await pollDeviceFlow("dauth-x", "USER-CODE", {
+    fetchImpl: hangingFetch(),
+    timeoutMs: 50,
+  });
+  // Per Cooper's spec: timeout → pending (let next browser poll retry).
+  assertEq(result.status, "pending", "pollDeviceFlow timeout → status=pending");
+}
+
+console.log("\n--- 6. pollDeviceFlow timeout on exchange fetch ---");
+{
+  // First call (poll) returns 200 with auth code, second call (exchange)
+  // hangs and times out. Result should still be pending (per Cooper's spec).
+  let callIdx = 0;
+  const fetchImpl = ((url: unknown, init?: { signal?: AbortSignal }) => {
+    if (callIdx++ === 0) {
+      // poll fetch: succeed with auth code
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ authorization_code: "ac-1", code_verifier: "cv-1" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }
+    // exchange fetch: hang (same keepalive trick as hangingFetch)
+    return new Promise<Response>((_, reject) => {
+      if (init?.signal?.aborted) {
+        reject(init.signal.reason);
+        return;
+      }
+      const keepalive = setInterval(() => {}, 10_000);
+      init?.signal?.addEventListener("abort", () => {
+        clearInterval(keepalive);
+        reject(init.signal!.reason);
+      });
+    });
+  }) as unknown as typeof fetch;
+  const result = await pollDeviceFlow("dauth-x", "USER-CODE", {
+    fetchImpl,
+    timeoutMs: 50,
+  });
+  assertEq(result.status, "pending", "exchange timeout → status=pending (not error)");
+}
+
+console.log("\n--- 7. refreshAccessToken timeout ---");
+{
+  const result = await refreshAccessToken("rf-token", {
+    fetchImpl: hangingFetch(),
+    timeoutMs: 50,
+  });
+  assertEq(result.status, "failed", "refresh timeout → status=failed");
+  if (result.status === "failed") {
+    assertEq(result.reason, "other", "refresh timeout → reason=other");
+    assert(/timeout/i.test(result.message), "refresh timeout message contains 'timeout'");
+    assert(/50ms/.test(result.message), "refresh timeout message includes duration");
+  }
+}
+
 // ─── Summary ─────────────────────────────────────────────────────────────
 console.log(`\n=== Results ===`);
 console.log(`PASS: ${pass}`);

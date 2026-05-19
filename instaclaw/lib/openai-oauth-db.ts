@@ -252,6 +252,57 @@ export async function markDeviceFlowCompleted(
   }
 }
 
+/**
+ * Options for markDeviceFlowCompletedWithRetry. Tests pass backoffMs=0
+ * for fast execution; production callers should leave defaults alone.
+ */
+export interface MarkCompletedRetryOpts {
+  /** Total attempts before giving up. Default 3. */
+  maxAttempts?: number;
+  /** Sleep between attempts (linear, not exponential). Default 1000ms. */
+  backoffMs?: number;
+}
+
+/**
+ * Retry wrapper around markDeviceFlowCompleted. Audit finding P1-D —
+ * Day 2 silently logged a warning if the mark-completed update failed
+ * (e.g., transient Supabase blip), leaving the row in `pending` while
+ * tokens were already stored on the user record. The next poll would
+ * read status=pending, call OpenAI, get 403 (auth code already redeemed),
+ * map to {status:"pending"}, and the user would appear stuck until
+ * clock-side expiry fired.
+ *
+ * Retry semantics:
+ *   - Total attempts: maxAttempts (default 3)
+ *   - Backoff between attempts: backoffMs (default 1000ms)
+ *   - On any attempt's success: returns {success: true, attempts: N}
+ *   - On all attempts failing: returns {success: false, attempts: max, lastError}
+ *
+ * Never throws — caller decides whether to surface failure or fall back
+ * to the connected-state safety net (also added in P1-D).
+ */
+export async function markDeviceFlowCompletedWithRetry(
+  flowId: string,
+  supabase: SupabaseClient,
+  opts: MarkCompletedRetryOpts = {},
+): Promise<{ success: boolean; attempts: number; lastError?: string }> {
+  const maxAttempts = opts.maxAttempts ?? 3;
+  const backoffMs = opts.backoffMs ?? 1000;
+  let lastError: string | undefined;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await markDeviceFlowCompleted(flowId, supabase);
+      return { success: true, attempts: attempt };
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      if (attempt < maxAttempts && backoffMs > 0) {
+        await new Promise((r) => setTimeout(r, backoffMs));
+      }
+    }
+  }
+  return { success: false, attempts: maxAttempts, lastError };
+}
+
 // ─── Token storage ───────────────────────────────────────────────────────
 
 /**
@@ -277,9 +328,13 @@ export async function storeOAuthTokens(
   const { tokens, claims } = completed;
 
   // Encrypt before write (Rule 53). The current key version is encoded
-  // into the ciphertext prefix so future decryption Just Works after rotation.
-  const encryptedAccess = encryptSecret(tokens.accessToken);
-  const encryptedRefresh = encryptSecret(tokens.refreshToken);
+  // into the ciphertext prefix so future decryption Just Works after
+  // rotation. AAD = userId — binds each ciphertext to its owner
+  // cryptographically (per the Day 2.5 audit P2-B finding); a DB-write
+  // attacker who copies user A's encrypted token into user B's row
+  // cannot decrypt it under B's id.
+  const encryptedAccess = encryptSecret(tokens.accessToken, userId);
+  const encryptedRefresh = encryptSecret(tokens.refreshToken, userId);
 
   // Build the snake_case claims dump for the JSONB column.
   const claimsForDb = claims ? camelToSnakeClaims(claims) : null;

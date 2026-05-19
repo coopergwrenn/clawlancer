@@ -3,35 +3,51 @@
  *
  * Phase 1 design doc §6.2 — the polling endpoint the dashboard modal
  * hits every `interval_seconds` (typically 5s) after the user starts a
- * connection. Returns a uniform `{ status, ... }` shape so the UI's
- * state machine can be a simple `switch (response.status)`.
+ * connection.
  *
  * Body: { flow_id: string }
  *
- * Response shapes (status discriminator):
- *   - pending:    user hasn't authorized yet; keep polling
- *   - completed:  tokens stored; UI should close modal, show success
- *   - expired:    15-min window passed; UI should offer "Start over"
- *   - denied:     user clicked Deny in OpenAI's browser; UI should
- *                 explain and offer "Try again"
- *   - error:      something else failed; show the message
- *   - not_found:  flow_id doesn't exist or belongs to another user
- *   - feature_disabled: kill switch on (matches /start)
- *   - unauthorized: no session
+ * ─── Response shape standard (P2-A) ──────────────────────────────────────
+ *
+ * Always `{ status: string, message?: string, ...extras }`.
+ *
+ *   status              | http | extras            | meaning
+ *   --------------------|------|-------------------|------------------------
+ *   "pending"           | 200  | -                 | keep polling
+ *   "completed"         | 200  | plan_type, summary?| done; close modal
+ *   "expired"           | 200  | -                 | 15-min window passed
+ *   "denied"            | 200  | -                 | user denied at OpenAI
+ *   "error"             | varies| -                | failure (5xx if our fault, 200 if OpenAI's)
+ *   "not_found"         | 404  | -                 | flow_id doesn't exist
+ *   "feature_disabled"  | 503  | -                 | kill switch on
+ *   "unauthorized"      | 401  | -                 | no session
+ *   "bad_request"       | 400  | -                 | body malformed
+ *
+ * ─── Body validation (P1-A) ──────────────────────────────────────────────
+ *
+ * validatePollRequestBody (in lib/openai-oauth-route-helpers.ts) handles
+ * every wire-format misbehavior: null body, array, primitive, missing
+ * flow_id, non-string flow_id, empty string. Each → 400 with a helpful
+ * message. Audit finding P1-A: prior code's `as Record<string, unknown>`
+ * cast meant `null` body → TypeError → 500.
+ *
+ * ─── Mark-completed retry + connected fallback (P1-D) ────────────────────
+ *
+ * 1. On case "completed": markDeviceFlowCompletedWithRetry (3 attempts,
+ *    1s backoff). If all retries fail, tokens are still stored — we
+ *    return completed and rely on fallback #2 on subsequent polls.
+ *
+ * 2. On case "pending" AND case "error" (the unhappy paths that USED to
+ *    return pending/error without checking): re-read user.openai_oauth_
+ *    access_token. If non-NULL, the user IS connected from a previous
+ *    poll where mark-completed permanently failed (after retries). Return
+ *    {status: "completed"} instead so the UI doesn't think they're stuck.
  *
  * Race semantics: two concurrent polls can both reach OpenAI, but only
  * one will get the authorization code (OpenAI's /deviceauth/token returns
  * 403 for the race-loser, mapped to "pending" by pollDeviceFlow). The
  * race-loser's next poll reads status=completed from our DB and returns
- * idempotently. The race-WINNER might double-store tokens (if both polls
- * pass the row.status=pending check before either writes); this is
- * harmless — same tokens, an extra version bump. Documented in
- * lib/openai-oauth-db.ts.
- *
- * Order of writes on completion: storeOAuthTokens first, then
- * markDeviceFlowCompleted. If storeOAuthTokens throws, we mark the flow
- * as 'error' and the user can retry — better than the inverse, which
- * would leave a completed flow with no tokens.
+ * idempotently.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -44,15 +60,16 @@ import {
 } from "@/lib/chatgpt-oauth-feature-flag";
 import { pollDeviceFlow } from "@/lib/openai-oauth";
 import {
+  getConnectedSummary,
   getDeviceFlow,
-  markDeviceFlowCompleted,
+  markDeviceFlowCompletedWithRetry,
   markDeviceFlowFailed,
   storeOAuthTokens,
+  type ConnectedSummary,
 } from "@/lib/openai-oauth-db";
+import { validatePollRequestBody } from "@/lib/openai-oauth-route-helpers";
 
 export const dynamic = "force-dynamic";
-// External API call (OpenAI deviceauth/token + exchange) — same 300s
-// budget as the start route.
 export const maxDuration = 300;
 
 interface PendingResponse {
@@ -61,19 +78,24 @@ interface PendingResponse {
 interface CompletedResponse {
   status: "completed";
   plan_type: string | null;
+  summary?: ConnectedSummary;
 }
-interface FailedResponse {
+interface TerminalResponse {
   status: "expired" | "denied" | "error" | "not_found";
   message?: string;
 }
-interface ErrorResponse {
+interface RejectedResponse {
   status: "feature_disabled" | "unauthorized" | "bad_request";
   message: string;
 }
-type Response = PendingResponse | CompletedResponse | FailedResponse | ErrorResponse;
+type Response =
+  | PendingResponse
+  | CompletedResponse
+  | TerminalResponse
+  | RejectedResponse;
 
 export async function POST(req: NextRequest): Promise<NextResponse<Response>> {
-  // Auth
+  // 1. Auth
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json(
@@ -83,38 +105,35 @@ export async function POST(req: NextRequest): Promise<NextResponse<Response>> {
   }
   const userId = session.user.id;
 
-  // Feature flag
+  // 2. Feature flag
   if (!isChatGPTOAuthEnabled()) {
+    return NextResponse.json(chatGPTOAuthDisabledPayload(), { status: 503 });
+  }
+
+  // 3. Body parse — wrapped because req.json() can throw on malformed bytes.
+  let rawBody: unknown;
+  try {
+    rawBody = await req.json();
+  } catch {
     return NextResponse.json(
-      {
-        status: "feature_disabled",
-        message: chatGPTOAuthDisabledPayload().error.message,
-      },
-      { status: 503 },
+      { status: "bad_request", message: "Body must be valid JSON with a flow_id field." },
+      { status: 400 },
     );
   }
 
-  // Parse body
-  let body: Record<string, unknown>;
-  try {
-    body = (await req.json()) as Record<string, unknown>;
-  } catch {
+  // 4. Body validate (P1-A) — guards null, array, non-object, missing/bad flow_id.
+  const validation = validatePollRequestBody(rawBody);
+  if (!validation.ok) {
     return NextResponse.json(
-      { status: "bad_request", message: "Body must be JSON with a flow_id field." },
+      { status: "bad_request", message: validation.message },
       { status: 400 },
     );
   }
-  const flowId = typeof body.flow_id === "string" ? body.flow_id : null;
-  if (!flowId) {
-    return NextResponse.json(
-      { status: "bad_request", message: "flow_id is required." },
-      { status: 400 },
-    );
-  }
+  const flowId = validation.flowId;
 
   const supabase = getSupabase();
 
-  // Fetch + ownership check
+  // 5. Fetch + ownership check
   let flow;
   try {
     flow = await getDeviceFlow(flowId, userId, supabase);
@@ -126,10 +145,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<Response>> {
       error: msg.slice(0, 400),
     });
     return NextResponse.json(
-      {
-        status: "error",
-        message: "Couldn't read connection state. Please try again.",
-      },
+      { status: "error", message: "Couldn't read connection state. Please try again." },
       { status: 500 },
     );
   }
@@ -144,11 +160,9 @@ export async function POST(req: NextRequest): Promise<NextResponse<Response>> {
     );
   }
 
-  // Idempotent return for already-terminal rows
+  // 6. Idempotent return for already-terminal rows
   if (flow.status === "completed") {
-    // Pull cached plan_type back from the user row for the UI.
-    const planType = await readUserPlanType(userId, supabase);
-    return NextResponse.json({ status: "completed", plan_type: planType });
+    return await respondCompleted(userId, supabase);
   }
   if (flow.status === "expired" || flow.status === "denied") {
     return NextResponse.json({
@@ -163,8 +177,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<Response>> {
     });
   }
 
-  // Clock-side expiry check — even if OpenAI says pending, if our recorded
-  // deadline has passed, we treat it as expired and stop polling.
+  // 7. Clock-side expiry check — even if OpenAI says pending, if our recorded
+  //    deadline has passed, we treat it as expired and stop polling.
   if (new Date(flow.expires_at).getTime() <= Date.now()) {
     try {
       await markDeviceFlowFailed(flowId, "expired", null, supabase);
@@ -178,7 +192,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<Response>> {
     return NextResponse.json({ status: "expired" });
   }
 
-  // Poll OpenAI
+  // 8. Poll OpenAI
   let pollResult;
   try {
     pollResult = await pollDeviceFlow(flow.device_auth_id, flow.user_code);
@@ -190,19 +204,17 @@ export async function POST(req: NextRequest): Promise<NextResponse<Response>> {
       error: msg.slice(0, 400),
     });
     return NextResponse.json(
-      {
-        status: "error",
-        message: "Couldn't reach OpenAI to check connection status. Please try again.",
-      },
+      { status: "error", message: "Couldn't reach OpenAI to check connection status. Please try again." },
       { status: 503 },
     );
   }
 
-  // Map OpenAI result → DB write + response. See openai-oauth.ts:DeviceCodePoll
-  // for the discriminator.
+  // 9. Map OpenAI result → DB write + response.
   switch (pollResult.status) {
     case "pending":
-      return NextResponse.json({ status: "pending" });
+      // P1-D fallback: maybe tokens were stored by a prior poll whose
+      // mark-completed permanently failed. Check before returning pending.
+      return await pendingOrCompletedFallback(userId, supabase);
 
     case "expired":
       try {
@@ -233,6 +245,13 @@ export async function POST(req: NextRequest): Promise<NextResponse<Response>> {
       });
 
     case "error":
+      // P1-D fallback: before reporting error, check if user is actually
+      // connected from a prior poll. If so, the "error" is a downstream
+      // consequence of orphan flow state, not a real failure.
+      {
+        const fallback = await tryConnectedFallback(userId, supabase);
+        if (fallback) return fallback;
+      }
       try {
         await markDeviceFlowFailed(flowId, "error", pollResult.message.slice(0, 500), supabase);
       } catch (err) {
@@ -255,10 +274,11 @@ export async function POST(req: NextRequest): Promise<NextResponse<Response>> {
       });
 
     case "completed": {
-      // Store tokens FIRST. If this throws, the flow stays pending and the
-      // browser's next poll will retry the whole sequence (idempotent on
-      // the OpenAI side too — re-exchanging the same auth code returns
-      // the same tokens).
+      // P1-D: store tokens FIRST. If this throws, the flow stays pending
+      // and the browser's next poll will retry the whole sequence (idempotent
+      // on the OpenAI side too — re-exchanging the same auth code returns
+      // the same tokens... or 403 → pending, which the pending-fallback
+      // catches via the connected-state check).
       try {
         const result = await storeOAuthTokens(userId, pollResult, supabase);
         logger.info("openai-oauth: tokens stored", {
@@ -266,28 +286,29 @@ export async function POST(req: NextRequest): Promise<NextResponse<Response>> {
           flowId,
           tokenVersion: result.tokenVersion,
           planType: result.planType,
-          // Prefix-only — bearer JWTs are SENSITIVE per Rule 53.
+          // Prefix-only — bearer JWTs are SENSITIVE per Rule 53. 12 chars
+          // of an RS256 JWT is the header (identical across all JWTs) so
+          // there's no fingerprint leak; this is just for log-correlation.
           accessTokenPrefix: pollResult.tokens.accessToken.slice(0, 12),
-          // Same: expiration is informational (NOT sensitive) but we log
-          // it in human-readable ISO format.
           expiresAt: new Date(pollResult.tokens.expiresAtMs).toISOString(),
         });
-        try {
-          await markDeviceFlowCompleted(flowId, supabase);
-        } catch (err) {
-          // Tokens are stored — mark-completed is just bookkeeping. Don't
-          // fail the response over it; the row will be left as pending and
-          // a future poll will read status=pending, hit OpenAI, get 403,
-          // return pending, and the user's next-next poll will read the
-          // user record and see they're connected (start route's
-          // already_connected branch). Belt-and-suspenders.
-          logger.warn("openai-oauth: tokens stored but flow mark-completed failed", {
+        // P1-D fix 1: retry markDeviceFlowCompleted with backoff.
+        const markResult = await markDeviceFlowCompletedWithRetry(flowId, supabase);
+        if (!markResult.success) {
+          logger.warn("openai-oauth: tokens stored but flow mark-completed failed after retries", {
             userId,
             flowId,
-            error: err instanceof Error ? err.message : String(err),
+            attempts: markResult.attempts,
+            lastError: markResult.lastError?.slice(0, 200),
           });
+          // Tokens are stored — return completed anyway. The pending-fallback
+          // on subsequent polls (P1-D fix 2) will catch any browser that
+          // misses this response.
         }
-        return NextResponse.json({ status: "completed", plan_type: result.planType });
+        return NextResponse.json({
+          status: "completed",
+          plan_type: result.planType,
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error("openai-oauth: storeOAuthTokens failed", {
@@ -298,7 +319,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<Response>> {
         // Mark the flow as error so the UI can show a recoverable message
         // and stop the polling loop. The user re-clicks Connect to retry.
         try {
-          await markDeviceFlowFailed(flowId, "error", `store_failed: ${msg.slice(0, 200)}`, supabase);
+          await markDeviceFlowFailed(
+            flowId,
+            "error",
+            `store_failed: ${msg.slice(0, 200)}`,
+            supabase,
+          );
         } catch (markErr) {
           logger.warn("openai-oauth: also failed to mark flow error after store_failed", {
             userId,
@@ -321,24 +347,72 @@ export async function POST(req: NextRequest): Promise<NextResponse<Response>> {
 }
 
 /**
- * Read the cached chatgpt_plan_type for a user. Used by the already-completed
- * branch so the UI can display "Connected — ChatGPT Pro" without an extra
- * round-trip. Returns null on any error rather than failing the response
- * (the plan type is cosmetic, not load-bearing).
+ * P1-D fallback shared between `case "pending"` and `case "error"`:
+ * before returning the unhappy response, check if the user actually
+ * has tokens stored. If yes, an earlier poll succeeded at storeOAuthTokens
+ * but failed at markDeviceFlowCompleted (after retries) — the user IS
+ * connected. Return completed instead.
+ *
+ * Returns the completed-response NextResponse if user is connected;
+ * returns null if the caller should proceed with the unhappy response.
  */
-async function readUserPlanType(
+async function tryConnectedFallback(
   userId: string,
   supabase: ReturnType<typeof getSupabase>,
-): Promise<string | null> {
+): Promise<NextResponse<CompletedResponse> | null> {
   try {
-    const { data } = await supabase
-      .from("instaclaw_users")
-      .select("chatgpt_plan_type")
-      .eq("id", userId)
-      .single();
-    const v = (data?.chatgpt_plan_type as string | null | undefined) ?? null;
-    return v;
-  } catch {
-    return null;
+    const summary = await getConnectedSummary(userId, supabase);
+    if (summary.connected) {
+      return NextResponse.json({
+        status: "completed",
+        plan_type: summary.planType ?? null,
+        summary,
+      });
+    }
+  } catch (err) {
+    // Connected-check failure is non-fatal — let the caller fall back to
+    // its original response. Just log so we know the safety net is itself
+    // having issues.
+    logger.warn("openai-oauth: connected-state fallback check failed", {
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
+  return null;
+}
+
+/**
+ * P1-D fallback at the pending branch: same logic as tryConnectedFallback
+ * but the caller returns NextResponse{status:"pending"} if no fallback.
+ */
+async function pendingOrCompletedFallback(
+  userId: string,
+  supabase: ReturnType<typeof getSupabase>,
+): Promise<NextResponse<PendingResponse | CompletedResponse>> {
+  const completed = await tryConnectedFallback(userId, supabase);
+  if (completed) return completed;
+  return NextResponse.json({ status: "pending" });
+}
+
+/**
+ * Idempotent completed-response for the flow.status='completed' branch.
+ * Reads cached plan_type from the user record. Returns null in plan_type
+ * (rather than failing) on any read error — plan type is cosmetic.
+ */
+async function respondCompleted(
+  userId: string,
+  supabase: ReturnType<typeof getSupabase>,
+): Promise<NextResponse<CompletedResponse>> {
+  let summary: ConnectedSummary | undefined;
+  let planType: string | null = null;
+  try {
+    summary = await getConnectedSummary(userId, supabase);
+    planType = summary.planType ?? null;
+  } catch (err) {
+    logger.warn("openai-oauth: respondCompleted summary read failed", {
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return NextResponse.json({ status: "completed", plan_type: planType, summary });
 }
