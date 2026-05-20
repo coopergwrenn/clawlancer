@@ -71,6 +71,25 @@ const REASONING_MAX_CHARS = 240;
 // rather than render an awkward truncation.
 const REASONING_OMIT_ABOVE = 400;
 
+// Hard cap on the counterpart's display name. Yanek's actors[].name is
+// unbounded — a pathological value (long form titles, suffixes, full
+// legal names) would bloat the "i think you should meet …" line and
+// stretch the message past safe Telegram limits. Names beyond 80 chars
+// are display-noise; truncate with ellipsis.
+const COUNTERPART_NAME_MAX_CHARS = 80;
+
+// Telegram's documented sendMessage text limit is 4096 chars. We hold a
+// generous safety margin (~600 chars) below that for:
+//   • Bytes vs chars: UTF-16 surrogate pairs count as 2 in Telegram's
+//     internal accounting; plain ASCII counts as 1. Worst case ≈ 2×.
+//   • Future copy changes that lengthen the template without anyone
+//     remembering to re-validate.
+//   • Belt-and-suspenders for any per-section truncation that fails open.
+// If a constructed message exceeds this threshold, the function falls
+// back to a minimal "you've got a match — see [link]" shape rather than
+// failing the Telegram send with a 400.
+const TELEGRAM_MESSAGE_LIMIT = 3500;
+
 export interface IndexOpportunityActor {
   userId: string;
   role?: "patient" | "agent" | string;
@@ -340,10 +359,16 @@ export function buildMatchNotificationMessage(args: {
   counterpartIntent?: string | null;
   reasoning?: string | null;
 }): string {
+  // Sanitize + cap the counterpart name BEFORE composing. Yanek's
+  // actors[].name is untrusted user-supplied data; we strip line breaks
+  // (would corrupt paragraph rendering), collapse whitespace runs, and
+  // hard-cap length with a soft ellipsis on word boundary.
+  const safeName = capCounterpartName(args.counterpartName);
+
   const sections: string[] = [];
 
   sections.push("hey — quick signal.");
-  sections.push(`i think you should meet ${args.counterpartName}.`);
+  sections.push(`i think you should meet ${safeName}.`);
 
   const intent = truncateGracefully(args.counterpartIntent, INTENT_MAX_CHARS);
   if (intent) {
@@ -358,7 +383,72 @@ export function buildMatchNotificationMessage(args: {
 
   sections.push(`live in the village: ${VILLAGE_URL}`);
 
-  return sections.join("\n\n");
+  const message = sections.join("\n\n");
+
+  // Final-pass length guard. Defense-in-depth against any future copy
+  // change that lengthens the template, or any edge case where
+  // per-section truncation fails open. The minimal fallback still
+  // preserves the most important signals (the counterpart name + the
+  // village link), just drops the intent/reasoning context.
+  if (message.length > TELEGRAM_MESSAGE_LIMIT) {
+    logger.warn("[index-notifier] message exceeded length guard; using minimal fallback", {
+      composedLength: message.length,
+      limit: TELEGRAM_MESSAGE_LIMIT,
+      safeNameLength: safeName.length,
+    });
+    return buildMinimalFallbackMessage(safeName);
+  }
+  return message;
+}
+
+/**
+ * Minimal-fallback message shape — used when the full composed message
+ * exceeds TELEGRAM_MESSAGE_LIMIT. Preserves the agent voice, the
+ * counterpart's name (already-capped via capCounterpartName), and the
+ * village link. Always under 200 chars (counterpart name capped at 80).
+ *
+ * Not exported — only reachable via buildMatchNotificationMessage's
+ * guard branch. Inline-callable for tests that want to assert shape.
+ */
+function buildMinimalFallbackMessage(safeName: string): string {
+  return [
+    "hey — quick signal.",
+    `i think you should meet ${safeName} — full details in the village.`,
+    `live in the village: ${VILLAGE_URL}`,
+  ].join("\n\n");
+}
+
+/**
+ * Sanitize + cap a counterpart name for inline rendering in the message.
+ *
+ *   • Strips control characters (Telegram plain-text mode tolerates them
+ *     but they're invisible noise).
+ *   • Collapses internal whitespace runs to a single space — newlines
+ *     would split the "i think you should meet …" line across paragraphs.
+ *   • Trims edges.
+ *   • Caps length at COUNTERPART_NAME_MAX_CHARS with a word-boundary
+ *     ellipsis. Sentence boundaries don't exist in names; word boundary
+ *     is the only meaningful break we have.
+ *   • Returns "someone in the directory" placeholder for empty/all-
+ *     whitespace input — preserves the message's grammatical shape so
+ *     the user reads "i think you should meet someone in the directory"
+ *     rather than "i think you should meet ."
+ */
+function capCounterpartName(name: string): string {
+  if (!name) return "someone in the directory";
+  // Replace any whitespace run (including newlines, tabs) with a single
+  // space. Then trim leading/trailing.
+  const stripped = name.replace(/\s+/g, " ").trim();
+  if (!stripped) return "someone in the directory";
+  if (stripped.length <= COUNTERPART_NAME_MAX_CHARS) return stripped;
+  // Try a word-boundary cut so we don't slice "Christopher" → "Christop…"
+  // when "Chris" would do.
+  const cut = stripped.slice(0, COUNTERPART_NAME_MAX_CHARS);
+  const lastSpace = cut.lastIndexOf(" ");
+  if (lastSpace > COUNTERPART_NAME_MAX_CHARS * 0.6) {
+    return stripped.slice(0, lastSpace) + "…";
+  }
+  return cut + "…";
 }
 
 /**

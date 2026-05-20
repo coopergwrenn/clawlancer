@@ -79,6 +79,42 @@ async function main() {
   console.log("---");
   console.log();
 
+  console.log("=== DRY-RUN: message preview (pathological counterpart name — gets capped) ===\n");
+  const previewLongName = buildMatchNotificationMessage({
+    counterpartName:
+      "Dr. Christopher Maximilian Theodore Wellington-Featherstone III, PhD, MD, MBA, " +
+      "Senior Distinguished Research Fellow at the Institute for Advanced Multi-Agent Studies",
+    counterpartIntent: "building agent coordination protocols",
+    reasoning: null,
+  });
+  console.log("---");
+  console.log(previewLongName);
+  console.log("---");
+  console.log(`(length: ${previewLongName.length} chars — should be well under 3500)`);
+  console.log();
+
+  console.log("=== DRY-RUN: message preview (empty/whitespace counterpart name — falls back to placeholder) ===\n");
+  const previewEmptyName = buildMatchNotificationMessage({
+    counterpartName: "   \n\t  ",
+    counterpartIntent: "designing agent-to-agent negotiation protocols",
+    reasoning: null,
+  });
+  console.log("---");
+  console.log(previewEmptyName);
+  console.log("---");
+  console.log();
+
+  console.log("=== DRY-RUN: message preview (multiline name — whitespace collapses to single space) ===\n");
+  const previewMultiline = buildMatchNotificationMessage({
+    counterpartName: "Carter\n\nCleveland",
+    counterpartIntent: null,
+    reasoning: null,
+  });
+  console.log("---");
+  console.log(previewMultiline);
+  console.log("---");
+  console.log();
+
   if (!insertReal) {
     console.log("Run with --insert-test-row to actually fire end-to-end (will send real Telegram messages to cohort users with chat_id populated).");
     return;
