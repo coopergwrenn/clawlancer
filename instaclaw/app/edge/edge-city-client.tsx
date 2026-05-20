@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { EdgeUserState } from "./edge-user-state";
 
@@ -18,9 +19,21 @@ interface EdgeCityClientProps {
    * the user sees the right state on first paint.
    */
   state: EdgeUserState;
+
+  /**
+   * Optional secondary action rendered between the primary "Claim" button
+   * and the "OR" divider, ONLY in the logged_out state. Used on /edge/claim
+   * to surface the existing-account BYO link directly under the primary
+   * CTA so it reads as a parallel option, not a buried afterthought.
+   *
+   * Not rendered in in_progress (single-pill state) or live (celebratory
+   * card) — those layouts don't have a divider for a secondary slot to
+   * sit above.
+   */
+  secondaryActionSlot?: ReactNode;
 }
 
-export function EdgeCityClient({ state }: EdgeCityClientProps) {
+export function EdgeCityClient({ state, secondaryActionSlot }: EdgeCityClientProps) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -179,6 +192,15 @@ export function EdgeCityClient({ state }: EdgeCityClientProps) {
       >
         {claiming ? "Claiming…" : <>Claim your agent <span aria-hidden>→</span></>}
       </button>
+
+      {/* Optional secondary action slot — small text affordance directly
+       *  under the primary CTA. Used on /edge/claim for the existing-account
+       *  BYO link. Sits BEFORE the OR divider so it reads as "secondary
+       *  option" not "fallback to a different funnel."
+       */}
+      {secondaryActionSlot && (
+        <div className="mt-3 mb-1">{secondaryActionSlot}</div>
+      )}
 
       <div className="flex items-center gap-3 my-5">
         <div className="flex-1 h-px" style={{ background: "var(--edge-line)" }} />

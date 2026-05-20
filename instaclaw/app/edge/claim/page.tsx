@@ -169,9 +169,31 @@ export default async function EdgeClaimPage() {
               </p>
             )}
 
-            {/* The form — EdgeCityClient handles all 3 states */}
+            {/* The form — EdgeCityClient handles all 3 states. For logged_out
+             *  we pass the existing-account BYO link via secondaryActionSlot
+             *  so it renders directly below the primary "Claim your agent"
+             *  button (parallel option, not buried). */}
             <div className="max-w-md mb-7">
-              <EdgeCityClient state={userState} />
+              <EdgeCityClient
+                state={userState}
+                secondaryActionSlot={
+                  userState.kind === "logged_out" ? (
+                    <p
+                      className="text-[13px] leading-[1.55] text-center"
+                      style={{ color: "var(--edge-ink-soft)" }}
+                    >
+                      Already have an InstaClaw agent?{" "}
+                      <Link
+                        href="/signin?callbackUrl=%2Fapi%2Fpartner%2Ftag-redirect"
+                        className="underline underline-offset-2 font-medium"
+                        style={{ color: "var(--edge-ink)" }}
+                      >
+                        Sign in to claim it for Edge →
+                      </Link>
+                    </p>
+                  ) : undefined
+                }
+              />
             </div>
 
             {/* Consent — non-live only */}
@@ -192,19 +214,22 @@ export default async function EdgeClaimPage() {
               </p>
             )}
 
-            {/* BYO branch — logged_out only (logged-in already lands on dashboard via tag) */}
-            {userState.kind === "logged_out" && (
+            {/* Self-hosted BYOB branch — for users running OpenClaw on their
+             *  own hardware who want to participate in the village network
+             *  without InstaClaw managed hosting. Replaces the previous
+             *  InstaClaw-BYO link (which moved next to the primary CTA above). */}
+            {!isLive && (
               <p
                 className="text-[14px] leading-[1.55] mb-7 max-w-md"
                 style={{ color: "var(--edge-ink-soft)" }}
               >
-                Already have an InstaClaw agent?{" "}
+                Already have your own agent?{" "}
                 <Link
-                  href="/signin?callbackUrl=%2Fapi%2Fpartner%2Ftag-redirect"
+                  href="/edge/byob"
                   className="underline underline-offset-2 font-medium"
                   style={{ color: "var(--edge-ink)" }}
                 >
-                  Sign in to claim it for Edge →
+                  Install the Edge skill manually →
                 </Link>
               </p>
             )}
