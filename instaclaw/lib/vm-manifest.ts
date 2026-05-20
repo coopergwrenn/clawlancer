@@ -1541,8 +1541,20 @@ export const VM_MANIFEST = {
    *  content change in lib/partner-content.ts. stepDeployEdgeOverlay does
    *  SHA-verified push to the 9 edge_city VMs within ~3min via the reconciler
    *  cron. No code-path change; pure copy.
+   *
+   * v109 — 2026-05-20 (chatgpt-connection skill — Day 4)
+   *
+   *  New skill at instaclaw/skills/chatgpt-connection/SKILL.md. Teaches the
+   *  agent how to handle /connect-chatgpt, /model, /disconnect-chatgpt
+   *  slash commands + natural-language variants ("which model am I on",
+   *  "use my chatgpt", etc.). Auto-deployed via skillsFromRepo: true.
+   *  Bumped version so the existing fleet picks up the new skill on the
+   *  next reconcile cycle (file-drift cron only runs stepFiles, not
+   *  stepSkills, so a new skill needs a version bump per Rule 47).
+   *  Per-VM rollout: ~3-4h across 240 VMs at CONFIG_AUDIT_BATCH_SIZE=3.
+   *  No config-key changes, no code-path changes — pure additive skill.
    */
-  version: 108,
+  version: 109,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
