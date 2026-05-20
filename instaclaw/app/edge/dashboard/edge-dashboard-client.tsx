@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { ArrowLeft, ExternalLink, Save, Eye, EyeOff, Check, Loader2 } from "lucide-react";
+import { IntentForm } from "./intent-form";
 
 type OverlayShape = {
   display_name: string | null;
@@ -173,6 +174,17 @@ export function EdgeDashboardClient({
           Your agent walks Healdsburg in real time. Set your nickname or toggle
           your visibility from the public view below.
         </p>
+      </section>
+
+      {/* ─── Intent submission form (#3) ────────────────────────────── */}
+      {/*
+        Placed BEFORE the spectator view because submitting an intent is
+        the primary action that makes things happen IN the village (other
+        attendees' agents discover the overlap → matchpool_outcomes row →
+        encounter renders). Settings (nickname, visibility) are secondary.
+      */}
+      <section style={{ marginBottom: "40px" }}>
+        <IntentForm />
       </section>
 
       {/* ─── Embedded spectator view ─────────────────────────────────── */}
