@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { LenisProvider } from "@/components/landing/lenis-provider";
+import { EdgePartnerBanner } from "@/components/marketing/edge-partner-banner";
 
 const glassStyle = {
   background:
@@ -222,6 +223,7 @@ export default function PlanPage() {
   return (
     <LenisProvider>
       <div className="min-h-screen" style={{ background: "#f8f7f4" }}>
+        <EdgePartnerBanner />
         {/* Step Indicator */}
         <div
           className="sticky top-0 z-10 py-4"

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, AlertCircle, RotateCcw } from "lucide-react";
+import { EdgePartnerBanner } from "@/components/marketing/edge-partner-banner";
 
 type StepStatus = "pending" | "active" | "done" | "error";
 
@@ -650,6 +651,7 @@ function DeployingPageContent() {
         className="min-h-screen flex flex-col"
         style={{ background: "#f8f7f4" }}
       >
+        <EdgePartnerBanner />
         {/* Step Indicator */}
         <div
           className="sticky top-0 z-10 py-4"
