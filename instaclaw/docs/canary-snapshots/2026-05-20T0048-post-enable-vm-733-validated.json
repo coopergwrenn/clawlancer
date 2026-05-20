@@ -1,0 +1,54 @@
+{
+  "snapshot_taken": "2026-05-20T00:49:05Z",
+  "phase": "v107 canary rollout post-fix",
+  "fix_applied": "commit 50cdf39b — SHA-length comparison + error serialization",
+  "vercel_deploy_confirmed": "2026-05-20T00:20:xx",
+  "canary_enabled_at": "2026-05-20T00:20:xx",
+  "cv_unlock_applied": ["instaclaw-vm-073", "instaclaw-vm-320"],
+  "cohort_size": 17,
+  "validated": ["instaclaw-vm-733"],
+  "vm_733_state_at_validation": {
+    "cv": 108,
+    "gbrain_service_state": "active",
+    "gbrain_uptime_sec_at_first_probe": 58,
+    "gbrain_NRestarts": 0,
+    "gbrain_health_http": 200,
+    "gbrain_version": "0.36.3.0",
+    "gbrain_engine": "pglite",
+    "PGLite_version": 17,
+    "pg_control_freshness": "fresh (Phase F just ran)",
+    "AGENTS_md_GBRAIN_MEMORY_PROTOCOL_V1": "marker count=2",
+    "SOUL_md_GBRAIN_SOUL_ROUTING_V1": "marker count=0 (V2 SOUL — anchors absent — correct skip)",
+    "gateway_state": "active",
+    "gateway_health_http": 200,
+    "free_mem_mb": 2133,
+    "soul_template": "V2 (3042 bytes)"
+  },
+  "cooper_criteria_for_vm_733": {
+    "1_stepGbrain_ran": "PASS (gbrain.service active, NRestarts=0)",
+    "2_stepDeployGbrainSoulProtocol_ran": "PASS (AGENTS.md marker present, count=2)",
+    "3_stepDeployGbrainSoulRouting_ran": "DESIGN-CORRECT SKIP (V2 SOUL has no Memory Persistence section; anchors_missing → warnings push → cv bumps. AGENTS.md is the routing surface for V2 SOUL VMs.)",
+    "4_cv_bumped": "PASS (105 → 108; current manifest version)",
+    "5_gateway_healthy": "PASS (active, /health 200)",
+    "6_memory_pressure": "PASS (2133 MB free, threshold 800 MB)"
+  },
+  "design_finding": {
+    "issue": "Cohort VMs are on SOUL.md V2 template (3KB trimmed, no Memory Persistence section). Edge VMs are on SOUL.md V1 (35K+).",
+    "implication": "v106 stepDeployGbrainSoulRouting was designed for V1 SOUL. For V2 SOUL VMs it correctly no-ops with a warning push (anchors absent). AGENTS.md gbrain content (stepDeployGbrainSoulProtocol) is the routing surface for V2 SOUL VMs.",
+    "agent_behavior_for_V2_SOUL_VMs": "Agent reads SOUL.md V2 (minimal, no Memory Persistence directive) → falls back to AGENTS.md routing → AGENTS.md has gbrain GBRAIN_MEMORY_PROTOCOL_V1 block → agent uses gbrain correctly. No contradiction in SOUL.md to override.",
+    "phase_2_3_implication": "Same pattern. V2 SOUL VMs only get AGENTS.md routing. Acceptable design.",
+    "edge_vms": "Still on V1 SOUL with SOUL_ROUTING_V1 block deployed yesterday. Unaffected."
+  },
+  "expected_drain": {
+    "rate_observed": "~1-2 cohort VMs per 5-10 min",
+    "total_cohort_drain_eta": "1-3 hours",
+    "tomorrow_morning_state_expected": "17/17 with gbrain.service active, AGENTS.md marker present, cv=108"
+  },
+  "halt_signals_to_watch": [
+    "Any gbrain.service NRestarts > 0",
+    "Any gbrain /health != 200",
+    "Any gateway /health != 200",
+    "Any free_mem_mb < 800 sustained",
+    "Any pg_control mtime > 60 min stale (checkpoint cron broken)"
+  ]
+}
