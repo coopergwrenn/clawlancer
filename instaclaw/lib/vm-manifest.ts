@@ -1580,7 +1580,7 @@ export const VM_MANIFEST = {
    *  every Day 1-4 OAuth completion was a broken promise — DB said
    *  "connected" but VM still routed to Claude.
    */
-  version: 110,
+  version: 111,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
