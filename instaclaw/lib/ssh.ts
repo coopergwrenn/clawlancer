@@ -6000,6 +6000,14 @@ export async function configureOpenClaw(
         `grep -q "^EDGEOS_BEARER_TOKEN=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
         `  sed -i "s|^EDGEOS_BEARER_TOKEN=.*|EDGEOS_BEARER_TOKEN=${edgeosToken}|" "$HOME/.openclaw/.env" || \\`,
         `  echo "EDGEOS_BEARER_TOKEN=${edgeosToken}" >> "$HOME/.openclaw/.env"`,
+        '',
+        '# E1 (2026-05-20): suppress legacy daily-digest for edge_city. The marker',
+        '# is checked by dispatch-scripts.ts:daily-digest.sh as its first line and',
+        '# exits cleanly when present. Edge attendees receive the dedicated morning',
+        '# brief at /api/cron/edge-morning-brief (9 AM PT) instead — that is the',
+        '# single village touchpoint, not the generic credit-metrics digest.',
+        '# Idempotent: `touch` is a no-op if the file already exists.',
+        'mkdir -p "$HOME/.openclaw/workspace" && touch "$HOME/.openclaw/workspace/.no-digest"',
         ''
       );
 
