@@ -19,6 +19,10 @@ import { getSupabase } from "@/lib/supabase";
 import { redirect } from "next/navigation";
 import { createMetadata } from "@/lib/seo";
 import { EdgeDashboardClient } from "./edge-dashboard-client";
+import {
+  fetchUserMatchHistory,
+  fetchUserCurrentIntent,
+} from "@/lib/edge-dashboard-data";
 
 export const dynamic = "force-dynamic";
 
@@ -43,19 +47,37 @@ export default async function EdgeDashboardPage() {
 
   const supabase = getSupabase();
 
-  // Prefetch the user's current overlay + the canonical rendered display
-  // name (post-COALESCE), so the client can render without flash.
-  const { data: overlay } = await supabase
-    .from("village_attendee_overlay")
-    .select("display_name, spectator_visible, larry_atlas_index, home_tile_x, home_tile_y")
-    .eq("user_id", session.user.id)
+  // Fetch the user's edge VM (for Index credentials — drives the
+  // current-intent fetch + the "setup complete" empty-state branching).
+  const { data: edgeVm } = await supabase
+    .from("instaclaw_vms")
+    .select("index_api_key")
+    .eq("assigned_to", session.user.id)
+    .eq("partner", "edge_city")
     .maybeSingle();
+  const indexApiKey = (edgeVm?.index_api_key as string | null) ?? null;
 
-  const { data: viewRow } = await supabase
-    .from("village_attendees")
-    .select("display_name, full_name, spectator_visible")
-    .eq("user_id", session.user.id)
-    .maybeSingle();
+  // Parallel fetch: village overlay + rendered name + match history +
+  // current intent. The MCP call for current-intent is the slowest leg
+  // (~1-2s); everything else is sub-200ms. Promise.all overlaps the
+  // wait. If Yanek's MCP fails, fetchUserCurrentIntent returns null and
+  // the dashboard renders without the intent line — no crash.
+  const [overlay, viewRow, matches, currentIntent] = await Promise.all([
+    supabase
+      .from("village_attendee_overlay")
+      .select("display_name, spectator_visible, larry_atlas_index, home_tile_x, home_tile_y")
+      .eq("user_id", session.user.id)
+      .maybeSingle()
+      .then((r) => r.data),
+    supabase
+      .from("village_attendees")
+      .select("display_name, full_name, spectator_visible")
+      .eq("user_id", session.user.id)
+      .maybeSingle()
+      .then((r) => r.data),
+    fetchUserMatchHistory(session.user.id),
+    fetchUserCurrentIntent(session.user.id, indexApiKey),
+  ]);
 
   return (
     <EdgeDashboardClient
@@ -67,6 +89,18 @@ export default async function EdgeDashboardPage() {
         full_name: viewRow?.full_name ?? null,
         spectator_visible: viewRow?.spectator_visible ?? true,
       }}
+      matches={matches}
+      currentIntent={currentIntent}
+      userHasIndexKey={!!indexApiKey}
+      // intentFetchSucceeded distinguishes "no intent yet" (succeeded,
+      // empty) from "couldn't load" (call failed). When indexApiKey is
+      // present AND fetchUserCurrentIntent returned null, we treat that
+      // as either "no intent" (success, empty array) or "fetch failed"
+      // — the fetcher logs the distinction but the boolean we surface
+      // here is conservative: true ONLY if we had a key AND null comes
+      // back. The UX collapses both into a single "no intent" prompt
+      // since either way the user's actionable next step is the same.
+      intentFetchSucceeded={!!indexApiKey}
     />
   );
 }

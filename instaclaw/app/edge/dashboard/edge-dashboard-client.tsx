@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { ArrowLeft, ExternalLink, Save, Eye, EyeOff, Check, Loader2 } from "lucide-react";
 import { IntentForm } from "./intent-form";
+import { MatchHistorySection } from "./match-history-section";
+import type { CounterpartMatch, CurrentIntent } from "@/lib/edge-dashboard-data";
 
 type OverlayShape = {
   display_name: string | null;
@@ -24,11 +26,19 @@ export function EdgeDashboardClient({
   userName,
   initialOverlay,
   initialRendered,
+  matches,
+  currentIntent,
+  userHasIndexKey,
+  intentFetchSucceeded,
 }: {
   userId: string;
   userName: string | null;
   initialOverlay: OverlayShape;
   initialRendered: RenderedShape;
+  matches: CounterpartMatch[];
+  currentIntent: CurrentIntent | null;
+  userHasIndexKey: boolean;
+  intentFetchSucceeded: boolean;
 }) {
   const [overlay, setOverlay] = useState<OverlayShape>(initialOverlay);
   const [rendered, setRendered] = useState<RenderedShape>(initialRendered);
@@ -176,12 +186,37 @@ export function EdgeDashboardClient({
         </p>
       </section>
 
+      {/* ─── Match history + current intent (#12 Phase A) ──────────── */}
+      {/*
+        Placed RIGHT AFTER the hero because this is the section every
+        attendee lands on when they tap "live in the village" from a
+        Telegram notification. Their primary mental model is "where's
+        MY match?" — the village viz (spectator iframe below) is
+        ambient context; the match feed is the answer.
+
+        Server-rendered data is passed as props (matches, currentIntent,
+        userHasIndexKey, intentFetchSucceeded). No client interactivity
+        in Phase A — realtime subscription for new matches lands in
+        Phase B post-launch.
+      */}
+      <MatchHistorySection
+        matches={matches}
+        currentIntent={currentIntent}
+        userHasIndexKey={userHasIndexKey}
+        intentFetchSucceeded={intentFetchSucceeded}
+      />
+
       {/* ─── Intent submission form (#3) ────────────────────────────── */}
       {/*
         Placed BEFORE the spectator view because submitting an intent is
         the primary action that makes things happen IN the village (other
         attendees' agents discover the overlap → matchpool_outcomes row →
         encounter renders). Settings (nickname, visibility) are secondary.
+
+        Per the 2026-05-20 cross-terminal boundary: Edge City terminal
+        owns the placement + adaptive rendering of IntentForm. The
+        component file + /api/edge/express-intent route stay this
+        terminal's; this section block is Edge City's territory.
       */}
       <section style={{ marginBottom: "40px" }}>
         <IntentForm />
