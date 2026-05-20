@@ -26,6 +26,7 @@ import { WorldIDSection } from "@/components/dashboard/world-id-section";
 import { BrowserExtensionSection } from "@/components/dashboard/browser-extension-section";
 import { DispatchRelaySection } from "@/components/dashboard/dispatch-relay-section";
 import { ConnectWorldWallet } from "@/components/dashboard/connect-world-wallet";
+import { ChatGPTConnectionSection } from "@/components/dashboard/chatgpt-connection-section";
 
 const MODEL_OPTIONS = [
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
@@ -830,6 +831,9 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      {/* ChatGPT Subscription Connection (Day 3 — login with ChatGPT) */}
+      <ChatGPTConnectionSection />
 
       {/* Channel Token Management */}
       {/* Telegram Bot Token — always visible so new users can set up */}
