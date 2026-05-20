@@ -568,6 +568,153 @@ async function main(): Promise<void> {
     assert(vmUpdates.length === 0, "NO DB updates in dry-run");
   }
 
+  // ─── Test 10: NULL expires_at + active token → push anyway + log warning ──
+  // Cooper's audit asked: what happens when openai_oauth_access_token is set
+  // but openai_oauth_expires_at is NULL (user connected but expiry wasn't
+  // recorded)? Behavior: push the token (likely valid, just unrecorded),
+  // log a warning about the anomaly. NOT an error (token might work).
+  console.log("\n10. NULL expires_at with active token:");
+  {
+    const REAL_TOKEN = "eyJ.null-expiry.JWT";
+    const encryptedToken = encryptSecret(REAL_TOKEN, USER_ID);
+    const onDiskJson = JSON.stringify({
+      profiles: { "anthropic:default": { type: "api_key", provider: "anthropic", key: "sk-x" } },
+    });
+    const { ssh, calls } = makeMockSsh({
+      responses: [
+        { match: /python3.*model.*primary/, result: { code: 0, stdout: "anthropic/claude-sonnet-4-6\n" } },
+        { match: /python3.*openai-codex:default.*key/, result: { code: 0, stdout: REAL_TOKEN.slice(0, 16) + "\n" } },
+        { match: /cat ~\/\.openclaw\/agents\/main\/agent\/auth-profiles\.json/, result: { code: 0, stdout: onDiskJson } },
+      ],
+    });
+    const { vmUpdates } = makeMockSupabase({
+      user: {
+        id: USER_ID,
+        openai_token_version: 4,
+        openai_oauth_access_token: encryptedToken,
+        // expires_at omitted (NULL on instaclaw_users)
+        openai_oauth_account_id: "acct_null_exp",
+      },
+    });
+    const vm: VMFixture = {
+      id: "vm-10",
+      assigned_to: USER_ID,
+      openai_token_version_synced: 0,
+    };
+    const result = makeResult();
+    await __testOnly_stepChatGPTOAuthToken(ssh as never, vm as never, result as never, false);
+
+    assert(result.errors.length === 0, "no errors — NULL expires_at is a warning, not a hard error");
+    // We DO push the token (likely valid; agent will discover via 401 if not)
+    const profileWrite = calls.find(
+      (c) =>
+        c.command.includes("base64 -d > ~/.openclaw/agents/main/agent/auth-profiles.json.tmp") &&
+        c.command.includes("mv"),
+    );
+    assert(!!profileWrite, "atomic profile write fires despite NULL expires_at");
+    assert(
+      vmUpdates.some((u) => u.openai_token_version_synced === 4),
+      "synced version bumped even with NULL expires_at",
+    );
+    // No assertion on log output (lib/logger is fire-and-forget). The
+    // warning log fires per inspection of the source; trust + visual
+    // verification at runtime via journalctl during canary.
+  }
+
+  // ─── Test 11: Empty decrypted token → result.errors ────────────────────
+  // P2-A from the v110 audit. encryptSecret("") is valid; if a bug stored
+  // empty plaintext somewhere upstream, the decrypt returns "" and we'd
+  // push an empty bearer to the VM. Refuse the push, push error to gate
+  // the cv bump.
+  console.log("\n11. Empty decrypted token → error:");
+  {
+    const encryptedEmpty = encryptSecret("", USER_ID); // empty plaintext, valid encrypt
+    const { ssh, calls } = makeMockSsh();
+    makeMockSupabase({
+      user: {
+        id: USER_ID,
+        openai_token_version: 2,
+        openai_oauth_access_token: encryptedEmpty,
+        openai_oauth_expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        openai_oauth_account_id: "acct_empty",
+      },
+    });
+    const vm: VMFixture = {
+      id: "vm-11",
+      assigned_to: USER_ID,
+      openai_token_version_synced: 0,
+    };
+    const result = makeResult();
+    await __testOnly_stepChatGPTOAuthToken(ssh as never, vm as never, result as never, false);
+
+    assert(
+      result.errors.some((e) => e.includes("empty")),
+      "empty decrypted token surfaced as error",
+    );
+    assert(
+      result.errors.some((e) => e.includes("refusing to push")),
+      "error message explains the refuse-to-push posture",
+    );
+    assert(calls.length === 0, "NO SSH writes for empty-token case (rejected before applyConnectedState)");
+  }
+
+  // ─── Test 12: vm.default_model with shell-meta chars → safe fallback ────
+  // P1 from the v110 audit. If vm.default_model is set to an injection
+  // string via DB compromise, the disconnect path calls toOpenClawModel.
+  // The whitelist now rejects shell-meta chars and falls back to the
+  // safe default. Verifies the injection vector is blocked at the
+  // toOpenClawModel layer.
+  console.log("\n12. Disconnect with attacker-controlled vm.default_model:");
+  {
+    const onDiskJson = JSON.stringify({
+      profiles: {
+        "anthropic:default": { type: "api_key", provider: "anthropic", key: "sk-x" },
+        "openai-codex:default": {
+          type: "oauth",
+          provider: "openai-codex",
+          key: "stale",
+          metadata: { accountId: "acct_x" },
+        },
+      },
+    });
+    const { ssh, calls } = makeMockSsh({
+      responses: [
+        { match: /python3.*model.*primary/, result: { code: 0, stdout: "openai-codex/gpt-5.5\n" } },
+        { match: /cat ~\/\.openclaw\/agents\/main\/agent\/auth-profiles\.json/, result: { code: 0, stdout: onDiskJson } },
+      ],
+    });
+    makeMockSupabase({
+      user: {
+        id: USER_ID,
+        openai_token_version: 9,
+        openai_oauth_access_token: null, // disconnected
+      },
+    });
+    const vm: VMFixture = {
+      id: "vm-12",
+      assigned_to: USER_ID,
+      openai_token_version_synced: 7,
+      // Attacker-controlled value attempting shell injection via single quote
+      default_model: "openai-codex/'; whoami #",
+    };
+    const result = makeResult();
+    await __testOnly_stepChatGPTOAuthToken(ssh as never, vm as never, result as never, false);
+
+    assert(result.errors.length === 0, "no errors — safe fallback used");
+    // Verify the model set command uses the SAFE fallback, not the injection.
+    const modelSetCall = calls.find((c) =>
+      c.command.includes("openclaw config set agents.defaults.model.primary"),
+    );
+    assert(
+      !!modelSetCall && modelSetCall.command.includes("anthropic/claude-sonnet-4-6"),
+      "shell-meta in default_model falls back to anthropic/claude-sonnet-4-6 — injection blocked",
+    );
+    assert(
+      !!modelSetCall && !modelSetCall.command.includes("whoami"),
+      "injection payload NOT present in shell command",
+    );
+  }
+
   // ─── Summary ─────────────────────────────────────────────────────────────
   console.log(`\n=== Results ===`);
   console.log(`PASS: ${pass}`);

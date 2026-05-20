@@ -4033,7 +4033,22 @@ export function toOpenClawModel(model: string): string {
   // vm.default_model = "openai-codex/gpt-5.5" when a user connects their
   // ChatGPT subscription via the OAuth modal, and the stepEnforceModelPrimary
   // mapping needs to honor that without rewriting to anthropic/claude.
-  if (model.startsWith("openai-codex/")) return model;
+  //
+  // Whitelist-validate the model string before pass-through. Callers
+  // (stepEnforceModelPrimary, stepChatGPTOAuthToken disconnect path) embed
+  // this return value into single-quoted shell commands of the form
+  // `openclaw config set ... '${target}'`. Without the regex check, an
+  // attacker with DB-write access to vm.default_model could embed quote
+  // characters to escape the shell arg and execute arbitrary commands on
+  // every reconcile. Whitelist: alphanum + dot + underscore + hyphen
+  // after the slash. Anything else falls through to the safe fallback,
+  // matching the function's existing "unknown model" behavior.
+  if (model.startsWith("openai-codex/")) {
+    if (!/^openai-codex\/[a-zA-Z0-9._-]+$/.test(model)) {
+      return "anthropic/claude-sonnet-4-6";
+    }
+    return model;
+  }
   const map: Record<string, string> = {
     "minimax-m2.5": "anthropic/minimax-m2.5",
     "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4-5-20251001",

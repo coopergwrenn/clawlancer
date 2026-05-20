@@ -8370,6 +8370,19 @@ async function stepChatGPTOAuthToken(
     return;
   }
 
+  // 4b. NULL expires_at with a token present is an anomaly — storeOAuthTokens
+  // always populates expires_at from the JWT. A NULL with access_token set
+  // suggests bug-elsewhere or manual DB manipulation. The token might be
+  // valid (likely is, just expiry unrecorded), so we push it; but log so
+  // operators see the anomaly during incident triage.
+  if (!expiresAtIso) {
+    logger.warn("chatgpt-oauth: token present but expires_at is NULL — pushing anyway", {
+      route: "vm-reconcile",
+      vmId: vm.id,
+      userId: userId.slice(0, 8),
+    });
+  }
+
   // 5. Active token — decrypt + push if drift detected.
   let accessToken: string;
   try {
@@ -8388,6 +8401,24 @@ async function stepChatGPTOAuthToken(
       return;
     }
     throw err;
+  }
+
+  // P2-A: decrypted token must be non-empty. encryptSecret("") is a valid
+  // operation (round-trip verified in encryption tests), so an empty value
+  // is possible if upstream code accidentally stored "". Refuse to push
+  // an empty bearer (would yield 401 from OpenAI on the agent's next
+  // request). Push to errors so the cv-bump gate blocks until upstream
+  // is fixed.
+  if (accessToken.length === 0) {
+    result.errors.push(
+      `chatgpt-oauth: decrypted access token is empty for user ${userId.slice(0, 8)} — possible storage corruption, refusing to push`,
+    );
+    logger.error("chatgpt-oauth: empty decrypted token", {
+      route: "vm-reconcile",
+      vmId: vm.id,
+      userId: userId.slice(0, 8),
+    });
+    return;
   }
 
   await applyConnectedState(
