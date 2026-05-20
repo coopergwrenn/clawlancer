@@ -186,31 +186,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 2. Partner gate + read the rate-limit anchor
+  // 2. Partner gate + read the rate-limit anchor (saved for revert)
   const gate = await getEdgeCityUserOrError(session.user.id);
   if (!gate.ok) return gate.error;
+  const originalLastIntentAt = gate.lastIntentAt;
 
-  // 3. Rate-limit check — 1 per user per 5 min, only on prior SUCCESS
-  if (gate.lastIntentAt) {
-    const elapsed = Date.now() - new Date(gate.lastIntentAt).getTime();
-    if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < RATE_LIMIT_WINDOW_MS) {
-      const retryAfterSec = Math.ceil((RATE_LIMIT_WINDOW_MS - elapsed) / 1000);
-      return NextResponse.json<IntentResponseBody>(
-        {
-          status: "rate_limited",
-          message:
-            "you can update your intent once every 5 minutes. give it a moment and try again.",
-          retryAfterSec,
-        },
-        {
-          status: 429,
-          headers: { "Retry-After": String(retryAfterSec) },
-        },
-      );
-    }
-  }
-
-  // 4. Body parsing + validation
+  // 3. Body parsing + validation (cheap; do BEFORE the atomic claim
+  //    so malformed bodies don't burn rate-limit budget).
   let body: Record<string, unknown>;
   try {
     body = (await req.json()) as Record<string, unknown>;
@@ -248,33 +230,126 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 5. Call createIndexIntent — does MCP create_intent via the
-  //    canonical IndexMcpClient with the burst-retry wrapper.
+  // 4. Atomic rate-limit claim (#A from 2026-05-20 audit).
+  //
+  // Pre-audit (pushed at f8ca33a2): read-then-check-then-update was
+  // non-atomic — two simultaneous requests both passed the gate,
+  // both called createIndexIntent, both UPDATEd the column → two
+  // intents landed on Yanek's side per user-click-burst.
+  //
+  // Implementation uses a TWO-STEP claim instead of a single
+  // UPDATE-with-OR-filter, because PostgREST's UPDATE + .or() filter
+  // surfaces an "undefined_column" error in supabase-js (verified by
+  // _probe-or-js-v2.ts: same .or() works on SELECT, fails on UPDATE
+  // for ALL columns — client-library bug). Workaround:
+  //
+  //   Step 4a: Read-side rate-limit check on originalLastIntentAt
+  //            we already have from the partner gate. Returns 429
+  //            if within the 5-min window.
+  //
+  //   Step 4b: CAS atomic claim — UPDATE WHERE id = userId AND
+  //            index_last_intent_at = [previous-observed-value].
+  //            Uses .is(null) for NULL or .eq(timestamp) for non-NULL.
+  //            Postgres serializes UPDATE on the row; only ONE
+  //            concurrent request matches the previous value. Other
+  //            requests see notified_*_at has CHANGED → 0 rows → 429.
+  //
+  // This is correctness-equivalent to the single-UPDATE-with-OR
+  // pattern. Same race protection (#13's proven primitive on a
+  // different table). The two-step is purely a client-library
+  // workaround.
+  const supabase = getSupabase();
+  // Step 4a: window check (read-side; cheap; weeds out the obvious case)
+  if (originalLastIntentAt) {
+    const elapsed = Date.now() - new Date(originalLastIntentAt).getTime();
+    if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < RATE_LIMIT_WINDOW_MS) {
+      const retryAfterSec = Math.ceil((RATE_LIMIT_WINDOW_MS - elapsed) / 1000);
+      return NextResponse.json<IntentResponseBody>(
+        {
+          status: "rate_limited",
+          message:
+            "you can update your intent once every 5 minutes. give it a moment and try again.",
+          retryAfterSec,
+        },
+        { status: 429, headers: { "Retry-After": String(retryAfterSec) } },
+      );
+    }
+  }
+  // Step 4b: CAS claim against the observed prior value
+  const claimedAt = new Date().toISOString();
+  let claimQuery = supabase
+    .from("instaclaw_users")
+    .update({ index_last_intent_at: claimedAt })
+    .eq("id", session.user.id);
+  claimQuery =
+    originalLastIntentAt === null
+      ? claimQuery.is("index_last_intent_at", null)
+      : claimQuery.eq("index_last_intent_at", originalLastIntentAt);
+  const { data: claim, error: claimErr } = await claimQuery.select("id");
+  if (claimErr) {
+    logger.error("[express-intent] claim UPDATE failed", {
+      userIdPrefix: session.user.id.slice(0, 8),
+      error: claimErr.message,
+    });
+    return NextResponse.json(
+      { status: "error", message: "something went wrong. try again." },
+      { status: 500 },
+    );
+  }
+  if (!claim || claim.length === 0) {
+    // CAS failed — another request claimed first. The column's
+    // current value differs from originalLastIntentAt. Concurrent
+    // requests both read the same prior value, both attempt CAS,
+    // only one wins; the loser gets here.
+    return NextResponse.json<IntentResponseBody>(
+      {
+        status: "rate_limited",
+        message:
+          "you can update your intent once every 5 minutes. give it a moment and try again.",
+        retryAfterSec: Math.ceil(RATE_LIMIT_WINDOW_MS / 1000),
+      },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(RATE_LIMIT_WINDOW_MS / 1000)) } },
+    );
+  }
+
+  // 5. We own the claim. Call createIndexIntent — does MCP create_intent
+  //    via the canonical IndexMcpClient with the burst-retry wrapper.
   const result = await createIndexIntent({
     userId: session.user.id,
     description,
   });
 
-  // 6. On SUCCESS, advance the rate-limit anchor. Failures don't
-  //    update the column so users can immediately retry.
-  if (result.status === "created") {
-    const supabase = getSupabase();
-    const { error: updateErr } = await supabase
+  // 6. SUCCESS → claim stays in place (already set by step 4). No
+  //    further UPDATE needed.
+  // 6a. FAILURE → CAS revert to allow immediate retry. Restoring to
+  //    the ORIGINAL value (not NULL) preserves any prior successful
+  //    submission's rate-limit anchor — important if the user had a
+  //    successful submission 3 min ago and this one failed: the
+  //    original-3-min-old anchor stays, so they still need to wait 2
+  //    more min vs being able to retry immediately.
+  //    CAS WHERE notified-side equivalent: only revert IF our claim
+  //    is still in place. If someone else has claimed since (shouldn't
+  //    happen given the 5-min window, but defense in depth), we don't
+  //    clobber.
+  if (result.status === "error" || result.status === "skipped") {
+    const { error: revertErr } = await supabase
       .from("instaclaw_users")
-      .update({ index_last_intent_at: new Date().toISOString() })
-      .eq("id", session.user.id);
-    if (updateErr) {
-      // The intent was registered upstream; only the rate-limit
-      // anchor failed to advance. User would be able to submit again
-      // immediately — minor abuse vector, not a correctness issue.
-      // Log for operator visibility but don't block the success.
-      logger.warn("[express-intent] failed to advance rate-limit anchor", {
+      .update({ index_last_intent_at: originalLastIntentAt })
+      .eq("id", session.user.id)
+      .eq("index_last_intent_at", claimedAt);
+    if (revertErr) {
+      // Claim remains set; user has to wait 5 min before retry. Log
+      // loudly so the operator notices (rare path).
+      logger.error("[express-intent] claim revert failed; user rate-limited until window expires", {
         userIdPrefix: session.user.id.slice(0, 8),
-        intentIdPrefix: result.intentId.slice(0, 8),
-        error: updateErr.message,
+        claimedAt,
+        resultStatus: result.status,
+        revertError: revertErr.message,
       });
     }
-  } else if (result.status === "error") {
+  }
+
+  if (result.status === "error") {
     // Log for operator forensics — the user sees the friendly
     // "coming online soon" message via mapCreateIntentResultToResponse.
     logger.warn("[express-intent] createIndexIntent error", {
