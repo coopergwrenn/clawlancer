@@ -34,6 +34,7 @@ for (const l of readFileSync(
 }
 
 import { buildMatchNotificationMessage, notifyIndexMatch } from "../lib/index-match-notifier";
+import type { IndexOpportunitySummary } from "../lib/index-match-notifier";
 
 const argv = process.argv.slice(2);
 const insertReal = argv.includes("--insert-test-row");
@@ -113,6 +114,83 @@ async function main() {
   console.log("---");
   console.log(previewMultiline);
   console.log("---");
+  console.log();
+
+  // ── Expiry test (#15) ──
+  //
+  // Call notifyIndexMatch with a synthetic past-expiry opportunity. The
+  // expiry gate returns BEFORE any DB / VM / Telegram lookup, so this is
+  // safe to run unconditionally without --insert-test-row.
+  console.log("=== TEST: opportunity-expiry gate (notifyIndexMatch short-circuit) ===\n");
+  const expiredOpp: IndexOpportunitySummary = {
+    id: "synthetic-expired-opportunity-id",
+    actors: [
+      { userId: "synthetic-user-a", role: "agent", name: "Alex Test", intent: "test intent A" },
+      { userId: "synthetic-user-b", role: "patient", name: "Brooke Test", intent: "test intent B" },
+    ],
+    expiresAt: "2025-01-01T00:00:00Z", // long in the past
+  };
+  const expiredRes = await notifyIndexMatch({
+    outcomeId: "00000000-0000-0000-0000-000000000000", // doesn't have to exist; we short-circuit first
+    sourceUserId: "synthetic-source",
+    candidateUserId: "synthetic-candidate",
+    opportunity: expiredOpp,
+  });
+  console.log(`  source   : ${JSON.stringify(expiredRes.source)}`);
+  console.log(`  candidate: ${JSON.stringify(expiredRes.candidate)}`);
+  const sourceOk =
+    expiredRes.source.status === "skipped" && expiredRes.source.reason === "expired";
+  const candidateOk =
+    expiredRes.candidate.status === "skipped" && expiredRes.candidate.reason === "expired";
+  console.log(`  ${sourceOk && candidateOk ? "✓ PASS" : "✗ FAIL"} — both sides should be {skipped, expired}`);
+  console.log();
+
+  console.log("=== TEST: opportunity-expiry with future expiry should NOT short-circuit ===\n");
+  const futureExpiryOpp: IndexOpportunitySummary = {
+    id: "synthetic-future-opportunity-id",
+    actors: [
+      { userId: "synthetic-user-a", role: "agent", name: "Alex Test", intent: "test intent A" },
+      { userId: "synthetic-user-b", role: "patient", name: "Brooke Test", intent: "test intent B" },
+    ],
+    expiresAt: "2099-12-31T23:59:59Z", // long in the future
+  };
+  const futureRes = await notifyIndexMatch({
+    outcomeId: "00000000-0000-0000-0000-000000000000",
+    sourceUserId: "synthetic-source",
+    candidateUserId: "synthetic-candidate",
+    opportunity: futureExpiryOpp,
+  });
+  console.log(`  source   : ${JSON.stringify(futureRes.source)}`);
+  console.log(`  candidate: ${JSON.stringify(futureRes.candidate)}`);
+  // With future expiry, the gate doesn't fire — the function proceeds past
+  // the expiry check and into the outcome-row fetch. The synthetic outcome
+  // row doesn't exist, so we expect outcome_row_not_found (which proves
+  // the expiry gate didn't short-circuit prematurely).
+  const futureGateBypassed =
+    futureRes.source.status === "failed" && futureRes.source.reason === "outcome_row_not_found";
+  console.log(`  ${futureGateBypassed ? "✓ PASS" : "✗ FAIL"} — future-expiry should fall through to row-fetch (returns outcome_row_not_found here because synthetic)`);
+  console.log();
+
+  console.log("=== TEST: malformed expiresAt should NOT short-circuit (defensive parse) ===\n");
+  const malformedExpiryOpp: IndexOpportunitySummary = {
+    id: "synthetic-malformed",
+    actors: [
+      { userId: "synthetic-user-a", role: "agent", name: "Alex Test", intent: "test intent A" },
+      { userId: "synthetic-user-b", role: "patient", name: "Brooke Test", intent: "test intent B" },
+    ],
+    expiresAt: "not-a-real-date-string",
+  };
+  const malformedRes = await notifyIndexMatch({
+    outcomeId: "00000000-0000-0000-0000-000000000000",
+    sourceUserId: "synthetic-source",
+    candidateUserId: "synthetic-candidate",
+    opportunity: malformedExpiryOpp,
+  });
+  // Same logic as future-expiry: gate bypasses, then outcome_row_not_found.
+  const malformedGateBypassed =
+    malformedRes.source.status === "failed" && malformedRes.source.reason === "outcome_row_not_found";
+  console.log(`  source: ${JSON.stringify(malformedRes.source)}`);
+  console.log(`  ${malformedGateBypassed ? "✓ PASS" : "✗ FAIL"} — malformed expiresAt should fall through (defensive parse)`);
   console.log();
 
   if (!insertReal) {

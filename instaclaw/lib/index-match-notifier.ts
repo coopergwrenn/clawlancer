@@ -104,6 +104,15 @@ export interface IndexOpportunitySummary {
   interpretation?: {
     reasoning?: string;
   };
+  /**
+   * Optional expiry timestamp from Yanek. If set AND in the past at the
+   * time notifyIndexMatch fires, the notification is suppressed (both
+   * sides) — notifying someone "you should meet X" when X has already
+   * left the conference is bad UX. The matchpool_outcomes row is still
+   * recorded for audit / spectator-viz; only the user-visible Telegram
+   * delivery is suppressed. Null / undefined / unparseable = no expiry.
+   */
+  expiresAt?: string | null;
 }
 
 export interface NotifyMatchInput {
@@ -125,7 +134,15 @@ export type NotifyMatchResult = {
 export type NotifySideResult =
   | { status: "delivered"; deliveredAt: string }
   | { status: "already_notified" }
-  | { status: "skipped"; reason: "missing_chat_id" | "missing_vm" | "missing_token" | "counterpart_unresolved" }
+  | {
+      status: "skipped";
+      reason:
+        | "missing_chat_id"
+        | "missing_vm"
+        | "missing_token"
+        | "counterpart_unresolved"
+        | "expired";
+    }
   | { status: "failed"; reason: string; detail?: string };
 
 /**
@@ -135,6 +152,33 @@ export type NotifySideResult =
  */
 export async function notifyIndexMatch(input: NotifyMatchInput): Promise<NotifyMatchResult> {
   const sb = getSupabase();
+
+  // Opportunity-expiry gate (#15). If Yanek populated expiresAt and
+  // that time has already passed, suppress BOTH sides — notifying
+  // someone after the encounter window closed is worse than not
+  // notifying at all. We don't touch notified_*_at, so a subsequent
+  // tick will re-evaluate (and re-skip with the same reason); the
+  // notifier short-circuits cheaply BEFORE any DB / VM lookup or
+  // Telegram call, so per-tick cost is just one Date parse.
+  //
+  // Defensive parse: malformed/unparseable expiresAt is treated as
+  // "no expiry" rather than dropping legitimate notifications. Same
+  // posture as a NULL expiresAt.
+  if (input.opportunity.expiresAt) {
+    const expiry = new Date(input.opportunity.expiresAt);
+    if (Number.isFinite(expiry.getTime()) && expiry.getTime() < Date.now()) {
+      logger.info("[index-notifier] opportunity expired; suppressing both sides", {
+        outcomeId: input.outcomeId,
+        opportunityId: input.opportunity.id,
+        expiresAt: input.opportunity.expiresAt,
+        nowIso: new Date().toISOString(),
+      });
+      return {
+        source: { status: "skipped", reason: "expired" },
+        candidate: { status: "skipped", reason: "expired" },
+      };
+    }
+  }
 
   // Re-fetch the outcome row to read the current notified_*_at state.
   // Source of truth; avoids us racing the DB on a prior tick's update.
