@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { ArrowLeft, ExternalLink, Save, Eye, EyeOff, Check, Loader2 } from "lucide-react";
-import { IntentForm } from "./intent-form";
+import { IntentSection } from "./intent-section";
 import { MatchHistorySection } from "./match-history-section";
 import type { CounterpartMatch, CurrentIntent } from "@/lib/edge-dashboard-data";
 
@@ -206,21 +206,26 @@ export function EdgeDashboardClient({
         intentFetchSucceeded={intentFetchSucceeded}
       />
 
-      {/* ─── Intent submission form (#3) ────────────────────────────── */}
+      {/* ─── Intent submission section (#3) — adaptive per FUP-3b ──── */}
       {/*
         Placed BEFORE the spectator view because submitting an intent is
         the primary action that makes things happen IN the village (other
         attendees' agents discover the overlap → matchpool_outcomes row →
         encounter renders). Settings (nickname, visibility) are secondary.
 
-        Per the 2026-05-20 cross-terminal boundary: Edge City terminal
-        owns the placement + adaptive rendering of IntentForm. The
-        component file + /api/edge/express-intent route stay this
-        terminal's; this section block is Edge City's territory.
+        FUP-3b (2026-05-20): replaced the static <IntentForm /> with
+        IntentSection — adaptive on currentIntent. STATE A (no intent —
+        rare, only via /edge/intents service-degradation escape):
+        prominent olive-bordered panel with the form visible. STATE B
+        (has intent — 99.9% case): compact view of current intent text
+        with "Update intent" expand affordance. Form stays collapsed
+        until clicked.
+
+        The currentIntent prop is already wired by the Consensus
+        terminal via lib/edge-dashboard-data.ts:fetchUserCurrentIntent.
+        IntentSection just adapts to it.
       */}
-      <section style={{ marginBottom: "40px" }}>
-        <IntentForm />
-      </section>
+      <IntentSection currentIntent={currentIntent} />
 
       {/* ─── Embedded spectator view ─────────────────────────────────── */}
       <section style={{ marginBottom: "40px" }}>
