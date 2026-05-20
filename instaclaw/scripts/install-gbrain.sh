@@ -88,11 +88,21 @@
 #  33   FATAL_UPGRADE_VERSION_MISMATCH — Phase J: post-restart gbrain reports unexpected version.
 #  34   FATAL_UPGRADE_VERIFY_PUT_PAGE_FAILED — Phase J: write round-trip failed
 #       post-upgrade. Likely embedding-config issue. NO auto-rollback; operator investigates.
+#  35   FATAL_PHASE_I_NO_CRON_SCRIPT — Phase I: pglite-checkpoint.sh not co-deployed.
+#       Was a WARN until 2026-05-20 canary surfaced 15/15 VMs missing the checkpoint
+#       cron + ExecStop drop-in because the TS reconciler didn't upload the cron
+#       script. Now HARD-FAIL so reconciler sees the error + retries.
+#  36   FATAL_PHASE_C2_NO_PATCH_FILE — Phase C2: 0001-add-checkpoint-mcp-tool.patch
+#       not co-deployed. Was a WARN until 2026-05-20 canary surfaced 15/15 VMs missing
+#       src/core/checkpoint-operation.ts → MCP `checkpoint` tool absent → cron's
+#       call to it fails. Now HARD-FAIL.
 #
-# Co-deployed file requirement:
-#   verify-gbrain-mcp.py must be uploaded by the TS wrapper alongside this script,
-#   available at /tmp/verify-gbrain-mcp.py at exec time. Phase H aborts with
-#   FATAL_VERIFY_PY_MISSING if absent — refuses to silently skip the gate.
+# Co-deployed file requirement (ALL must be uploaded by the TS wrapper alongside
+# this script, available at /tmp/<basename> at exec time — checked at each phase):
+#   verify-gbrain-mcp.py                          — Phase H gate (FATAL_VERIFY_PY_MISSING)
+#   pglite-checkpoint.sh                          — Phase I cron + ExecStop (FATAL_PHASE_I_NO_CRON_SCRIPT)
+#   0001-add-checkpoint-mcp-tool.patch            — Phase C2 patch (FATAL_PHASE_C2_NO_PATCH_FILE)
+# Each phase refuses to silently skip when its co-deployed file is missing.
 #
 # Usage (from TS wrapper or stepGbrain reconciler step):
 #   GBRAIN_PINNED_COMMIT=1d5f69f GBRAIN_PINNED_VERSION=0.36.3.0 bash install-gbrain.sh
@@ -748,8 +758,14 @@ for candidate in \
 done
 
 if [ -z "$PATCH_FILE" ]; then
-  echo "PHASE_C2_WARN no_patch_file — fresh install will NOT have CHECKPOINT MCP tool. See Rule 54."
-  echo "  hint: TS wrapper should SFTP 0001-add-checkpoint-mcp-tool.patch alongside install-gbrain.sh"
+  # HARD FAIL (2026-05-20): was WARN until canary surfaced 15/15 VMs missing
+  # src/core/checkpoint-operation.ts because the TS reconciler didn't upload
+  # the patch file. Silent degradation here was the upstream cause of every
+  # subsequent CHECKPOINT-tool call failing. Now require the patch to be
+  # present so the reconciler retries instead of marking install successful.
+  echo "FATAL_PHASE_C2_NO_PATCH_FILE — 0001-add-checkpoint-mcp-tool.patch not co-deployed."
+  echo "  hint: TS wrapper must SFTP 0001-add-checkpoint-mcp-tool.patch to /tmp/ alongside install-gbrain.sh"
+  exit 36
 else
   cd "$HOME/gbrain"
   # Idempotency: verify BOTH halves of the patch are applied, not just one half.
@@ -1507,8 +1523,15 @@ for candidate in \
 done
 
 if [ -z "$CRON_SCRIPT_SRC" ]; then
-  echo "PHASE_I_WARN no_cron_script — CHECKPOINT prevention NOT deployed. Operator must install manually."
-  echo "  hint: TS wrapper should SFTP pglite-checkpoint.sh alongside install-gbrain.sh"
+  # HARD FAIL (2026-05-20): was WARN until canary surfaced 15/15 VMs missing
+  # the CHECKPOINT cron + ExecStop drop-in because the TS reconciler didn't
+  # upload pglite-checkpoint.sh. Silent degradation here = no Rule 54
+  # protection (pg_control staleness, no graceful checkpoint on stop). Now
+  # require the cron script to be present so the reconciler retries instead
+  # of marking install successful.
+  echo "FATAL_PHASE_I_NO_CRON_SCRIPT — pglite-checkpoint.sh not co-deployed."
+  echo "  hint: TS wrapper must SFTP pglite-checkpoint.sh to /tmp/ alongside install-gbrain.sh"
+  exit 35
 else
   cp "$CRON_SCRIPT_SRC" "$HOME/.openclaw/scripts/pglite-checkpoint.sh"
   chmod +x "$HOME/.openclaw/scripts/pglite-checkpoint.sh"

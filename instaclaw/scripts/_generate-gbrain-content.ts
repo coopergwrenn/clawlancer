@@ -9,13 +9,22 @@
  * graph — no fs, no tracer, no surprises at runtime.
  *
  * Sources:
- *   - scripts/install-gbrain.sh     (Phase A-H per-VM installer)
- *   - scripts/verify-gbrain-mcp.py  (Phase H put_page→query round-trip)
+ *   - scripts/install-gbrain.sh                              (Phase A-I per-VM installer)
+ *   - scripts/verify-gbrain-mcp.py                           (Phase H put_page→query round-trip)
+ *   - scripts/pglite-checkpoint.sh                           (Phase I CHECKPOINT cron + ExecStop hook)
+ *   - scripts/gbrain-patches/0001-add-checkpoint-mcp-tool.patch (Phase C2 instaclaw patch)
+ *
+ * The last two are companion files install-gbrain.sh looks for at /tmp/<basename>
+ * (or alongside itself) — added 2026-05-20 after canary surfaced the silent-
+ * degradation bug where the TS reconciler uploaded ONLY install-gbrain.sh +
+ * verify-gbrain-mcp.py, causing Phase C2 (patch) + Phase I (cron + drop-in)
+ * to skip with WARN-but-exit-0, leaving 15/15 canary VMs missing the
+ * checkpoint cron + Rule 54 corruption prevention.
  *
  * Output: lib/gbrain-scripts-content.ts with INSTALL_GBRAIN_SH +
- * VERIFY_GBRAIN_MCP_PY string exports (base64-decoded at module load to
- * avoid every TS escaping concern — template literals, backticks, ${},
- * backslashes).
+ * VERIFY_GBRAIN_MCP_PY + PGLITE_CHECKPOINT_SH + GBRAIN_CHECKPOINT_PATCH
+ * string exports (base64-decoded at module load to avoid every TS escaping
+ * concern — template literals, backticks, ${}, backslashes).
  *
  * Run as part of `npm run build` (and `npm run prebuild` by callers that
  * want a fresh snapshot). The .ts file is regenerated every time.
@@ -29,6 +38,8 @@ const OUT_FILE = path.resolve(__dirname, "..", "lib", "gbrain-scripts-content.ts
 const FILES: Array<{ key: string; filename: string }> = [
   { key: "INSTALL_GBRAIN_SH", filename: "install-gbrain.sh" },
   { key: "VERIFY_GBRAIN_MCP_PY", filename: "verify-gbrain-mcp.py" },
+  { key: "PGLITE_CHECKPOINT_SH", filename: "pglite-checkpoint.sh" },
+  { key: "GBRAIN_CHECKPOINT_PATCH", filename: "gbrain-patches/0001-add-checkpoint-mcp-tool.patch" },
 ];
 
 const header = `/**

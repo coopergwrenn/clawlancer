@@ -14,7 +14,12 @@
 
 import { VM_MANIFEST, CONFIG_SPEC, getTemplateContent, type ManifestFileEntry } from "./vm-manifest";
 import { connectSSH, NVM_PREAMBLE, BANKR_CLI_PINNED_VERSION, AGENTKIT_CLI_PINNED_VERSION, BANKR_SKILL_PATCH_MARKER, BANKR_SKILL_PATCH_DIRECTIVE, OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION, PRCTL_SUBREAPER_PINNED_VERSION, toOpenClawModel, setupXMTP, WORKSPACE_BOOTSTRAP_SHORT, type VMRecord } from "./ssh";
-import { INSTALL_GBRAIN_SH, VERIFY_GBRAIN_MCP_PY } from "./gbrain-scripts-content";
+import {
+  INSTALL_GBRAIN_SH,
+  VERIFY_GBRAIN_MCP_PY,
+  PGLITE_CHECKPOINT_SH,
+  GBRAIN_CHECKPOINT_PATCH,
+} from "./gbrain-scripts-content";
 import { sendAdminAlertEmail } from "./email";
 import {
   DISPATCH_SCRIPTS,
@@ -1768,6 +1773,37 @@ async function stepGbrain(
     if (upVerify.code !== 0) {
       result.errors.push(
         `stepGbrain: upload verify-gbrain-mcp.py failed (exit=${upVerify.code}) stderr=${(upVerify.stderr || '').slice(0, 200)}`,
+      );
+      return;
+    }
+
+    // 2026-05-20: upload the 2 companion files install-gbrain.sh's Phase C2
+    // + Phase I look for at /tmp/. The 2026-05-19 v107 canary surfaced that
+    // without these uploaded, Phase C2 (patch) + Phase I (cron + drop-in)
+    // emitted WARN but exited 0, leaving 15/15 canary VMs missing
+    // src/core/checkpoint-operation.ts + the CHECKPOINT cron + ExecStop hook.
+    // The companion script's exit-code additions (FATAL_PHASE_C2_NO_PATCH_FILE
+    // exit 36 + FATAL_PHASE_I_NO_CRON_SCRIPT exit 35) now hard-fail when
+    // these uploads are missing — the reconciler retries instead of silently
+    // marking the install successful.
+    const upCheckpoint = await ssh.execCommand(
+      "cat > /tmp/pglite-checkpoint.sh && chmod +x /tmp/pglite-checkpoint.sh",
+      { stdin: PGLITE_CHECKPOINT_SH },
+    );
+    if (upCheckpoint.code !== 0) {
+      result.errors.push(
+        `stepGbrain: upload pglite-checkpoint.sh failed (exit=${upCheckpoint.code}) stderr=${(upCheckpoint.stderr || '').slice(0, 200)}`,
+      );
+      return;
+    }
+
+    const upPatch = await ssh.execCommand(
+      "cat > /tmp/0001-add-checkpoint-mcp-tool.patch",
+      { stdin: GBRAIN_CHECKPOINT_PATCH },
+    );
+    if (upPatch.code !== 0) {
+      result.errors.push(
+        `stepGbrain: upload 0001-add-checkpoint-mcp-tool.patch failed (exit=${upPatch.code}) stderr=${(upPatch.stderr || '').slice(0, 200)}`,
       );
       return;
     }
