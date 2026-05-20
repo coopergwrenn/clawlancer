@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-20
 
-Window: `1731909f8af498461aa3c2bc97c82891920ff036` → `HEAD` (HEAD = `d78d48f0`)
+Window: `d78d48f0152eadc508495f615b8c25a232d15a8a` → `HEAD` (HEAD = `29b7284a`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: d78d48f0152eadc508495f615b8c25a232d15a8a -->
+<!-- LAST_GENERATED_SHA: 29b7284ae6de06e2790dc244e2ab56d0db2f16e8 -->
 
 ## Summary
 
@@ -13,7 +13,7 @@ Total commits: 2
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `d78d48f0` 2026-05-20 — fix(configureOpenClaw): idempotent cron installs — root-cause for the dup-accumulation Cooper flagged after the E1 cleanup [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
-- `6c9d7df8` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `29b7284a` 2026-05-20 — fix(chatgpt-oauth): restart gateway after ANY profile write, not just model.primary change [2 files] _(multi: [reconciler, infrastructure])_
+- `8bf4b5e3` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `d78d48f0` 2026-05-20 — fix(configureOpenClaw): idempotent cron installs — root-cause for the dup-accumulation Cooper flagged after the E1 cleanup [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `29b7284a` 2026-05-20 — fix(chatgpt-oauth): restart gateway after ANY profile write, not just model.primary change [2 files] _(multi: [reconciler, infrastructure])_
 
 ### Infrastructure (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `6c9d7df8` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `8bf4b5e3` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `d78d48f0` 2026-05-20 — [reconciler, infrastructure, edge] — fix(configureOpenClaw): idempotent cron installs — root-cause for the dup-accumulation Cooper flagged after the E1 cleanup
-
-## AI-assisted commits (1)
-
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
-
-- `d78d48f0` 2026-05-20 — fix(configureOpenClaw): idempotent cron installs — root-cause for the dup-accumulation Cooper flagged after the E1 cleanup
+- `29b7284a` 2026-05-20 — [reconciler, infrastructure] — fix(chatgpt-oauth): restart gateway after ANY profile write, not just model.primary change
 
 ## Appendix — every commit (chronological)
 
-- `6c9d7df8` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
-- `d78d48f0` 2026-05-20 — fix(configureOpenClaw): idempotent cron installs — root-cause for the dup-accumulation Cooper flagged after the E1 cleanup [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `8bf4b5e3` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `29b7284a` 2026-05-20 — fix(chatgpt-oauth): restart gateway after ANY profile write, not just model.primary change [2 files] _(multi: [reconciler, infrastructure])_
