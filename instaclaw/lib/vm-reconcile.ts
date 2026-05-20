@@ -50,6 +50,7 @@ import {
 } from "./workspace-templates-v2";
 import { getSupabase } from "./supabase";
 import { logger } from "./logger";
+import { decryptSecret, DecryptError, KeyMissingError } from "./openai-oauth-encryption";
 import { TIER_DISPLAY_LIMITS } from "./credit-constants";
 import { wrapSSHForEnospcDetection, isEnospcDetectedError } from "./enospc-guard";
 import {
@@ -609,6 +610,15 @@ export async function reconcileVM(
     // ── Step 8: Auth profiles ──
     currentStep = "auth-profiles";
     const authProfileFixed = await stepAuthProfiles(ssh, vm, result, dryRun);
+
+    // ── Step 8a: ChatGPT OAuth token sync (Day 11-15) ──
+    // Reflects each user's ChatGPT subscription state from instaclaw_users
+    // → VM's auth-profiles.json + agents.defaults.model.primary. Runs AFTER
+    // stepAuthProfiles so the merge-preserving rebuild from that step (Day
+    // 2.5 audit fix) doesn't wipe our openai-codex:default entry on the
+    // same cycle. See stepChatGPTOAuthToken header for the full flow.
+    currentStep = "chatgpt-oauth-token";
+    await stepChatGPTOAuthToken(ssh, vm, result, dryRun);
 
     // ── Step 8b: Clear stale provider cooldown from auth-profiles.json ──
     currentStep = "clear-provider-cooldown";
@@ -4395,21 +4405,44 @@ async function stepAuthProfiles(
     return false;
   }
 
-  // Rebuild auth-profiles.json for all-inclusive VMs
+  // Rebuild auth-profiles.json for all-inclusive VMs.
+  //
+  // Preserve any non-anthropic profiles that already exist (e.g.,
+  // openai-codex:default written by stepChatGPTOAuthToken — Day 11-15).
+  // Without this, the rebuild wiped the OAuth profile on every gateway
+  // token rotation, leaving ChatGPT-connected users silently routed back
+  // to Claude until the next reconciler tick re-pushed the OAuth profile.
+  // Audit finding from Day 2.5 review.
   const authProfileData: Record<string, unknown> = {
     type: "api_key",
     provider: "anthropic",
     key: vm.gateway_token,
     baseUrl: expectedProxyBaseUrl,
   };
-  const authProfile = JSON.stringify({
-    profiles: { "anthropic:default": authProfileData },
-  });
+  let existingProfiles: Record<string, unknown> = {};
+  if (authReadResult.code === 0 && authReadResult.stdout.trim()) {
+    try {
+      const existing = JSON.parse(authReadResult.stdout) as { profiles?: Record<string, unknown> };
+      if (existing.profiles && typeof existing.profiles === "object") {
+        existingProfiles = existing.profiles;
+      }
+    } catch {
+      // Existing file was unparseable — fall through to clean rebuild
+      // (this is the original behavior; we only PRESERVE on parseable input).
+    }
+  }
+  const mergedProfiles = {
+    ...existingProfiles,
+    "anthropic:default": authProfileData,
+  };
+  const authProfile = JSON.stringify({ profiles: mergedProfiles });
   const authB64 = Buffer.from(authProfile).toString("base64");
   await ssh.execCommand(
     `mkdir -p ~/.openclaw/agents/main/agent && echo '${authB64}' | base64 -d > ~/.openclaw/agents/main/agent/auth-profiles.json`
   );
-  result.fixed.push(`auth-profiles.json (${fixReason})`);
+  const preservedKeys = Object.keys(existingProfiles).filter((k) => k !== "anthropic:default");
+  const preservedNote = preservedKeys.length > 0 ? ` [preserved: ${preservedKeys.join(",")}]` : "";
+  result.fixed.push(`auth-profiles.json (${fixReason})${preservedNote}`);
 
   logger.info("TOKEN_AUDIT: reconcileVM rewrote auth-profiles.json", {
     operation: "reconcileVM",
@@ -8221,3 +8254,420 @@ async function stepDeployEdgeOverlay(
   result.fixed.push("INSTACLAW_OVERLAY.md deployed");
   logger.info("INSTACLAW_OVERLAY.md deployed", { route: "vm-reconcile", vmId: vm.id });
 }
+
+// ─── stepChatGPTOAuthToken (Day 11-15 — closes Day 1-4 end-to-end) ───────
+//
+// PURPOSE
+//   Reflects each user's ChatGPT-subscription OAuth state from
+//   instaclaw_users → the VM's auth-profiles.json + agents.defaults.model.primary.
+//   Without this step, Day 1-4 stored tokens server-side but the VM never
+//   knew about them — the agent kept routing to Claude. Broken promise.
+//
+// FLOW
+//   1. Look up the assigned user. If no user, no-op.
+//   2. Read user.openai_token_version + vm.openai_token_version_synced.
+//      Cheap version-bump idempotency for the "never connected" majority
+//      of users (skip without SSH).
+//   3. For users who HAVE OAuth state to sync, SSH-read auth-profiles.json
+//      and verify the openai-codex:default entry matches the DB-decrypted
+//      access token. If matches → just bump synced (covers the recovery
+//      case where stepAuthProfiles wiped and was then fixed).
+//   4. If DB has a fresh non-expired token + on-disk doesn't match:
+//      atomically rewrite the file (preserving anthropic:default and any
+//      other profiles), set agents.defaults.model.primary to
+//      openai-codex/gpt-5.5, update vm.api_mode + vm.default_model in DB,
+//      bump vm.openai_token_version_synced, mark gatewayRestartNeeded.
+//   5. If DB has NULL tokens (user disconnected via modal): remove
+//      openai-codex:default from the file, reset model.primary to whatever
+//      vm.default_model says (which disconnectUser already set to claude),
+//      bump synced.
+//   6. If DB has an EXPIRED token: log warning, skip (don't push stale).
+//      The refresh cron (Day 16-18) will refresh + bump user version →
+//      next reconcile re-syncs cleanly.
+//
+// IDEMPOTENCY
+//   Two layers:
+//     - DB version check (cheap): user_version <= synced_version → skip.
+//       But ONLY if user has no access_token. If user has a token, we
+//       still SSH-verify to recover from stepAuthProfiles wipes.
+//     - On-disk verify: compare openai-codex:default.key prefix to
+//       decrypted DB token. Equal → no SSH write, but ensure synced is
+//       bumped.
+//
+// FEATURE FLAG
+//   NOT gated on isChatGPTOAuthEnabled(). The kill switch is enforced
+//   upstream by the API routes (start route blocks new connections) and
+//   downstream by the graceful-downgrade cron (which NULLs user tokens
+//   within ~5min of flag flip). This step just reflects DB → VM. Gating
+//   here would create user-visible inconsistency (DB says connected, VM
+//   says Claude) during the transient window.
+//
+// FAILURE MODES (per Rule 39 classification)
+//   - decryptSecret throws → result.errors (load-bearing: tokens are
+//     the entire value proposition; broken decrypt = broken feature)
+//   - SSH read/write fails → result.errors (same)
+//   - DB lookup fails → result.warnings (transient; next tick retries)
+//
+// SENTINEL (Rule 23)
+//   The embedded SSH script for atomic-write is parameterized at run time
+//   with the base64 of the desired JSON. Sentinel-grep happens via the
+//   verify-after-write check (Rule 10) — we re-read the file and compare
+//   the openai-codex:default.key prefix to the desired prefix. If mismatch,
+//   push to result.errors so the cv-bump gate refuses to advance.
+async function stepChatGPTOAuthToken(
+  ssh: SSHConnection,
+  vm: VMRecord & { assigned_to?: string | null; openai_token_version_synced?: number | null },
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  if (!vm.assigned_to) return;
+
+  // 1. Fetch user OAuth state
+  const sb = getSupabase();
+  const { data: user, error: userErr } = await sb
+    .from("instaclaw_users")
+    .select("*")
+    .eq("id", vm.assigned_to)
+    .single();
+  if (userErr || !user) {
+    // Transient or VM points at a deleted user — warn, don't block cv bump.
+    result.warnings.push(
+      `chatgpt-oauth: user lookup failed (vm.assigned_to=${vm.assigned_to.slice(0, 8)}): ${userErr?.message?.slice(0, 120) ?? "no rows"}`,
+    );
+    return;
+  }
+
+  const userVersion = (user.openai_token_version as number | undefined) ?? 0;
+  const syncedVersion = vm.openai_token_version_synced ?? 0;
+  const encryptedAccess = user.openai_oauth_access_token as string | null | undefined;
+  const expiresAtIso = user.openai_oauth_expires_at as string | null | undefined;
+  const accountId = user.openai_oauth_account_id as string | null | undefined;
+  const userId = vm.assigned_to;
+
+  // 2. Cheap path: never-connected user (no access token AND already synced).
+  if (!encryptedAccess && syncedVersion >= userVersion) {
+    result.alreadyCorrect.push("chatgpt-oauth (never-connected, synced)");
+    return;
+  }
+
+  // 3. Disconnected user (had tokens, now NULL — version bumped by disconnectUser).
+  if (!encryptedAccess) {
+    await applyDisconnectedState(ssh, vm, userId, userVersion, result, dryRun);
+    return;
+  }
+
+  // 4. Expired token — log + skip (don't push stale).
+  if (expiresAtIso && new Date(expiresAtIso).getTime() <= Date.now()) {
+    logger.warn("chatgpt-oauth: token expired, refresh cron should refresh", {
+      route: "vm-reconcile",
+      vmId: vm.id,
+      userId: userId.slice(0, 8),
+      expiresAt: expiresAtIso,
+    });
+    result.warnings.push(
+      `chatgpt-oauth: token expired at ${expiresAtIso} — awaiting refresh cron`,
+    );
+    return;
+  }
+
+  // 5. Active token — decrypt + push if drift detected.
+  let accessToken: string;
+  try {
+    accessToken = decryptSecret(encryptedAccess, userId);
+  } catch (err) {
+    if (err instanceof KeyMissingError || err instanceof DecryptError) {
+      result.errors.push(
+        `chatgpt-oauth: decrypt failed for user ${userId.slice(0, 8)}: ${err.name} — ${err.message.slice(0, 120)}`,
+      );
+      logger.error("chatgpt-oauth: decrypt failed", {
+        route: "vm-reconcile",
+        vmId: vm.id,
+        userId: userId.slice(0, 8),
+        errorName: err.name,
+      });
+      return;
+    }
+    throw err;
+  }
+
+  await applyConnectedState(
+    ssh,
+    vm,
+    userId,
+    userVersion,
+    accessToken,
+    accountId ?? null,
+    result,
+    dryRun,
+  );
+}
+
+/**
+ * SSH-write the openai-codex:default profile to auth-profiles.json
+ * (merging with existing profiles), set model.primary to
+ * openai-codex/gpt-5.5, update DB-side api_mode + default_model + synced
+ * version. Idempotent: skips SSH writes if on-disk already matches.
+ */
+async function applyConnectedState(
+  ssh: SSHConnection,
+  vm: VMRecord,
+  userId: string,
+  userVersion: number,
+  accessToken: string,
+  accountId: string | null,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // Read current auth-profiles.json
+  const readRes = await ssh.execCommand(
+    'cat ~/.openclaw/agents/main/agent/auth-profiles.json 2>/dev/null',
+  );
+  let existingProfiles: Record<string, unknown> = {};
+  if (readRes.code === 0 && readRes.stdout.trim()) {
+    try {
+      const parsed = JSON.parse(readRes.stdout) as { profiles?: Record<string, unknown> };
+      if (parsed.profiles && typeof parsed.profiles === "object") {
+        existingProfiles = parsed.profiles;
+      }
+    } catch {
+      // Unparseable — treat as empty. The write below will rebuild cleanly.
+    }
+  }
+
+  const desired = {
+    type: "oauth" as const,
+    provider: "openai-codex" as const,
+    key: accessToken,
+    metadata: { accountId },
+  };
+
+  // Idempotency: on-disk profile matches what we'd write → no SSH write
+  // needed for the file. We still ensure DB-side state is up-to-date below.
+  const onDisk = existingProfiles["openai-codex:default"] as
+    | { type?: string; provider?: string; key?: string; metadata?: { accountId?: string | null } }
+    | undefined;
+  const onDiskMatches =
+    !!onDisk &&
+    onDisk.type === "oauth" &&
+    onDisk.provider === "openai-codex" &&
+    onDisk.key === accessToken &&
+    (onDisk.metadata?.accountId ?? null) === (accountId ?? null);
+
+  if (!onDiskMatches) {
+    if (dryRun) {
+      result.fixed.push(
+        `[dry-run] chatgpt-oauth: would write openai-codex:default (token=${accessToken.slice(0, 12)}…)`,
+      );
+      return;
+    }
+    const mergedProfiles = { ...existingProfiles, "openai-codex:default": desired };
+    const json = JSON.stringify({ profiles: mergedProfiles });
+    const b64 = Buffer.from(json, "utf-8").toString("base64");
+    // Atomic write: tmp + rename. Standard pattern across the file.
+    const writeRes = await ssh.execCommand(
+      `mkdir -p ~/.openclaw/agents/main/agent && ` +
+        `echo '${b64}' | base64 -d > ~/.openclaw/agents/main/agent/auth-profiles.json.tmp && ` +
+        `mv ~/.openclaw/agents/main/agent/auth-profiles.json.tmp ~/.openclaw/agents/main/agent/auth-profiles.json`,
+    );
+    if (writeRes.code !== 0) {
+      result.errors.push(
+        `chatgpt-oauth: auth-profiles.json write failed: ${(writeRes.stderr || writeRes.stdout).slice(0, 200)}`,
+      );
+      return;
+    }
+    // Verify-after-write (Rule 10): re-read and confirm openai-codex.key prefix.
+    const verifyRes = await ssh.execCommand(
+      `cat ~/.openclaw/agents/main/agent/auth-profiles.json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("profiles",{}).get("openai-codex:default",{}).get("key","<missing>")[:16])'`,
+    );
+    const onDiskPrefix = (verifyRes.stdout || "").trim();
+    const expectedPrefix = accessToken.slice(0, 16);
+    if (onDiskPrefix !== expectedPrefix) {
+      result.errors.push(
+        `chatgpt-oauth: verify mismatch — on-disk=${onDiskPrefix.slice(0, 12)}… expected=${expectedPrefix.slice(0, 12)}…`,
+      );
+      return;
+    }
+    logger.info("TOKEN_AUDIT: chatgpt-oauth profile pushed", {
+      route: "vm-reconcile",
+      vmId: vm.id,
+      userId: userId.slice(0, 8),
+      tokenPrefix: accessToken.slice(0, 12),
+      accountId,
+      userVersion,
+    });
+  }
+
+  // Set model.primary to openai-codex/gpt-5.5 if not already.
+  // Direct openclaw config set so the switch takes effect THIS cycle
+  // (stepEnforceModelPrimary already ran earlier in the orchestrator).
+  const targetModel = "openai-codex/gpt-5.5";
+  const curModel = (
+    await ssh.execCommand(
+      `cat ~/.openclaw/openclaw.json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("agents",{}).get("defaults",{}).get("model",{}).get("primary","<unset>"))'`,
+    )
+  ).stdout.trim();
+  if (curModel !== targetModel) {
+    if (!dryRun) {
+      const setRes = await ssh.execCommand(
+        `${NVM_PREAMBLE} && openclaw config set agents.defaults.model.primary '${targetModel}' 2>&1`,
+        { execOptions: { timeout: 30_000 } },
+      );
+      if (setRes.code !== 0) {
+        result.errors.push(
+          `chatgpt-oauth: model.primary set failed: ${(setRes.stdout + setRes.stderr).slice(-200)}`,
+        );
+        return;
+      }
+      result.gatewayRestartNeeded = true;
+    }
+    result.fixed.push(`chatgpt-oauth: model.primary ${curModel} → ${targetModel}`);
+  }
+
+  // Update DB-side state: api_mode + default_model + synced version.
+  if (!dryRun) {
+    const sb = getSupabase();
+    const { error: vmUpdateErr } = await sb
+      .from("instaclaw_vms")
+      .update({
+        api_mode: "chatgpt_oauth",
+        default_model: targetModel,
+        openai_token_version_synced: userVersion,
+      })
+      .eq("id", vm.id);
+    if (vmUpdateErr) {
+      // DB-write failure doesn't roll back the SSH writes — VM is in the
+      // right state, DB is stale. Next reconcile will detect via version
+      // mismatch and re-push (idempotent on-disk).
+      result.warnings.push(
+        `chatgpt-oauth: vm row update failed (state pushed but DB stale): ${vmUpdateErr.message.slice(0, 120)}`,
+      );
+      return;
+    }
+  }
+
+  if (onDiskMatches) {
+    // Same on-disk state but DB was stale — just bumped synced + maybe
+    // confirmed model.primary. Don't add to fixed (no real change), but
+    // record in alreadyCorrect for visibility.
+    result.alreadyCorrect.push(`chatgpt-oauth (in-sync, version=${userVersion})`);
+  } else {
+    result.fixed.push(`chatgpt-oauth: pushed token v${userVersion}`);
+  }
+}
+
+/**
+ * Remove openai-codex:default from auth-profiles.json + revert model.primary
+ * to whatever vm.default_model now says (disconnectUser already set it
+ * to claude-sonnet-4-6). Bumps synced version.
+ */
+async function applyDisconnectedState(
+  ssh: SSHConnection,
+  vm: VMRecord,
+  userId: string,
+  userVersion: number,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // Read auth-profiles.json to see if openai-codex:default needs removing.
+  const readRes = await ssh.execCommand(
+    'cat ~/.openclaw/agents/main/agent/auth-profiles.json 2>/dev/null',
+  );
+  let hadEntry = false;
+  let mergedProfiles: Record<string, unknown> = {};
+  if (readRes.code === 0 && readRes.stdout.trim()) {
+    try {
+      const parsed = JSON.parse(readRes.stdout) as { profiles?: Record<string, unknown> };
+      if (parsed.profiles && typeof parsed.profiles === "object") {
+        if ("openai-codex:default" in parsed.profiles) {
+          hadEntry = true;
+          mergedProfiles = { ...parsed.profiles };
+          delete mergedProfiles["openai-codex:default"];
+        }
+      }
+    } catch {
+      // Unparseable — nothing to remove. stepAuthProfiles will rebuild.
+    }
+  }
+
+  if (hadEntry) {
+    if (dryRun) {
+      result.fixed.push("[dry-run] chatgpt-oauth: would remove openai-codex:default");
+      return;
+    }
+    const json = JSON.stringify({ profiles: mergedProfiles });
+    const b64 = Buffer.from(json, "utf-8").toString("base64");
+    const writeRes = await ssh.execCommand(
+      `echo '${b64}' | base64 -d > ~/.openclaw/agents/main/agent/auth-profiles.json.tmp && ` +
+        `mv ~/.openclaw/agents/main/agent/auth-profiles.json.tmp ~/.openclaw/agents/main/agent/auth-profiles.json`,
+    );
+    if (writeRes.code !== 0) {
+      result.errors.push(
+        `chatgpt-oauth: auth-profiles.json disconnect-write failed: ${(writeRes.stderr || writeRes.stdout).slice(0, 200)}`,
+      );
+      return;
+    }
+    logger.info("chatgpt-oauth: openai-codex profile removed (user disconnected)", {
+      route: "vm-reconcile",
+      vmId: vm.id,
+      userId: userId.slice(0, 8),
+    });
+  }
+
+  // Revert model.primary if currently openai-codex/*. Use vm.default_model
+  // (which disconnectUser set to claude-sonnet-4-6) → toOpenClawModel.
+  const dbDefault =
+    (vm as VMRecord & { default_model?: string | null }).default_model || "claude-sonnet-4-6";
+  const targetModel = toOpenClawModel(dbDefault);
+  const curModel = (
+    await ssh.execCommand(
+      `cat ~/.openclaw/openclaw.json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("agents",{}).get("defaults",{}).get("model",{}).get("primary","<unset>"))'`,
+    )
+  ).stdout.trim();
+  if (curModel.startsWith("openai-codex/") && curModel !== targetModel) {
+    if (!dryRun) {
+      const setRes = await ssh.execCommand(
+        `${NVM_PREAMBLE} && openclaw config set agents.defaults.model.primary '${targetModel}' 2>&1`,
+        { execOptions: { timeout: 30_000 } },
+      );
+      if (setRes.code !== 0) {
+        result.errors.push(
+          `chatgpt-oauth: disconnect model.primary set failed: ${(setRes.stdout + setRes.stderr).slice(-200)}`,
+        );
+        return;
+      }
+      result.gatewayRestartNeeded = true;
+    }
+    result.fixed.push(`chatgpt-oauth: disconnect model.primary ${curModel} → ${targetModel}`);
+  }
+
+  // Bump synced even if nothing was on-disk (so the cheap-path version
+  // check skips us next cycle).
+  if (!dryRun) {
+    const sb = getSupabase();
+    const { error: bumpErr } = await sb
+      .from("instaclaw_vms")
+      .update({ openai_token_version_synced: userVersion })
+      .eq("id", vm.id);
+    if (bumpErr) {
+      result.warnings.push(
+        `chatgpt-oauth: synced-version bump failed: ${bumpErr.message.slice(0, 120)}`,
+      );
+      return;
+    }
+  }
+
+  if (hadEntry) {
+    result.fixed.push(`chatgpt-oauth: disconnected, synced v${userVersion}`);
+  } else {
+    result.alreadyCorrect.push(`chatgpt-oauth (disconnected, in-sync v${userVersion})`);
+  }
+}
+
+// ─── Test-only re-export ─────────────────────────────────────────────────
+//
+// Production code MUST NOT import this name. It exists so
+// scripts/_test-step-chatgpt-oauth-token.ts can exercise the step
+// directly without spinning up reconcileVM's full orchestrator. The
+// double-underscore prefix is the convention signal — anything starting
+// with `__testOnly_` is internal testing surface.
+export const __testOnly_stepChatGPTOAuthToken = stepChatGPTOAuthToken;

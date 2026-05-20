@@ -4028,6 +4028,12 @@ function assertSafeShellArg(value: string, label: string): void {
 
 // Map InstaClaw model IDs (Anthropic format) to OpenClaw provider/model format
 export function toOpenClawModel(model: string): string {
+  // ChatGPT-Codex models are already in OpenClaw wire format (provider/model
+  // shape) — pass through as-is. The Day 11-15 reconciler step sets
+  // vm.default_model = "openai-codex/gpt-5.5" when a user connects their
+  // ChatGPT subscription via the OAuth modal, and the stepEnforceModelPrimary
+  // mapping needs to honor that without rewriting to anthropic/claude.
+  if (model.startsWith("openai-codex/")) return model;
   const map: Record<string, string> = {
     "minimax-m2.5": "anthropic/minimax-m2.5",
     "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4-5-20251001",

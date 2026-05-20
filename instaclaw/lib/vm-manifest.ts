@@ -1553,8 +1553,34 @@ export const VM_MANIFEST = {
    *  stepSkills, so a new skill needs a version bump per Rule 47).
    *  Per-VM rollout: ~3-4h across 240 VMs at CONFIG_AUDIT_BATCH_SIZE=3.
    *  No config-key changes, no code-path changes — pure additive skill.
+   *
+   * v110 — 2026-05-20 (stepChatGPTOAuthToken — Day 11-15 loop-closer)
+   *
+   *  New reconciler step that reflects each user's ChatGPT OAuth state
+   *  from instaclaw_users → VM's auth-profiles.json + model.primary.
+   *  Idempotent via openai_token_version_synced column (added in Day 1
+   *  migration) + on-disk SHA verify (Rule 10). Atomic write via tmp+mv.
+   *  AAD-decrypts the access token with userId per Rule 53.
+   *
+   *  Companion fixes in the same commit:
+   *   - stepAuthProfiles now PRESERVES existing non-anthropic profiles
+   *     when rebuilding (Day 2.5 audit finding — was wiping openai-codex
+   *     entries on every gateway-token rotation).
+   *   - toOpenClawModel passes through openai-codex/* unchanged (so
+   *     stepEnforceModelPrimary doesn't rewrite the OAuth model back to
+   *     anthropic/claude).
+   *
+   *  Per Rule 28 (model behavior overrides must be explicit): the agent's
+   *  chatgpt-connection skill (v109) tells it to switch behavior; this
+   *  step makes the actual switch happen at the runtime layer.
+   *
+   *  Closes the loop: Day 1-2.5 stored tokens server-side, Day 3 gave the
+   *  UI to connect, Day 4 gave the bot copy to explain. Day 11-15 (this)
+   *  makes the agent actually use the connected subscription. Without it,
+   *  every Day 1-4 OAuth completion was a broken promise — DB said
+   *  "connected" but VM still routed to Claude.
    */
-  version: 109,
+  version: 110,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
