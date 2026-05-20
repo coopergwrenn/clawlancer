@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-20
 
-Window: `1c0ee96e76f841cfa56682cc35e8ea26982fc857` → `HEAD` (HEAD = `229a9394`)
+Window: `229a9394f84c5a3c93cb378a572ffe7575951f2e` → `HEAD` (HEAD = `57eb3ee0`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 229a9394f84c5a3c93cb378a572ffe7575951f2e -->
+<!-- LAST_GENERATED_SHA: 57eb3ee0ce100092179c1ec441212516ada8b0d9 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `229a9394` 2026-05-20 — feat(chatgpt-oauth): Day 16-18 — refresh cron + refreshUserToken helper [4 files] _(ai-assisted)_
-- `abdcfcc4` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `57eb3ee0` 2026-05-20 — fix(gbrain): Phase C2/I hard-fail + reconciler uploads companion files (Bug A+F) [10 files] _(multi: [reconciler, infrastructure, feature, edge]; ai-assisted)_
+- `19919807` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `57eb3ee0` 2026-05-20 — fix(gbrain): Phase C2/I hard-fail + reconciler uploads companion files (Bug A+F) [10 files] _(multi: [reconciler, infrastructure, feature, edge]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `229a9394` 2026-05-20 — feat(chatgpt-oauth): Day 16-18 — refresh cron + refreshUserToken helper [4 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `abdcfcc4` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `19919807` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `57eb3ee0` 2026-05-20 — [reconciler, infrastructure, feature, edge] — fix(gbrain): Phase C2/I hard-fail + reconciler uploads companion files (Bug A+F)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `229a9394` 2026-05-20 — feat(chatgpt-oauth): Day 16-18 — refresh cron + refreshUserToken helper
+- `57eb3ee0` 2026-05-20 — fix(gbrain): Phase C2/I hard-fail + reconciler uploads companion files (Bug A+F)
 
 ## Appendix — every commit (chronological)
 
-- `abdcfcc4` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
-- `229a9394` 2026-05-20 — feat(chatgpt-oauth): Day 16-18 — refresh cron + refreshUserToken helper [4 files] _(ai-assisted)_
+- `19919807` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `57eb3ee0` 2026-05-20 — fix(gbrain): Phase C2/I hard-fail + reconciler uploads companion files (Bug A+F) [10 files] _(multi: [reconciler, infrastructure, feature, edge]; ai-assisted)_
