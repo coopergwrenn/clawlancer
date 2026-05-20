@@ -5982,14 +5982,29 @@ export async function configureOpenClaw(
         '  git clone --depth 1 https://github.com/aromeoes/edge-agent-skill.git "$HOME/.openclaw/skills/edge-esmeralda" 2>/dev/null || true',
         'fi',
         '# 30-min cron to keep reference content fresh (repo auto-updates every 15 min via GitHub Actions)',
-        // Mirrors the consensus-2026 dedup pattern (vm-reconcile.ts:5685) —
-        // we filter BOTH the current path ("skills/edge-esmeralda") AND the
-        // legacy filter ("edge-agent-skill") before appending. The pre-2026-05-19
-        // version only filtered "edge-agent-skill", which never matched the actual
-        // cron line, causing each configureOpenClaw call to append a duplicate.
-        // Audit on vm-050 found 5+ identical entries on a single VM as a result.
-        // Dedup-and-re-add is idempotent: any N duplicates collapse to 1.
-        '(crontab -l 2>/dev/null | grep -v "skills/edge-esmeralda" | grep -v "edge-agent-skill" ; echo \'*/30 * * * * cd $HOME/.openclaw/skills/edge-esmeralda && git pull --ff-only -q 2>/dev/null\') | crontab -',
+        // Idempotent grep-marker-then-conditional-append (2026-05-20):
+        // ONLY adds the line if it's not already present. Mirrors the
+        // manifest cronJobs install pattern at ssh.ts:7067 — which is the
+        // canonical idempotent shape for crontab mutations.
+        //
+        // Why not filter-then-replace: prior pattern was `crontab -l |
+        // grep -v skills/edge-esmeralda | grep -v edge-agent-skill ; echo
+        // <new> | crontab -`. That's idempotent only when the grep
+        // filter actually matches the canonical line — and silently
+        // accumulates duplicates when it doesn't. The pre-2026-05-19
+        // version filtered "edge-agent-skill" which never matched
+        // "skills/edge-esmeralda" — every configureOpenClaw call appended
+        // a fresh duplicate. By 2026-05-20 audit, all 9 edge VMs had 2-4
+        // duplicates each.
+        //
+        // The marker (`skills/edge-esmeralda && git pull`) is a fixed
+        // substring of the canonical line. It uniquely identifies this
+        // entry without false-positives. Even if a future configureOpenClaw
+        // run somehow appends a variant, this pattern won't compound it —
+        // the grep finds the existing line and the new add is skipped.
+        'if ! crontab -l 2>/dev/null | grep -qF "skills/edge-esmeralda && git pull"; then',
+        '  (crontab -l 2>/dev/null; echo \'*/30 * * * * cd $HOME/.openclaw/skills/edge-esmeralda && git pull --ff-only -q 2>/dev/null\') | crontab -',
+        'fi',
         '# v80: Write InstaClaw operational overlay (onboarding interview, community norms, proactivity)',
         '# Additive to Tule\'s upstream SKILL.md — the overlay file is untracked from upstream\'s git perspective',
         'if [ -d "$HOME/.openclaw/skills/edge-esmeralda" ]; then',
@@ -6040,7 +6055,13 @@ export async function configureOpenClaw(
       '  git clone --depth 1 https://github.com/coopergwrenn/consensus-2026-skill.git "$HOME/.openclaw/skills/consensus-2026" 2>/dev/null || true',
       'fi',
       '# 30-min cron to pull fresh agenda + side-event data (repo re-bakes hourly via GitHub Actions)',
-      '(crontab -l 2>/dev/null | grep -v "consensus-2026-skill" | grep -v "skills/consensus-2026" ; echo \'*/30 * * * * cd $HOME/.openclaw/skills/consensus-2026 && git pull --ff-only -q 2>/dev/null\') | crontab -',
+      // Idempotent grep-marker-then-conditional-append (2026-05-20) — same
+      // pattern as the edge-esmeralda block above. See that block's comment
+      // for the rationale (filter-then-replace silently accumulates dupes
+      // when the filter pattern doesn't match the canonical line).
+      'if ! crontab -l 2>/dev/null | grep -qF "skills/consensus-2026 && git pull"; then',
+      '  (crontab -l 2>/dev/null; echo \'*/30 * * * * cd $HOME/.openclaw/skills/consensus-2026 && git pull --ff-only -q 2>/dev/null\') | crontab -',
+      'fi',
       ''
     );
 
@@ -7038,9 +7059,13 @@ export async function configureOpenClaw(
         'mkdir -p "$HOME/scripts" "$HOME/.openclaw/logs"',
         `echo '${updateScriptB64}' | base64 -d > "$HOME/scripts/check-skill-updates.sh"`,
         'chmod +x "$HOME/scripts/check-skill-updates.sh"',
-        '# Install cron job (idempotent — removes old entry first)',
-        'CRON_LINE="0 3 * * * /bin/bash $HOME/scripts/check-skill-updates.sh >> $HOME/.openclaw/logs/skill-updates.log 2>&1"',
-        '(crontab -l 2>/dev/null | grep -v "check-skill-updates"; echo "$CRON_LINE") | crontab - 2>/dev/null || true',
+        // Idempotent grep-marker-then-conditional-append (2026-05-20) — same
+        // pattern as the edge-esmeralda / consensus-2026 blocks. Marker is
+        // the script path (uniquely identifies the canonical line).
+        'if ! crontab -l 2>/dev/null | grep -qF "scripts/check-skill-updates.sh"; then',
+        '  CRON_LINE="0 3 * * * /bin/bash $HOME/scripts/check-skill-updates.sh >> $HOME/.openclaw/logs/skill-updates.log 2>&1"',
+        '  (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab - 2>/dev/null || true',
+        'fi',
         '',
       );
 
