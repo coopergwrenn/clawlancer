@@ -40,16 +40,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Check if user already has an active subscription (e.g. VM reassignment)
+    // Check if user already has an active OR trialing subscription
+    // (e.g. VM reassignment, or Edge attendee mid-trial clicking back).
+    //
+    // CRITICAL: this filter MUST include "trialing" alongside "active".
+    // Without "trialing", an Edge attendee who completes Stripe checkout
+    // and then somehow returns to /plan (browser back, refresh, deep
+    // link) would not match here. The route would proceed to create a
+    // SECOND Stripe Checkout Session, and if they completed that too,
+    // they'd end up with two parallel subscriptions on the same Stripe
+    // customer — both with trial_end = June 30 — and get DOUBLE-CHARGED
+    // on the post-trial invoice date.
+    //
+    // The instaclaw_subscriptions table has UNIQUE(user_id) so the DB
+    // only sees the latest sub after the webhook upsert, but the
+    // earlier Stripe sub still exists on Stripe's side and bills
+    // independently. The fix is here — refuse to start a new checkout
+    // if the user is already in a billable Stripe state.
     const { data: existingSub } = await supabase
       .from("instaclaw_subscriptions")
       .select("id, status")
       .eq("user_id", session.user.id)
-      .eq("status", "active")
-      .single();
+      .in("status", ["active", "trialing"])
+      .maybeSingle();
 
     if (existingSub) {
-      // User already paid — skip Stripe checkout, trigger configure, go to deploying
+      // User already paid OR is on an active trial — skip Stripe
+      // checkout, trigger configure, go to deploying.
       const origin = req.headers.get("origin") ?? process.env.NEXTAUTH_URL!;
       fetch(`${process.env.NEXTAUTH_URL}/api/vm/configure`, {
         method: "POST",
@@ -216,6 +233,16 @@ export async function POST(req: NextRequest) {
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${origin}/deploying?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: cancelUrl ? `${origin}${cancelUrl}` : `${origin}/plan`,
+      // Always collect a payment method — even on $0 trials. Stripe's
+      // default for `mode: "subscription"` is already `"always"`, but
+      // we set it explicitly so the intent is locked in code. A future
+      // engineer touching this block can't accidentally flip to
+      // `"if_required"` (which would skip card collection on $0 trials,
+      // breaking the entire Edge trial-billing model — they'd get a
+      // free agent through June 30 with no card on file, then the
+      // post-trial invoice would fail and we'd silently churn the
+      // entire cohort on July 1).
+      payment_method_collection: "always",
       // Stripe doesn't allow both discounts and allow_promotion_codes on the same session.
       // Ambassador referrals get a pre-applied discount; everyone else can enter a promo code.
       ...(discounts ? { discounts } : { allow_promotion_codes: true }),
