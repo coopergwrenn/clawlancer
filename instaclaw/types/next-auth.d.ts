@@ -11,6 +11,11 @@ declare module "next-auth" {
       // Partner tag from instaclaw_users.partner. NULL for non-partner users.
       // Drives conditional UI (e.g., Edge City nav item in the dashboard).
       partner?: string | null;
+      // Timestamp of the user's most-recent successful /api/edge/express-intent
+      // submission. NULL for users who haven't expressed any intent yet.
+      // ISO 8601 string when present. Drives the /edge/intents mandatory
+      // onboarding gate — see app/(dashboard)/layout.tsx + /edge/intents/page.tsx.
+      indexLastIntentAt?: string | null;
     };
   }
 }

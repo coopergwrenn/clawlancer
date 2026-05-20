@@ -33,6 +33,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { tagUserAsPartner } from "@/lib/partner-tag";
+import {
+  verifyEdgeVerifiedCookie,
+  EDGE_VERIFIED_COOKIE_NAME,
+} from "@/lib/edge-verified-cookie";
+import { logger } from "@/lib/logger";
 
 const PARTNER = "edge_city";
 const PARTNER_COOKIE = "instaclaw_partner";
@@ -48,23 +53,70 @@ export async function GET(req: NextRequest) {
   const session = await auth();
 
   // ── Not authenticated → bounce to /signin with self as callback. ──
+  // We do NOT set the partner cookie here. Prior to the EdgeOS gate
+  // (2026-05-20) this route used to seed the cookie defensively. That
+  // path bypassed verification — a non-attendee could click "Sign in
+  // to claim it for Edge" directly, get the cookie set, sign in, and
+  // be tagged as edge_city without proving an EE26 ticket. The fix:
+  // require the signed `edge_verified_email` cookie below, which can
+  // ONLY be minted by /api/edge/verify-ticket after a real EdgeOS hit.
   if (!session?.user?.id) {
-    const res = buildRedirect(
+    return buildRedirect(
       req,
       `/signin?callbackUrl=${encodeURIComponent(SELF_PATH)}`,
     );
-    // Set the cookie defensively so even if the user picks a different
-    // signin path (Sign up rather than Sign in), lib/auth.ts's signIn
-    // callback applies the partner tag on their first auth.
-    res.cookies.set(PARTNER_COOKIE, PARTNER, {
-      path: "/",
-      maxAge: COOKIE_MAX_AGE_SECONDS,
-      sameSite: "lax",
+  }
+
+  // ── Gate enforcement: require a valid signed edge-verified cookie. ──
+  // The cookie is minted by /api/edge/verify-ticket on a successful
+  // EdgeOS attendee lookup, with a 15-min TTL — long enough to survive
+  // the OAuth round-trip, short enough that a leaked cookie is
+  // operationally useless.
+  //
+  // If the cookie is missing/expired/tampered, we bounce to
+  // /edge/claim?error=must-verify-first. The user lands back at the
+  // gate and re-verifies. Clear both cookies on the way out so a
+  // half-state isn't carried.
+  const cookieRaw = req.cookies.get(EDGE_VERIFIED_COOKIE_NAME)?.value;
+  const cookieResult = verifyEdgeVerifiedCookie(cookieRaw);
+  if (!cookieResult.ok || !cookieResult.email) {
+    logger.warn("tag-redirect: edge_verified cookie missing or invalid", {
+      route: "api/partner/tag-redirect",
+      userId: session.user.id,
+      reason: cookieResult.reason,
+      hadCookie: !!cookieRaw,
     });
+    const res = buildRedirect(req, "/edge/claim?error=must-verify-first");
+    res.cookies.delete(PARTNER_COOKIE);
+    res.cookies.delete(EDGE_VERIFIED_COOKIE_NAME);
     return res;
   }
 
-  // ── Authenticated → tag, sync VM, set cookie defensively, redirect. ──
+  // Strict email match — the cookie must have been minted for the same
+  // email the user just signed in with. Mirrors lib/auth.ts:signIn
+  // callback's check. Known UX limitation: users whose EE26-registered
+  // email differs from their Google account email will be blocked here.
+  // For V1 launch we accept that trade-off (closes the enumeration
+  // attack; if 10%+ of attendees report blockage post-launch, loosen +
+  // add rate-limiting to verify-ticket as a hardening pass).
+  const sessionEmail = session.user.email?.trim().toLowerCase() ?? null;
+  if (!sessionEmail || cookieResult.email !== sessionEmail) {
+    logger.warn("tag-redirect: cookie email != signin email", {
+      route: "api/partner/tag-redirect",
+      userId: session.user.id,
+      cookieEmail: cookieResult.email,
+      sessionEmail,
+    });
+    const res = buildRedirect(req, "/edge/claim?error=email-mismatch");
+    res.cookies.delete(PARTNER_COOKIE);
+    res.cookies.delete(EDGE_VERIFIED_COOKIE_NAME);
+    return res;
+  }
+
+  // ── Authenticated + verified → tag, sync VM, set cookie, redirect. ──
+  // The edge_verified_email column write happens in lib/auth.ts's signIn
+  // callback (which fires immediately before this route on OAuth return)
+  // — we DON'T re-write it here. Just the partner-tag step.
   const supabase = getSupabase();
   const result = await tagUserAsPartner(supabase, session.user.id, PARTNER);
 

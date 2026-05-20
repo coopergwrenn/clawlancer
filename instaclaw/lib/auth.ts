@@ -4,6 +4,10 @@ import { getSupabase } from "./supabase";
 import { sendWelcomeEmail } from "./email";
 import { logger } from "./logger";
 import { tagUserAsPartner } from "./partner-tag";
+import {
+  verifyEdgeVerifiedCookie,
+  EDGE_VERIFIED_COOKIE_NAME,
+} from "./edge-verified-cookie";
 import authConfig from "./auth.config";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -24,6 +28,36 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const cookieStore = await cookies();
       const referralCode = cookieStore.get("instaclaw_referral_code")?.value ?? null;
       const partnerCookie = cookieStore.get("instaclaw_partner")?.value ?? null;
+
+      // Edge verification cookie (signed HMAC-SHA256, 15-min TTL). Set by
+      // POST /api/edge/verify-ticket after a successful EdgeOS attendee
+      // lookup. Only honored if (a) signature is valid, (b) not expired,
+      // and (c) the verified email matches the user's signin email — we
+      // refuse to claim a verified-as-X cookie for a signed-in-as-Y user.
+      // Both null-equality cases (no cookie, expired) fall through silently
+      // and the user takes the normal non-Edge signup path.
+      const edgeVerifiedCookieRaw =
+        cookieStore.get(EDGE_VERIFIED_COOKIE_NAME)?.value ?? null;
+      const edgeVerifiedResult = verifyEdgeVerifiedCookie(edgeVerifiedCookieRaw);
+      const signinEmail = user.email?.trim().toLowerCase() ?? null;
+      const edgeVerifiedEmail =
+        edgeVerifiedResult.ok &&
+        edgeVerifiedResult.email &&
+        signinEmail &&
+        edgeVerifiedResult.email === signinEmail
+          ? edgeVerifiedResult.email
+          : null;
+      if (edgeVerifiedCookieRaw && !edgeVerifiedEmail) {
+        // Cookie was set but didn't validate / didn't match. Log once for
+        // monitoring — if this fires frequently, the gate's cookie minting
+        // and the signin email-normalization are diverging.
+        logger.warn("signIn: edge_verified cookie present but rejected", {
+          route: "auth/signIn",
+          reason: edgeVerifiedResult.reason,
+          cookieEmail: edgeVerifiedResult.email,
+          signinEmail,
+        });
+      }
 
       // Check if the user already exists
       const { data: existing, error: existingError } = await supabase
@@ -57,6 +91,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               userId: existing.id,
               partnerCookie,
               error: result.error,
+              route: "auth/signIn",
+            });
+          }
+        }
+
+        // Edge ticket: if the signed cookie validates, write the column.
+        // Non-blocking: a unique-violation (23505) means somebody else
+        // already claimed this email — log and continue, don't fail
+        // sign-in (the user's flow into the dashboard works without the
+        // column; the duplicate-claim risk is mitigated downstream).
+        if (edgeVerifiedEmail) {
+          const { error: edgeWriteErr } = await supabase
+            .from("instaclaw_users")
+            .update({ edge_verified_email: edgeVerifiedEmail })
+            .eq("id", existing.id)
+            .or(
+              `edge_verified_email.is.null,edge_verified_email.eq.${edgeVerifiedEmail}`,
+            );
+          if (edgeWriteErr) {
+            logger.warn("edge_verified_email write failed on existing-user signIn", {
+              userId: existing.id,
+              code: edgeWriteErr.code,
+              error: String(edgeWriteErr.message),
               route: "auth/signIn",
             });
           }
@@ -117,12 +174,34 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               });
             }
           }
+
+          // Edge ticket — same mechanism as the Google-only branch above.
+          if (edgeVerifiedEmail) {
+            const { error: edgeWriteErr } = await supabase
+              .from("instaclaw_users")
+              .update({ edge_verified_email: edgeVerifiedEmail })
+              .eq("id", walletUser.id)
+              .or(
+                `edge_verified_email.is.null,edge_verified_email.eq.${edgeVerifiedEmail}`,
+              );
+            if (edgeWriteErr) {
+              logger.warn("edge_verified_email write failed on wallet-user signIn", {
+                userId: walletUser.id,
+                code: edgeWriteErr.code,
+                error: String(edgeWriteErr.message),
+                route: "auth/signIn",
+              });
+            }
+          }
           return true;
         }
       }
 
       // Create the user row (new user — referralCode + partnerCookie were
-      // read at the top of this callback and are reused here)
+      // read at the top of this callback and are reused here). The
+      // edge_verified_email column carries through the EdgeOS ticket gate
+      // signed cookie — only written when verified, otherwise NULL so
+      // non-Edge signups never trip the partial UNIQUE constraint.
       const { error } = await supabase.from("instaclaw_users").insert({
         email: userEmail,
         name: user.name,
@@ -130,11 +209,46 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         invited_by: null,
         referred_by: referralCode ? decodeURIComponent(referralCode).trim().toLowerCase() : null,
         ...(partnerCookie ? { partner: partnerCookie } : {}),
+        ...(edgeVerifiedEmail ? { edge_verified_email: edgeVerifiedEmail } : {}),
       });
 
       if (error) {
-        // Unique constraint = user already exists (race condition)
-        if (error.code === "23505") return true;
+        // 23505 on the GOOGLE_ID column = user already exists (race
+        // condition during signup). 23505 on edge_verified_email = the
+        // email was claimed by someone else between the gate and the
+        // signin callback. Both are surfaced as `return true` because
+        // the user's account is created (or already exists) and the
+        // dashboard layout will figure out the rest — we don't fail
+        // sign-in over a non-Edge column conflict.
+        if (error.code === "23505") {
+          if (error.message?.includes("edge_verified_email")) {
+            logger.warn("edge_verified_email already claimed during new-user insert", {
+              email: userEmail,
+              error: String(error.message),
+              route: "auth/signIn",
+            });
+            // Retry the insert without the edge column so the user account
+            // still gets created — they keep their account, just no Edge
+            // tag. The gate UI will have already surfaced "already_claimed"
+            // before they got here in most cases.
+            const { error: retryErr } = await supabase.from("instaclaw_users").insert({
+              email: userEmail,
+              name: user.name,
+              google_id: account.providerAccountId,
+              invited_by: null,
+              referred_by: referralCode ? decodeURIComponent(referralCode).trim().toLowerCase() : null,
+              ...(partnerCookie ? { partner: partnerCookie } : {}),
+            });
+            if (retryErr && retryErr.code !== "23505") {
+              logger.error("retry insert (without edge col) failed", {
+                error: String(retryErr.message),
+                route: "auth/signIn",
+              });
+              return false;
+            }
+          }
+          return true;
+        }
         logger.error("Error creating user", { error: String(error), route: "auth/signIn" });
         return false;
       }
@@ -236,7 +350,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const supabase = getSupabase();
         const { data } = await supabase
           .from("instaclaw_users")
-          .select("id, onboarding_complete, partner")
+          .select("id, onboarding_complete, partner, index_last_intent_at")
           .eq("google_id", token.googleId)
           .single();
 
@@ -247,6 +361,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           // partner-specific UI (e.g., the Edge City nav item) without a
           // round-trip — see app/(dashboard)/layout.tsx primaryNav.
           session.user.partner = (data.partner as string | null) ?? null;
+          // indexLastIntentAt drives the /edge/intents mandatory-intent gate.
+          // NULL means "hasn't expressed any intent yet" — Edge attendees in
+          // this state must pass through /edge/intents before /dashboard.
+          // The dashboard layout enforces this universally; /deploying's
+          // post-provision redirect routes Edge users here too. See FUP-3a.
+          session.user.indexLastIntentAt =
+            (data.index_last_intent_at as string | null) ?? null;
         }
       }
       return session;

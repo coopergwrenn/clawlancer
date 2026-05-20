@@ -38,6 +38,8 @@ type GateState =
   | { kind: "already_claimed" }
   | { kind: "invalid_email" }
   | { kind: "rate_limited" }
+  | { kind: "must_verify_first" }
+  | { kind: "email_mismatch" }
   | { kind: "error" };
 
 interface VerifyResponse {
@@ -59,12 +61,18 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
   const [email, setEmail] = useState("");
   const [gateState, setGateState] = useState<GateState>({ kind: "initial" });
 
-  // Surface ?error=not-verified inline on first render (e.g. when the
-  // auth callback rejects an expired cookie and redirects back here).
+  // Surface ?error=... inline on first render. The auth callback or
+  // /api/partner/tag-redirect can redirect back here with a query-param
+  // describing why the user landed:
+  //   not-verified       — auth callback rejected an expired cookie
+  //   must-verify-first  — user hit a verification-gated path (BYO
+  //                        sign-in) without a valid signed cookie
+  //   email-mismatch     — verified email != signin email
   useEffect(() => {
-    if (searchParams.get("error") === "not-verified") {
-      setGateState({ kind: "not_found" });
-    }
+    const err = searchParams.get("error");
+    if (err === "not-verified") setGateState({ kind: "not_found" });
+    else if (err === "must-verify-first") setGateState({ kind: "must_verify_first" });
+    else if (err === "email-mismatch") setGateState({ kind: "email_mismatch" });
   }, [searchParams]);
 
   async function handleVerify(e: React.FormEvent) {
@@ -127,18 +135,35 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
   }
 
   function handleContinue() {
-    // Live users already have a working agent; route to their bot
-    // immediately. Otherwise default to /connect, where the existing
-    // onboarding flow handles fresh-signup OR already-signed-in
-    // (other terminal is wiring OpenAI OAuth there).
-    if (userState.kind === "live") {
-      window.location.href = `https://t.me/${userState.botUsername}`;
+    // Logged-in users (live OR in_progress) route through
+    // /api/partner/tag-redirect — the GET handler tags their existing
+    // user row + any assigned VM as `edge_city`, then decides the final
+    // destination (live → /dashboard, in_progress with VM → /dashboard,
+    // in_progress without VM → /connect). Without this routing, a live
+    // user clicking Continue would skip the partner-tag step entirely,
+    // their VM would stay untagged, and the edge-overlay skill would
+    // never get installed.
+    //
+    // Critical: this is the $29/mo-per-leak path. A "live" user whose
+    // existing VM doesn't get tagged here would still work, but it
+    // wouldn't be in the Edge network. Worse: if they later clicked
+    // through to /signup somewhere else, we'd provision a SECOND VM
+    // on the sponsor-funded inference budget.
+    //
+    // Tag-redirect validates the signed cookie too (added 2026-05-20
+    // alongside the gate), so even if a user somehow gets here in a
+    // weird state without the verification cookie, they get bounced
+    // back to /edge/claim?error=must-verify-first.
+    if (userState.kind === "live" || userState.kind === "in_progress") {
+      // Use window.location for the partner-tag-redirect call so the
+      // route's `Set-Cookie` + 302 chain plays out as expected (Next's
+      // client-side router can elide some redirect hops).
+      window.location.href = "/api/partner/tag-redirect";
       return;
     }
-    if (userState.kind === "in_progress") {
-      router.push(userState.resumePath);
-      return;
-    }
+    // Logged-out: gate already set the cookies; /connect handles OAuth.
+    // The signIn callback in lib/auth.ts reads the signed cookie and
+    // writes edge_verified_email on the user row.
     router.push("/connect");
   }
 
@@ -229,14 +254,46 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
             >
               Continue <span aria-hidden>→</span>
             </button>
-            <p
-              className="continue-anim text-[12px] leading-[1.55] mt-5"
+            {/* Confirmation + sign-in-email guidance.
+             *
+             * Two pieces of information stacked deliberately:
+             *  (1) which email we just verified — gives the user a
+             *      tangible receipt of what just happened.
+             *  (2) gentle hint to sign in with the same email next.
+             *      Heads off the "verified with work email, signed in
+             *      with Google personal" mismatch (we strict-match
+             *      cookie email vs signin email in lib/auth.ts and
+             *      /api/partner/tag-redirect — without this hint the
+             *      user wouldn't know to align them).
+             */}
+            <div
+              className="continue-anim mt-5 text-[12px] leading-[1.6]"
               style={{ color: "var(--edge-ink-soft)" }}
             >
-              {gateState.kind === "verified" && gateState.degraded
-                ? "Your spot is held. EdgeOS is briefly unavailable — proceeding without remote confirmation."
-                : `Your spot is held under ${gateState.kind === "verified" ? gateState.email : ""}.`}
-            </p>
+              {gateState.kind === "verified" && gateState.degraded ? (
+                <p>
+                  Your spot is held. EdgeOS is briefly unavailable —
+                  proceeding without remote confirmation.
+                </p>
+              ) : (
+                <>
+                  <p>
+                    Held under{" "}
+                    <span
+                      className="font-mono"
+                      style={{ color: "var(--edge-ink)" }}
+                    >
+                      {gateState.kind === "verified" ? gateState.email : ""}
+                    </span>
+                    .
+                  </p>
+                  <p className="mt-2">
+                    Sign in with this same email on the next page so we can
+                    link your account.
+                  </p>
+                </>
+              )}
+            </div>
           </div>
         ) : (
           <>
@@ -326,6 +383,27 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
                 >
                   Too many attempts in a short window. Give it a minute and
                   try again.
+                </p>
+              )}
+              {gateState.kind === "must_verify_first" && (
+                <p
+                  className="text-[13px] leading-[1.55] mt-3"
+                  style={{ color: "var(--edge-olive)" }}
+                  role="status"
+                >
+                  Verify your Edge Esmeralda email below first — that&apos;s
+                  how we know your spot in the village is real.
+                </p>
+              )}
+              {gateState.kind === "email_mismatch" && (
+                <p
+                  className="text-[13px] leading-[1.55] mt-3"
+                  style={{ color: "var(--edge-olive)" }}
+                  role="alert"
+                >
+                  The email you verified doesn&apos;t match the account you
+                  signed in with. Re-verify below using the same email
+                  you&apos;ll sign in with.
                 </p>
               )}
               {gateState.kind === "error" && (

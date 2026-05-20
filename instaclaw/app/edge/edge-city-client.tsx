@@ -1,47 +1,46 @@
 "use client";
 
-import { useState } from "react";
-import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { EdgeUserState } from "./edge-user-state";
 
-interface EdgeCityClientProps {
-  /**
-   * Server-resolved user state. Three variants drive three CTA shapes:
-   *
-   *   logged_out  — claim CTA + email-notify fallback.
-   *   in_progress — single "Complete setup →" pill routing to wherever the
-   *                 user dropped off in the onboarding state machine.
-   *   live        — celebratory card with the bot username and a deep-link
-   *                 to Telegram.
-   *
-   * SSR resolves this so there's no flash of the wrong CTA on hydration —
-   * the user sees the right state on first paint.
-   */
-  state: EdgeUserState;
+/**
+ * Edge attendee CTA card — three shapes driven by SSR-resolved userState.
+ *
+ *   logged_out  — primary "Claim your agent →" button that routes to
+ *                 the /edge/claim verification gate. The gate handles
+ *                 EdgeOS attendee lookup, signed-cookie minting, and
+ *                 the eventual partner-tag write. We DO NOT post to
+ *                 /api/partner/tag directly here — that path was a
+ *                 gate bypass before the EdgeOS verification gate
+ *                 shipped (a non-attendee could tag themselves
+ *                 edge_city without proving ticket ownership).
+ *
+ *   in_progress — single "Complete setup →" pill routing to the
+ *                 user's resumePath (where they dropped off mid-flow).
+ *
+ *   live        — celebratory sage card with @botUsername + a
+ *                 deep-link to Telegram.
+ *
+ * SSR resolves userState so there's no flash of the wrong CTA on
+ * hydration — first paint shows the right state.
+ *
+ * History: this component used to host a "notify-me" email capture
+ * fallback for non-attendees. That served its purpose during the
+ * pre-launch waitlist phase; it was removed 2026-05-20 as part of
+ * shipping the EdgeOS ticket gate (which replaces email capture with
+ * actual verification). For pre-launch waitlist needs going forward,
+ * use the dedicated waitlist surfaces elsewhere — this component is
+ * Edge-onboarding-only now.
+ */
 
-  /**
-   * Optional secondary action rendered between the primary "Claim" button
-   * and the "OR" divider, ONLY in the logged_out state. Used on /edge/claim
-   * to surface the existing-account BYO link directly under the primary
-   * CTA so it reads as a parallel option, not a buried afterthought.
-   *
-   * Not rendered in in_progress (single-pill state) or live (celebratory
-   * card) — those layouts don't have a divider for a secondary slot to
-   * sit above.
-   */
-  secondaryActionSlot?: ReactNode;
+interface EdgeCityClientProps {
+  state: EdgeUserState;
 }
 
-export function EdgeCityClient({ state, secondaryActionSlot }: EdgeCityClientProps) {
+export function EdgeCityClient({ state }: EdgeCityClientProps) {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [claiming, setClaiming] = useState(false);
-  const [error, setError] = useState("");
 
-  // ── State C: live agent ── deep-link straight into Telegram.
+  // ── State C: live agent ── sage card + deep-link to Telegram.
   if (state.kind === "live") {
     const tmeUrl = `https://t.me/${state.botUsername}`;
     return (
@@ -122,125 +121,18 @@ export function EdgeCityClient({ state, secondaryActionSlot }: EdgeCityClientPro
     );
   }
 
-  // ── State A: logged out ── original claim CTA + notify-me fallback.
-  // The two interaction paths (claim now / notify-me) are preserved verbatim
-  // from the pre-state-aware version. Only logged-out users see them.
-
-  async function handleClaim() {
-    setClaiming(true);
-    setError("");
-    try {
-      const res = await fetch("/api/partner/tag", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ partner: "edge_city" }),
-      });
-      const data = await res.json().catch(() => ({}));
-      router.push(data.redirect_to ?? "/signup");
-    } catch {
-      document.cookie =
-        "instaclaw_partner=edge_city; path=/; max-age=604800; SameSite=Lax";
-      router.push("/signup");
-    } finally {
-      setClaiming(false);
-    }
-  }
-
-  async function handleNotify(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email.trim()) return;
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch("/api/notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), source: "edge_city" }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error || "Something went wrong");
-        return;
-      }
-      setSubmitted(true);
-    } catch {
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (submitted) {
-    return (
-      <div
-        className="max-w-md px-5 py-4 rounded-full text-[13px] uppercase tracking-[0.14em] inline-flex items-center gap-2"
-        style={{ background: "var(--edge-sage)", color: "var(--edge-olive)" }}
-      >
-        <span aria-hidden>✓</span>
-        You&apos;re on the list — we&apos;ll email when claim opens
-      </div>
-    );
-  }
-
+  // ── State A: logged out ── route to the EdgeOS verification gate.
+  // Single-button shape; the gate at /edge/claim handles email lookup,
+  // signed-cookie minting, the partner-tag write, and the OAuth hand-off.
   return (
     <div className="w-full">
       <button
-        onClick={handleClaim}
-        disabled={claiming}
-        className="w-full px-6 py-4 rounded-full text-[13px] uppercase tracking-[0.14em] font-medium transition-colors hover:bg-[var(--edge-olive-hover)] disabled:opacity-60 inline-flex items-center justify-center gap-2"
+        onClick={() => router.push("/edge/claim")}
+        className="w-full px-6 py-4 rounded-full text-[13px] uppercase tracking-[0.14em] font-medium transition-colors hover:bg-[var(--edge-olive-hover)] inline-flex items-center justify-center gap-2"
         style={{ background: "var(--edge-olive)", color: "#FFFFFF", letterSpacing: "0.12em" }}
       >
-        {claiming ? "Claiming…" : <>Claim your agent <span aria-hidden>→</span></>}
+        Claim your agent <span aria-hidden>→</span>
       </button>
-
-      {/* Optional secondary action slot — small text affordance directly
-       *  under the primary CTA. Used on /edge/claim for the existing-account
-       *  BYO link. Sits BEFORE the OR divider so it reads as "secondary
-       *  option" not "fallback to a different funnel."
-       */}
-      {secondaryActionSlot && (
-        <div className="mt-3 mb-1">{secondaryActionSlot}</div>
-      )}
-
-      <div className="flex items-center gap-3 my-5">
-        <div className="flex-1 h-px" style={{ background: "var(--edge-line)" }} />
-        <span className="text-[11px] uppercase tracking-[0.16em]" style={{ color: "var(--edge-ink-soft)" }}>
-          or
-        </span>
-        <div className="flex-1 h-px" style={{ background: "var(--edge-line)" }} />
-      </div>
-
-      <form onSubmit={handleNotify} className="flex gap-2">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
-          required
-          disabled={loading}
-          aria-label="email"
-          className="flex-1 px-5 py-3.5 rounded-full text-[14px] outline-none transition-colors focus:border-[var(--edge-olive)]"
-          style={{
-            background: "#FFFFFF",
-            border: "1px solid var(--edge-line)",
-            color: "var(--edge-ink)",
-          }}
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-5 py-3.5 rounded-full text-[13px] uppercase tracking-[0.12em] font-medium transition-colors hover:bg-[var(--edge-olive-hover)] disabled:opacity-60"
-          style={{ background: "var(--edge-olive)", color: "#FFFFFF" }}
-        >
-          {loading ? "…" : "Notify me"}
-        </button>
-      </form>
-
-      {error && (
-        <p className="text-[12px] mt-3" style={{ color: "#B83D01" }} role="alert">
-          {error}
-        </p>
-      )}
     </div>
   );
 }

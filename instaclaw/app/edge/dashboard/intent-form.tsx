@@ -43,7 +43,25 @@ const DESCRIPTION_MAX = 500;
 
 type SubmitState = "idle" | "submitting" | "success" | "error";
 
-export function IntentForm() {
+/**
+ * Optional callback props for caller-owned success/error UI. Used by the
+ * /edge/intents mandatory-intent gate to render its own page-level reveal
+ * (matching the /edge/claim verify-state aesthetic) instead of this
+ * component's inline success message. When BOTH are provided, the form
+ * delegates the moment entirely to the caller — its internal `success`
+ * and `error` states never render, so the page transition is the single
+ * visible animation (no double-render).
+ *
+ * Default behavior (when callbacks are absent): the form owns success/error
+ * UI via its internal message panel. /edge/dashboard's adaptive section
+ * uses this default.
+ */
+interface IntentFormProps {
+  onSuccess?: (intentId: string) => void;
+  onError?: (errorStatus: string) => void;
+}
+
+export function IntentForm({ onSuccess, onError }: IntentFormProps = {}) {
   const [description, setDescription] = useState<string>("");
   const [state, setState] = useState<SubmitState>("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -74,10 +92,28 @@ export function IntentForm() {
       };
 
       if (res.ok && data.status === "created") {
+        // Caller-owned success path — delegate the UI moment entirely.
+        // The page can unmount the form before our internal "success"
+        // state ever renders, so no double-animation.
+        if (onSuccess) {
+          // intentId is optional in the response shape; pass-through.
+          onSuccess(((data as { intentId?: string }).intentId) ?? "");
+          return;
+        }
         setState("success");
         setMessage(data.message ?? "your intent is registered.");
         setDescription("");
       } else {
+        // Caller-owned error path — surface the upstream status code so the
+        // caller can branch on service_unavailable (Yanek MCP down → reveal
+        // skip-link escape hatch on /edge/intents).
+        if (onError && data.status) {
+          onError(data.status);
+          // Fall through to set internal error state too — caller chooses
+          // whether to reveal anything UI-side or hide it; we want the
+          // default form-internal error UI to still appear so the user
+          // sees feedback either way.
+        }
         setState("error");
         setMessage(
           data.message ??
@@ -85,6 +121,7 @@ export function IntentForm() {
         );
       }
     } catch {
+      if (onError) onError("network");
       setState("error");
       setMessage("couldn't reach the server. check your connection and try again.");
     }

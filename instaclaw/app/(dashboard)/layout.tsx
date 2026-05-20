@@ -143,6 +143,54 @@ export default function DashboardLayout({
     };
   }, [needsOnboarding, router]);
 
+  // ── Edge attendee intent gate (FUP-3a) ──────────────────────────────────
+  //
+  // Edge Esmeralda's matching engine needs at least one expressed intent
+  // per attendee — without it, the user is invisible to the village
+  // network. Enforce universally: any Edge attendee landing on /dashboard
+  // (or any sub-route) with index_last_intent_at === null is bounced to
+  // /edge/intents BEFORE the dashboard renders. /deploying's post-provision
+  // redirect ALSO routes Edge users here as a primary path; this layout
+  // gate is the defense-in-depth catch for direct nav, refresh, Telegram
+  // deep-links, and any other path.
+  //
+  // The gate is independent of the `needsOnboarding` useEffect above —
+  // fresh-deploy Edge users have onboarding_complete=true (the supplemental
+  // update at the end of /api/vm/configure flips it), so needsOnboarding
+  // is false and that effect skips. This effect runs regardless.
+  //
+  // Escape hatch: `edge_intent_skipped_at` in localStorage (30-min TTL),
+  // set by /edge/intents's service-degraded fallback when Yanek's MCP is
+  // down. Honors the flag so users aren't locked out by a partner outage;
+  // re-prompts after 30 min so the network still gets seeded post-recovery.
+  const needsEdgeIntent =
+    status !== "loading" &&
+    session?.user?.id &&
+    session.user.partner === "edge_city" &&
+    !session.user.indexLastIntentAt;
+
+  useEffect(() => {
+    if (!needsEdgeIntent) return;
+    // Check localStorage escape flag — Yanek-MCP-down service degradation.
+    try {
+      const skipTs = parseInt(
+        localStorage.getItem("edge_intent_skipped_at") ?? "0",
+        10,
+      );
+      if (
+        Number.isFinite(skipTs) &&
+        skipTs > 0 &&
+        Date.now() - skipTs < 30 * 60 * 1000
+      ) {
+        // Within the 30-min grace window — let them through.
+        return;
+      }
+    } catch {
+      // localStorage unavailable (SSR, private mode) — proceed with gate.
+    }
+    router.replace("/edge/intents");
+  }, [needsEdgeIntent, router]);
+
   // Close dropdown when clicking outside (suppressed when tour controls it)
   useEffect(() => {
     if (!moreOpen) return;

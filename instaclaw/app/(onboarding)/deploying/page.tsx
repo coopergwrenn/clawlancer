@@ -161,6 +161,15 @@ function DeployingPageContent() {
   // and forever after.
   const partner = usePartnerCookie();
   const isEdge = partner === "edge_city";
+  // Edge attendees go through one more step (the mandatory intent gate at
+  // /edge/intents) before reaching their dashboard — the matching engine
+  // needs at least one intent to seed the village network. The gate itself
+  // is one-shot + idempotent server-side, so this redirect is safe to
+  // apply on every success path (initial deploy, retry, recovery, manual
+  // emergency). The dashboard layout's useEffect re-enforces the gate
+  // if the user dodges this redirect (refresh, direct nav, etc.).
+  // Non-Edge users keep the unchanged /dashboard destination.
+  const deploySuccessDestination = isEdge ? "/edge/intents" : "/dashboard";
   const [steps, setSteps] = useState<DeployStep[]>([
     { id: "payment", label: "Payment confirmed", status: "done" },
     { id: "assign", label: "Assigning server", status: "active" },
@@ -411,7 +420,7 @@ function DeployingPageContent() {
               setPolling(false);
               setSoftTimeout(false);
               clearInterval(interval);
-              setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
+              setTimeout(() => { window.location.href = deploySuccessDestination; }, 1500);
             } else if (pollCount - (configuredAtPoll.current ?? pollCount) >= 5) {
               // 5-second grace period elapsed — gateway is running, redirect
               // anyway. The dashboard handles unhealthy states gracefully.
@@ -419,7 +428,7 @@ function DeployingPageContent() {
               setPolling(false);
               setSoftTimeout(false);
               clearInterval(interval);
-              setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
+              setTimeout(() => { window.location.href = deploySuccessDestination; }, 1500);
             } else {
               // Within 5s grace period — still checking health
               updateStep("health", "active");
@@ -474,7 +483,7 @@ function DeployingPageContent() {
                   updateStep("health", "done");
                   setPolling(false);
                   setSoftTimeout(false);
-                  setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
+                  setTimeout(() => { window.location.href = deploySuccessDestination; }, 1500);
                 }
               })
               .catch(() => setRecoveryChecking(false));
@@ -921,7 +930,7 @@ function DeployingPageContent() {
                       updateStep("telegram", "done");
                       setPolling(false);
                       setShowCheckAnyway(false);
-                      setTimeout(() => { window.location.href = "/dashboard"; }, 1500);
+                      setTimeout(() => { window.location.href = deploySuccessDestination; }, 1500);
                       return;
                     }
                   } catch {}
@@ -971,7 +980,7 @@ function DeployingPageContent() {
                       Refresh
                     </button>
                     <button
-                      onClick={() => { window.location.href = "/dashboard"; }}
+                      onClick={() => { window.location.href = deploySuccessDestination; }}
                       className="flex-1 px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer"
                       style={orangeGlassButton}
                     >
