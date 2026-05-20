@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-20
 
-Window: `e88d3d9aea3db6712f57b55fb0823f5d4f224f59` → `HEAD` (HEAD = `195b276f`)
+Window: `195b276fcdfa81de28b6477999f33e78020c91ec` → `HEAD` (HEAD = `9c8673f1`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 195b276fcdfa81de28b6477999f33e78020c91ec -->
+<!-- LAST_GENERATED_SHA: 9c8673f17b06563c7cc9bc2927cf51ffe46e5752 -->
 
 ## Summary
 
@@ -13,7 +13,7 @@ Total commits: 2
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 0
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `195b276f` 2026-05-20 — fix(chatgpt-oauth): match pi-ai's required OAuth credential shape ({access, expires, accountId}) [2 files] _(multi: [reconciler, infrastructure])_
-- `b763aa27` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `9c8673f1` 2026-05-20 — feat(edge): E1 — clean spammy defaults on edge_city VMs [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `d6e94914` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `195b276f` 2026-05-20 — fix(chatgpt-oauth): match pi-ai's required OAuth credential shape ({access, expires, accountId}) [2 files] _(multi: [reconciler, infrastructure])_
+- `9c8673f1` 2026-05-20 — feat(edge): E1 — clean spammy defaults on edge_city VMs [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `b763aa27` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `d6e94914` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `195b276f` 2026-05-20 — [reconciler, infrastructure] — fix(chatgpt-oauth): match pi-ai's required OAuth credential shape ({access, expires, accountId})
+- `9c8673f1` 2026-05-20 — [reconciler, infrastructure, edge] — feat(edge): E1 — clean spammy defaults on edge_city VMs
+
+## AI-assisted commits (1)
+
+Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+
+- `9c8673f1` 2026-05-20 — feat(edge): E1 — clean spammy defaults on edge_city VMs
 
 ## Appendix — every commit (chronological)
 
-- `b763aa27` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
-- `195b276f` 2026-05-20 — fix(chatgpt-oauth): match pi-ai's required OAuth credential shape ({access, expires, accountId}) [2 files] _(multi: [reconciler, infrastructure])_
+- `d6e94914` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `9c8673f1` 2026-05-20 — feat(edge): E1 — clean spammy defaults on edge_city VMs [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
