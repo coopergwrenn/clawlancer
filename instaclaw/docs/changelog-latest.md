@@ -1,66 +1,68 @@
 # Changelog — generated 2026-05-20
 
-Window: `549242a3711961ba867d2eaeea59519e0be51b04` → `HEAD` (HEAD = `83aabd68`)
-Total commits: 4
+Window: `83aabd688ec96409a887f2ae12169db488ab0740` → `HEAD` (HEAD = `f8ca33a2`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 83aabd688ec96409a887f2ae12169db488ab0740 -->
+<!-- LAST_GENERATED_SHA: f8ca33a2f5f95dc8f383650721ff18b30f210237 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 1
-- **Feature (user-facing):** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
-- AI-assisted commits (co-authored): 3
+- **Docs / PRD only:** 1
+- AI-assisted commits (co-authored): 2
 - Merge commits: 0
 
 ## What changed for users
 
-_None in this window._
+- `da245745` 2026-05-19 — feat(edge): /edge/claim Layer-2 setup page + BYO redirect route + Layer-1 hero wiring [7 files] _(multi: [feature, edge]; ai-assisted)_
 
 ## What changed under the hood
 
-- `83aabd68` 2026-05-19 — docs(canary): post-enable snapshot — vm-733 validated, install path proven end-to-end [1 files] _(ai-assisted)_
-- `4286d3b3` 2026-05-19 — fix(index-notifier): reclassify TELEGRAM_NON_JSON as retryable (P1 7b) [2 files] _(ai-assisted)_
-- `6c8a51c6` 2026-05-19 — docs(edge): /edge/claim design proposal — research + spec, awaiting approval [1 files] _(ai-assisted)_
-- `9d48bf7e` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `f8ca33a2` 2026-05-19 — feat(edge): /api/edge/express-intent route + dashboard form (#3, pre-built for Yanek-fix-flip) [5 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
+- `d5ef4664` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `83aabd68` 2026-05-19 — docs(canary): post-enable snapshot — vm-733 validated, install path proven end-to-end [1 files] _(ai-assisted)_
+_(none)_
 
 ### Infrastructure (1)
 
-- `4286d3b3` 2026-05-19 — fix(index-notifier): reclassify TELEGRAM_NON_JSON as retryable (P1 7b) [2 files] _(ai-assisted)_
+- `f8ca33a2` 2026-05-19 — feat(edge): /api/edge/express-intent route + dashboard form (#3, pre-built for Yanek-fix-flip) [5 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
 
-### Feature (user-facing) (0)
+### Feature (user-facing) (1)
 
-_(none)_
+- `da245745` 2026-05-19 — feat(edge): /edge/claim Layer-2 setup page + BYO redirect route + Layer-1 hero wiring [7 files] _(multi: [feature, edge]; ai-assisted)_
 
 ### Edge City partner (0)
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `9d48bf7e` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
-- `6c8a51c6` 2026-05-19 — docs(edge): /edge/claim design proposal — research + spec, awaiting approval [1 files] _(ai-assisted)_
+- `d5ef4664` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (3)
+## Multi-category commits (2)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `da245745` 2026-05-19 — [feature, edge] — feat(edge): /edge/claim Layer-2 setup page + BYO redirect route + Layer-1 hero wiring
+- `f8ca33a2` 2026-05-19 — [infrastructure, feature, edge] — feat(edge): /api/edge/express-intent route + dashboard form (#3, pre-built for Yanek-fix-flip)
+
+## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `6c8a51c6` 2026-05-19 — docs(edge): /edge/claim design proposal — research + spec, awaiting approval
-- `4286d3b3` 2026-05-19 — fix(index-notifier): reclassify TELEGRAM_NON_JSON as retryable (P1 7b)
-- `83aabd68` 2026-05-19 — docs(canary): post-enable snapshot — vm-733 validated, install path proven end-to-end
+- `da245745` 2026-05-19 — feat(edge): /edge/claim Layer-2 setup page + BYO redirect route + Layer-1 hero wiring
+- `f8ca33a2` 2026-05-19 — feat(edge): /api/edge/express-intent route + dashboard form (#3, pre-built for Yanek-fix-flip)
 
 ## Appendix — every commit (chronological)
 
-- `9d48bf7e` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
-- `6c8a51c6` 2026-05-19 — docs(edge): /edge/claim design proposal — research + spec, awaiting approval [1 files] _(ai-assisted)_
-- `4286d3b3` 2026-05-19 — fix(index-notifier): reclassify TELEGRAM_NON_JSON as retryable (P1 7b) [2 files] _(ai-assisted)_
-- `83aabd68` 2026-05-19 — docs(canary): post-enable snapshot — vm-733 validated, install path proven end-to-end [1 files] _(ai-assisted)_
+- `d5ef4664` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `da245745` 2026-05-19 — feat(edge): /edge/claim Layer-2 setup page + BYO redirect route + Layer-1 hero wiring [7 files] _(multi: [feature, edge]; ai-assisted)_
+- `f8ca33a2` 2026-05-19 — feat(edge): /api/edge/express-intent route + dashboard form (#3, pre-built for Yanek-fix-flip) [5 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
