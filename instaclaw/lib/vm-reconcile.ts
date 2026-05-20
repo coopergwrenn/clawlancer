@@ -8998,6 +8998,30 @@ async function applyConnectedState(
       accountId,
       userVersion,
     });
+    // CRITICAL — load-bearing per 2026-05-20 vm-780 incident.
+    //
+    // auth-profiles.json is loaded into memory once at gateway startup
+    // (see `[gateway] resolving authentication…` journal line). Pi-ai
+    // does NOT re-read the file when its mtime changes. A profile push
+    // without a gateway restart leaves the running process serving from
+    // the in-memory snapshot captured at the LAST restart — so a token
+    // rotation, shape fix, or account swap is invisible at runtime
+    // until something else (model.primary change, manual restart) cycles
+    // the process.
+    //
+    // The 2026-05-20 incident: we shipped a profile-shape fix, the
+    // reconciler pushed it correctly, but model.primary was already
+    // correct from a prior cycle, so the old conditional `if (curModel
+    // !== targetModel)` restart trigger never fired. Cooper's gateway
+    // (PID 3701090, started 19:35:58 UTC) continued serving the old
+    // profile shape it had cached at startup, even though the on-disk
+    // file (mtime 21:15:23 UTC) was correct. Hours of confused debugging.
+    //
+    // Set the restart flag any time we actually wrote the file —
+    // regardless of why. Cheaper than dropping requests.
+    if (!dryRun) {
+      result.gatewayRestartNeeded = true;
+    }
   }
 
   // Set model.primary to openai-codex/gpt-5.5 if not already.

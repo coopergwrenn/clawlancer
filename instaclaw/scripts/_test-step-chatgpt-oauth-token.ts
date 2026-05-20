@@ -731,6 +731,94 @@ async function main(): Promise<void> {
     );
   }
 
+  // ─── Test 13: token rotation (model.primary unchanged, profile changed) ──
+  // Regression guard for the 2026-05-20 vm-780 incident: after the shape
+  // fix, the reconciler pushed a correct-shape profile to disk but pi-ai's
+  // gateway kept serving the OLD-shape profile from its in-memory cache
+  // (captured at last startup). Root cause: the restart trigger was
+  // conditional on model.primary changing; when only the profile content
+  // changed (token rotation, shape fix, account swap), no restart fired.
+  // Fix: any profile write MUST set gatewayRestartNeeded.
+  console.log("\n13. Token rotation — model.primary unchanged, profile content changed:");
+  {
+    const NEW_TOKEN = "eyJ.rotated.token.v13";
+    const encryptedToken = encryptSecret(NEW_TOKEN, USER_ID);
+    const newExpiresIso = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString();
+    const newExpiresMs = new Date(newExpiresIso).getTime();
+    // On-disk has the OLD token + OLD expiry. Model.primary already
+    // openai-codex/gpt-5.5 from a prior cycle (the normal steady state
+    // for an already-connected user, before the refresh cron rotates).
+    const oldExpiresMs = Date.now() + 1 * 24 * 60 * 60 * 1000;
+    const onDiskJson = JSON.stringify({
+      profiles: {
+        "anthropic:default": { type: "api_key", provider: "anthropic", key: "sk-x" },
+        "openai-codex:default": {
+          type: "oauth",
+          provider: "openai-codex",
+          access: "eyJ.OLD.token.v12",
+          expires: oldExpiresMs,
+          accountId: "acct_rot",
+        },
+      },
+    });
+    const { ssh, calls } = makeMockSsh({
+      responses: [
+        // model.primary read returns the ALREADY-correct value
+        { match: /python3.*model.*primary/, result: { code: 0, stdout: "openai-codex/gpt-5.5\n" } },
+        // verify-after-write — must return the NEW prefix + NEW expires
+        {
+          match: /python3.*openai-codex:default.*access/,
+          result: { code: 0, stdout: NEW_TOKEN.slice(0, 16) + "|" + newExpiresMs + "\n" },
+        },
+        { match: /cat ~\/\.openclaw\/agents\/main\/agent\/auth-profiles\.json/, result: { code: 0, stdout: onDiskJson } },
+      ],
+      default: { code: 0, stdout: "" },
+    });
+    const { vmUpdates } = makeMockSupabase({
+      user: {
+        id: USER_ID,
+        openai_token_version: 3,
+        openai_oauth_access_token: encryptedToken,
+        openai_oauth_expires_at: newExpiresIso,
+        openai_oauth_account_id: "acct_rot",
+      },
+    });
+    const vm: VMFixture = {
+      id: "vm-13",
+      assigned_to: USER_ID,
+      openai_token_version_synced: 2,
+      // VM already at openai-codex on the DB side too — only the profile
+      // file content (token + expires) is what's stale relative to user.
+      api_mode: "chatgpt_oauth",
+      default_model: "openai-codex/gpt-5.5",
+    };
+    const result = makeResult();
+    await __testOnly_stepChatGPTOAuthToken(ssh as never, vm as never, result as never, false);
+
+    assert(result.errors.length === 0, "no errors on token rotation");
+    const profileWrite = calls.find(
+      (c) =>
+        c.command.includes("base64 -d > ~/.openclaw/agents/main/agent/auth-profiles.json.tmp") &&
+        c.command.includes("mv"),
+    );
+    assert(!!profileWrite, "profile rewritten with new token + expires");
+    // The model.primary SET command MUST NOT fire (already correct).
+    const modelSet = calls.find((c) =>
+      c.command.includes("openclaw config set agents.defaults.model.primary"),
+    );
+    assert(!modelSet, "NO model.primary set call (already correct)");
+    // CRITICAL: gateway restart MUST be flagged even though model.primary
+    // didn't change. This is the exact regression guard for 2026-05-20.
+    assert(
+      result.gatewayRestartNeeded === true,
+      "gatewayRestartNeeded === true even with model.primary unchanged (profile content rewrite must restart gateway)",
+    );
+    assert(
+      vmUpdates.some((u) => u.openai_token_version_synced === 3),
+      "synced version bumped to 3 (matches user.openai_token_version)",
+    );
+  }
+
   // ─── Summary ─────────────────────────────────────────────────────────────
   console.log(`\n=== Results ===`);
   console.log(`PASS: ${pass}`);
