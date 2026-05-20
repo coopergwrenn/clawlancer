@@ -119,7 +119,23 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const durationMs = Date.now() - startMs;
-    const msg = err instanceof Error ? err.message : String(err);
+    // Robust error serialization. `String(err)` renders plain objects as
+    // "[object Object]" which is useless for triage (vm-733 hit this 2026-05-19
+    // during the canary rollout when stepGbrain threw a non-Error object).
+    // Try in order: Error.message → string passthrough → JSON.stringify →
+    // String() fallback for unserializable values (cycles, BigInt, etc.).
+    let msg: string;
+    if (err instanceof Error) {
+      msg = err.message;
+    } else if (typeof err === "string") {
+      msg = err;
+    } else {
+      try {
+        msg = JSON.stringify(err);
+      } catch {
+        msg = String(err);
+      }
+    }
     logger.error("admin/reconcile-vm: failed", {
       route: "admin/reconcile-vm",
       vmId,

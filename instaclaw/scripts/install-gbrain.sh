@@ -466,8 +466,13 @@ if [ "$NEED_UPGRADE" = "1" ]; then
   # ─── J7: git fetch + checkout target commit ───
   git fetch origin 2>&1 | tail -3
   git checkout "$GBRAIN_PINNED_COMMIT" 2>&1 | tail -3
-  J_NEW_HEAD=$(git rev-parse HEAD)
-  if [ "${J_NEW_HEAD:0:7}" != "${GBRAIN_PINNED_COMMIT:0:7}" ]; then
+  # Use full SHA and compare first-7 of both sides — already-correct pattern
+  # since J was authored (2026-05-19), but adding empty-value defensive checks
+  # to match the strengthened Phase C verify (line ~703). Empty J_NEW_HEAD =
+  # git rev-parse failed; empty GBRAIN_PINNED_COMMIT = env var not passed.
+  J_NEW_HEAD=$(git rev-parse HEAD 2>/dev/null)
+  if [ -z "$J_NEW_HEAD" ] || [ -z "$GBRAIN_PINNED_COMMIT" ] || \
+     [ "${J_NEW_HEAD:0:7}" != "${GBRAIN_PINNED_COMMIT:0:7}" ]; then
     echo "FATAL_UPGRADE_CHECKOUT_FAILED expected=$GBRAIN_PINNED_COMMIT got=$J_NEW_HEAD"
     # ROLLBACK to OLD_HEAD
     git checkout "$OLD_HEAD" 2>&1 | tail -2
@@ -697,15 +702,24 @@ else
   cd "$HOME/gbrain" || { echo "FATAL_GBRAIN_DIR_INACCESSIBLE"; exit 4; }
 fi
 git checkout "$GBRAIN_PINNED_COMMIT" 2>&1 | tail -3
-VERIFY_HEAD=$(git rev-parse --short HEAD)
+# Use full SHA via `git rev-parse HEAD` (not --short) so length is deterministic
+# at 40 chars, then compare first-7 of both sides. This mirrors Phase J's
+# verify pattern at line 471 and fixes the 2026-05-19 SHA-length-comparison
+# bug: as the gbrain repo grows, `git rev-parse --short` auto-extends short
+# SHAs to disambiguate (1d5f69f → 1d5f69fe), so naive string equality fails
+# despite both refs pointing to the same commit. Empty values are caught
+# defensively — an empty VERIFY_HEAD means git rev-parse failed, an empty
+# GBRAIN_PINNED_COMMIT means the env var wasn't passed in.
+VERIFY_HEAD=$(git rev-parse HEAD 2>/dev/null)
 # Pinning verify — Rule 35 / May-12 PRD §5.7 (don't float on master,
 # operator manually bumps after canary validation).
-if [ "$VERIFY_HEAD" != "$GBRAIN_PINNED_COMMIT" ]; then
+if [ -z "$VERIFY_HEAD" ] || [ -z "$GBRAIN_PINNED_COMMIT" ] || \
+   [ "${VERIFY_HEAD:0:7}" != "${GBRAIN_PINNED_COMMIT:0:7}" ]; then
   echo "FATAL_CHECKOUT_DRIFT verify=$VERIFY_HEAD expected=$GBRAIN_PINNED_COMMIT"
   # Don't rm -rf here — operator may want the partial state for forensics.
   exit 5
 fi
-echo "PHASE_C_OK head=$VERIFY_HEAD path=$HOME/gbrain"
+echo "PHASE_C_OK head=${VERIFY_HEAD:0:7} path=$HOME/gbrain"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE C2: apply instaclaw patches (CLAUDE.md Rule 54 / Rule 58)
