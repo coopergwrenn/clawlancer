@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-20
 
-Window: `229a9394f84c5a3c93cb378a572ffe7575951f2e` → `HEAD` (HEAD = `57eb3ee0`)
+Window: `57eb3ee0ce100092179c1ec441212516ada8b0d9` → `HEAD` (HEAD = `f14199e0`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 57eb3ee0ce100092179c1ec441212516ada8b0d9 -->
+<!-- LAST_GENERATED_SHA: f14199e0dc84e362482e343aa66ebbd0b3955cd3 -->
 
 ## Summary
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `57eb3ee0` 2026-05-20 — fix(gbrain): Phase C2/I hard-fail + reconciler uploads companion files (Bug A+F) [10 files] _(multi: [reconciler, infrastructure, feature, edge]; ai-assisted)_
-- `19919807` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `f14199e0` 2026-05-20 — fix(vm-watchdog): protect gbrain.service MainPID from runaway-process killer (Bug B) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5269555e` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `57eb3ee0` 2026-05-20 — fix(gbrain): Phase C2/I hard-fail + reconciler uploads companion files (Bug A+F) [10 files] _(multi: [reconciler, infrastructure, feature, edge]; ai-assisted)_
+- `f14199e0` 2026-05-20 — fix(vm-watchdog): protect gbrain.service MainPID from runaway-process killer (Bug B) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `19919807` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `5269555e` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `57eb3ee0` 2026-05-20 — [reconciler, infrastructure, feature, edge] — fix(gbrain): Phase C2/I hard-fail + reconciler uploads companion files (Bug A+F)
+- `f14199e0` 2026-05-20 — [reconciler, infrastructure] — fix(vm-watchdog): protect gbrain.service MainPID from runaway-process killer (Bug B)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `57eb3ee0` 2026-05-20 — fix(gbrain): Phase C2/I hard-fail + reconciler uploads companion files (Bug A+F)
+- `f14199e0` 2026-05-20 — fix(vm-watchdog): protect gbrain.service MainPID from runaway-process killer (Bug B)
 
 ## Appendix — every commit (chronological)
 
-- `19919807` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
-- `57eb3ee0` 2026-05-20 — fix(gbrain): Phase C2/I hard-fail + reconciler uploads companion files (Bug A+F) [10 files] _(multi: [reconciler, infrastructure, feature, edge]; ai-assisted)_
+- `5269555e` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `f14199e0` 2026-05-20 — fix(vm-watchdog): protect gbrain.service MainPID from runaway-process killer (Bug B) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
