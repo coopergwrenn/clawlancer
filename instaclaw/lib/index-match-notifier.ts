@@ -407,19 +407,100 @@ async function notifyOneSide(
     reasoning: input.opportunity.interpretation?.reasoning ?? null,
   });
 
-  // Deliver via Telegram Bot API.
+  // ── Optimistic claim BEFORE Telegram send (#13) ──
+  //
+  // The race we're closing: two concurrent ticks (manual + scheduled,
+  // or two manual triggers) both observe notified_*_at = NULL, both
+  // build a message, both call Telegram — the recipient gets the
+  // SAME "i think you should meet X" twice. That destroys trust on
+  // launch day worse than a missed match would.
+  //
+  // Pattern: atomic UPDATE … WHERE column IS NULL RETURNING.
+  //   • If 1 row returned → we own the claim; send Telegram. Database
+  //     state already reflects "delivered" optimistically; on Telegram
+  //     success we leave it; on failure we revert via CAS.
+  //   • If 0 rows returned → another tick claimed first. Skip Telegram
+  //     entirely. Return already_notified so the tally treats this as
+  //     a no-op tick (no counter increment).
+  //
+  // The CAS revert (UPDATE … WHERE column = <our exact timestamp>)
+  // prevents a transient-Telegram-failure compensating revert from
+  // clobbering a concurrent later tick's successful delivery.
+  //
+  // Trade-off: if Telegram delivers BUT our process crashes BEFORE we
+  // return success, the column is already set; next tick skips. We
+  // lose the "delivered" record but the user got the message. Worst
+  // case: silent successful delivery → still better than the
+  // duplicate-Telegram alternative.
+  const claimedAt = new Date().toISOString();
+  const { data: claimRows, error: claimErr } = await sb
+    .from("matchpool_outcomes")
+    .update({ [input.column]: claimedAt })
+    .eq("outcome_id", input.outcomeId)
+    .is(input.column, null)
+    .select("outcome_id");
+  if (claimErr) {
+    logger.error("[index-notifier] claim UPDATE failed", {
+      outcomeId: input.outcomeId,
+      vm: recipientVm.name,
+      column: input.column,
+      error: claimErr.message,
+    });
+    return {
+      status: "failed",
+      reason: "claim_update_failed",
+      detail: claimErr.message,
+    };
+  }
+  if (!claimRows || claimRows.length === 0) {
+    // Lost the race — another tick already claimed this side. Skip.
+    logger.info("[index-notifier] claim lost to concurrent tick — Telegram not sent", {
+      outcomeId: input.outcomeId,
+      vm: recipientVm.name,
+      column: input.column,
+    });
+    return { status: "already_notified" };
+  }
+
+  // We own the claim. Send Telegram.
   const sendRes = await sendTelegramMessage(
     recipientVm.telegram_bot_token as string,
     recipientVm.telegram_chat_id as string,
     message,
   );
   if (!sendRes.ok) {
-    logger.error("[index-notifier] telegram send failed", {
+    // Compensating revert — clear the claim so a future tick can retry.
+    // CAS on our exact claimedAt timestamp prevents clobbering a
+    // concurrent claim that may have superseded ours (e.g., if our
+    // Telegram took >1 cron interval and the next tick somehow saw
+    // NULL — shouldn't happen given the claim was set, but defense
+    // in depth).
+    //
+    // If the revert itself fails: we live with the lie. The claim is
+    // set but Telegram didn't deliver. Next tick skips this side
+    // (lost retry). The alternative is duplicate-Telegram on the
+    // next tick, which is worse for the user. Operator can spot this
+    // via `notify_*_failed` counter + Vercel logs.
+    logger.error("[index-notifier] telegram send failed; reverting claim", {
       outcomeId: input.outcomeId,
       vm: recipientVm.name,
       error: sendRes.error,
       httpStatus: sendRes.httpStatus,
+      claimedAt,
     });
+    const { error: revertErr } = await sb
+      .from("matchpool_outcomes")
+      .update({ [input.column]: null })
+      .eq("outcome_id", input.outcomeId)
+      .eq(input.column, claimedAt);
+    if (revertErr) {
+      logger.error("[index-notifier] claim revert failed (claim remains set)", {
+        outcomeId: input.outcomeId,
+        vm: recipientVm.name,
+        column: input.column,
+        revertError: revertErr.message,
+      });
+    }
     return {
       status: "failed",
       reason: sendRes.error,
@@ -427,30 +508,9 @@ async function notifyOneSide(
     };
   }
 
-  // Persist successful delivery.
-  const now = new Date().toISOString();
-  const { error: updateErr } = await sb
-    .from("matchpool_outcomes")
-    .update({ [input.column]: now })
-    .eq("outcome_id", input.outcomeId);
-  if (updateErr) {
-    // Message was delivered — log the failure to update tracking, but
-    // return success-ish. The retry on next tick will detect the
-    // already-sent Telegram message via a different mechanism… actually
-    // it won't. Without the column update, the next tick will RE-SEND.
-    // Surface this clearly as a separate failure mode.
-    logger.error("[index-notifier] delivered but failed to mark notified_*_at", {
-      outcomeId: input.outcomeId,
-      vm: recipientVm.name,
-      column: input.column,
-      error: updateErr.message,
-    });
-    return {
-      status: "failed",
-      reason: NOTIFY_FAILURE_REASONS.DELIVERED_BUT_TRACKING_FAILED,
-      detail: updateErr.message,
-    };
-  }
+  // Telegram delivered + claim already set. We're done — no second
+  // UPDATE needed (this is the win over the old read-modify-write
+  // pattern that had the race window).
 
   logger.info("[index-notifier] delivered", {
     outcomeId: input.outcomeId,
@@ -458,7 +518,7 @@ async function notifyOneSide(
     counterpartName,
     column: input.column,
   });
-  return { status: "delivered", deliveredAt: now };
+  return { status: "delivered", deliveredAt: claimedAt };
 }
 
 // ── Telegram Bot API ────────────────────────────────────────────────
