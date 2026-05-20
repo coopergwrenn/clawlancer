@@ -64,6 +64,8 @@ import {
   getIndexEnv,
   IndexSignupError,
 } from "./index-network-client";
+import { mintOrReuseApiKey } from "./edgeos-mint";
+import { EDGEOS_TENANT_EDGECITY_PROD } from "./edgeos-auth";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -529,6 +531,19 @@ export async function reconcileVM(
     // PRD: docs/prd/village-index-network-integration.md §7.
     currentStep = "index";
     await stepIndexProvision(ssh, vm, result, dryRun, strict);
+
+    // ── Step 1e: EdgeOS API key provisioning (partner=edge_city only) ──
+    // Sibling to stepIndexProvision — partner-gated, mints a per-VM
+    // eos_live_* key for the Edge Esmeralda 2026 calendar (events:read).
+    // EdgeOS shows secrets once at create time, so we persist to DB
+    // (instaclaw_vms.edgeos_api_key) and deploy to ~/.openclaw/.env on
+    // every reconcile (Rule 58 cross-consumer match). Warnings-only on
+    // failure per Rule 39 — calendar reads degrade gracefully; the
+    // attendee directory remains reachable via the shared
+    // EDGEOS_BEARER_TOKEN regardless. PRD: D3 in
+    // docs/prd/edge-esmeralda-master-prd-2026-05-19.md.
+    currentStep = "edgeos-api-key";
+    await stepEdgeOSApiKey(ssh, vm, result, dryRun, strict);
 
     // ── Step 2: Files ──
     currentStep = "files";
@@ -2270,6 +2285,347 @@ async function markIndexFailure(
   } catch {
     // Swallow — markIndexFailure is forensic decoration on an already-failed path.
   }
+}
+
+/**
+ * stepEdgeOSApiKey — mint a per-VM EdgeOS API key (eos_live_*) for the
+ * Edge Esmeralda 2026 calendar (PRD: D3 in edge-esmeralda-master-prd-2026-05-19.md).
+ *
+ * Sibling to stepIndexProvision — same partner gate (edge_city only), same
+ * warnings-only failure posture per Rule 39, same idempotency discipline
+ * (local cache short-circuits the partner API call).
+ *
+ * Idempotency (READ this — it's load-bearing):
+ *
+ *   EdgeOS shows API key secrets ONCE at create time. We persist the
+ *   minted key into instaclaw_vms.edgeos_api_key. Every subsequent
+ *   reconcile reads from DB, never re-mints (which would leave orphan
+ *   keys on EdgeOS forever — Cooper's call 2026-05-20 to use
+ *   onConflict="suffix" accepts orphan accumulation as the trade for
+ *   "clean is better than reconciling unknown state from prior testing").
+ *
+ *   Rotation pathway = NULL the column manually; next reconcile mints
+ *   fresh under a suffixed name, leaves the prior orphan for post-launch
+ *   sweep.
+ *
+ * Failure posture (Rule 39):
+ *
+ *   EdgeOS calendar integration is OPTIONAL — an edge_city agent that
+ *   lacks EDGEOS_API_KEY still works fine for Telegram + gbrain + bankr,
+ *   and can still read the attendee directory via EDGEOS_BEARER_TOKEN
+ *   (a separate shared bearer in Vercel env). Only CALENDAR reads
+ *   degrade. Every failure path → result.warnings via recordHealWarning,
+ *   NEVER to result.errors. cv-bump is never held by EdgeOS issues.
+ *
+ * Cross-consumer match (Rule 58):
+ *
+ *   The on-disk consumer is `~/.openclaw/.env:EDGEOS_API_KEY`. We verify
+ *   exact equality between DB and disk on every tick — drift triggers a
+ *   rewrite-from-DB (DB is source of truth). The 2026-05-18 vm-050
+ *   gbrain bearer mismatch incident is the reference shape for why this
+ *   check is stronger than stepIndexProvision's "transport string
+ *   present" check.
+ *
+ * Defensive partial-SELECT guard:
+ *
+ *   Multiple call sites of reconcileVM use different SELECT shapes — the
+ *   main reconcile-fleet cron includes `edgeos_api_key`, but
+ *   hq/upgrade-fleet uses a narrow SELECT for OpenClaw bumps that does
+ *   NOT. If we relied on `vm.edgeos_api_key` alone, an undefined-value
+ *   (column-not-loaded) would look identical to null (column-loaded-
+ *   but-NULL), and the step would re-mint a key for a VM that already
+ *   has one → orphan accumulation on EdgeOS.
+ *
+ *   We distinguish: `=== undefined` → SELECT didn't load it; silently
+ *   skip (the main cron will pick it up within 3 min). `=== null` → no
+ *   key yet, proceed to mint. `=== string` → reuse from DB.
+ */
+async function stepEdgeOSApiKey(
+  ssh: SSHConnection,
+  vm: VMRecord & {
+    name?: string | null;
+    partner?: string | null;
+    assigned_to?: string | null;
+    edgeos_api_key?: string | null;
+  },
+  result: ReconcileResult,
+  dryRun: boolean,
+  strict: boolean,
+): Promise<void> {
+  // ── Gate 1: partner allowlist ──
+  // EdgeOS calendar is per-event. Edge Esmeralda 2026 binds the tenant
+  // ID we use; future popups would either get their own step or an
+  // allowlist expansion here.
+  if (vm.partner !== "edge_city") return;
+
+  // ── Gate 2: strict-mode bypass ──
+  // mintOrReuseApiKey can issue up to 4 HTTP calls under suffix-mode
+  // conflict (create → list → suffix-create), each with a 15s timeout.
+  // Don't burn strict's 180s budget on this path — the non-strict
+  // reconcile-fleet cron picks it up within the next 3 min anyway.
+  // Mirrors stepIndexProvision and stepGbrain.
+  if (strict) return;
+
+  // ── Gate 3: defensive partial-SELECT guard ──
+  // If the caller's SELECT didn't load edgeos_api_key, an `undefined`
+  // value would falsely look like "no key" → would re-mint a key the VM
+  // already has → orphan on EdgeOS. Skip silently; the main cron has
+  // the full SELECT and will pick this up on its next 3-min tick.
+  if (vm.edgeos_api_key === undefined) return;
+
+  // ── Gate 4: env config present ──
+  // Local dev / preview deploys legitimately won't have
+  // EDGEOS_BEARER_TOKEN. Silent skip there. In production we emit a
+  // single warning so the operator notices if the env var ever drops.
+  const edgeosBearer = process.env.EDGEOS_BEARER_TOKEN || "";
+  if (!edgeosBearer) {
+    if (process.env.VERCEL_ENV === "production") {
+      recordHealWarning(
+        result,
+        "edgeos: EDGEOS_BEARER_TOKEN not configured in this env",
+      );
+    }
+    return;
+  }
+
+  // ── Gate 5: VM is assigned + has a name ──
+  // assigned_to is needed for the lifecycle log; name is needed by
+  // mintOrReuseApiKey to derive the deterministic key name.
+  if (!vm.assigned_to) {
+    recordHealWarning(
+      result,
+      "edgeos: VM has no assigned_to; cannot provision",
+    );
+    return;
+  }
+  if (!vm.name) {
+    recordHealWarning(
+      result,
+      "edgeos: VM has no name; cannot derive deterministic key name",
+    );
+    return;
+  }
+
+  // ── Idempotency check — local cache only. ──
+  // EdgeOS shows secrets once, so we never re-mint when a cached key
+  // exists. Drift recovery (DB cached, disk missing) uses the cached
+  // key, not a fresh mint.
+  const hasLocalKey =
+    typeof vm.edgeos_api_key === "string" && vm.edgeos_api_key.length > 0;
+
+  // ── Probe disk for current EDGEOS_API_KEY (Rule 58 cross-consumer
+  //    match: DB and disk MUST agree, mismatch = rewrite disk from DB).
+  let diskValue = "";
+  try {
+    const probe = await ssh.execCommand(
+      `grep '^EDGEOS_API_KEY=' "$HOME/.openclaw/.env" 2>/dev/null | head -1`,
+    );
+    const probeLine = (probe.stdout || "").trim();
+    const m = probeLine.match(/^EDGEOS_API_KEY=(.*)$/);
+    let raw = m?.[1] ?? "";
+    if (
+      (raw.startsWith('"') && raw.endsWith('"')) ||
+      (raw.startsWith("'") && raw.endsWith("'"))
+    ) {
+      raw = raw.slice(1, -1);
+    }
+    diskValue = raw;
+  } catch (e: unknown) {
+    recordHealWarning(
+      result,
+      `edgeos: disk probe failed: ${String((e as Error)?.message ?? e).slice(0, 150)}`,
+    );
+    return;
+  }
+
+  const diskOk =
+    hasLocalKey &&
+    diskValue.length > 0 &&
+    diskValue === vm.edgeos_api_key;
+
+  if (hasLocalKey && diskOk) {
+    result.alreadyCorrect.push("edgeos: api-key in DB + .env (synced)");
+    return;
+  }
+
+  if (dryRun) {
+    const reason = !hasLocalKey
+      ? "no key in DB"
+      : diskValue.length === 0
+        ? ".env missing EDGEOS_API_KEY"
+        : "DB↔disk drift";
+    result.fixed.push(`[dry-run] edgeos: would provision (${reason})`);
+    return;
+  }
+
+  // ── Decide path: full mint or disk-only rewrite ──
+  // If we already have a valid key (cached locally) but the .env
+  // drifted off disk (config rollback, manual .env edit, fresh
+  // snapshot bake), we just rewrite the .env line. Calling EdgeOS
+  // would create an orphan secondary key under a suffix.
+  let apiKey: string;
+  let mintCalled = false;
+  const sb = getSupabase();
+
+  if (hasLocalKey) {
+    apiKey = vm.edgeos_api_key as string;
+    logger.info(
+      "[reconcile] edgeos: .env drift detected, rewriting from cached DB key (no mint)",
+      {
+        vmId: vm.id,
+        keyPrefix: apiKey.slice(0, 12),
+      },
+    );
+  } else {
+    // Mint fresh. onConflict="suffix" always returns a fullKey we can
+    // capture (Cooper's call 2026-05-20 — orphan EdgeOS keys are inert
+    // and sweepable post-launch).
+    let mintResult;
+    try {
+      mintResult = await mintOrReuseApiKey(
+        {
+          bearer: edgeosBearer,
+          vmName: vm.name,
+          onConflict: "suffix",
+        },
+        { tenantId: EDGEOS_TENANT_EDGECITY_PROD, timeoutMs: 15_000 },
+      );
+    } catch (mintErr: unknown) {
+      recordHealWarning(
+        result,
+        `edgeos: mint threw: ${String((mintErr as Error)?.message ?? mintErr).slice(0, 200)}`,
+      );
+      return;
+    }
+
+    if (!mintResult.ok) {
+      recordHealWarning(
+        result,
+        `edgeos: mint failed status=${mintResult.status}${mintResult.detail ? ` detail=${mintResult.detail.slice(0, 150)}` : ""}`,
+      );
+      return;
+    }
+    if (!mintResult.fullKey) {
+      // onConflict="suffix" should always produce a fullKey. If we ever
+      // see this it's an EdgeOS API contract change worth surfacing.
+      recordHealWarning(
+        result,
+        `edgeos: mint returned ok=true but fullKey is null (mode=${mintResult.mode})`,
+      );
+      return;
+    }
+    apiKey = mintResult.fullKey;
+    mintCalled = true;
+
+    // ── Persist DB BEFORE writing disk. ──
+    // EdgeOS won't show this secret again. If we crash between DB write
+    // and .env write, next reconcile reads hasLocalKey=true + diskOk=false
+    // → falls into the rewrite-from-cached-DB branch above (no second
+    // mint, no orphan). Reverse order (disk first) would produce a key
+    // on disk we have no record of — next reconcile mints again.
+    const { error: dbErr } = await sb
+      .from("instaclaw_vms")
+      .update({ edgeos_api_key: apiKey })
+      .eq("id", vm.id);
+    if (dbErr) {
+      recordHealWarning(result, `edgeos: DB persist failed: ${dbErr.message}`);
+      return;
+    }
+  }
+
+  // ── Defense-in-depth shape check before shelling out ──
+  // mintOrReuseApiKey already validates the EdgeOS response shape, but
+  // belt-and-suspenders before we pass the value to sed/echo. The
+  // eos_live_ prefix + alphanumeric/underscore/dash chars are the only
+  // shape we've ever seen from EdgeOS.
+  if (!/^eos_live_[A-Za-z0-9_\-]{16,}$/.test(apiKey)) {
+    recordHealWarning(
+      result,
+      `edgeos: api-key has unexpected shape (len=${apiKey.length}, prefix=${apiKey.slice(0, 12)})`,
+    );
+    return;
+  }
+
+  // ── Write to ~/.openclaw/.env via sed-or-append (mirrors
+  //    configureOpenClaw's pattern). `|` delimiter is safe since the
+  //    eos_live_ alphabet contains no pipes.
+  const writeCmd = await ssh.execCommand(
+    `grep -q '^EDGEOS_API_KEY=' "$HOME/.openclaw/.env" 2>/dev/null && ` +
+      `sed -i 's|^EDGEOS_API_KEY=.*|EDGEOS_API_KEY=${apiKey}|' "$HOME/.openclaw/.env" || ` +
+      `echo 'EDGEOS_API_KEY=${apiKey}' >> "$HOME/.openclaw/.env"`,
+  );
+  if (writeCmd.code !== 0) {
+    recordHealWarning(
+      result,
+      `edgeos: .env write failed (exit=${writeCmd.code}): ${(writeCmd.stderr || "").slice(0, 200)}`,
+    );
+    return;
+  }
+
+  // ── Verify-after-write (Rule 10): re-grep .env, confirm exact match.
+  //    Catches sed-no-op, racing writers, or any sed mishap. Same shape
+  //    as stepIndexProvision's mcp.servers.index.transport verify.
+  const verify = await ssh.execCommand(
+    `grep '^EDGEOS_API_KEY=' "$HOME/.openclaw/.env" 2>/dev/null | head -1`,
+  );
+  const verifyLine = (verify.stdout || "").trim();
+  const verifyMatch = verifyLine.match(/^EDGEOS_API_KEY=(.*)$/);
+  let verifyValue = verifyMatch?.[1] ?? "";
+  if (
+    (verifyValue.startsWith('"') && verifyValue.endsWith('"')) ||
+    (verifyValue.startsWith("'") && verifyValue.endsWith("'"))
+  ) {
+    verifyValue = verifyValue.slice(1, -1);
+  }
+  if (verifyValue !== apiKey) {
+    recordHealWarning(
+      result,
+      `edgeos: verify-after-write mismatch (disk_len=${verifyValue.length}, expected_len=${apiKey.length})`,
+    );
+    return;
+  }
+
+  // ── Lifecycle log forensic trail (best-effort, never fatal). ──
+  // Only log on actual mint; .env-rewrite-from-cached is a self-healing
+  // operation and would flood the log on every reconcile after a drift.
+  if (mintCalled) {
+    try {
+      const { data: user } = await sb
+        .from("instaclaw_users")
+        .select("email")
+        .eq("id", vm.assigned_to)
+        .maybeSingle();
+      await sb.from("instaclaw_vm_lifecycle_log").insert({
+        vm_id: vm.id,
+        vm_name: vm.name ?? null,
+        ip_address: vm.ip_address,
+        user_id: vm.assigned_to,
+        user_email: user?.email ?? null,
+        subscription_status: null,
+        credit_balance: 0,
+        action: "edgeos_provisioned",
+        reason: `edgeos: mint ok, .env wired (key=${apiKey.slice(0, 12)}...)`,
+        provider_server_id: null,
+      });
+    } catch (logErr: unknown) {
+      // Non-fatal — the provisioning itself succeeded.
+      logger.warn("[reconcile] edgeos: lifecycle log insert failed", {
+        vmId: vm.id,
+        error: String((logErr as Error)?.message ?? logErr).slice(0, 150),
+      });
+    }
+  }
+
+  result.fixed.push(
+    mintCalled
+      ? `edgeos: provisioned + .env wired (Edge Esmeralda calendar)`
+      : `edgeos: .env re-synced from cached DB key`,
+  );
+  logger.info("[reconcile] edgeos: provisioned", {
+    vmId: vm.id,
+    mintCalled,
+    keyPrefix: apiKey.slice(0, 12),
+  });
 }
 
 async function stepConfigSettings(

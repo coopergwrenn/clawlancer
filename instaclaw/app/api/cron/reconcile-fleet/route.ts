@@ -409,7 +409,7 @@ export async function GET(req: NextRequest) {
     //   suspended VMs, which is the only remaining caller of that path).
     const { data: staleVms, error: queryErr } = await supabase
       .from("instaclaw_vms")
-      .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, secret_version, tier, api_mode, user_timezone, strict_hold_streak, partner, reconcile_consecutive_failures, index_user_id, index_api_key, index_provisioned_at, gbrain_enabled")
+      .select("id, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, health_status, assigned_to, name, config_version, secret_version, tier, api_mode, user_timezone, strict_hold_streak, partner, reconcile_consecutive_failures, index_user_id, index_api_key, index_provisioned_at, gbrain_enabled, edgeos_api_key")
       .eq("status", "assigned")
       .eq("provider", "linode")
       .eq("health_status", "healthy")
