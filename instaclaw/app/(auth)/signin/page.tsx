@@ -1,10 +1,19 @@
 "use client";
 
 import { signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
-export default function SignInPage() {
+function SignInContent() {
+  // Honor `?callbackUrl=` URL param so partner-flow links like
+  // /signin?callbackUrl=/api/partner/tag-redirect can route the user back
+  // to a specific post-auth handler. Falls back to /dashboard for the
+  // default "just sign me in" path.
+  const params = useSearchParams();
+  const callbackUrl = params.get("callbackUrl") || "/dashboard";
+
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4"
@@ -40,7 +49,7 @@ export default function SignInPage() {
 
         {/* Google sign-in */}
         <button
-          onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+          onClick={() => signIn("google", { callbackUrl })}
           className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-3"
           style={{
             background: "#ffffff",
@@ -82,5 +91,22 @@ export default function SignInPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function SignInPage() {
+  // useSearchParams suspends — Next requires the consumer to be inside a
+  // Suspense boundary so the page can statically prerender the shell.
+  return (
+    <Suspense
+      fallback={
+        <div
+          className="min-h-screen flex items-center justify-center px-4"
+          style={{ background: "#f8f7f4" }}
+        />
+      }
+    >
+      <SignInContent />
+    </Suspense>
   );
 }

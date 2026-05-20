@@ -27,5 +27,7 @@ export function deriveHeaderCta(state: EdgeUserState): HeaderCta {
       external: false,
     };
   }
-  return { href: "#claim", label: "Set up your agent", external: false };
+  // Layer 1 → Layer 2 hand-off. /edge/claim is the tactical setup page;
+  // /edge exists to make visitors want to land here.
+  return { href: "/edge/claim", label: "Claim your agent", external: false };
 }

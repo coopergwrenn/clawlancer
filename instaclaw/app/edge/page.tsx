@@ -117,13 +117,14 @@ export default async function EdgePage() {
 
       <HealdsburgMap>
         <MapHeroOverlay
+          userState={userState}
           cta={
             <HeroCta
               href={headerCta.href}
               label={
                 userState.kind === "live"
                   ? "Open in Telegram"
-                  : "Set up your agent"
+                  : headerCta.label
               }
               external={headerCta.external}
             />
