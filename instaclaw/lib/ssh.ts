@@ -2912,6 +2912,31 @@ def check_runaway_processes():
             except ValueError:
                 pass
 
+        # 2026-05-20: protect gbrain.service MainPID too. Without this, the
+        # unconditional age-based kill loop below killed gbrain every ~30 min
+        # on the 6/17 cohort VMs (and 3/9 edge VMs) that retained the
+        # vm-watchdog cron after the May-1 fleet-wide watchdog-disable was
+        # patchy. gbrain runs as the openclaw user with comm="bun" — not
+        # in protected_comms, no cmdline match for the cron/sbin/watchdog
+        # filters below — so without explicit PID protection, the runaway-
+        # killer treated it as an agent-spawned bash/python3/node "runaway"
+        # and SIGKILL'd it every cycle once age exceeded PROCESS_MAX_AGE_MIN.
+        # Pattern: vm-929 R=18 in 8h, vm-904 R=18, vm-912 R=12, etc. With
+        # KillSignal=SIGKILL in the gbrain.service unit, the kill landed
+        # hard; Restart=always brought it back in 5s; 30 min later the
+        # cycle repeated. systemd journal showed "Main process exited,
+        # code=killed, status=9/KILL" at consistent ~30-min intervals.
+        gb_result = subprocess.run(
+            ["systemctl", "--user", "show", "gbrain.service", "--property=MainPID"],
+            capture_output=True, text=True, timeout=5, env=env,
+        )
+        gbrain_pid = 0
+        if "=" in gb_result.stdout:
+            try:
+                gbrain_pid = int(gb_result.stdout.strip().split("=", 1)[1])
+            except ValueError:
+                pass
+
         # List all openclaw-owned processes with age
         result = subprocess.run(
             ["ps", "-u", str(my_uid), "-o", "pid,etimes,rss,comm", "--no-headers"],
@@ -2927,9 +2952,13 @@ def check_runaway_processes():
                 comm = parts[3]
                 procs.append((pid, elapsed_sec, rss_kb, comm))
 
-        # Protected processes: gateway, systemd, cron scripts, sshd
+        # Protected processes: gateway, gbrain, systemd, cron scripts, sshd
         protected_comms = {"systemd", "dbus-daemon", "(sd-pam)", "sshd"}
-        protected_pids = {gateway_pid} if gateway_pid else set()
+        protected_pids = set()
+        if gateway_pid:
+            protected_pids.add(gateway_pid)
+        if gbrain_pid:
+            protected_pids.add(gbrain_pid)
 
         # Find killable processes (not gateway, not system, not our own cron scripts)
         killable = []
