@@ -58,11 +58,21 @@ export default async function EdgeDashboardPage() {
   const indexApiKey = (edgeVm?.index_api_key as string | null) ?? null;
 
   // Parallel fetch: village overlay + rendered name + match history +
-  // current intent. The MCP call for current-intent is the slowest leg
-  // (~1-2s); everything else is sub-200ms. Promise.all overlaps the
-  // wait. If Yanek's MCP fails, fetchUserCurrentIntent returns null and
-  // the dashboard renders without the intent line — no crash.
-  const [overlay, viewRow, matches, currentIntent] = await Promise.all([
+  // current intent + trial state. The MCP call for current-intent is
+  // the slowest leg (~1-2s); everything else is sub-200ms. Promise.all
+  // overlaps the wait. If Yanek's MCP fails, fetchUserCurrentIntent
+  // returns null and the dashboard renders without the intent line —
+  // no crash.
+  //
+  // trial query: Edge attendees get a fixed trial_end through June 30
+  // (see app/api/billing/checkout/route.ts:EDGE_TRIAL_END_UTC). We
+  // surface this on the dashboard so they know what to expect on the
+  // day-after-the-village billing event. Pulls the most-recent
+  // subscription row with a non-null trial_ends_at; any active or
+  // trialing sub qualifies. If the user has no sub (admin-comped or
+  // similar edge case), trialSub is null and we just don't render the
+  // indicator.
+  const [overlay, viewRow, matches, currentIntent, trialSub] = await Promise.all([
     supabase
       .from("village_attendee_overlay")
       .select("display_name, spectator_visible, larry_atlas_index, home_tile_x, home_tile_y")
@@ -77,7 +87,27 @@ export default async function EdgeDashboardPage() {
       .then((r) => r.data),
     fetchUserMatchHistory(session.user.id),
     fetchUserCurrentIntent(session.user.id, indexApiKey),
+    supabase
+      .from("instaclaw_subscriptions")
+      .select("trial_ends_at, status")
+      .eq("user_id", session.user.id)
+      .in("status", ["active", "trialing"])
+      .not("trial_ends_at", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then((r) => r.data),
   ]);
+
+  // Only surface the indicator if the trial is still in the future —
+  // post-June-30 there's no point showing "trial ends June 30" to
+  // attendees who are now on the paid plan; the renewal-date field
+  // takes over at that point.
+  const trialEndsAt =
+    trialSub?.trial_ends_at &&
+    new Date(trialSub.trial_ends_at).getTime() > Date.now()
+      ? (trialSub.trial_ends_at as string)
+      : null;
 
   return (
     <EdgeDashboardClient
@@ -101,6 +131,7 @@ export default async function EdgeDashboardPage() {
       // back. The UX collapses both into a single "no intent" prompt
       // since either way the user's actionable next step is the same.
       intentFetchSucceeded={!!indexApiKey}
+      trialEndsAt={trialEndsAt}
     />
   );
 }

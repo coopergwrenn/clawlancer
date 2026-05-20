@@ -106,6 +106,39 @@ export async function POST(req: NextRequest) {
 
     const origin = req.headers.get("origin") ?? process.env.NEXTAUTH_URL!;
 
+    // ─────────────────────────────────────────────────────────────────
+    // Edge Esmeralda 2026 — sponsor-funded trial through June 30
+    // ─────────────────────────────────────────────────────────────────
+    //
+    // Every Edge attendee gets a Stripe subscription with a fixed
+    // trial_end anchored to June 30, 2026 midnight Pacific (07:00 UTC).
+    // Card is collected at checkout. $0 is charged today. Auto-charges
+    // $99/month starting June 30 unless they cancel.
+    //
+    // Why a fixed trial_end (not trial_period_days):
+    // Every attendee gets the SAME end date regardless of signup date.
+    // Predictable, fair, anchored to Pacific time (where they physically
+    // are during the village). An attendee signing up May 30 vs June 25
+    // both get charged June 30 — no awkward "first charge on a random
+    // mid-July date" effect.
+    //
+    // Why this replaces the legacy EDGE_CITY_COUPON_ID coupon:
+    // The coupon was 100% off FIRST INVOICE, which meant the first
+    // charge timing varied per signup date AND the second month always
+    // billed normally. trial_end gives us atomic "free until X, then
+    // billed normally" semantics. Cleaner billing trail, clearer
+    // attendee mental model, no double-discount risk.
+    //
+    // The June 30 timestamp is 1782802800 (Unix). Verified:
+    //   $ date -ur 1782802800
+    //   Tue Jun 30 07:00:00 UTC 2026
+    //   = June 30, 2026 00:00 PT (Pacific Daylight)
+    //
+    // That's 3 days after Edge Esmeralda ends (June 27) — gives
+    // attendees a buffer to decide whether to keep their agent.
+    const EDGE_TRIAL_END_UTC = 1782802800;
+    const isEdgeCity = user.partner === "edge_city";
+
     // Check if user redeemed a promotional invite with extended trial
     let trialDays = trial ? 3 : 0;
     if (trial && user.invited_by) {
@@ -122,10 +155,12 @@ export async function POST(req: NextRequest) {
     // Apply partner coupon or ambassador discount (mutually exclusive with promo code entry)
     let discounts: { coupon: string }[] | undefined;
 
-    // Partner auto-apply: Edge City partners get 100% off first month
-    if (user.partner === "edge_city" && process.env.EDGE_CITY_COUPON_ID) {
-      discounts = [{ coupon: process.env.EDGE_CITY_COUPON_ID }];
-    }
+    // Edge City attendees: NO coupon — trial_end supersedes (see comment
+    // block above). The legacy EDGE_CITY_COUPON_ID env var is now
+    // unused; left here intentionally as documentation of the prior
+    // mechanism. Safe to remove from Vercel env after Edge Esmeralda 2026.
+    //
+    // (Previously: discounts = [{ coupon: process.env.EDGE_CITY_COUPON_ID }])
 
     if (!discounts && user.referred_by) {
       // Verify the referral code belongs to an active ambassador
@@ -152,6 +187,29 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Build subscription_data trial block:
+    // - Edge City: fixed trial_end = June 30 2026 00:00 PT (anchors
+    //   every attendee to the same charge date regardless of signup).
+    // - Promotional invite users: relative trial_period_days (3 or 7
+    //   depending on which invite code).
+    // - Edge takes precedence — if an Edge attendee also has an invite,
+    //   the fixed end date wins (Edge IS the trial).
+    //
+    // Stripe API note: trial_end must be in the future. We don't guard
+    // against EDGE_TRIAL_END_UTC being in the past here because once
+    // the date passes, Edge Esmeralda 2026 is over — no new Edge
+    // signups expected. If we ever run Edge again in a future year,
+    // bump the constant + re-test.
+    const subscriptionData: {
+      trial_end?: number;
+      trial_period_days?: number;
+    } = {};
+    if (isEdgeCity) {
+      subscriptionData.trial_end = EDGE_TRIAL_END_UTC;
+    } else if (trialDays > 0) {
+      subscriptionData.trial_period_days = trialDays;
+    }
+
     const checkoutSession = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
@@ -161,13 +219,14 @@ export async function POST(req: NextRequest) {
       // Stripe doesn't allow both discounts and allow_promotion_codes on the same session.
       // Ambassador referrals get a pre-applied discount; everyone else can enter a promo code.
       ...(discounts ? { discounts } : { allow_promotion_codes: true }),
-      ...(trialDays > 0
-        ? { subscription_data: { trial_period_days: trialDays } }
+      ...(Object.keys(subscriptionData).length > 0
+        ? { subscription_data: subscriptionData }
         : {}),
       metadata: {
         instaclaw_user_id: user.id,
         tier,
         api_mode: apiMode,
+        ...(isEdgeCity ? { edge_trial_end: String(EDGE_TRIAL_END_UTC) } : {}),
         ...(user.referred_by ? { referral_code: user.referred_by } : {}),
       },
     });

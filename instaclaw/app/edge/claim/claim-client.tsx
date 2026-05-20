@@ -161,10 +161,25 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
       window.location.href = "/api/partner/tag-redirect";
       return;
     }
-    // Logged-out: gate already set the cookies; /connect handles OAuth.
-    // The signIn callback in lib/auth.ts reads the signed cookie and
-    // writes edge_verified_email on the user row.
-    router.push("/connect");
+    // Logged-out: gate already set the cookies. Route through
+    // /edge/setup — the trial-terms interstitial — BEFORE OAuth.
+    //
+    // Why /edge/setup before /connect: fresh attendees should see the
+    // billing terms ("$0 today, $99/month starting June 30 unless you
+    // cancel") in full context before committing to OAuth. Once they
+    // OAuth they're committed; the trial-terms surface gives them an
+    // out at zero personal-data cost. The Stripe-hosted checkout shows
+    // the price but doesn't explain WHY they're getting $0 today or
+    // WHEN the first real charge fires — /edge/setup carries that
+    // narrative in our voice register, not Stripe's.
+    //
+    // /edge/setup Continue then routes to /connect, which forces OAuth
+    // for logged-out users via the signIn callback in lib/auth.ts (it
+    // reads the signed cookie and writes edge_verified_email on the
+    // user row). The flow is /edge/claim → /edge/setup → /connect →
+    // (OAuth) → /connect bot pairing → /plan → Stripe checkout with
+    // trial_end=1782802800 → /deploying → /edge/intents → /dashboard.
+    router.push("/edge/setup");
   }
 
   const isVerified = gateState.kind === "verified";

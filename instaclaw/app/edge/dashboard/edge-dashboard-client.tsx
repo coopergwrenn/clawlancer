@@ -30,6 +30,7 @@ export function EdgeDashboardClient({
   currentIntent,
   userHasIndexKey,
   intentFetchSucceeded,
+  trialEndsAt,
 }: {
   userId: string;
   userName: string | null;
@@ -39,6 +40,14 @@ export function EdgeDashboardClient({
   currentIntent: CurrentIntent | null;
   userHasIndexKey: boolean;
   intentFetchSucceeded: boolean;
+  /**
+   * ISO timestamp string of the user's Stripe trial end, or null if no
+   * active trial. For Edge attendees this is the fixed June 30 2026
+   * timestamp set by app/api/billing/checkout/route.ts. When non-null
+   * the dashboard surfaces a small "trial ends X" indicator below the
+   * hero so attendees know what to expect on billing day.
+   */
+  trialEndsAt: string | null;
 }) {
   const [overlay, setOverlay] = useState<OverlayShape>(initialOverlay);
   const [rendered, setRendered] = useState<RenderedShape>(initialRendered);
@@ -184,6 +193,23 @@ export function EdgeDashboardClient({
           Your agent walks Healdsburg in real time. Set your nickname or toggle
           your visibility from the public view below.
         </p>
+
+        {/* Trial indicator — visible only when the user is on a non-expired
+           trial. For Edge attendees this surfaces "trial ends June 30 ·
+           manage" continuously through the village. Reads trialEndsAt
+           from props (server-fetched from instaclaw_subscriptions). The
+           Manage link POSTs to /api/billing/portal which returns a
+           Stripe billing-portal session URL; we then navigate to it.
+
+           Placement reasoning: directly under the welcome paragraph,
+           NOT above the matches feed, because (a) matches are the
+           primary engagement surface for attendees during the village
+           and shouldn't be visually pushed down by billing info, and
+           (b) the indicator is informational, not actionable — its job
+           is to set expectations, not to interrupt the flow. Compact
+           styling (12px font, ink-soft color, single line on desktop)
+           keeps it deferential. */}
+        {trialEndsAt ? <TrialIndicator trialEndsAt={trialEndsAt} /> : null}
       </section>
 
       {/* ─── Match history + current intent (#12 Phase A) ──────────── */}
@@ -485,6 +511,97 @@ export function EdgeDashboardClient({
         </a>
         . More features (Index match history, agent activity) ship before May 30.
       </footer>
+    </div>
+  );
+}
+
+/**
+ * TrialIndicator — small "trial ends X · manage" line shown on the
+ * dashboard for users on an active Stripe trial.
+ *
+ * For Edge attendees this surfaces the June 30 trial end date so they
+ * know exactly when their card will be charged. The Manage link opens
+ * Stripe's billing portal where they can update their card or cancel
+ * the subscription.
+ *
+ * Date formatting: "June 30" without year (the village context makes
+ * the year unambiguous — no attendee is confused about whether we
+ * mean June 30 next year). Falls back to ISO if Intl.DateTimeFormat
+ * fails for any reason.
+ */
+function TrialIndicator({ trialEndsAt }: { trialEndsAt: string }) {
+  const [opening, setOpening] = useState(false);
+
+  // Format the trial end date in user-friendly form. "June 30" is
+  // unambiguous within the Edge village context (May 30 – June 27);
+  // including the year would feel over-engineered. Pacific time zone
+  // explicitly because the trial_end timestamp is anchored to PT and
+  // displaying it as the attendee's local time would create off-by-one
+  // confusion for international attendees.
+  let formatted: string;
+  try {
+    formatted = new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      day: "numeric",
+      timeZone: "America/Los_Angeles",
+    }).format(new Date(trialEndsAt));
+  } catch {
+    formatted = new Date(trialEndsAt).toISOString().slice(0, 10);
+  }
+
+  async function handleManage() {
+    if (opening) return;
+    setOpening(true);
+    try {
+      const res = await fetch("/api/billing/portal", { method: "POST" });
+      if (!res.ok) {
+        setOpening(false);
+        return;
+      }
+      const data = (await res.json()) as { url?: string };
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setOpening(false);
+      }
+    } catch {
+      setOpening(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: "16px",
+        fontSize: "12px",
+        color: "var(--edge-ink-soft)",
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        gap: "6px",
+        letterSpacing: "0.02em",
+      }}
+    >
+      <span>Sponsor-funded trial ends {formatted}.</span>
+      <button
+        type="button"
+        onClick={handleManage}
+        disabled={opening}
+        style={{
+          background: "none",
+          border: "none",
+          padding: 0,
+          color: "var(--edge-ink)",
+          textDecoration: "underline",
+          textUnderlineOffset: "3px",
+          cursor: opening ? "wait" : "pointer",
+          fontSize: "12px",
+          letterSpacing: "0.02em",
+          opacity: opening ? 0.6 : 1,
+        }}
+      >
+        {opening ? "Opening…" : "Manage"}
+      </button>
     </div>
   );
 }
