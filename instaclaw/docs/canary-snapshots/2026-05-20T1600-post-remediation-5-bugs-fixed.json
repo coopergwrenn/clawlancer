@@ -1,0 +1,88 @@
+{
+  "snapshot_taken": "2026-05-20T16:00:00Z",
+  "phase": "v107 canary post-remediation (5 bugs found, 2 fleet-wide blockers fixed)",
+  "soak_window_reset_to": "2026-05-20T15:53:00Z",
+  "phase_2_greenlight_check": "2026-05-22T16:00:00Z",
+  "bugs": {
+    "A": {
+      "title": "Phase I silent degradation — install-gbrain.sh emitted WARN-and-continue when pglite-checkpoint.sh missing, fleet-wide impact",
+      "root_cause": "Reconciler stepGbrain uploaded ONLY install-gbrain.sh + verify-gbrain-mcp.py. The 2 companion files (pglite-checkpoint.sh + 0001-add-checkpoint-mcp-tool.patch) were NEVER uploaded, so Phase C2 and Phase I always fell into their for-candidate-loop fallback and emitted WARN + exit 0.",
+      "impact": "15/15 active canary VMs lacked: src/core/checkpoint-operation.ts, ExecStop CHECKPOINT hook, 30-min CHECKPOINT cron. pg_control aged 268-815 min stale. Reconciler reported INSTALL_COMPLETE despite half-installed state.",
+      "fix_commit": "57eb3ee0",
+      "fix_summary": "Reconciler now uploads all 4 companion files via SSH stdin. install-gbrain.sh Phase C2 hard-fails with exit 36 (FATAL_PHASE_C2_NO_PATCH_FILE) and Phase I hard-fails with exit 35 (FATAL_PHASE_I_NO_CRON_SCRIPT) if companion files missing. Future installs either succeed completely or fail loudly — no silent degradation.",
+      "status": "FIXED + deployed + remediated on 15 active VMs"
+    },
+    "B": {
+      "title": "vm-watchdog.py SIGKILL'd gbrain every 30 min on 9/26 fleet VMs",
+      "root_cause": "vm-watchdog.py's check_runaway_processes() unconditionally SIGKILL's any process older than PROCESS_MAX_AGE_MIN (30) that's not in protected_pids/protected_comms. gbrain runs as comm=bun, not protected. PID lookup pattern existed for openclaw-gateway but not gbrain.",
+      "impact": "5 cohort VMs (vm-893/vm-929/vm-935/vm-904/vm-912) + presumably 3 edge VMs (vm-917/vm-922/vm-923) had gbrain restart 12-18 times/8h. Pattern: gbrain runs 30 min → vm-watchdog SIGKILL → systemd Restart=always brings it back in 5s → repeat. The May-1 fleet-wide watchdog-disable was patchy; ~65% of VMs had watchdog commented out, the rest still ran it.",
+      "fix_commit": "f14199e0",
+      "fix_summary": "Added gbrain.service MainPID lookup to vm-watchdog.py (mirror of gateway_pid pattern). Added to protected_pids set. Defensive: if subprocess timeout / parse error, gbrain_pid stays 0 → falls through to existing behavior (no exception escape).",
+      "status": "FIXED + deployed + file-drift propagating + 8/8 at-risk VMs proactively patched via scripts/_push_vm_watchdog_fix.ts"
+    },
+    "C": {
+      "title": "vm-602 missing OPENAI_API_KEY in ~/.openclaw/.env",
+      "root_cause": "configureOpenClaw at lib/ssh.ts:6692 writes OPENAI_API_KEY ONCE at VM assignment, gated on if(openaiEnvKey) from process.env. OPENAI_API_KEY is NOT in SECRET_ENV_VAR_SOURCES, so stepEnvVarPush doesn't re-propagate it. If env was unset or configure didn't reach line 6692 at the time vm-602 was provisioned, the key never landed and has no self-healing path.",
+      "impact": "1 VM (vm-602): gbrain install blocked at Phase A NO_OPENAI_KEY check.",
+      "fix_summary": "One-shot: appended OPENAI_API_KEY=<key> to vm-602's ~/.openclaw/.env via SSH. Verified count=1.",
+      "p2_followup": "Add OPENAI_API_KEY entry to SECRET_ENV_VAR_SOURCES in lib/vm-reconcile.ts so stepEnvVarPush self-heals on every reconcile cycle. Single-line addition; eliminates the configure-time race.",
+      "status": "FIXED (one-shot on vm-602) + P2 structural fix queued"
+    },
+    "D": {
+      "title": "vm-634 half-installed (Phase E TOKEN_MINT_FAILED, no bun, corrupted gbrain dir)",
+      "root_cause": "Prior install hit Phase E TOKEN_MINT_FAILED, leaving ~/gbrain (340 MB) and ~/.gbrain/brain.pglite (41 MB) on disk but no bearer, no service, no bun runtime. Phase A idempotency check wouldn't fire (no service active), but Phase B's existing-dir detection would skip clone and try to advance the broken state.",
+      "fix_summary": "rm -rf ~/gbrain (per Cooper instruction; preserved ~/.gbrain per Rule 22 even though no real user data — Phase E never minted a bearer). vm-634 already at cv=105 (in candidate pool). Reconciler will now do fresh install with new Bug A+F upload paths.",
+      "status": "FIXED (wipe done) — reconciler retry pending"
+    },
+    "E": {
+      "title": "vm-517 GATEWAY_UNHEALTHY_POST_HOT_RELOAD heal — transient hot-reload timing issue",
+      "root_cause": "stepGbrain Phase G hot-reload health check timing. After openclaw config set, the reconciler probes gateway /health. On vm-517 this fired before the gateway finished its post-reload state, returning 000. Repeated reconcile attempts hit the same timing → rcf escalated to 10 → quarantined.",
+      "impact": "vm-517 was actually healthy on the VM (gbrain active, /health 200, AGENTS+SOUL markers) but DB stuck at rcf=10 since 09:31:21 UTC, excluded from candidate pool.",
+      "fix_summary": "Cleared reconcile_quarantined_at + reset rcf=0 on vm-517. Remediation gbrain-restart already resolved the underlying state. Next reconcile cycle: stepGbrain idempotent skip (V/T/S/P all current) → cv bumps to 108.",
+      "p2_followup": "stepGbrain Phase G should retry the /health probe with a brief backoff (3 attempts × 3s) before failing. The hot-reload timing is non-deterministic in OpenClaw 2026.4.26.",
+      "status": "FIXED (quarantine cleared) + P2 retry-logic followup queued"
+    }
+  },
+  "remediation_artifacts": {
+    "remediate_script": "scripts/_remediate-phase-c2-and-i.ts",
+    "push_watchdog_script": "scripts/_push_vm_watchdog_fix.ts",
+    "fixes_deployed_commits": ["57eb3ee0", "f14199e0"]
+  },
+  "final_cohort_state_at_15_53_UTC": {
+    "active_healthy": [
+      {"name": "instaclaw-vm-073", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 2, "soul_marker": "V2_skip", "agents_marker": true, "free_mem_mb": 2476},
+      {"name": "instaclaw-vm-295", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 2, "soul_marker": "V2_skip", "agents_marker": true, "free_mem_mb": 6336},
+      {"name": "instaclaw-vm-320", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 2, "soul_marker": true, "agents_marker": true, "free_mem_mb": 2550},
+      {"name": "instaclaw-vm-517", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 1, "soul_marker": true, "agents_marker": true, "free_mem_mb": 2282, "note": "rcf cleared 16:00 UTC; cv bump pending next reconcile"},
+      {"name": "instaclaw-vm-561", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 2, "soul_marker": true, "agents_marker": true, "free_mem_mb": 1972},
+      {"name": "instaclaw-vm-733", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 3, "soul_marker": "V2_skip", "agents_marker": true, "free_mem_mb": 2137},
+      {"name": "instaclaw-vm-855", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 2, "soul_marker": true, "agents_marker": true, "free_mem_mb": 2496},
+      {"name": "instaclaw-vm-872", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 1, "soul_marker": true, "agents_marker": true, "free_mem_mb": 2362},
+      {"name": "instaclaw-vm-880", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 1, "soul_marker": true, "agents_marker": true, "free_mem_mb": 2595},
+      {"name": "instaclaw-vm-893", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 3, "soul_marker": true, "agents_marker": true, "free_mem_mb": 2508, "note": "was R14 — restart cluster cleared"},
+      {"name": "instaclaw-vm-904", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 1, "soul_marker": true, "agents_marker": true, "free_mem_mb": 2360, "note": "was R18 — restart cluster cleared"},
+      {"name": "instaclaw-vm-912", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 3, "soul_marker": true, "agents_marker": true, "free_mem_mb": 2158, "note": "was R12 — restart cluster cleared"},
+      {"name": "instaclaw-vm-913", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 3, "soul_marker": true, "agents_marker": true, "free_mem_mb": 2549, "note": "was R10 — restart cluster cleared"},
+      {"name": "instaclaw-vm-929", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 1, "soul_marker": true, "agents_marker": true, "free_mem_mb": 2186, "note": "was R15 — restart cluster cleared"},
+      {"name": "instaclaw-vm-935", "cv": 108, "gbrain": "active", "NRestarts": 0, "pg_ctrl_min": 2, "soul_marker": "V2_skip", "agents_marker": true, "free_mem_mb": 2429, "note": "was R14 — restart cluster cleared"}
+    ],
+    "pending_retry": [
+      {"name": "instaclaw-vm-602", "cv": 106, "rcf": 0, "note": "OPENAI_API_KEY now in .env; quarantine cleared; reconciler will fresh-install"},
+      {"name": "instaclaw-vm-634", "cv": 105, "rcf": 0, "note": "~/gbrain wiped; quarantine cleared; reconciler will fresh-install"}
+    ]
+  },
+  "phase_2_gates": [
+    {"gate": "all 15 active cohort VMs R=0", "status": "currently met; soak should not regress"},
+    {"gate": "pg_control fresh on all 15 (cron working)", "status": "currently met"},
+    {"gate": "Bug C resolved (vm-602 OPENAI_API_KEY)", "status": "one-shot applied; reconciler retry pending"},
+    {"gate": "Bug D resolved (vm-634 wiped + retry succeeds)", "status": "wipe done; reconciler retry pending"},
+    {"gate": "Bug E resolved (vm-517 quarantine cleared + cv bumps to 108)", "status": "quarantine cleared; reconciler retry pending"},
+    {"gate": "no new restart clusters", "status": "Bug B fix in place; 8/8 at-risk patched + file-drift propagating"}
+  ],
+  "expected_state_at_16_00_UTC_may_22": {
+    "all_17_cohort_active": "expected — vm-602/vm-634 retries should complete within minutes",
+    "all_at_cv_108": "expected for vm-602 (cv=106→108) and vm-634 (cv=105→108) after fresh installs",
+    "pg_control_fresh_fleet_wide": "expected — checkpoint cron now installed on every gbrain-eligible VM",
+    "vm_watchdog_protected": "expected — file-drift completes Bug B propagation within ~30 min"
+  }
+}
