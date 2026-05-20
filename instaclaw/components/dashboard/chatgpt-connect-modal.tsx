@@ -128,6 +128,49 @@ const GREEN = "#16a34a";
 const UPSTREAM_RETRY_MS = 3_000;
 const SUCCESS_AUTO_CLOSE_MS = 2_500;
 
+/**
+ * Focus ring applied to every interactive element in the modal. Tailwind
+ * `focus-visible:` only fires for keyboard focus (not mouse click), so
+ * sighted-mouse users don't see distracting rings. Sighted-keyboard users
+ * get a 2px brand-orange ring offset 2px from the element. WCAG 2.4.7 fix.
+ */
+const FOCUS_RING =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#DC6743] focus:outline-none";
+
+/**
+ * Stable id used by `aria-labelledby` on the modal container. Only one
+ * state view renders at a time, so attaching this id to each view's <h2>
+ * is unique-per-render and the dialog announces the right title.
+ */
+const MODAL_TITLE_ID = "chatgpt-modal-title";
+
+/**
+ * For aria-label on the user_code — screen readers pronounce "92PM-PLU8N"
+ * as "ninety-two-pmplu-eight-N" by default. Spacing each character and
+ * naming the hyphen lets them spell it out: "9 2 P M dash P L U 8 N".
+ * Critical for users who can't see the code visually.
+ */
+function spellOut(code: string): string {
+  return code
+    .split("")
+    .map((c) => (c === "-" ? "dash" : c))
+    .join(" ");
+}
+
+/**
+ * Selector for "tabbable" elements per common a11y conventions. Excludes
+ * disabled buttons and explicit tabindex=-1. Used by the focus trap.
+ */
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** States in which Escape and backdrop-click should NOT dismiss the modal. */
+function isDismissalBlocked(kind: ModalState["kind"]): boolean {
+  return (
+    kind === "initial-loading" || kind === "success" || kind === "upstream-timeout"
+  );
+}
+
 // ─── Component ───────────────────────────────────────────────────────────
 
 export function ChatGPTConnectModal({
@@ -338,6 +381,117 @@ export function ChatGPTConnectModal({
     return () => clearTimeout(id);
   }, [state.kind, onClose, onConnected, __devForceState]);
 
+  // ─── Trigger-focus restoration (P1-D) ─────────────────────────────────
+  //
+  // On open: capture the element that had focus right before the modal
+  // opened (typically the Connect/Manage button on /settings). On close:
+  // restore focus to that element so keyboard users return to their
+  // place in the page.
+  //
+  // We use a ref + prevIsOpen pattern instead of a useEffect that runs
+  // on every render because document.activeElement at "render time" can
+  // be unreliable; capturing it on the false→true edge is the only way
+  // to get the true trigger.
+  const triggerRef = useRef<HTMLElement | null>(null);
+  const prevIsOpenRef = useRef(false);
+  useEffect(() => {
+    if (isOpen && !prevIsOpenRef.current) {
+      const active = document.activeElement;
+      triggerRef.current = active instanceof HTMLElement ? active : null;
+    }
+    if (!isOpen && prevIsOpenRef.current && triggerRef.current) {
+      // Defer one tick so the modal's unmount finishes before focus moves.
+      const target = triggerRef.current;
+      requestAnimationFrame(() => target.focus());
+      triggerRef.current = null;
+    }
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  // ─── Auto-focus inside modal on open + state change (P1-D) ────────────
+  //
+  // Move focus to the first focusable element inside the modal so keyboard
+  // users immediately interact with the modal content. Only steal focus if
+  // it's NOT already inside the modal (avoids stealing during Tab cycling).
+  //
+  // Why the rAF delay: motion.div mounts asynchronously after the React
+  // render commits, so the focusable elements aren't queryable until the
+  // next frame. requestAnimationFrame is the smallest reliable delay.
+  useEffect(() => {
+    if (!isOpen) return;
+    const raf = requestAnimationFrame(() => {
+      const modal = document.querySelector('[data-testid="chatgpt-connect-modal"]');
+      if (!modal) return;
+      const active = document.activeElement;
+      // Don't steal focus if it's already in the modal (mid-interaction).
+      if (active instanceof HTMLElement && modal.contains(active)) return;
+      const first = modal.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+      first?.focus();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isOpen, state.kind]);
+
+  // ─── Keyboard handler — Escape (P1-B) + focus trap (P1-E) ─────────────
+  //
+  // Single document-level keydown listener. Two responsibilities:
+  //
+  //   1. Escape: dismiss the modal IF the current state allows dismissal
+  //      (same allow-list as backdrop-click — see isDismissalBlocked).
+  //
+  //   2. Tab: trap focus inside the modal. On Tab from the LAST focusable
+  //      element, jump to FIRST. On Shift-Tab from FIRST, jump to LAST.
+  //      If focus has drifted outside the modal entirely (browser
+  //      keyboard shortcut, user clicked an iframe, etc.), pull it back
+  //      to the first focusable.
+  //
+  // Re-queries focusables on every Tab so state transitions are handled
+  // correctly (focusable set differs per state). The handler depends on
+  // state.kind so the closure has the current value — slight re-register
+  // cost per transition, acceptable.
+  useEffect(() => {
+    if (!isOpen) return;
+    function handler(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        if (!isDismissalBlocked(state.kind)) {
+          e.preventDefault();
+          onClose();
+        }
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const modal = document.querySelector('[data-testid="chatgpt-connect-modal"]');
+      if (!modal) return;
+      const focusables = Array.from(
+        modal.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+      ).filter((el) => {
+        // Visible only — offsetParent is null when display:none on self or
+        // any ancestor. getClientRects fallback catches position:fixed
+        // edge cases (unlikely inside modal but defensive).
+        return el.offsetParent !== null || el.getClientRects().length > 0;
+      });
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      const inModal = active instanceof Node && modal.contains(active);
+      // Focus escaped the modal — pull it back.
+      if (!inModal) {
+        e.preventDefault();
+        first.focus();
+        return;
+      }
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [isOpen, state.kind, onClose]);
+
   // ─── Disconnect (from connected state) ─────────────────────────────────
   const [disconnecting, setDisconnecting] = useState(false);
   const handleDisconnect = useCallback(async (): Promise<void> => {
@@ -400,6 +554,9 @@ export function ChatGPTConnectModal({
         }}
       />
       <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={MODAL_TITLE_ID}
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -416,7 +573,7 @@ export function ChatGPTConnectModal({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer z-10 hover:opacity-70"
+            className={`absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer z-10 hover:opacity-70 ${FOCUS_RING}`}
             style={{ background: "rgba(0,0,0,0.06)", color: "var(--muted)" }}
           >
             <X className="w-4 h-4" />
@@ -503,8 +660,10 @@ function ViewInitialLoading() {
         className="w-8 h-8 mx-auto mb-4 animate-spin"
         style={{ color: BRAND }}
         data-testid="loading-spinner"
+        aria-hidden="true"
       />
       <h2
+        id={MODAL_TITLE_ID}
         className="text-xl mb-1"
         style={{ fontFamily: "var(--font-serif)", fontWeight: 400 }}
       >
@@ -517,33 +676,45 @@ function ViewInitialLoading() {
   );
 }
 
+type CopyState = "idle" | "copied" | "fallback";
+
 function ViewPolling({ flow }: { flow: FlowData }) {
-  const [copied, setCopied] = useState(false);
+  // P1-G: three-state copy. "idle" → "copied" on Clipboard API success;
+  // "idle" → "fallback" when writeText throws (HTTP, denied permission,
+  // in-app webview, etc.). Both non-idle states show user-visible
+  // feedback so the click never feels like a no-op.
+  const [copyState, setCopyState] = useState<CopyState>("idle");
+
+  // P2-C: compute remaining from expires_at on every tick (no drift on
+  // backgrounded tabs, handles sleep/wake correctly). Initial state uses
+  // the same formula so first render matches the steady-state behavior.
   const [secondsRemaining, setSecondsRemaining] = useState(() =>
     Math.max(0, Math.floor((new Date(flow.expires_at).getTime() - Date.now()) / 1000)),
   );
 
-  // Countdown
   useEffect(() => {
+    const expiresMs = new Date(flow.expires_at).getTime();
     const id = setInterval(() => {
-      setSecondsRemaining((s) => Math.max(0, s - 1));
+      setSecondsRemaining(Math.max(0, Math.floor((expiresMs - Date.now()) / 1000)));
     }, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [flow.expires_at]);
 
-  // Copy feedback
+  // Copy-state auto-clear back to idle after 1.8s
   useEffect(() => {
-    if (!copied) return;
-    const id = setTimeout(() => setCopied(false), 1800);
+    if (copyState === "idle") return;
+    const id = setTimeout(() => setCopyState("idle"), 1800);
     return () => clearTimeout(id);
-  }, [copied]);
+  }, [copyState]);
 
   const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(flow.user_code);
-      setCopied(true);
+      setCopyState("copied");
     } catch {
-      // Fallback for non-secure contexts — select the text element for manual copy
+      // Clipboard API blocked (non-secure context, denied permission, in-app
+      // webview, etc.). Select the text so the user can press ⌘C/Ctrl+C
+      // manually, AND tell them to do that.
       const el = document.querySelector("[data-user-code]");
       if (el instanceof HTMLElement) {
         const range = document.createRange();
@@ -552,6 +723,7 @@ function ViewPolling({ flow }: { flow: FlowData }) {
         sel?.removeAllRanges();
         sel?.addRange(range);
       }
+      setCopyState("fallback");
     }
   }, [flow.user_code]);
 
@@ -573,10 +745,12 @@ function ViewPolling({ flow }: { flow: FlowData }) {
             background: "linear-gradient(135deg, rgba(220,103,67,0.1), rgba(220,103,67,0.2))",
             border: "1px solid rgba(220,103,67,0.15)",
           }}
+          aria-hidden="true"
         >
           <Sparkles className="w-6 h-6" style={{ color: BRAND }} />
         </div>
         <h2
+          id={MODAL_TITLE_ID}
           className="text-2xl mb-1.5"
           style={{ fontFamily: "var(--font-serif)", fontWeight: 400 }}
         >
@@ -589,43 +763,77 @@ function ViewPolling({ flow }: { flow: FlowData }) {
 
       {/* The code — visually dominant. Stacks vertically on mobile so the
           code gets full container width and never wraps mid-hyphen; goes
-          row layout on sm: breakpoint+ where horizontal space exists. */}
+          row layout on sm: breakpoint+ where horizontal space exists.
+          aria-live="polite" on the parent so screen readers announce when
+          the code appears or changes. */}
       <div
         className="rounded-2xl p-5 mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
         style={{
           background: "rgba(220,103,67,0.06)",
           border: `1px solid rgba(220,103,67,0.2)`,
         }}
+        aria-live="polite"
       >
         <div
           data-user-code
           // whitespace-nowrap is load-bearing: without it the "-" between
           // code groups (e.g., "92PM-PLU8N") becomes a wrap point and the
           // code splits across two lines.
+          // aria-label spells the code out so SR announces "9 2 P M dash
+          // P L U 8 N" instead of mangling pronunciation.
           className="font-mono text-3xl tracking-[0.15em] select-all whitespace-nowrap"
           style={{ fontVariantNumeric: "tabular-nums", color: "var(--foreground)" }}
+          aria-label={`Authorization code: ${spellOut(flow.user_code)}`}
         >
           {flow.user_code}
         </div>
         <button
           onClick={handleCopy}
-          aria-label="Copy code"
+          aria-label={
+            copyState === "fallback"
+              ? "Copy unavailable — please press Command-C or Control-C to copy manually"
+              : copyState === "copied"
+              ? "Code copied to clipboard"
+              : "Copy code to clipboard"
+          }
           data-testid="copy-button"
-          className="self-start sm:self-auto shrink-0 px-3 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5"
+          data-copy-state={copyState}
+          className={`self-start sm:self-auto shrink-0 px-3 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${FOCUS_RING}`}
           style={{
-            background: copied ? "rgba(22,163,74,0.1)" : "rgba(0,0,0,0.04)",
-            border: `1px solid ${copied ? "rgba(22,163,74,0.3)" : "var(--border)"}`,
-            color: copied ? GREEN : "var(--foreground)",
+            background:
+              copyState === "copied"
+                ? "rgba(22,163,74,0.1)"
+                : copyState === "fallback"
+                ? "rgba(234,179,8,0.1)"
+                : "rgba(0,0,0,0.04)",
+            border: `1px solid ${
+              copyState === "copied"
+                ? "rgba(22,163,74,0.3)"
+                : copyState === "fallback"
+                ? "rgba(234,179,8,0.3)"
+                : "var(--border)"
+            }`,
+            color:
+              copyState === "copied"
+                ? GREEN
+                : copyState === "fallback"
+                ? "#b45309"
+                : "var(--foreground)",
           }}
         >
-          {copied ? (
+          {copyState === "copied" ? (
             <>
-              <Check className="w-3.5 h-3.5" />
+              <Check className="w-3.5 h-3.5" aria-hidden="true" />
               Copied
+            </>
+          ) : copyState === "fallback" ? (
+            <>
+              <Check className="w-3.5 h-3.5" aria-hidden="true" />
+              Press ⌘C
             </>
           ) : (
             <>
-              <Copy className="w-3.5 h-3.5" />
+              <Copy className="w-3.5 h-3.5" aria-hidden="true" />
               Copy
             </>
           )}
@@ -647,14 +855,14 @@ function ViewPolling({ flow }: { flow: FlowData }) {
               href={flow.verification_uri}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer"
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${FOCUS_RING}`}
               style={{
                 background: BRAND_GRADIENT,
                 boxShadow: BRAND_BUTTON_SHADOW,
                 color: "#fff",
               }}
             >
-              <ExternalLink className="w-3.5 h-3.5" />
+              <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
               {flow.verification_uri.replace(/^https?:\/\//, "")}
             </a>
           </div>
@@ -683,21 +891,26 @@ function ViewPolling({ flow }: { flow: FlowData }) {
         </li>
       </ol>
 
-      {/* Status row — live waiting indicator + countdown */}
+      {/* Status row — live waiting indicator + countdown.
+          aria-live="off" on the countdown to avoid spamming screen readers
+          every second; aria-label gives a meaningful name when SR navigates
+          to it via Tab/arrow keys. */}
       <div
         className="rounded-xl px-4 py-3 flex items-center justify-between text-xs"
         style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
       >
         <span className="flex items-center gap-2" style={{ color: "var(--muted)" }}>
-          <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: BRAND }} />
+          <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: BRAND }} aria-hidden="true" />
           Waiting for authorization…
         </span>
         <span
           className="flex items-center gap-1 font-mono"
           style={{ color: secondsRemaining < 60 ? DANGER_TEXT : "var(--muted)" }}
           data-testid="countdown"
+          aria-live="off"
+          aria-label={`Time remaining: ${mm} minutes ${ss} seconds`}
         >
-          <Clock className="w-3 h-3" />
+          <Clock className="w-3 h-3" aria-hidden="true" />
           {mm}:{ss}
         </span>
       </div>
@@ -736,10 +949,12 @@ function ViewConnected({
             background: "linear-gradient(135deg, rgba(22,163,74,0.1), rgba(22,163,74,0.2))",
             border: "1px solid rgba(22,163,74,0.2)",
           }}
+          aria-hidden="true"
         >
           <CheckCircle2 className="w-6 h-6" style={{ color: GREEN }} />
         </div>
         <h2
+          id={MODAL_TITLE_ID}
           className="text-2xl mb-1.5"
           style={{ fontFamily: "var(--font-serif)", fontWeight: 400 }}
         >
@@ -773,7 +988,7 @@ function ViewConnected({
       <div className="flex flex-col sm:flex-row-reverse gap-2">
         <button
           onClick={onClose}
-          className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer"
+          className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${FOCUS_RING}`}
           style={{
             background: "rgba(0,0,0,0.04)",
             border: "1px solid var(--border)",
@@ -786,7 +1001,7 @@ function ViewConnected({
           onClick={onDisconnect}
           disabled={disconnecting}
           data-testid="disconnect-button"
-          className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+          className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 ${FOCUS_RING}`}
           style={{
             background: DANGER_BG,
             color: DANGER_TEXT,
@@ -795,12 +1010,12 @@ function ViewConnected({
         >
           {disconnecting ? (
             <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
               Disconnecting…
             </>
           ) : (
             <>
-              <LogOut className="w-3.5 h-3.5" />
+              <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
               Disconnect
             </>
           )}
@@ -846,10 +1061,12 @@ function ViewSuccess({ planType }: { planType: string | null }) {
           background: "linear-gradient(135deg, rgba(22,163,74,0.15), rgba(22,163,74,0.25))",
           border: "1px solid rgba(22,163,74,0.3)",
         }}
+        aria-hidden="true"
       >
         <CheckCircle2 className="w-8 h-8" style={{ color: GREEN }} />
       </motion.div>
       <h2
+        id={MODAL_TITLE_ID}
         className="text-2xl mb-2"
         style={{ fontFamily: "var(--font-serif)", fontWeight: 400 }}
       >
@@ -911,10 +1128,12 @@ function ViewCodexNotEnabled({ onClose }: { onClose: () => void }) {
           background: "rgba(234,179,8,0.1)",
           border: "1px solid rgba(234,179,8,0.25)",
         }}
+        aria-hidden="true"
       >
         <AlertTriangle className="w-6 h-6" style={{ color: "#b45309" }} />
       </div>
       <h2
+        id={MODAL_TITLE_ID}
         className="text-2xl mb-2"
         style={{ fontFamily: "var(--font-serif)", fontWeight: 400 }}
       >
@@ -947,19 +1166,19 @@ function ViewCodexNotEnabled({ onClose }: { onClose: () => void }) {
           href="https://chatgpt.com/#settings/Security"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer text-center inline-flex items-center justify-center gap-2"
+          className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer text-center inline-flex items-center justify-center gap-2 ${FOCUS_RING}`}
           style={{
             background: BRAND_GRADIENT,
             boxShadow: BRAND_BUTTON_SHADOW,
             color: "#fff",
           }}
         >
-          <ExternalLink className="w-3.5 h-3.5" />
+          <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
           ChatGPT Settings
         </a>
         <button
           onClick={onClose}
-          className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer"
+          className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${FOCUS_RING}`}
           style={{
             background: "rgba(0,0,0,0.04)",
             border: "1px solid var(--border)",
@@ -995,10 +1214,12 @@ function ViewFeatureDisabled({
           background: "rgba(0,0,0,0.04)",
           border: "1px solid var(--border)",
         }}
+        aria-hidden="true"
       >
         <Clock className="w-6 h-6" style={{ color: "var(--muted)" }} />
       </div>
       <h2
+        id={MODAL_TITLE_ID}
         className="text-2xl mb-2"
         style={{ fontFamily: "var(--font-serif)", fontWeight: 400 }}
       >
@@ -1012,7 +1233,7 @@ function ViewFeatureDisabled({
       </p>
       <button
         onClick={onClose}
-        className="px-6 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer"
+        className={`px-6 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${FOCUS_RING}`}
         style={{
           background: "rgba(0,0,0,0.04)",
           border: "1px solid var(--border)",
@@ -1038,8 +1259,10 @@ function ViewUpstreamTimeout() {
       <Loader2
         className="w-8 h-8 mx-auto mb-4 animate-spin"
         style={{ color: BRAND }}
+        aria-hidden="true"
       />
       <h2
+        id={MODAL_TITLE_ID}
         className="text-xl mb-1"
         style={{ fontFamily: "var(--font-serif)", fontWeight: 400 }}
       >
@@ -1105,10 +1328,12 @@ function TerminalView({
       <div
         className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
         style={{ background: iconBg, border: `1px solid ${iconBorder}` }}
+        aria-hidden="true"
       >
         {icon}
       </div>
       <h2
+        id={MODAL_TITLE_ID}
         className="text-2xl mb-2"
         style={{ fontFamily: "var(--font-serif)", fontWeight: 400 }}
       >
@@ -1120,7 +1345,7 @@ function TerminalView({
       <div className="flex flex-col sm:flex-row-reverse gap-2">
         <button
           onClick={onPrimary}
-          className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer"
+          className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer ${FOCUS_RING}`}
           style={{
             background: BRAND_GRADIENT,
             boxShadow: BRAND_BUTTON_SHADOW,
@@ -1131,7 +1356,7 @@ function TerminalView({
         </button>
         <button
           onClick={onClose}
-          className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer"
+          className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${FOCUS_RING}`}
           style={{
             background: "rgba(0,0,0,0.04)",
             border: "1px solid var(--border)",

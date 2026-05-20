@@ -162,7 +162,7 @@ function SectionBody({
           </div>
           <button
             onClick={onManage}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer shrink-0"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#DC6743] focus:outline-none"
             style={{ background: "rgba(0,0,0,0.04)", border: "1px solid var(--border)", color: "var(--foreground)" }}
           >
             Manage
@@ -203,7 +203,7 @@ function SectionBody({
           <button
             onClick={onConnect}
             data-testid="open-chatgpt-modal"
-            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 cursor-pointer inline-flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 cursor-pointer inline-flex items-center gap-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#DC6743] focus:outline-none"
             style={{
               background:
                 "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
@@ -212,7 +212,7 @@ function SectionBody({
               color: "#fff",
             }}
           >
-            <ExternalLink className="w-3 h-3" />
+            <ExternalLink className="w-3 h-3" aria-hidden="true" />
             Connect
           </button>
         </div>
