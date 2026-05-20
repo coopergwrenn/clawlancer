@@ -59,20 +59,33 @@ interface MockSbOpts {
   userReadError?: { message: string };
   userUpdateError?: { message: string };
   vmUpdateError?: { message: string };
+  /**
+   * For the P1 disconnect-mid-refresh race test. When true, the user
+   * UPDATE returns 0 rows (matches what PostgREST returns when the
+   * `.not("openai_oauth_access_token", "is", null)` filter excludes
+   * the row because disconnectUser nulled it between our read + write).
+   */
+  userUpdateReturnsZeroRows?: boolean;
 }
 
 function makeMockSb(opts: MockSbOpts) {
   const updates: { table: string; payload: Record<string, unknown> }[] = [];
   const sb = {
     from(table: string) {
+      // method tracks the OPERATION kind (select / update / delete).
+      // `.select()` after `.update()` is a returns-rows modifier, not
+      // an operation switch — don't let it overwrite the locked-in
+      // mutation method. Same pattern as the DB test mock.
       let method: "select" | "update" = "select";
+      let methodLocked = false;
       const builder: Record<string, unknown> = {
         select() {
-          method = "select";
+          if (!methodLocked) method = "select";
           return builder;
         },
         update(payload: Record<string, unknown>) {
           method = "update";
+          methodLocked = true;
           updates.push({ table, payload });
           return builder;
         },
@@ -80,6 +93,9 @@ function makeMockSb(opts: MockSbOpts) {
           return builder;
         },
         like() {
+          return builder;
+        },
+        not() {
           return builder;
         },
         async single() {
@@ -94,7 +110,11 @@ function makeMockSb(opts: MockSbOpts) {
             if (opts.userUpdateError) {
               return Promise.resolve({ data: null, error: opts.userUpdateError }).then(resolve);
             }
-            return Promise.resolve({ data: null, error: null }).then(resolve);
+            // Conditional UPDATE with .select("id") returns array. When
+            // the WHERE filter matches (no race), return [{id}]. When the
+            // race lost (disconnect won), return [].
+            const data = opts.userUpdateReturnsZeroRows ? [] : [{ id: opts.user?.id ?? "x" }];
+            return Promise.resolve({ data, error: null }).then(resolve);
           }
           if (table === "instaclaw_vms" && method === "update") {
             if (opts.vmUpdateError) {
@@ -397,6 +417,109 @@ async function main(): Promise<void> {
     if (result.status === "decrypt_failure") {
       assert(result.message.includes("empty"), "error message mentions empty");
     }
+  }
+
+  // ─── Test 10: P1 race — disconnect won mid-refresh ─────────────────────
+  // Trace: cron locks user, reads refresh_token X, calls OpenAI, gets new
+  // tokens Y. Meanwhile user clicks Disconnect via modal (NOT gated on
+  // cron lock — disconnect must always work). disconnectUser nulls
+  // user.access_token. Cron tries to UPDATE with the new tokens, but
+  // WHERE openai_oauth_access_token IS NOT NULL excludes the row (now
+  // null) → 0 rows affected → return skipped_disconnected_mid_refresh.
+  // New tokens are orphaned at OpenAI — acceptable (user wanted to
+  // disconnect).
+  console.log("\n10. Disconnect won race mid-refresh → skipped_disconnected_mid_refresh:");
+  {
+    const oldRefresh = encryptSecret("about-to-be-orphaned", USER_ID);
+    const { sb, updates } = makeMockSb({
+      user: {
+        id: USER_ID,
+        openai_token_version: 5,
+        openai_oauth_refresh_token: oldRefresh,
+        openai_oauth_account_id: "acct_default",
+        openai_oauth_id_token_claims: { chatgpt_user_id: "user_default" },
+      },
+      userUpdateReturnsZeroRows: true, // simulates the race: disconnect won
+    });
+    const result = await refreshUserToken(USER_ID, sb, {
+      ...makeLockAcquired(),
+      fetchImpl: makeRefreshSuccessFetch({
+        accessToken: "new.but.orphaned.access",
+        refreshToken: "new.but.orphaned.refresh",
+        accountId: "acct_default",
+        planType: "pro",
+      }),
+    });
+    assert(
+      result.status === "skipped_disconnected_mid_refresh",
+      "status=skipped_disconnected_mid_refresh — orphaned tokens NOT stored",
+    );
+    // disconnectUser should NOT have been called (the user already
+    // disconnected themselves; calling disconnectUser again would be a
+    // no-op but wasteful). Verify: the only update in flight is the
+    // conditional one that returned 0 rows.
+    const disconnectUpdate = updates.find(
+      (u) =>
+        u.table === "instaclaw_users" && u.payload.openai_oauth_access_token === null,
+    );
+    assert(
+      !disconnectUpdate,
+      "disconnectUser NOT called (user already disconnected themselves)",
+    );
+  }
+
+  // ─── Test 11: P3 edge — account_mismatch with NULL new claims ──────────
+  // detectAccountMismatch handles a degenerate id_token correctly: if
+  // newClaims is null OR returns no chatgpt_user_id/account_id fields,
+  // it returns null (no mismatch) rather than triggering a false
+  // disconnect. Verifies the guard at lines 696, 702, 705 of openai-oauth.ts.
+  console.log("\n11. Refresh succeeds but id_token has NO claims fields → no false mismatch:");
+  {
+    const oldRefresh = encryptSecret("ok-refresh", USER_ID);
+    const { sb, updates } = makeMockSb({
+      user: {
+        id: USER_ID,
+        openai_token_version: 1,
+        openai_oauth_refresh_token: oldRefresh,
+        openai_oauth_account_id: "acct_old",
+        openai_oauth_id_token_claims: { chatgpt_user_id: "user_old" },
+      },
+    });
+    // Build a fetchImpl that returns a SUCCESS body but with an id_token
+    // whose claims are completely empty (no account_id, no user_id).
+    // detectAccountMismatch should return null (graceful), and the
+    // refresh should succeed.
+    const fetchImpl = ((async () => {
+      const header = Buffer.from('{"alg":"RS256","typ":"JWT"}').toString("base64url");
+      const body = Buffer.from(
+        JSON.stringify({
+          "https://api.openai.com/auth": {}, // empty claims
+          exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+        }),
+      ).toString("base64url");
+      const idToken = `${header}.${body}.sig`;
+      return new Response(
+        JSON.stringify({
+          access_token: "new.access.empty.claims",
+          refresh_token: "new.refresh.empty.claims",
+          id_token: idToken,
+          expires_in: 30 * 24 * 60 * 60,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown) as typeof fetch;
+    const result = await refreshUserToken(USER_ID, sb, { ...makeLockAcquired(), fetchImpl });
+    assert(
+      result.status === "refreshed",
+      "status=refreshed — empty claims should NOT trigger false mismatch",
+    );
+    // Verify the cached account_id was preserved (newClaims had no
+    // chatgptAccountId, our fallback to cachedAccountId fires).
+    const userUpdate = updates.find((u) => u.table === "instaclaw_users");
+    assert(
+      !!userUpdate && userUpdate.payload.openai_oauth_account_id === "acct_old",
+      "cached account_id preserved when new id_token has no chatgpt_account_id",
+    );
   }
 
   // ─── Summary ───────────────────────────────────────────────────────────

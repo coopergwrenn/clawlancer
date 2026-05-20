@@ -58,6 +58,21 @@ const BATCH_SIZE = 50;
 /** Refresh tokens expiring within this window. */
 const REFRESH_LOOKAHEAD_HOURS = 24;
 
+/**
+ * Wall-clock budget per cron invocation. P2 audit fix — if OpenAI is
+ * uniformly slow (their auth service has had multi-minute degradations
+ * during past incidents), per-user refresh hits the 10s timeout from
+ * Day 2.5 P1-C. 50 users × 10s = 500s, exceeding Vercel's 300s
+ * maxDuration. Cut off at 240s so the cron exits cleanly with the
+ * remaining users skipped (retried next hour) instead of getting
+ * SIGKILL'd mid-batch.
+ *
+ * Mid-batch SIGKILL is the bad case: per-user locks linger until TTL
+ * (120s) so the next cron invocation also skips those users until
+ * locks expire. Clean exit at the cutoff releases locks normally.
+ */
+const WALL_CLOCK_BUDGET_MS = 240_000;
+
 interface CronResult {
   ok: boolean;
   status: "noop" | "ran" | "error";
@@ -66,6 +81,8 @@ interface CronResult {
   refreshed?: number;
   skipped_no_token?: number;
   skipped_locked?: number;
+  skipped_disconnected_mid_refresh?: number;
+  skipped_budget_exhausted?: number;
   lockouts?: number;
   transient_failures?: number;
   decrypt_failures?: number;
@@ -160,16 +177,34 @@ export async function GET(req: NextRequest): Promise<NextResponse<CronResult>> {
 
     // Per-user refresh — sequential to avoid OpenAI rate limits + simplify
     // error accounting. Each call holds its own per-user lock; cron-level
-    // lock keeps overlap-invocations from competing.
+    // lock keeps overlap-invocations from competing. Wall-clock cutoff at
+    // WALL_CLOCK_BUDGET_MS protects against OpenAI-slow scenarios that
+    // would otherwise SIGKILL the function mid-batch (P2 audit fix).
     let refreshed = 0;
     let skippedNoToken = 0;
     let skippedLocked = 0;
+    let skippedDisconnectedMidRefresh = 0;
+    let skippedBudgetExhausted = 0;
     let lockouts = 0;
     let transientFailures = 0;
     let decryptFailures = 0;
     const errors: string[] = [];
+    const startedAtMs = Date.now();
 
     for (const user of candidates) {
+      // Wall-clock cutoff — if approaching budget, stop cleanly so the
+      // route returns 200 with the partial result instead of getting
+      // SIGKILL'd at Vercel's maxDuration. Remaining users are picked up
+      // by the next hourly invocation.
+      if (Date.now() - startedAtMs > WALL_CLOCK_BUDGET_MS) {
+        const remaining = candidates.length - (refreshed + skippedNoToken + skippedLocked + skippedDisconnectedMidRefresh + lockouts + transientFailures + decryptFailures);
+        skippedBudgetExhausted = remaining;
+        logger.warn("refresh-openai-oauth-tokens: wall-clock budget exhausted, exiting cleanly", {
+          elapsedMs: Date.now() - startedAtMs,
+          remaining,
+        });
+        break;
+      }
       try {
         const result = await refreshUserToken(user.id, supabase);
         switch (result.status) {
@@ -186,6 +221,14 @@ export async function GET(req: NextRequest): Promise<NextResponse<CronResult>> {
             break;
           case "skipped_locked":
             skippedLocked++;
+            break;
+          case "skipped_disconnected_mid_refresh":
+            // P1 race outcome — user disconnected via modal between our
+            // read and our write. Not an error; user got what they
+            // wanted. New tokens are orphaned at OpenAI's end (no
+            // long-term concern — user can revoke at OpenAI if desired,
+            // and our state correctly reflects "disconnected").
+            skippedDisconnectedMidRefresh++;
             break;
           case "lockout_disconnected":
             lockouts++;
@@ -226,6 +269,8 @@ export async function GET(req: NextRequest): Promise<NextResponse<CronResult>> {
       refreshed,
       skipped_no_token: skippedNoToken,
       skipped_locked: skippedLocked,
+      skipped_disconnected_mid_refresh: skippedDisconnectedMidRefresh,
+      skipped_budget_exhausted: skippedBudgetExhausted,
       lockouts,
       transient_failures: transientFailures,
       decrypt_failures: decryptFailures,

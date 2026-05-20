@@ -554,7 +554,8 @@ export type RefreshUserTokenResult =
       message: string;
     }
   | { status: "transient_failure"; reason: string; message: string }
-  | { status: "decrypt_failure"; message: string };
+  | { status: "decrypt_failure"; message: string }
+  | { status: "skipped_disconnected_mid_refresh" };
 
 interface RefreshUserTokenOpts {
   fetchImpl?: typeof fetch;
@@ -751,7 +752,22 @@ export async function refreshUserToken(
     const claimsForDb = newClaims ? camelToSnakeClaimsForRefresh(newClaims) : null;
     const expiresAtIso = new Date(newTokens.expiresAtMs).toISOString();
 
-    const { error: updateErr } = await supabase
+    // P1 race fix (audit follow-up): conditional UPDATE prevents the
+    // disconnect-mid-refresh race. Sequence the race protects against:
+    //   T0  cron locks user, reads refresh_token X
+    //   T1  user clicks Disconnect → disconnectUser nulls tokens (NOT
+    //        gated on the cron lock; modal must always be able to
+    //        disconnect — see disconnect/route.ts header)
+    //   T2  cron calls OpenAI with X, gets new tokens Y
+    //   T3  cron writes Y → silently UNDOES the disconnect
+    // Without the WHERE filter, the user appears reconnected on the
+    // next dashboard poll and the agent flips back to ChatGPT.
+    // With the filter, the WHERE clause finds 0 rows (access_token was
+    // nulled at T1), .select() returns [], we abort cleanly with
+    // skipped_disconnected_mid_refresh. Y is orphaned at OpenAI
+    // (refresh_token Z still active at OpenAI but we have no record).
+    // User wanted to disconnect anyway — acceptable outcome.
+    const { data: updated, error: updateErr } = await supabase
       .from("instaclaw_users")
       .update({
         openai_oauth_access_token: encryptedAccess,
@@ -764,7 +780,21 @@ export async function refreshUserToken(
         chatgpt_plan_type: planType,
         chatgpt_plan_last_seen_at: planType ? new Date().toISOString() : null,
       })
-      .eq("id", userId);
+      .eq("id", userId)
+      .not("openai_oauth_access_token", "is", null)
+      .select("id");
+    if (!updateErr && (!updated || updated.length === 0)) {
+      // Race lost — user disconnected between our read and our write.
+      // The new tokens we got from OpenAI are orphaned (we won't
+      // store them; the user's refresh_token at OpenAI's end is now
+      // the un-stored Y). The user will need to re-OAuth to get a
+      // fresh token chain, but that's exactly what they asked for
+      // by disconnecting.
+      logger.warn("refreshUserToken: disconnect won race — new tokens orphaned, not stored", {
+        userId: userId.slice(0, 8),
+      });
+      return { status: "skipped_disconnected_mid_refresh" };
+    }
     if (updateErr) {
       // We have new tokens at OpenAI but couldn't store them in our DB.
       // Next cycle will detect the OLD token is still close to expiry and
