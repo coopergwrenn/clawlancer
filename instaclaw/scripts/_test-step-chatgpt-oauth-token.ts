@@ -231,8 +231,9 @@ async function main(): Promise<void> {
         "openai-codex:default": {
           type: "oauth",
           provider: "openai-codex",
-          key: "stale-token",
-          metadata: { accountId: "acct_x" },
+          access: "stale-token",
+          expires: Date.now() + 1000 * 60 * 60,
+          accountId: "acct_x",
         },
       },
     });
@@ -330,20 +331,26 @@ async function main(): Promise<void> {
   {
     const REAL_TOKEN = "eyJ.access.JWT.bytes.test4";
     const encryptedToken = encryptSecret(REAL_TOKEN, USER_ID);
+    const expiresAtIso = new Date(Date.now() + 28 * 24 * 60 * 60 * 1000).toISOString();
+    const expectedExpiresMs = new Date(expiresAtIso).getTime();
     // On-disk has anthropic only — no openai-codex entry, so drift.
     const onDiskJson = JSON.stringify({
       profiles: { "anthropic:default": { type: "api_key", provider: "anthropic", key: "sk-x" } },
     });
     const { ssh, calls } = makeMockSsh({
       // Order matters: most-specific first. Verify-after-write reads via
-      // `cat ... | python3 ... openai-codex:default ... key ... [:16]` —
-      // needs to match BEFORE the generic cat-auth-profiles read.
+      // `cat ... | python3 ... openai-codex:default ... access ... [:16]
+      // ... expires` — needs to match BEFORE the generic cat-auth-profiles
+      // read. Stdout shape: `TOKEN_PREFIX|EXPIRES_MS` (load-bearing for
+      // the verify check that catches future shape regressions).
       responses: [
         // model.primary read (most specific python3 pipeline)
         { match: /python3.*model.*primary/, result: { code: 0, stdout: "anthropic/claude-sonnet-4-6\n" } },
-        // verify-after-write: read the openai-codex key prefix (must
-        // return what we just "wrote" — token.slice(0, 16))
-        { match: /python3.*openai-codex:default.*key/, result: { code: 0, stdout: REAL_TOKEN.slice(0, 16) + "\n" } },
+        // verify-after-write: returns "PREFIX|EXPIRES_MS"
+        {
+          match: /python3.*openai-codex:default.*access/,
+          result: { code: 0, stdout: REAL_TOKEN.slice(0, 16) + "|" + expectedExpiresMs + "\n" },
+        },
         // initial read of existing file
         { match: /cat ~\/\.openclaw\/agents\/main\/agent\/auth-profiles\.json/, result: { code: 0, stdout: onDiskJson } },
       ],
@@ -354,7 +361,7 @@ async function main(): Promise<void> {
         id: USER_ID,
         openai_token_version: 5,
         openai_oauth_access_token: encryptedToken,
-        openai_oauth_expires_at: new Date(Date.now() + 28 * 24 * 60 * 60 * 1000).toISOString(),
+        openai_oauth_expires_at: expiresAtIso,
         openai_oauth_account_id: "acct_abc",
       },
     });
@@ -381,13 +388,28 @@ async function main(): Promise<void> {
         ).toString("utf-8")
       : "";
     const parsed = JSON.parse(writtenJson) as {
-      profiles: { "openai-codex:default"?: { key: string; metadata?: { accountId: string } } };
+      profiles: {
+        "openai-codex:default"?: {
+          type?: string;
+          provider?: string;
+          access?: string;
+          expires?: number;
+          accountId?: string;
+          // Old shape fields MUST NOT appear — load-bearing regression check.
+          key?: string;
+          metadata?: { accountId?: string };
+        };
+      };
     };
-    assert(parsed.profiles["openai-codex:default"]?.key === REAL_TOKEN, "written profile has decrypted token");
-    assert(
-      parsed.profiles["openai-codex:default"]?.metadata?.accountId === "acct_abc",
-      "written profile has correct accountId",
-    );
+    const written = parsed.profiles["openai-codex:default"];
+    assert(written?.type === "oauth", "written profile.type === oauth");
+    assert(written?.provider === "openai-codex", "written profile.provider === openai-codex");
+    assert(written?.access === REAL_TOKEN, "written profile has decrypted token in .access (NOT .key)");
+    assert(written?.expires === expectedExpiresMs, `written profile has .expires as numeric ms (got ${written?.expires})`);
+    assert(written?.accountId === "acct_abc", "written profile has top-level .accountId (NOT under .metadata)");
+    // Regression guards — pi-ai silently rejects the legacy shape.
+    assert(written?.key === undefined, "written profile has NO .key field (legacy shape)");
+    assert(written?.metadata === undefined, "written profile has NO .metadata field (legacy shape)");
     assert(
       "anthropic:default" in parsed.profiles,
       "anthropic:default preserved alongside new openai-codex",
@@ -413,14 +435,17 @@ async function main(): Promise<void> {
   {
     const REAL_TOKEN = "eyJ.matching.JWT";
     const encryptedToken = encryptSecret(REAL_TOKEN, USER_ID);
+    const expiresAtIso = new Date(Date.now() + 28 * 24 * 60 * 60 * 1000).toISOString();
+    const matchingExpiresMs = new Date(expiresAtIso).getTime();
     const onDiskJson = JSON.stringify({
       profiles: {
         "anthropic:default": { type: "api_key", provider: "anthropic", key: "sk-x" },
         "openai-codex:default": {
           type: "oauth",
           provider: "openai-codex",
-          key: REAL_TOKEN,
-          metadata: { accountId: "acct_match" },
+          access: REAL_TOKEN,
+          expires: matchingExpiresMs,
+          accountId: "acct_match",
         },
       },
     });
@@ -435,7 +460,7 @@ async function main(): Promise<void> {
         id: USER_ID,
         openai_token_version: 9,
         openai_oauth_access_token: encryptedToken,
-        openai_oauth_expires_at: new Date(Date.now() + 28 * 24 * 60 * 60 * 1000).toISOString(),
+        openai_oauth_expires_at: expiresAtIso,
         openai_oauth_account_id: "acct_match",
       },
     });
@@ -568,25 +593,20 @@ async function main(): Promise<void> {
     assert(vmUpdates.length === 0, "NO DB updates in dry-run");
   }
 
-  // ─── Test 10: NULL expires_at + active token → push anyway + log warning ──
-  // Cooper's audit asked: what happens when openai_oauth_access_token is set
-  // but openai_oauth_expires_at is NULL (user connected but expiry wasn't
-  // recorded)? Behavior: push the token (likely valid, just unrecorded),
-  // log a warning about the anomaly. NOT an error (token might work).
-  console.log("\n10. NULL expires_at with active token:");
+  // ─── Test 10: NULL expires_at + non-JWT token → error, refuse to push ──
+  // BEHAVIOR CHANGED 2026-05-20: pi-ai's hasUsableOAuthCredential REQUIRES
+  // a numeric `expires` field; without one, the profile is silently
+  // rejected at runtime. So we MUST resolve an expiry before pushing.
+  // The step now: (a) prefers DB ISO if present, (b) falls back to
+  // decoding the access-token JWT's `exp` claim, (c) refuses to push and
+  // pushes to result.errors if both fail. This test exercises path (c):
+  // NULL expires_at + a non-JWT-shaped token → JWT decode fails → error.
+  console.log("\n10. NULL expires_at + non-JWT token → error (refuse to push):");
   {
-    const REAL_TOKEN = "eyJ.null-expiry.JWT";
-    const encryptedToken = encryptSecret(REAL_TOKEN, USER_ID);
-    const onDiskJson = JSON.stringify({
-      profiles: { "anthropic:default": { type: "api_key", provider: "anthropic", key: "sk-x" } },
-    });
-    const { ssh, calls } = makeMockSsh({
-      responses: [
-        { match: /python3.*model.*primary/, result: { code: 0, stdout: "anthropic/claude-sonnet-4-6\n" } },
-        { match: /python3.*openai-codex:default.*key/, result: { code: 0, stdout: REAL_TOKEN.slice(0, 16) + "\n" } },
-        { match: /cat ~\/\.openclaw\/agents\/main\/agent\/auth-profiles\.json/, result: { code: 0, stdout: onDiskJson } },
-      ],
-    });
+    // 3-part dotted token but middle part is not valid base64url JSON.
+    const NON_JWT_TOKEN = "eyJ.null-expiry.JWT";
+    const encryptedToken = encryptSecret(NON_JWT_TOKEN, USER_ID);
+    const { ssh, calls } = makeMockSsh();
     const { vmUpdates } = makeMockSupabase({
       user: {
         id: USER_ID,
@@ -604,21 +624,16 @@ async function main(): Promise<void> {
     const result = makeResult();
     await __testOnly_stepChatGPTOAuthToken(ssh as never, vm as never, result as never, false);
 
-    assert(result.errors.length === 0, "no errors — NULL expires_at is a warning, not a hard error");
-    // We DO push the token (likely valid; agent will discover via 401 if not)
-    const profileWrite = calls.find(
-      (c) =>
-        c.command.includes("base64 -d > ~/.openclaw/agents/main/agent/auth-profiles.json.tmp") &&
-        c.command.includes("mv"),
-    );
-    assert(!!profileWrite, "atomic profile write fires despite NULL expires_at");
     assert(
-      vmUpdates.some((u) => u.openai_token_version_synced === 4),
-      "synced version bumped even with NULL expires_at",
+      result.errors.some((e) => e.includes("cannot determine token expiry")),
+      "error surfaced — cannot determine expiry",
     );
-    // No assertion on log output (lib/logger is fire-and-forget). The
-    // warning log fires per inspection of the source; trust + visual
-    // verification at runtime via journalctl during canary.
+    assert(
+      result.errors.some((e) => e.includes("refusing to push")),
+      "error message includes refuse-to-push posture",
+    );
+    assert(calls.length === 0, "NO SSH writes — error gates before applyConnectedState");
+    assert(vmUpdates.length === 0, "NO DB updates on expiry-resolution failure");
   }
 
   // ─── Test 11: Empty decrypted token → result.errors ────────────────────
@@ -672,8 +687,9 @@ async function main(): Promise<void> {
         "openai-codex:default": {
           type: "oauth",
           provider: "openai-codex",
-          key: "stale",
-          metadata: { accountId: "acct_x" },
+          access: "stale",
+          expires: Date.now() + 1000 * 60 * 60,
+          accountId: "acct_x",
         },
       },
     });

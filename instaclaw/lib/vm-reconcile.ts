@@ -8764,11 +8764,11 @@ async function stepChatGPTOAuthToken(
 
   // 4b. NULL expires_at with a token present is an anomaly — storeOAuthTokens
   // always populates expires_at from the JWT. A NULL with access_token set
-  // suggests bug-elsewhere or manual DB manipulation. The token might be
-  // valid (likely is, just expiry unrecorded), so we push it; but log so
-  // operators see the anomaly during incident triage.
+  // suggests bug-elsewhere or manual DB manipulation. We log + fall back to
+  // JWT-decode below (after decrypt) so we can still push with a correct
+  // expires field (pi-ai's hasUsableOAuthCredential REQUIRES expires).
   if (!expiresAtIso) {
-    logger.warn("chatgpt-oauth: token present but expires_at is NULL — pushing anyway", {
+    logger.warn("chatgpt-oauth: token present but expires_at is NULL — will fallback to JWT exp", {
       route: "vm-reconcile",
       vmId: vm.id,
       userId: userId.slice(0, 8),
@@ -8813,12 +8813,41 @@ async function stepChatGPTOAuthToken(
     return;
   }
 
+  // Compute expiresAtMs (pi-ai REQUIRES this — hasUsableOAuthCredential
+  // returns false without a valid future-epoch expires). Prefer DB ISO
+  // (canonical, set at storeOAuthTokens time). Fall back to decoding the
+  // access token's JWT exp claim (matches pi-ai's resolveCodexAccessTokenExpiry).
+  let expiresAtMs: number | null = null;
+  if (expiresAtIso) {
+    const parsed = new Date(expiresAtIso).getTime();
+    if (Number.isFinite(parsed) && parsed > 0) expiresAtMs = parsed;
+  }
+  if (expiresAtMs === null) {
+    expiresAtMs = extractCodexJwtExpMs(accessToken);
+  }
+  if (expiresAtMs === null) {
+    // Refuse to push without a valid expires — pi-ai would silently reject
+    // the profile (returns false from hasUsableOAuthCredential), leaving
+    // the agent in a "no API key" error loop. Push to errors so cv-bump
+    // blocks; surfaces the issue for operator triage.
+    result.errors.push(
+      `chatgpt-oauth: cannot determine token expiry for user ${userId.slice(0, 8)} (DB expires_at NULL AND JWT exp missing/invalid) — refusing to push`,
+    );
+    logger.error("chatgpt-oauth: expiry resolution failed", {
+      route: "vm-reconcile",
+      vmId: vm.id,
+      userId: userId.slice(0, 8),
+    });
+    return;
+  }
+
   await applyConnectedState(
     ssh,
     vm,
     userId,
     userVersion,
     accessToken,
+    expiresAtMs,
     accountId ?? null,
     result,
     dryRun,
@@ -8826,10 +8855,44 @@ async function stepChatGPTOAuthToken(
 }
 
 /**
+ * Decode the OpenAI Codex access token's JWT exp claim → ms epoch.
+ * Mirrors pi-ai's resolveCodexAccessTokenExpiry from
+ * @mariozechner/pi-ai/utils/oauth/openai-codex. Returns null if the token
+ * isn't a 3-part JWT, the payload can't be parsed, or exp is missing/invalid.
+ */
+function extractCodexJwtExpMs(accessToken: string): number | null {
+  const parts = accessToken.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payloadJson = Buffer.from(parts[1], "base64url").toString("utf8");
+    const payload = JSON.parse(payloadJson) as { exp?: unknown };
+    const exp = payload?.exp;
+    if (typeof exp === "number" && Number.isFinite(exp) && exp > 0) return Math.trunc(exp) * 1000;
+    if (typeof exp === "string" && /^\d+$/.test(exp.trim())) return Number.parseInt(exp.trim(), 10) * 1000;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * SSH-write the openai-codex:default profile to auth-profiles.json
  * (merging with existing profiles), set model.primary to
  * openai-codex/gpt-5.5, update DB-side api_mode + default_model + synced
  * version. Idempotent: skips SSH writes if on-disk already matches.
+ *
+ * Profile shape MUST match pi-ai's hasUsableOAuthCredential$1
+ * (node_modules/openclaw/dist/store-D-8DaAtv.js — checks credential.type,
+ * credential.access, credential.expires). Field names "access" + "expires"
+ * are LOAD-BEARING — earlier versions used {key, metadata:{accountId}}
+ * which pi-ai silently rejected, leaving the agent in a "No API key found"
+ * loop while the file looked correct on disk (2026-05-20 vm-780 incident).
+ *
+ * Defense-in-depth: we DO NOT include the refresh token in the on-VM
+ * profile. The server-side hourly cron rotates access tokens and re-pushes
+ * via this step; pi-ai's runtime never needs to self-refresh. Smaller
+ * blast radius if a VM is compromised — attacker gets a short-lived
+ * access token, no long-term refresh capability.
  */
 async function applyConnectedState(
   ssh: SSHConnection,
@@ -8837,6 +8900,7 @@ async function applyConnectedState(
   userId: string,
   userVersion: number,
   accessToken: string,
+  expiresAtMs: number,
   accountId: string | null,
   result: ReconcileResult,
   dryRun: boolean,
@@ -8857,29 +8921,40 @@ async function applyConnectedState(
     }
   }
 
-  const desired = {
-    type: "oauth" as const,
-    provider: "openai-codex" as const,
-    key: accessToken,
-    metadata: { accountId },
+  // Build the pi-ai-shaped OAuth credential. accountId at top level (NOT
+  // under metadata) per shouldMirrorRefreshedOAuthCredential's identity
+  // check (existing.accountId).
+  const desired: {
+    type: "oauth";
+    provider: "openai-codex";
+    access: string;
+    expires: number;
+    accountId?: string;
+  } = {
+    type: "oauth",
+    provider: "openai-codex",
+    access: accessToken,
+    expires: expiresAtMs,
   };
+  if (accountId) desired.accountId = accountId;
 
   // Idempotency: on-disk profile matches what we'd write → no SSH write
   // needed for the file. We still ensure DB-side state is up-to-date below.
   const onDisk = existingProfiles["openai-codex:default"] as
-    | { type?: string; provider?: string; key?: string; metadata?: { accountId?: string | null } }
+    | { type?: string; provider?: string; access?: string; expires?: number; accountId?: string | null }
     | undefined;
   const onDiskMatches =
     !!onDisk &&
     onDisk.type === "oauth" &&
     onDisk.provider === "openai-codex" &&
-    onDisk.key === accessToken &&
-    (onDisk.metadata?.accountId ?? null) === (accountId ?? null);
+    onDisk.access === accessToken &&
+    onDisk.expires === expiresAtMs &&
+    (onDisk.accountId ?? null) === (accountId ?? null);
 
   if (!onDiskMatches) {
     if (dryRun) {
       result.fixed.push(
-        `[dry-run] chatgpt-oauth: would write openai-codex:default (token=${accessToken.slice(0, 12)}…)`,
+        `[dry-run] chatgpt-oauth: would write openai-codex:default (token=${accessToken.slice(0, 12)}…, expires=${new Date(expiresAtMs).toISOString()})`,
       );
       return;
     }
@@ -8898,15 +8973,19 @@ async function applyConnectedState(
       );
       return;
     }
-    // Verify-after-write (Rule 10): re-read and confirm openai-codex.key prefix.
+    // Verify-after-write (Rule 10): re-read and confirm openai-codex.access
+    // prefix AND that expires is the numeric we wrote. Both fields are
+    // load-bearing for hasUsableOAuthCredential — verifying both catches
+    // any future shape regression in the same kind of incident as 2026-05-20.
     const verifyRes = await ssh.execCommand(
-      `cat ~/.openclaw/agents/main/agent/auth-profiles.json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("profiles",{}).get("openai-codex:default",{}).get("key","<missing>")[:16])'`,
+      `cat ~/.openclaw/agents/main/agent/auth-profiles.json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); p=d.get("profiles",{}).get("openai-codex:default",{}); print(p.get("access","<missing>")[:16] + "|" + str(p.get("expires","<missing>")))'`,
     );
-    const onDiskPrefix = (verifyRes.stdout || "").trim();
-    const expectedPrefix = accessToken.slice(0, 16);
-    if (onDiskPrefix !== expectedPrefix) {
+    const verifyOut = (verifyRes.stdout || "").trim();
+    const expectedToken = accessToken.slice(0, 16);
+    const expected = `${expectedToken}|${expiresAtMs}`;
+    if (verifyOut !== expected) {
       result.errors.push(
-        `chatgpt-oauth: verify mismatch — on-disk=${onDiskPrefix.slice(0, 12)}… expected=${expectedPrefix.slice(0, 12)}…`,
+        `chatgpt-oauth: verify mismatch — on-disk=${verifyOut.slice(0, 60)} expected=${expected.slice(0, 60)}`,
       );
       return;
     }
@@ -8915,6 +8994,7 @@ async function applyConnectedState(
       vmId: vm.id,
       userId: userId.slice(0, 8),
       tokenPrefix: accessToken.slice(0, 12),
+      expiresAt: new Date(expiresAtMs).toISOString(),
       accountId,
       userVersion,
     });
