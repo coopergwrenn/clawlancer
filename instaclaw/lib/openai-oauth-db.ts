@@ -32,12 +32,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   encryptSecret,
+  decryptSecret,
+  DecryptError,
+  KeyMissingError,
 } from "./openai-oauth-encryption";
+import {
+  refreshAccessToken,
+  detectAccountMismatch,
+} from "./openai-oauth";
 import type {
   DeviceCodePoll,
   DeviceCodeStart,
   IdTokenClaims,
 } from "./openai-oauth";
+import { tryAcquireCronLock, releaseCronLock } from "./cron-lock";
+import { logger } from "./logger";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -527,4 +536,287 @@ export async function disconnectUser(
   if (nullErr) {
     throw new Error(`disconnectUser: user nullify failed: ${nullErr.message}`);
   }
+}
+
+// ─── Token refresh (Day 16-18) ───────────────────────────────────────────
+
+/**
+ * Result of refreshUserToken — discriminated union the cron route uses to
+ * decide what to log + whether to alert.
+ */
+export type RefreshUserTokenResult =
+  | { status: "refreshed"; newVersion: number; planType: string | null }
+  | { status: "skipped_no_token" }
+  | { status: "skipped_locked" }
+  | {
+      status: "lockout_disconnected";
+      reason: "reused" | "expired" | "revoked" | "account_mismatch" | "other";
+      message: string;
+    }
+  | { status: "transient_failure"; reason: string; message: string }
+  | { status: "decrypt_failure"; message: string };
+
+interface RefreshUserTokenOpts {
+  fetchImpl?: typeof fetch;
+  /**
+   * Override the lock TTL for tests (default 120s — enough for one
+   * OpenAI round-trip + DB writes + retries).
+   */
+  lockTtlSeconds?: number;
+  /**
+   * Lock-acquire is a real DB write that requires service-role auth.
+   * Tests can pass a stub that returns true synchronously to bypass it.
+   */
+  acquireLockImpl?: (name: string, ttl: number) => Promise<boolean>;
+  releaseLockImpl?: (name: string) => Promise<void>;
+}
+
+/**
+ * Refresh a single user's ChatGPT OAuth access token. THE LOCKING
+ * DISCIPLINE IS LOAD-BEARING — refresh tokens are single-use per
+ * OpenAI's spec; concurrent refresh attempts on the same user cause
+ * `refresh_token_reused` which is a PERMANENT lockout until the user
+ * re-OAuths. This function MUST serialize all refresh attempts for a
+ * given userId via instaclaw_cron_locks.
+ *
+ * Failure semantics:
+ *   - Lock contention → return skipped_locked, no state change
+ *   - No refresh token → return skipped_no_token
+ *   - Decrypt failure → return decrypt_failure, no state change (data
+ *     corruption — operator alert)
+ *   - OpenAI returns success → encrypt+store new tokens, bump version,
+ *     return refreshed
+ *   - OpenAI returns reused/expired/revoked/account_mismatch → call
+ *     disconnectUser, return lockout_disconnected. The user's dashboard
+ *     status will flip to not_connected on next refresh; their next
+ *     Telegram message will be on Claude (per chatgpt-connection skill).
+ *   - OpenAI returns other (transient) → return transient_failure,
+ *     retry next cycle
+ *
+ * This function is the ONLY consumer of refreshAccessToken in production
+ * (apart from tests). All cron routes that refresh tokens must call
+ * through here so the locking discipline is centrally enforced.
+ */
+export async function refreshUserToken(
+  userId: string,
+  supabase: SupabaseClient,
+  opts: RefreshUserTokenOpts = {},
+): Promise<RefreshUserTokenResult> {
+  const lockName = `openai-oauth-refresh:${userId}`;
+  const lockTtl = opts.lockTtlSeconds ?? 120;
+  const acquire = opts.acquireLockImpl ?? tryAcquireCronLock;
+  const release = opts.releaseLockImpl ?? releaseCronLock;
+
+  const acquired = await acquire(lockName, lockTtl);
+  if (!acquired) {
+    return { status: "skipped_locked" };
+  }
+
+  try {
+    // Re-read user inside the lock — between acquire and read, another
+    // process might have refreshed (and released the lock). We need
+    // fresh state.
+    const { data: u, error: readErr } = await supabase
+      .from("instaclaw_users")
+      .select("*")
+      .eq("id", userId)
+      .single();
+    if (readErr || !u) {
+      return {
+        status: "transient_failure",
+        reason: "user-read-failed",
+        message: readErr?.message ?? "no rows",
+      };
+    }
+    const encryptedRefresh = u.openai_oauth_refresh_token as string | null | undefined;
+    if (!encryptedRefresh) {
+      return { status: "skipped_no_token" };
+    }
+    const cachedAccountId = u.openai_oauth_account_id as string | null | undefined;
+    const cachedClaims = u.openai_oauth_id_token_claims as
+      | { chatgpt_user_id?: string; chatgpt_account_id?: string }
+      | null
+      | undefined;
+    const cachedUserId =
+      typeof cachedClaims?.chatgpt_user_id === "string" ? cachedClaims.chatgpt_user_id : null;
+
+    let refreshToken: string;
+    try {
+      refreshToken = decryptSecret(encryptedRefresh, userId);
+    } catch (err) {
+      if (err instanceof DecryptError || err instanceof KeyMissingError) {
+        logger.error("refreshUserToken: decrypt failed", {
+          userId: userId.slice(0, 8),
+          errorName: err.name,
+        });
+        return { status: "decrypt_failure", message: `${err.name}: ${err.message.slice(0, 200)}` };
+      }
+      throw err;
+    }
+    if (refreshToken.length === 0) {
+      return {
+        status: "decrypt_failure",
+        message: "Decrypted refresh token is empty — possible storage corruption",
+      };
+    }
+
+    // OpenAI call — single-use refresh token. The lock prevents another
+    // process from racing this call for the same user.
+    const refreshResult = await refreshAccessToken(refreshToken, {
+      fetchImpl: opts.fetchImpl,
+    });
+
+    if (refreshResult.status === "failed") {
+      const reason = refreshResult.reason;
+      // Distinguish PERMANENT failures (user must re-OAuth) from
+      // TRANSIENT failures (retry next cycle). Disconnecting on a
+      // transient failure (rate limit, OpenAI 5xx) would force the
+      // user to re-OAuth for a momentary glitch — bad UX.
+      const PERMANENT: Array<typeof reason> = ["reused", "expired", "revoked"];
+      const isPermanent = PERMANENT.includes(reason);
+      if (!isPermanent) {
+        // "other" — transient. Log warning, no state change.
+        logger.warn("refreshUserToken: transient refresh failure (retry next cycle)", {
+          userId: userId.slice(0, 8),
+          reason,
+          message: refreshResult.message.slice(0, 200),
+        });
+        return {
+          status: "transient_failure",
+          reason,
+          message: refreshResult.message.slice(0, 200),
+        };
+      }
+      // Permanent — log + disconnect.
+      if (reason === "reused") {
+        logger.error("refreshUserToken: PERMANENT LOCKOUT — refresh_token_reused", {
+          userId: userId.slice(0, 8),
+          message: refreshResult.message.slice(0, 200),
+        });
+      } else {
+        logger.warn("refreshUserToken: refresh failed permanently", {
+          userId: userId.slice(0, 8),
+          reason,
+          message: refreshResult.message.slice(0, 200),
+        });
+      }
+      try {
+        await disconnectUser(userId, supabase);
+      } catch (err) {
+        return {
+          status: "transient_failure",
+          reason: `disconnect-after-${reason}-failed`,
+          message: err instanceof Error ? err.message.slice(0, 200) : String(err),
+        };
+      }
+      return { status: "lockout_disconnected", reason, message: refreshResult.message.slice(0, 200) };
+    }
+
+    // refreshResult.status === "success"
+    const newTokens = refreshResult.tokens;
+    const newClaims = refreshResult.claims;
+
+    // Detect account mismatch — user signed into a different OpenAI
+    // account between refreshes. Treat as a permanent failure that
+    // requires re-OAuth from the new account.
+    const mismatch = detectAccountMismatch(newClaims, cachedAccountId ?? null, cachedUserId);
+    if (mismatch === "account_mismatch") {
+      logger.warn("refreshUserToken: account mismatch — disconnecting", {
+        userId: userId.slice(0, 8),
+        cachedAccountId,
+        newAccountId: newClaims?.chatgptAccountId,
+      });
+      try {
+        await disconnectUser(userId, supabase);
+      } catch (err) {
+        return {
+          status: "transient_failure",
+          reason: "disconnect-after-account-mismatch-failed",
+          message: err instanceof Error ? err.message.slice(0, 200) : String(err),
+        };
+      }
+      return {
+        status: "lockout_disconnected",
+        reason: "account_mismatch",
+        message: `OpenAI account changed (was ${cachedAccountId} → ${newClaims?.chatgptAccountId})`,
+      };
+    }
+
+    // Success — encrypt + store new tokens, bump version.
+    const encryptedAccess = encryptSecret(newTokens.accessToken, userId);
+    const encryptedRefreshNew = encryptSecret(newTokens.refreshToken, userId);
+    const currentVersion = (u.openai_token_version as number | undefined) ?? 0;
+    const nextVersion = currentVersion + 1;
+    const planType = newClaims?.chatgptPlanType ?? null;
+    const claimsForDb = newClaims ? camelToSnakeClaimsForRefresh(newClaims) : null;
+    const expiresAtIso = new Date(newTokens.expiresAtMs).toISOString();
+
+    const { error: updateErr } = await supabase
+      .from("instaclaw_users")
+      .update({
+        openai_oauth_access_token: encryptedAccess,
+        openai_oauth_refresh_token: encryptedRefreshNew,
+        openai_oauth_id_token_claims: claimsForDb,
+        openai_oauth_expires_at: expiresAtIso,
+        openai_oauth_last_refresh_at: new Date().toISOString(),
+        openai_oauth_account_id: newClaims?.chatgptAccountId ?? cachedAccountId ?? null,
+        openai_token_version: nextVersion,
+        chatgpt_plan_type: planType,
+        chatgpt_plan_last_seen_at: planType ? new Date().toISOString() : null,
+      })
+      .eq("id", userId);
+    if (updateErr) {
+      // We have new tokens at OpenAI but couldn't store them in our DB.
+      // Next cycle will detect the OLD token is still close to expiry and
+      // attempt refresh again — but the OLD refresh token is now CONSUMED
+      // by this call, so the next refresh will fail with reused → user
+      // gets disconnected. This is the catastrophic edge of any refresh
+      // failure mode that's "OpenAI succeeded but we couldn't persist."
+      // P2 follow-up: write-ahead log the new tokens before calling
+      // OpenAI so we can recover. For Phase 1, accept the risk; rate of
+      // DB write failure should be near-zero.
+      logger.error("refreshUserToken: store-after-success failed (CATASTROPHIC — next refresh will lockout)", {
+        userId: userId.slice(0, 8),
+        message: updateErr.message,
+      });
+      return {
+        status: "transient_failure",
+        reason: "store-after-success-failed",
+        message: updateErr.message.slice(0, 200),
+      };
+    }
+
+    logger.info("TOKEN_AUDIT: refreshUserToken stored new tokens", {
+      userId: userId.slice(0, 8),
+      newVersion: nextVersion,
+      planType,
+      accessTokenPrefix: newTokens.accessToken.slice(0, 12),
+      expiresAt: expiresAtIso,
+    });
+
+    return { status: "refreshed", newVersion: nextVersion, planType };
+  } finally {
+    await release(lockName);
+  }
+}
+
+/**
+ * Internal: convert IdTokenClaims (camelCase) → snake_case JSONB payload
+ * for storage. Duplicates camelToSnakeClaims (private to this module)
+ * because both consumers want the same shape.
+ */
+function camelToSnakeClaimsForRefresh(c: IdTokenClaims): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (c.email !== undefined) out.email = c.email;
+  if (c.chatgptPlanType !== undefined) out.chatgpt_plan_type = c.chatgptPlanType;
+  if (c.chatgptAccountId !== undefined) out.chatgpt_account_id = c.chatgptAccountId;
+  if (c.chatgptUserId !== undefined) out.chatgpt_user_id = c.chatgptUserId;
+  if (c.chatgptAccountIsFedramp !== undefined) {
+    out.chatgpt_account_is_fedramp = c.chatgptAccountIsFedramp;
+  }
+  if (c.exp !== undefined) out.exp = c.exp;
+  if (c.iat !== undefined) out.iat = c.iat;
+  if (c.iss !== undefined) out.iss = c.iss;
+  if (c.aud !== undefined) out.aud = c.aud;
+  return out;
 }
