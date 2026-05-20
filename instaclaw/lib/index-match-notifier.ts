@@ -462,49 +462,60 @@ async function notifyOneSide(
     return { status: "already_notified" };
   }
 
-  // We own the claim. Send Telegram.
-  const sendRes = await sendTelegramMessage(
+  // We own the claim. Send Telegram (with #7 retry policy).
+  const sendRes = await sendTelegramMessageWithRetry(
     recipientVm.telegram_bot_token as string,
     recipientVm.telegram_chat_id as string,
     message,
   );
   if (!sendRes.ok) {
-    // Compensating revert — clear the claim so a future tick can retry.
-    // CAS on our exact claimedAt timestamp prevents clobbering a
-    // concurrent claim that may have superseded ours (e.g., if our
-    // Telegram took >1 cron interval and the next tick somehow saw
-    // NULL — shouldn't happen given the claim was set, but defense
-    // in depth).
+    // Terminal-vs-retryable branch (#7). For terminal failures the
+    // claim REMAINS SET — the lie is intentional: it stops the retry
+    // loop on the next poller tick (which would otherwise re-send to
+    // a chat that's blocked or doesn't exist, looping forever).
     //
-    // If the revert itself fails: we live with the lie. The claim is
-    // set but Telegram didn't deliver. Next tick skips this side
-    // (lost retry). The alternative is duplicate-Telegram on the
-    // next tick, which is worse for the user. Operator can spot this
-    // via `notify_*_failed` counter + Vercel logs.
-    logger.error("[index-notifier] telegram send failed; reverting claim", {
-      outcomeId: input.outcomeId,
-      vm: recipientVm.name,
-      error: sendRes.error,
-      httpStatus: sendRes.httpStatus,
-      claimedAt,
-    });
-    const { error: revertErr } = await sb
-      .from("matchpool_outcomes")
-      .update({ [input.column]: null })
-      .eq("outcome_id", input.outcomeId)
-      .eq(input.column, claimedAt);
-    if (revertErr) {
-      logger.error("[index-notifier] claim revert failed (claim remains set)", {
+    // For retryable failures (429/5xx/transport after the in-tick
+    // retry exhausted), the claim is CAS-reverted so the next tick
+    // can re-try. CAS on our exact claimedAt timestamp prevents
+    // clobbering a concurrent claim that may have superseded ours.
+    const isTerminal = shouldClaimRemainOnFailure(sendRes.error);
+    if (isTerminal) {
+      logger.warn("[index-notifier] telegram terminal failure; claim REMAINS SET (no retry)", {
         outcomeId: input.outcomeId,
         vm: recipientVm.name,
-        column: input.column,
-        revertError: revertErr.message,
+        error: sendRes.error,
+        httpStatus: sendRes.httpStatus,
+        detail: sendRes.detail,
+        rationale:
+          "claim acts as sentinel — leaving notified_*_at set stops the next-tick retry loop on a permanently-failing chat",
       });
+    } else {
+      logger.error("[index-notifier] telegram send failed; reverting claim for next-tick retry", {
+        outcomeId: input.outcomeId,
+        vm: recipientVm.name,
+        error: sendRes.error,
+        httpStatus: sendRes.httpStatus,
+        claimedAt,
+      });
+      const { error: revertErr } = await sb
+        .from("matchpool_outcomes")
+        .update({ [input.column]: null })
+        .eq("outcome_id", input.outcomeId)
+        .eq(input.column, claimedAt);
+      if (revertErr) {
+        logger.error("[index-notifier] claim revert failed (claim remains set unintentionally)", {
+          outcomeId: input.outcomeId,
+          vm: recipientVm.name,
+          column: input.column,
+          revertError: revertErr.message,
+        });
+      }
     }
     return {
       status: "failed",
       reason: sendRes.error,
       detail: sendRes.detail,
+      httpStatus: sendRes.httpStatus,
     };
   }
 
@@ -523,13 +534,31 @@ async function notifyOneSide(
 
 // ── Telegram Bot API ────────────────────────────────────────────────
 
+/** Shape returned by sendTelegramMessage on failure. */
+export interface TelegramSendFailure {
+  ok: false;
+  error: string;
+  httpStatus?: number;
+  detail?: string;
+  /** Parsed `parameters.retry_after` (seconds) from Telegram's 429
+   *  response body, if present. Used by sendTelegramMessageWithRetry
+   *  to honor Telegram's signaled backoff. */
+  retryAfterSec?: number;
+}
+
+/** Shape returned by sendTelegramMessage on success. */
+export interface TelegramSendSuccess {
+  ok: true;
+  messageId: number;
+}
+
+export type TelegramSendResult = TelegramSendSuccess | TelegramSendFailure;
+
 async function sendTelegramMessage(
   botToken: string,
   chatId: string,
   text: string,
-): Promise<
-  { ok: true; messageId: number } | { ok: false; error: string; httpStatus?: number; detail?: string }
-> {
+): Promise<TelegramSendResult> {
   let res: Response;
   try {
     res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -551,7 +580,12 @@ async function sendTelegramMessage(
     };
   }
   const body = await res.text();
-  let parsed: { ok?: boolean; result?: { message_id?: number }; description?: string };
+  let parsed: {
+    ok?: boolean;
+    result?: { message_id?: number };
+    description?: string;
+    parameters?: { retry_after?: number };
+  };
   try {
     parsed = JSON.parse(body);
   } catch {
@@ -564,8 +598,9 @@ async function sendTelegramMessage(
   }
   if (!parsed.ok) {
     // Map known Telegram error shapes to structured reason codes (#4).
-    // The full retry/terminal-suppression logic lives in #7, but we
-    // emit the right reason code here so #7 can discriminate.
+    // The retry / terminal-suppression decisions live in
+    // sendTelegramMessageWithRetry + shouldClaimRemainOnFailure (#7);
+    // here we just classify cleanly.
     //
     // Telegram error reference: https://core.telegram.org/api/errors
     //   • 403 "Forbidden: bot was blocked by the user" → terminal.
@@ -589,14 +624,156 @@ async function sendTelegramMessage(
     } else if (res.status >= 500 && res.status < 600) {
       reason = NOTIFY_FAILURE_REASONS.TELEGRAM_SERVER_ERROR;
     }
+    // Extract retry_after from Telegram's parameters block (#7).
+    // Telegram populates this on 429 to signal the wait time before
+    // a retry will succeed. Parsed defensively — only accept positive
+    // finite numbers.
+    let retryAfterSec: number | undefined = undefined;
+    const ra = parsed.parameters?.retry_after;
+    if (typeof ra === "number" && Number.isFinite(ra) && ra > 0) {
+      retryAfterSec = ra;
+    }
     return {
       ok: false,
       error: reason,
       httpStatus: res.status,
       detail: parsed.description?.slice(0, 200) ?? body.slice(0, 200),
+      retryAfterSec,
     };
   }
   return { ok: true, messageId: parsed.result?.message_id ?? 0 };
+}
+
+// ── Retry decision helpers (#7) ─────────────────────────────────────
+
+/** Max intra-tick wait for any single retry attempt. Caps both the
+ *  honored Retry-After value AND the 5xx fixed delay. Larger waits
+ *  belong on the NEXT poller tick (1 min later); intra-tick budget
+ *  is shared across all matches in the tick, so per-match latency
+ *  must stay bounded. */
+const TELEGRAM_RETRY_MAX_WAIT_MS = 3000;
+
+/** Default wait for 5xx retry (Telegram doesn't signal retry_after
+ *  on 5xx). Lower than the 429 cap because Telegram-side outages
+ *  rarely resolve in <3s; the next tick will retry anyway. */
+const TELEGRAM_5XX_RETRY_WAIT_MS = 1500;
+
+/**
+ * Pure helper: decide whether to retry a failed Telegram send and
+ * how long to wait. Exported for unit-testing the decision logic
+ * without needing a fetch mock.
+ *
+ * Retry policy:
+ *   • TELEGRAM_RATE_LIMITED (429) → retry once, honor retry_after
+ *     up to TELEGRAM_RETRY_MAX_WAIT_MS; fall back to default if
+ *     retry_after is missing.
+ *   • TELEGRAM_SERVER_ERROR (5xx) → retry once with fixed delay.
+ *   • TELEGRAM_TRANSPORT (fetch threw) → retry once with fixed
+ *     delay. Could be a transient DNS / TLS / TCP blip.
+ *   • Everything else → no retry. 403/400 are terminal (handled by
+ *     shouldClaimRemainOnFailure); other classes will retry on the
+ *     next poller tick anyway.
+ *
+ * The retry budget is ONE attempt total (so `attempt === 2` always
+ * returns no-retry). This keeps per-match latency bounded.
+ */
+export function decideTelegramRetry(
+  failure: { error: string; retryAfterSec?: number },
+  attempt: number,
+): { retry: boolean; waitMs: number; reason: "rate_limited" | "server_error" | "transport" | "no_retry" } {
+  if (attempt >= 2) {
+    return { retry: false, waitMs: 0, reason: "no_retry" };
+  }
+  if (failure.error === NOTIFY_FAILURE_REASONS.TELEGRAM_RATE_LIMITED) {
+    const requestedMs = failure.retryAfterSec ? failure.retryAfterSec * 1000 : TELEGRAM_5XX_RETRY_WAIT_MS;
+    return {
+      retry: true,
+      waitMs: Math.min(requestedMs, TELEGRAM_RETRY_MAX_WAIT_MS),
+      reason: "rate_limited",
+    };
+  }
+  if (failure.error === NOTIFY_FAILURE_REASONS.TELEGRAM_SERVER_ERROR) {
+    return {
+      retry: true,
+      waitMs: TELEGRAM_5XX_RETRY_WAIT_MS,
+      reason: "server_error",
+    };
+  }
+  if (failure.error === NOTIFY_FAILURE_REASONS.TELEGRAM_TRANSPORT) {
+    return {
+      retry: true,
+      waitMs: TELEGRAM_5XX_RETRY_WAIT_MS,
+      reason: "transport",
+    };
+  }
+  return { retry: false, waitMs: 0, reason: "no_retry" };
+}
+
+/**
+ * Pure helper: decide whether the optimistic claim (notified_*_at)
+ * should REMAIN SET after a failed Telegram send. Exported for unit
+ * testing.
+ *
+ * Terminal failures → claim remains set (stops the retry loop):
+ *   • TELEGRAM_BOT_BLOCKED — user blocked our bot; further sends will
+ *     fail identically until the user un-blocks. No point retrying.
+ *   • TELEGRAM_CHAT_NOT_FOUND — chat_id no longer exists (user
+ *     deleted account, etc.). Permanent.
+ *   • TELEGRAM_NON_JSON — Telegram returned malformed response.
+ *     Suggests a routing issue (wrong base URL?) more than a
+ *     transient blip — don't retry-loop forever.
+ *
+ * Non-terminal failures → claim should be REVERTED (next tick retries):
+ *   • TELEGRAM_RATE_LIMITED — Telegram-side throttle; will release.
+ *   • TELEGRAM_SERVER_ERROR — Telegram outage; will recover.
+ *   • TELEGRAM_TRANSPORT — fetch threw; transient.
+ *   • TELEGRAM_OTHER — uncategorized; conservatively retry.
+ */
+export function shouldClaimRemainOnFailure(reason: string): boolean {
+  return (
+    reason === NOTIFY_FAILURE_REASONS.TELEGRAM_BOT_BLOCKED ||
+    reason === NOTIFY_FAILURE_REASONS.TELEGRAM_CHAT_NOT_FOUND ||
+    reason === NOTIFY_FAILURE_REASONS.TELEGRAM_NON_JSON
+  );
+}
+
+/**
+ * Wrapper around sendTelegramMessage that applies the #7 retry policy
+ * (decideTelegramRetry). One additional attempt at most; bounded wait.
+ *
+ * Successful sends return immediately (no retry). Failed sends return
+ * the LAST attempt's failure (so the caller sees the most-recent
+ * Telegram response, not the first one).
+ */
+async function sendTelegramMessageWithRetry(
+  botToken: string,
+  chatId: string,
+  text: string,
+): Promise<TelegramSendResult> {
+  let lastFailure: TelegramSendFailure | null = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const res = await sendTelegramMessage(botToken, chatId, text);
+    if (res.ok) return res;
+    const decision = decideTelegramRetry(res, attempt);
+    if (!decision.retry) return res;
+    lastFailure = res;
+    logger.info("[index-notifier] telegram retry scheduled", {
+      attempt,
+      reason: decision.reason,
+      waitMs: decision.waitMs,
+      retryAfterSec: res.retryAfterSec,
+      httpStatus: res.httpStatus,
+    });
+    await new Promise((r) => setTimeout(r, decision.waitMs));
+  }
+  // Unreachable in practice — the loop returns inside its body either
+  // on ok=true OR when decision.retry=false. TypeScript needs the
+  // fallback for control-flow analysis.
+  return lastFailure ?? {
+    ok: false,
+    error: NOTIFY_FAILURE_REASONS.TELEGRAM_OTHER,
+    detail: "retry loop exited unexpectedly",
+  };
 }
 
 // ── Message construction ─────────────────────────────────────────────

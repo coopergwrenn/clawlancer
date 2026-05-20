@@ -33,7 +33,13 @@ for (const l of readFileSync(
   }
 }
 
-import { buildMatchNotificationMessage, notifyIndexMatch } from "../lib/index-match-notifier";
+import {
+  buildMatchNotificationMessage,
+  notifyIndexMatch,
+  decideTelegramRetry,
+  shouldClaimRemainOnFailure,
+  NOTIFY_FAILURE_REASONS,
+} from "../lib/index-match-notifier";
 import type { IndexOpportunitySummary } from "../lib/index-match-notifier";
 
 const argv = process.argv.slice(2);
@@ -304,6 +310,73 @@ async function main() {
   const nameRealOk = nameReal.includes("meet Carter.") && !nameReal.includes("someone in the directory");
   console.log(`  ${nameRealOk ? "✓ PASS" : "✗ FAIL"} — whitespace trimmed, real name preserved`);
   console.log();
+
+  // ── Telegram retry-policy tests (#7) ──
+  // Pure functions — no fetch mock needed.
+  let retryPass = 0;
+  let retryFail = 0;
+  const r = (cond: boolean, msg: string) => {
+    if (cond) { retryPass++; console.log(`  ✓ ${msg}`); }
+    else { retryFail++; console.log(`  ✗ ${msg}`); }
+  };
+
+  console.log("=== TEST: decideTelegramRetry policy ===\n");
+  // Attempt 2 always no-retry (budget exhausted)
+  const d2 = decideTelegramRetry({ error: NOTIFY_FAILURE_REASONS.TELEGRAM_RATE_LIMITED }, 2);
+  r(d2.retry === false, "attempt=2 → no retry (budget exhausted)");
+
+  // 429 with retry_after under the cap
+  const d429under = decideTelegramRetry(
+    { error: NOTIFY_FAILURE_REASONS.TELEGRAM_RATE_LIMITED, retryAfterSec: 2 },
+    1,
+  );
+  r(d429under.retry === true && d429under.waitMs === 2000, "429 retry_after=2s → retry, wait=2000ms (under 3s cap)");
+
+  // 429 with retry_after EXCEEDING the cap
+  const d429cap = decideTelegramRetry(
+    { error: NOTIFY_FAILURE_REASONS.TELEGRAM_RATE_LIMITED, retryAfterSec: 10 },
+    1,
+  );
+  r(d429cap.retry === true && d429cap.waitMs === 3000, "429 retry_after=10s → retry, wait CAPPED to 3000ms");
+
+  // 429 without retry_after → use default
+  const d429def = decideTelegramRetry({ error: NOTIFY_FAILURE_REASONS.TELEGRAM_RATE_LIMITED }, 1);
+  r(d429def.retry === true && d429def.waitMs === 1500, "429 no retry_after → retry, wait=1500ms default");
+
+  // 5xx → retry with default delay
+  const d5xx = decideTelegramRetry({ error: NOTIFY_FAILURE_REASONS.TELEGRAM_SERVER_ERROR }, 1);
+  r(d5xx.retry === true && d5xx.waitMs === 1500, "5xx → retry, wait=1500ms");
+
+  // transport → retry
+  const dtrans = decideTelegramRetry({ error: NOTIFY_FAILURE_REASONS.TELEGRAM_TRANSPORT }, 1);
+  r(dtrans.retry === true && dtrans.waitMs === 1500, "transport → retry, wait=1500ms");
+
+  // 403 → no retry
+  const d403 = decideTelegramRetry({ error: NOTIFY_FAILURE_REASONS.TELEGRAM_BOT_BLOCKED }, 1);
+  r(d403.retry === false, "403 bot_blocked → no retry");
+
+  // 400 chat_not_found → no retry
+  const d400 = decideTelegramRetry({ error: NOTIFY_FAILURE_REASONS.TELEGRAM_CHAT_NOT_FOUND }, 1);
+  r(d400.retry === false, "400 chat_not_found → no retry");
+
+  // non-JSON → no retry
+  const dnj = decideTelegramRetry({ error: NOTIFY_FAILURE_REASONS.TELEGRAM_NON_JSON }, 1);
+  r(dnj.retry === false, "non_json → no retry");
+
+  // other → no retry
+  const doth = decideTelegramRetry({ error: NOTIFY_FAILURE_REASONS.TELEGRAM_OTHER }, 1);
+  r(doth.retry === false, "telegram_other → no retry");
+
+  console.log("\n=== TEST: shouldClaimRemainOnFailure (terminal vs retryable) ===\n");
+  r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_BOT_BLOCKED) === true, "403 bot_blocked → claim REMAINS (terminal)");
+  r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_CHAT_NOT_FOUND) === true, "400 chat_not_found → claim REMAINS (terminal)");
+  r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_NON_JSON) === true, "non_json → claim REMAINS (terminal — routing issue)");
+  r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_RATE_LIMITED) === false, "429 → claim REVERTED (retry next tick)");
+  r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_SERVER_ERROR) === false, "5xx → claim REVERTED");
+  r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_TRANSPORT) === false, "transport → claim REVERTED");
+  r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_OTHER) === false, "other → claim REVERTED (conservatively retry)");
+
+  console.log(`\n[#7 retry/terminal policy] ${retryPass} passed, ${retryFail} failed\n`);
 
   if (!insertReal) {
     console.log("Run with --insert-test-row to actually fire end-to-end (will send real Telegram messages to cohort users with chat_id populated).");
