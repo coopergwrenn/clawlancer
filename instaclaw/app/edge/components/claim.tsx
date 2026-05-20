@@ -2,7 +2,7 @@ import Image from "next/image";
 import type { ReactNode } from "react";
 
 /**
- * "Meet your EdgeClaw agent" — claim card with copy on the left and the
+ * "Your village agent" — claim card with copy on the left and the
  * village illustration on the right. The CTA / form widget is provided by
  * the parent (so the SSR-resolved userState drives the right shape).
  */
@@ -28,14 +28,13 @@ export function Claim({ ctaSlot }: { ctaSlot: ReactNode }) {
           >
             Meet your agent
           </span>
-          <h2 className="section-title">Meet your EdgeClaw agent</h2>
+          <h2 className="section-title">Your village agent.</h2>
           <p
             className="font-sans text-[18px] leading-[1.55] max-w-[520px]"
             style={{ color: "var(--ink-soft)" }}
           >
-            We&apos;ll set up your OpenClaw a week before the village opens.
-            Onboarding takes ~10 minutes with voice or chat. Bring your own
-            goals.
+            Provisioned immediately. Onboarding takes ~10 minutes — voice or
+            chat. Bring your own goals.
           </p>
 
           <div className="max-w-md">{ctaSlot}</div>
@@ -46,7 +45,7 @@ export function Claim({ ctaSlot }: { ctaSlot: ReactNode }) {
           >
             By setting up your agent you agree to participate in the EE26
             research program.{" "}
-            <a href="#" className="underline">
+            <a href="/edge/consent" className="underline">
               Read the consent brief.
             </a>
           </div>

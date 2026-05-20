@@ -28,7 +28,7 @@ const PARTNERS: Partner[] = [
         </span>
       </div>
     ),
-    sub: "OpenClaw provisioning",
+    sub: "Per-attendee VMs & runtime",
     role: "A persistent agent instance, configured and running, for every resident on day one. The infrastructure that means you don't have to be technical to have an agent.",
     href: "https://instaclaw.io/",
   },

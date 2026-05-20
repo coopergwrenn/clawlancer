@@ -158,7 +158,7 @@ function DeployingPageContent() {
   const [steps, setSteps] = useState<DeployStep[]>([
     { id: "payment", label: "Payment confirmed", status: "done" },
     { id: "assign", label: "Assigning server", status: "active" },
-    { id: "configure", label: "Configuring OpenClaw", status: "pending" },
+    { id: "configure", label: "Configuring your agent", status: "pending" },
     { id: "telegram", label: "Connecting Telegram bot", status: "pending" },
     { id: "health", label: "Health check", status: "pending" },
   ]);
@@ -492,7 +492,7 @@ function DeployingPageContent() {
     setSteps([
       { id: "payment", label: "Payment confirmed", status: "done" },
       { id: "assign", label: "Assigning server", status: "done" },
-      { id: "configure", label: "Configuring OpenClaw", status: "active" },
+      { id: "configure", label: "Configuring your agent", status: "active" },
       { id: "telegram", label: "Connecting Telegram bot", status: "pending" },
       { id: "health", label: "Health check", status: "pending" },
     ]);

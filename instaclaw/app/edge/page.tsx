@@ -18,11 +18,11 @@ import { Claim } from "./components/claim";
 import { Footer } from "./components/footer";
 
 export const metadata = createMetadata({
-  title: "Edge Claw — Your Agent for Edge Esmeralda 2026",
+  title: "Your personal Edge Esmeralda 2026 agent",
   description:
-    "EdgeClaw is your personal agent for Edge Esmeralda 2026. Tell it what you're here for, and it finds the right people across the village while you stay present.",
+    "Every Edge Esmeralda 2026 attendee gets a personal AI agent for the 28-day village. Tell it what you're here for, and it finds the right people across the village while you stay present.",
   path: "/edge",
-  ogTitle: "Edge Claw · Your Agent for Edge Esmeralda 2026",
+  ogTitle: "Your personal Edge Esmeralda 2026 agent",
   ogImage: "/edge/og-edge.png",
 });
 
