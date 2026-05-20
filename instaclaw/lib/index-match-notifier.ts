@@ -554,7 +554,15 @@ export interface TelegramSendSuccess {
 
 export type TelegramSendResult = TelegramSendSuccess | TelegramSendFailure;
 
-async function sendTelegramMessage(
+/**
+ * Send a plain-text Telegram message via a VM's bot. Categorizes Telegram
+ * API failures into structured reason codes (NOTIFY_FAILURE_REASONS.*).
+ *
+ * Exported 2026-05-20 so the morning-brief cron (lib/edge-morning-brief.ts)
+ * can reuse the same transport + error categorization without copy-paste.
+ * The notifier still owns this; brief just consumes.
+ */
+export async function sendTelegramMessage(
   botToken: string,
   chatId: string,
   text: string,
