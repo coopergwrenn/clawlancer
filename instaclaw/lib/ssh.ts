@@ -24,6 +24,8 @@ import {
   SOUL_STUB_CONSENSUS,
   EDGE_INSTACLAW_OVERLAY_MD,
 } from "./partner-content";
+import { mintOrReuseApiKey } from "./edgeos-mint";
+import { EDGEOS_TENANT_EDGECITY_PROD } from "./edgeos-auth";
 import { injectGbrainSoulRoutingV1 } from "./workspace-templates-v2";
 import { GBRAIN_PARTNER_ALLOWLIST, isGbrainEligibleForVM } from "./vm-reconcile";
 import {
@@ -5866,6 +5868,109 @@ export async function configureOpenClaw(
       // SOLA_AUTH_TOKEN=PLACEHOLDER_WAITING_ON_TULE in .env. Inert; no
       // code reads it. Cleanup is optional.
       const edgeosToken = process.env.EDGEOS_BEARER_TOKEN || "";
+
+      // D3 (2026-05-20): mint a per-VM EdgeOS API key (eos_live_*) scoped
+      // to events:read for the Edge Esmeralda 2026 calendar. Separate from
+      // EDGEOS_BEARER_TOKEN — the bearer reads the ATTENDEE directory; the
+      // per-VM key reads CALENDAR / events. We persist the secret because
+      // EdgeOS shows it once at create time.
+      //
+      // Flow:
+      //   1. Read instaclaw_vms.{name, edgeos_api_key}. If the column
+      //      doesn't exist yet (pre-migration), skip minting cleanly.
+      //   2. If a key is already persisted, reuse it (idempotent).
+      //   3. If no key and we have a bearer in env, mint via
+      //      mintOrReuseApiKey with onConflict="suffix" (per Cooper's call —
+      //      orphan keys are acceptable; clean is better than reconciling
+      //      unknown state).
+      //   4. Persist the new fullKey to DB right after mint so a later
+      //      configure failure doesn't lose it (EdgeOS shows it once).
+      //   5. Any failure pushes a non-critical partial-failure — the agent
+      //      still works (attendee directory still functions via the
+      //      shared bearer); only calendar reads degrade.
+      let edgeosApiKey = "";
+      try {
+        const supabaseForEdgeOSKey = getSupabase();
+        const { data: vmRowForEdgeOS, error: vmRowErr } = await supabaseForEdgeOSKey
+          .from("instaclaw_vms")
+          .select("name, edgeos_api_key")
+          .eq("id", vm.id)
+          .single();
+
+        if (vmRowErr) {
+          // 42703 = column does not exist (pre-migration). Anything else
+          // is a real error worth surfacing as a non-critical failure.
+          const errCode = (vmRowErr as { code?: string }).code;
+          if (errCode === "42703" || /edgeos_api_key/.test(vmRowErr.message ?? "")) {
+            logger.info("EdgeOS api-key column not yet migrated — skipping mint", {
+              route: "lib/ssh",
+              vmId: vm.id,
+            });
+          } else {
+            recordFailure("edgeos_api_key_read", vmRowErr, false);
+          }
+        } else if (vmRowForEdgeOS?.edgeos_api_key) {
+          // Reuse the existing per-VM key. Idempotent — no mint, no DB write.
+          edgeosApiKey = vmRowForEdgeOS.edgeos_api_key;
+          logger.info("Reusing existing EdgeOS api-key for VM", {
+            route: "lib/ssh",
+            vmId: vm.id,
+            keyPrefix: edgeosApiKey.slice(0, 12) + "...",
+          });
+        } else if (edgeosToken && vmRowForEdgeOS?.name) {
+          // Mint a fresh key. Uses suffix-on-conflict so we always get a
+          // fullKey back (deterministic name returns null fullKey, suffix
+          // mode always mints + returns the secret).
+          const mint = await mintOrReuseApiKey(
+            {
+              bearer: edgeosToken,
+              vmName: vmRowForEdgeOS.name,
+              onConflict: "suffix",
+            },
+            { tenantId: EDGEOS_TENANT_EDGECITY_PROD, timeoutMs: 15_000 }
+          );
+          if (mint.ok && mint.fullKey) {
+            edgeosApiKey = mint.fullKey;
+            // Persist immediately — EdgeOS won't show this secret again.
+            const { error: persistErr } = await supabaseForEdgeOSKey
+              .from("instaclaw_vms")
+              .update({ edgeos_api_key: edgeosApiKey })
+              .eq("id", vm.id);
+            if (persistErr) {
+              // Catastrophic: we minted but couldn't persist. The orphan
+              // key on EdgeOS is inert (sweepable post-launch); the agent
+              // gets no calendar access this cycle. Surface loudly.
+              recordFailure("edgeos_api_key_persist", persistErr, false);
+              edgeosApiKey = ""; // don't deploy a key we couldn't persist
+            } else {
+              logger.info("Minted + persisted EdgeOS api-key", {
+                route: "lib/ssh",
+                vmId: vm.id,
+                vmName: vmRowForEdgeOS.name,
+                mode: mint.mode,
+                keyPrefix: edgeosApiKey.slice(0, 12) + "...",
+                edgeosKeyId: mint.apiKey.id,
+              });
+            }
+          } else if (!mint.ok) {
+            recordFailure(
+              "edgeos_api_key_mint",
+              new Error(`status=${mint.status} detail=${mint.detail ?? ""}`),
+              false
+            );
+          }
+        } else if (!edgeosToken) {
+          // No bearer set in env — non-blocking, just log so a fresh deploy
+          // without the secret doesn't silently skip the mint.
+          logger.warn("EDGEOS_BEARER_TOKEN missing — skipping per-VM key mint", {
+            route: "lib/ssh",
+            vmId: vm.id,
+          });
+        }
+      } catch (mintErr) {
+        recordFailure("edgeos_api_key_block", mintErr, false);
+      }
+
       // v80 InstaClaw operational overlay — additive to Tule's upstream
       // SKILL.md (which we don't modify). Tule's 30-min cron does
       // `git pull --ff-only`; the overlay file is untracked from upstream's
@@ -5897,6 +6002,20 @@ export async function configureOpenClaw(
         `  echo "EDGEOS_BEARER_TOKEN=${edgeosToken}" >> "$HOME/.openclaw/.env"`,
         ''
       );
+
+      // D3 (2026-05-20): deploy the per-VM EDGEOS_API_KEY to .env only
+      // when we have a value (post-mint or post-reuse from DB). Empty
+      // string means "skip" so a pre-migration / no-bearer / failed-mint
+      // run doesn't clobber a value that may have been written previously.
+      if (edgeosApiKey) {
+        scriptParts.push(
+          '# Set per-VM EDGEOS_API_KEY (eos_live_*) for events:read scope',
+          `grep -q "^EDGEOS_API_KEY=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
+          `  sed -i "s|^EDGEOS_API_KEY=.*|EDGEOS_API_KEY=${edgeosApiKey}|" "$HOME/.openclaw/.env" || \\`,
+          `  echo "EDGEOS_API_KEY=${edgeosApiKey}" >> "$HOME/.openclaw/.env"`,
+          ''
+        );
+      }
     }
 
     // Install Consensus 2026 skill UNIVERSALLY — every new signup gets it,
