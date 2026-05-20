@@ -141,9 +141,44 @@ export type NotifySideResult =
         | "missing_vm"
         | "missing_token"
         | "counterpart_unresolved"
-        | "expired";
+        | "expired"
+        | "malformed_payload";
     }
-  | { status: "failed"; reason: string; detail?: string };
+  | { status: "failed"; reason: string; detail?: string; httpStatus?: number };
+
+/**
+ * Known structured failure-reason codes that propagate up through the
+ * `{ status: "failed", reason: string }` branch of NotifySideResult.
+ * Telegram failures are classified into these so #7 (the structured
+ * 403/429 retry handler) can discriminate without re-parsing strings.
+ *
+ * Operators / tests should reference these constants rather than
+ * raw string literals to catch typos.
+ */
+export const NOTIFY_FAILURE_REASONS = {
+  /** Telegram 403 — user blocked the bot. Terminal; should not retry. */
+  TELEGRAM_BOT_BLOCKED: "telegram_403_bot_blocked",
+  /** Telegram 400 — chat_id doesn't exist (user deleted account, etc.) */
+  TELEGRAM_CHAT_NOT_FOUND: "telegram_400_chat_not_found",
+  /** Telegram 429 — flood control. Retry with backoff per Retry-After. */
+  TELEGRAM_RATE_LIMITED: "telegram_429_rate_limited",
+  /** Telegram 5xx — server error. Retry once. */
+  TELEGRAM_SERVER_ERROR: "telegram_5xx",
+  /** Telegram other — uncategorized. Generic retry-once. */
+  TELEGRAM_OTHER: "telegram_other",
+  /** fetch threw before Telegram responded (DNS, TCP, TLS). Retryable. */
+  TELEGRAM_TRANSPORT: "telegram_transport",
+  /** Telegram returned non-JSON. Treat as terminal — suggests routing issue. */
+  TELEGRAM_NON_JSON: "telegram_non_json",
+  /** Delivered but couldn't update notified_*_at. Terminal-without-retry-protection. */
+  DELIVERED_BUT_TRACKING_FAILED: "delivered_but_tracking_update_failed",
+  /** matchpool_outcomes row missing on re-fetch. Indicates upstream issue. */
+  OUTCOME_ROW_NOT_FOUND: "outcome_row_not_found",
+  /** Generic notifier exception (caught by caller). */
+  NOTIFIER_EXCEPTION: "notifier_exception",
+} as const;
+export type NotifyFailureReason =
+  (typeof NOTIFY_FAILURE_REASONS)[keyof typeof NOTIFY_FAILURE_REASONS];
 
 /**
  * Send notifications to BOTH matched users. Idempotent — running again
@@ -152,6 +187,46 @@ export type NotifySideResult =
  */
 export async function notifyIndexMatch(input: NotifyMatchInput): Promise<NotifyMatchResult> {
   const sb = getSupabase();
+
+  // Malformed-payload guard (#4). Yanek's opportunity payload is
+  // untrusted upstream data — Yanek could ship a schema change
+  // overnight or fire a buggy webhook with missing fields. Defensive
+  // shape-check BEFORE we try to do anything with the actors[] array.
+  // Same posture as the expiry gate: short-circuit BOTH sides cheaply
+  // (no DB query, no VM lookup, no Telegram call) and surface a clean
+  // skip reason so the operator sees the cause in the tally.
+  if (!input.opportunity || typeof input.opportunity !== "object") {
+    logger.warn("[index-notifier] malformed payload — opportunity not an object", {
+      outcomeId: input.outcomeId,
+      opportunityType: typeof input.opportunity,
+    });
+    return {
+      source: { status: "skipped", reason: "malformed_payload" },
+      candidate: { status: "skipped", reason: "malformed_payload" },
+    };
+  }
+  if (!Array.isArray(input.opportunity.actors)) {
+    logger.warn("[index-notifier] malformed payload — actors is not an array", {
+      outcomeId: input.outcomeId,
+      opportunityId: input.opportunity.id,
+      actorsType: typeof input.opportunity.actors,
+    });
+    return {
+      source: { status: "skipped", reason: "malformed_payload" },
+      candidate: { status: "skipped", reason: "malformed_payload" },
+    };
+  }
+  if (input.opportunity.actors.length < 2) {
+    logger.warn("[index-notifier] malformed payload — fewer than 2 actors", {
+      outcomeId: input.outcomeId,
+      opportunityId: input.opportunity.id,
+      actorCount: input.opportunity.actors.length,
+    });
+    return {
+      source: { status: "skipped", reason: "malformed_payload" },
+      candidate: { status: "skipped", reason: "malformed_payload" },
+    };
+  }
 
   // Opportunity-expiry gate (#15). If Yanek populated expiresAt and
   // that time has already passed, suppress BOTH sides — notifying
@@ -193,8 +268,8 @@ export async function notifyIndexMatch(input: NotifyMatchInput): Promise<NotifyM
       error: rowErr?.message,
     });
     return {
-      source: { status: "failed", reason: "outcome_row_not_found" },
-      candidate: { status: "failed", reason: "outcome_row_not_found" },
+      source: { status: "failed", reason: NOTIFY_FAILURE_REASONS.OUTCOME_ROW_NOT_FOUND },
+      candidate: { status: "failed", reason: NOTIFY_FAILURE_REASONS.OUTCOME_ROW_NOT_FOUND },
     };
   }
 
@@ -217,6 +292,46 @@ export async function notifyIndexMatch(input: NotifyMatchInput): Promise<NotifyM
       column: "notified_candidate_at",
     }),
   ]);
+
+  // ── Both-sides-missing-chat_id audit signal (#4) ──
+  //
+  // If BOTH users have no telegram_chat_id, the match is invisible —
+  // neither will see the Telegram notification, and there's no
+  // operator-facing signal unless we log one. Most likely cause: both
+  // users signed up but neither has DM'd their bot yet (chat_id only
+  // auto-populates on the first inbound message).
+  //
+  // For Edge Esmeralda launch day, this is the most common path to
+  // "match recorded but nobody knows" — onboarding wave delivers users
+  // who haven't tested their bot yet, then Yanek matches them, then
+  // they have no idea anything happened.
+  //
+  // Surface a structured log line every time it occurs. An audit
+  // script can grep these from Vercel logs OR a future cron can sweep
+  // matchpool_outcomes for rows with both notified_*_at = NULL after
+  // a grace window (the right long-term shape).
+  const sourceSkippedNoChatId =
+    sourceRes.status === "skipped" && sourceRes.reason === "missing_chat_id";
+  const candidateSkippedNoChatId =
+    candidateRes.status === "skipped" && candidateRes.reason === "missing_chat_id";
+  if (sourceSkippedNoChatId && candidateSkippedNoChatId) {
+    logger.warn("[index-notifier] BOTH sides missing chat_id — match invisible to both users", {
+      outcomeId: input.outcomeId,
+      opportunityId: input.opportunity.id,
+      sourceUserIdPrefix: input.sourceUserId.slice(0, 8),
+      candidateUserIdPrefix: input.candidateUserId.slice(0, 8),
+      remediation:
+        "users need to DM their bot at least once so chat_id auto-populates; retry will fire on next poller tick",
+    });
+  } else if (sourceSkippedNoChatId || candidateSkippedNoChatId) {
+    // One side missing — less critical but still worth a softer signal
+    // so the operator can see one-sided coverage gaps in the funnel.
+    logger.info("[index-notifier] one side missing chat_id (other delivered or pending)", {
+      outcomeId: input.outcomeId,
+      opportunityId: input.opportunity.id,
+      missingSide: sourceSkippedNoChatId ? "source" : "candidate",
+    });
+  }
 
   return { source: sourceRes, candidate: candidateRes };
 }
@@ -281,7 +396,10 @@ async function notifyOneSide(
     });
     return { status: "skipped", reason: "counterpart_unresolved" };
   }
-  const counterpartName = counterpartActor.name?.trim() || "someone in the directory";
+  // Pass raw counterpart name through to the message-builder, which
+  // applies capCounterpartName (handles empty/whitespace, literal-
+  // garbage strings like "null"/"undefined", and length cap).
+  const counterpartName = counterpartActor.name ?? "";
 
   const message = buildMatchNotificationMessage({
     counterpartName,
@@ -329,7 +447,7 @@ async function notifyOneSide(
     });
     return {
       status: "failed",
-      reason: "delivered_but_tracking_update_failed",
+      reason: NOTIFY_FAILURE_REASONS.DELIVERED_BUT_TRACKING_FAILED,
       detail: updateErr.message,
     };
   }
@@ -366,19 +484,54 @@ async function sendTelegramMessage(
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: "transport_failed", detail: msg.slice(0, 200) };
+    return {
+      ok: false,
+      error: NOTIFY_FAILURE_REASONS.TELEGRAM_TRANSPORT,
+      detail: msg.slice(0, 200),
+    };
   }
   const body = await res.text();
   let parsed: { ok?: boolean; result?: { message_id?: number }; description?: string };
   try {
     parsed = JSON.parse(body);
   } catch {
-    return { ok: false, error: "non_json_response", httpStatus: res.status, detail: body.slice(0, 200) };
-  }
-  if (!parsed.ok) {
     return {
       ok: false,
-      error: `telegram_api_${res.status}`,
+      error: NOTIFY_FAILURE_REASONS.TELEGRAM_NON_JSON,
+      httpStatus: res.status,
+      detail: body.slice(0, 200),
+    };
+  }
+  if (!parsed.ok) {
+    // Map known Telegram error shapes to structured reason codes (#4).
+    // The full retry/terminal-suppression logic lives in #7, but we
+    // emit the right reason code here so #7 can discriminate.
+    //
+    // Telegram error reference: https://core.telegram.org/api/errors
+    //   • 403 "Forbidden: bot was blocked by the user" → terminal.
+    //   • 403 "Forbidden: user is deactivated" → terminal.
+    //   • 400 "Bad Request: chat not found" → terminal (user deleted
+    //     account, or chat_id was wrong from the start).
+    //   • 429 "Too Many Requests" with retry_after → retry-with-backoff.
+    //   • 5xx → retry-once.
+    //   • everything else → generic-other.
+    const description = parsed.description?.toLowerCase() ?? "";
+    let reason: string = NOTIFY_FAILURE_REASONS.TELEGRAM_OTHER;
+    if (res.status === 403 || description.includes("blocked by the user") || description.includes("user is deactivated")) {
+      reason = NOTIFY_FAILURE_REASONS.TELEGRAM_BOT_BLOCKED;
+    } else if (
+      (res.status === 400 && description.includes("chat not found")) ||
+      description.includes("chat not found")
+    ) {
+      reason = NOTIFY_FAILURE_REASONS.TELEGRAM_CHAT_NOT_FOUND;
+    } else if (res.status === 429) {
+      reason = NOTIFY_FAILURE_REASONS.TELEGRAM_RATE_LIMITED;
+    } else if (res.status >= 500 && res.status < 600) {
+      reason = NOTIFY_FAILURE_REASONS.TELEGRAM_SERVER_ERROR;
+    }
+    return {
+      ok: false,
+      error: reason,
       httpStatus: res.status,
       detail: parsed.description?.slice(0, 200) ?? body.slice(0, 200),
     };
@@ -478,19 +631,56 @@ function buildMinimalFallbackMessage(safeName: string): string {
  *     the user reads "i think you should meet someone in the directory"
  *     rather than "i think you should meet ."
  */
+/**
+ * Sanitize + cap a counterpart name for inline rendering in the message.
+ * Single chokepoint — handles whitespace normalization, literal-garbage
+ * fallback (#4), and the length cap. Both notifyOneSide and direct
+ * callers of buildMatchNotificationMessage go through this path.
+ *
+ *   1. Empty / null / undefined → "someone in the directory".
+ *   2. Whitespace-only (incl. newlines, tabs) → same placeholder.
+ *      Whitespace runs are also collapsed to a single space so that
+ *      "Carter\n\nCleveland" renders as "Carter Cleveland" instead of
+ *      splitting the message across paragraphs.
+ *   3. Literal-garbage strings ("null", "undefined", "(unknown)",
+ *      "n/a", etc., case-insensitive) → placeholder. These suggest
+ *      upstream profile-lookup failure serialized as text by Yanek
+ *      (or any future partner). Without this, the message would read
+ *      "i think you should meet null." — visible upstream-bug
+ *      propagation.
+ *   4. Length cap at COUNTERPART_NAME_MAX_CHARS with a word-boundary
+ *      ellipsis. Sentence boundaries don't exist in names; word
+ *      boundary is the only meaningful break.
+ *
+ * Logs a structured warning on garbage detection so the operator sees
+ * the pattern in Vercel logs and can chase the upstream root cause.
+ */
 function capCounterpartName(name: string): string {
   if (!name) return "someone in the directory";
-  // Replace any whitespace run (including newlines, tabs) with a single
-  // space. Then trim leading/trailing.
-  const stripped = name.replace(/\s+/g, " ").trim();
-  if (!stripped) return "someone in the directory";
-  if (stripped.length <= COUNTERPART_NAME_MAX_CHARS) return stripped;
-  // Try a word-boundary cut so we don't slice "Christopher" → "Christop…"
-  // when "Chris" would do.
-  const cut = stripped.slice(0, COUNTERPART_NAME_MAX_CHARS);
+  // Collapse internal whitespace runs (incl. newlines, tabs) + trim
+  const normalized = name.replace(/\s+/g, " ").trim();
+  if (!normalized) return "someone in the directory";
+  // Literal-garbage detection (#4).
+  const lc = normalized.toLowerCase();
+  if (
+    lc === "null" ||
+    lc === "undefined" ||
+    lc === "(unknown)" ||
+    lc === "unknown" ||
+    lc === "n/a" ||
+    lc === "none"
+  ) {
+    logger.warn("[index-notifier] sanitized counterpart name (literal-garbage)", {
+      raw: normalized.slice(0, 40),
+    });
+    return "someone in the directory";
+  }
+  // Length cap with word-boundary ellipsis.
+  if (normalized.length <= COUNTERPART_NAME_MAX_CHARS) return normalized;
+  const cut = normalized.slice(0, COUNTERPART_NAME_MAX_CHARS);
   const lastSpace = cut.lastIndexOf(" ");
   if (lastSpace > COUNTERPART_NAME_MAX_CHARS * 0.6) {
-    return stripped.slice(0, lastSpace) + "…";
+    return normalized.slice(0, lastSpace) + "…";
   }
   return cut + "…";
 }

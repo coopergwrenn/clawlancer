@@ -334,6 +334,22 @@ export async function GET(req: NextRequest) {
     notify_candidate_delivered: 0,
     notify_candidate_skipped: 0,
     notify_candidate_failed: 0,
+    // #4: audit-signal counters. missing_chat_id is split out of the
+    // generic skipped bucket so the operator can see exactly how many
+    // matches are stuck waiting on user-side DM-to-bot vs. genuinely
+    // missing the VM / token / payload.
+    notify_source_missing_chat_id: 0,
+    notify_candidate_missing_chat_id: 0,
+    // both_sides_missing_chat_id_count counts MATCHES (not sides) where
+    // neither user has DM'd their bot. This is the "match invisible to
+    // both users" signal the operator most cares about pre-launch.
+    notify_both_sides_missing_chat_id: 0,
+    // Telegram-API-class buckets so we can see at a glance: are we
+    // hitting bot-blocked, rate-limit, or transport problems? #7
+    // builds on these.
+    notify_telegram_bot_blocked: 0,
+    notify_telegram_rate_limited: 0,
+    notify_telegram_server_error: 0,
   };
   const recordErrors: Array<{ opportunityId: string; reason: string; detail?: string }> = [];
   const notifyErrors: Array<{ opportunityId: string; side: "source" | "candidate"; reason: string; detail?: string }> = [];
@@ -367,8 +383,7 @@ export async function GET(req: NextRequest) {
             candidateUserId: result.candidateUserId,
             opportunity: opp,
           });
-          tallyNotifyResult(notifyRes.source, "source", recordSummary, notifyErrors, normalized.opportunityId);
-          tallyNotifyResult(notifyRes.candidate, "candidate", recordSummary, notifyErrors, normalized.opportunityId);
+          tallyMatchNotify(notifyRes, recordSummary, notifyErrors, normalized.opportunityId);
         } catch (err) {
           // Notifier exception — the match is still recorded (good); just
           // the notification failed. Both sides will be retried on the
@@ -397,8 +412,7 @@ export async function GET(req: NextRequest) {
               candidateUserId: row.candidate_user_id as string,
               opportunity: opp,
             });
-            tallyNotifyResult(notifyRes.source, "source", recordSummary, notifyErrors, normalized.opportunityId);
-            tallyNotifyResult(notifyRes.candidate, "candidate", recordSummary, notifyErrors, normalized.opportunityId);
+            tallyMatchNotify(notifyRes, recordSummary, notifyErrors, normalized.opportunityId);
           }
         } catch (err) {
           /* swallow — already_recorded means downstream state is fine */
@@ -615,20 +629,58 @@ function normalizeOpportunity(opp: IndexOpportunity): NormalizedOpportunity | nu
   };
 }
 
-// ── Notify tally helper ─────────────────────────────────────────────
-import type { NotifySideResult } from "@/lib/index-match-notifier";
+// ── Notify tally helpers ────────────────────────────────────────────
+import type { NotifyMatchResult, NotifySideResult } from "@/lib/index-match-notifier";
+import { NOTIFY_FAILURE_REASONS } from "@/lib/index-match-notifier";
+
+/** Type alias for the tally counters block so each function signature
+ *  doesn't repeat the bag-of-numbers shape. */
+type NotifyTally = {
+  notify_source_delivered: number;
+  notify_source_skipped: number;
+  notify_source_failed: number;
+  notify_candidate_delivered: number;
+  notify_candidate_skipped: number;
+  notify_candidate_failed: number;
+  notify_source_missing_chat_id: number;
+  notify_candidate_missing_chat_id: number;
+  notify_both_sides_missing_chat_id: number;
+  notify_telegram_bot_blocked: number;
+  notify_telegram_rate_limited: number;
+  notify_telegram_server_error: number;
+};
+
+/**
+ * Wrapper: tallies BOTH sides + the both-sides-missing-chat_id audit
+ * signal in one call. Replaces two-per-side tally calls at the call
+ * sites so the both-sides check is single-source-of-truth.
+ *
+ * The both-sides signal counts MATCHES (not sides) where neither user
+ * has DM'd their bot — the primary "match invisible to both users"
+ * failure mode for the Edge Esmeralda onboarding wave.
+ */
+function tallyMatchNotify(
+  result: NotifyMatchResult,
+  summary: NotifyTally,
+  errors: Array<{ opportunityId: string; side: "source" | "candidate"; reason: string; detail?: string }>,
+  opportunityId: string,
+): void {
+  tallyNotifyResult(result.source, "source", summary, errors, opportunityId);
+  tallyNotifyResult(result.candidate, "candidate", summary, errors, opportunityId);
+  if (
+    result.source.status === "skipped" &&
+    result.source.reason === "missing_chat_id" &&
+    result.candidate.status === "skipped" &&
+    result.candidate.reason === "missing_chat_id"
+  ) {
+    summary.notify_both_sides_missing_chat_id++;
+  }
+}
 
 function tallyNotifyResult(
   result: NotifySideResult,
   side: "source" | "candidate",
-  summary: {
-    notify_source_delivered: number;
-    notify_source_skipped: number;
-    notify_source_failed: number;
-    notify_candidate_delivered: number;
-    notify_candidate_skipped: number;
-    notify_candidate_failed: number;
-  },
+  summary: NotifyTally,
   errors: Array<{ opportunityId: string; side: "source" | "candidate"; reason: string; detail?: string }>,
   opportunityId: string,
 ): void {
@@ -640,10 +692,29 @@ function tallyNotifyResult(
   } else if (result.status === "skipped") {
     if (side === "source") summary.notify_source_skipped++;
     else summary.notify_candidate_skipped++;
+    // #4: split missing_chat_id out for audit visibility. It's the
+    // dominant skip reason in production (users who haven't DM'd
+    // their bot yet) and the operator needs the per-side count to
+    // know how many users to nudge.
+    if (result.reason === "missing_chat_id") {
+      if (side === "source") summary.notify_source_missing_chat_id++;
+      else summary.notify_candidate_missing_chat_id++;
+    }
     errors.push({ opportunityId, side, reason: result.reason });
   } else if (result.status === "failed") {
     if (side === "source") summary.notify_source_failed++;
     else summary.notify_candidate_failed++;
+    // #4: Telegram-API-class buckets — visible at-a-glance signal
+    // into the dominant Telegram failure mode. #7 builds on these
+    // (e.g., a spike in notify_telegram_rate_limited would justify
+    // backoff tuning).
+    if (result.reason === NOTIFY_FAILURE_REASONS.TELEGRAM_BOT_BLOCKED) {
+      summary.notify_telegram_bot_blocked++;
+    } else if (result.reason === NOTIFY_FAILURE_REASONS.TELEGRAM_RATE_LIMITED) {
+      summary.notify_telegram_rate_limited++;
+    } else if (result.reason === NOTIFY_FAILURE_REASONS.TELEGRAM_SERVER_ERROR) {
+      summary.notify_telegram_server_error++;
+    }
     errors.push({ opportunityId, side, reason: result.reason, detail: result.detail });
   }
 }

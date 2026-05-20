@@ -193,6 +193,118 @@ async function main() {
   console.log(`  ${malformedGateBypassed ? "✓ PASS" : "✗ FAIL"} — malformed expiresAt should fall through (defensive parse)`);
   console.log();
 
+  // ── Malformed-payload tests (#4) ──
+  // All three of these short-circuit BEFORE any DB / VM / Telegram
+  // call, so they're safe to run unconditionally with a fake outcomeId.
+
+  console.log("=== TEST: malformed payload — opportunity is null ===\n");
+  const nullOppRes = await notifyIndexMatch({
+    outcomeId: "00000000-0000-0000-0000-000000000000",
+    sourceUserId: "synthetic-source",
+    candidateUserId: "synthetic-candidate",
+    // deliberately bypass TS type check to simulate Yanek sending broken data
+    opportunity: null as unknown as IndexOpportunitySummary,
+  });
+  const nullOppOk =
+    nullOppRes.source.status === "skipped" &&
+    nullOppRes.source.reason === "malformed_payload" &&
+    nullOppRes.candidate.status === "skipped" &&
+    nullOppRes.candidate.reason === "malformed_payload";
+  console.log(`  source   : ${JSON.stringify(nullOppRes.source)}`);
+  console.log(`  candidate: ${JSON.stringify(nullOppRes.candidate)}`);
+  console.log(`  ${nullOppOk ? "✓ PASS" : "✗ FAIL"} — both sides should be {skipped, malformed_payload}`);
+  console.log();
+
+  console.log("=== TEST: malformed payload — actors is not an array ===\n");
+  const badActorsRes = await notifyIndexMatch({
+    outcomeId: "00000000-0000-0000-0000-000000000000",
+    sourceUserId: "synthetic-source",
+    candidateUserId: "synthetic-candidate",
+    opportunity: {
+      id: "synthetic-bad-actors",
+      actors: "not-an-array" as unknown as Array<{ userId: string }>,
+    } as IndexOpportunitySummary,
+  });
+  const badActorsOk =
+    badActorsRes.source.status === "skipped" &&
+    badActorsRes.source.reason === "malformed_payload";
+  console.log(`  source: ${JSON.stringify(badActorsRes.source)}`);
+  console.log(`  ${badActorsOk ? "✓ PASS" : "✗ FAIL"} — actors=string skips with malformed_payload`);
+  console.log();
+
+  console.log("=== TEST: malformed payload — single-actor opportunity ===\n");
+  const singleActorRes = await notifyIndexMatch({
+    outcomeId: "00000000-0000-0000-0000-000000000000",
+    sourceUserId: "synthetic-source",
+    candidateUserId: "synthetic-candidate",
+    opportunity: {
+      id: "synthetic-single-actor",
+      actors: [{ userId: "only-one-actor", role: "agent", name: "Lonely" }],
+    },
+  });
+  const singleActorOk =
+    singleActorRes.source.status === "skipped" &&
+    singleActorRes.source.reason === "malformed_payload";
+  console.log(`  source: ${JSON.stringify(singleActorRes.source)}`);
+  console.log(`  ${singleActorOk ? "✓ PASS" : "✗ FAIL"} — <2 actors skips with malformed_payload`);
+  console.log();
+
+  // ── Counterpart-name garbage-string tests (#4) ──
+  // capCounterpartName is internal — tested via buildMatchNotificationMessage.
+  console.log("=== DRY-RUN: counterpart name 'null' (literal-garbage) → placeholder ===\n");
+  const nameNull = buildMatchNotificationMessage({
+    counterpartName: "null",
+    counterpartIntent: "designing protocols",
+    reasoning: null,
+  });
+  console.log("---");
+  console.log(nameNull);
+  console.log("---");
+  const nameNullOk = nameNull.includes("someone in the directory") && !nameNull.includes("meet null");
+  console.log(`  ${nameNullOk ? "✓ PASS" : "✗ FAIL"} — 'null' substituted with placeholder`);
+  console.log();
+
+  console.log("=== DRY-RUN: counterpart name 'undefined' (literal-garbage) → placeholder ===\n");
+  const nameUndef = buildMatchNotificationMessage({
+    counterpartName: "undefined",
+    counterpartIntent: null,
+    reasoning: null,
+  });
+  const nameUndefOk = nameUndef.includes("someone in the directory") && !nameUndef.includes("meet undefined");
+  console.log(`  message includes placeholder: ${nameUndefOk}`);
+  console.log(`  ${nameUndefOk ? "✓ PASS" : "✗ FAIL"} — 'undefined' substituted`);
+  console.log();
+
+  console.log("=== DRY-RUN: counterpart name '(unknown)' → placeholder ===\n");
+  const nameUnk = buildMatchNotificationMessage({
+    counterpartName: "(unknown)",
+    counterpartIntent: null,
+    reasoning: null,
+  });
+  const nameUnkOk = nameUnk.includes("someone in the directory");
+  console.log(`  ${nameUnkOk ? "✓ PASS" : "✗ FAIL"} — '(unknown)' substituted`);
+  console.log();
+
+  console.log("=== DRY-RUN: counterpart name 'N/A' (case-insensitive) → placeholder ===\n");
+  const nameNa = buildMatchNotificationMessage({
+    counterpartName: "N/A",
+    counterpartIntent: null,
+    reasoning: null,
+  });
+  const nameNaOk = nameNa.includes("someone in the directory");
+  console.log(`  ${nameNaOk ? "✓ PASS" : "✗ FAIL"} — 'N/A' substituted (case-insensitive)`);
+  console.log();
+
+  console.log("=== DRY-RUN: counterpart name '  Carter  ' (real name, trimmed) → renders normally ===\n");
+  const nameReal = buildMatchNotificationMessage({
+    counterpartName: "  Carter  ",
+    counterpartIntent: null,
+    reasoning: null,
+  });
+  const nameRealOk = nameReal.includes("meet Carter.") && !nameReal.includes("someone in the directory");
+  console.log(`  ${nameRealOk ? "✓ PASS" : "✗ FAIL"} — whitespace trimmed, real name preserved`);
+  console.log();
+
   if (!insertReal) {
     console.log("Run with --insert-test-row to actually fire end-to-end (will send real Telegram messages to cohort users with chat_id populated).");
     return;
