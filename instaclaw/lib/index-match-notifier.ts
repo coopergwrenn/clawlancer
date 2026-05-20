@@ -719,21 +719,27 @@ export function decideTelegramRetry(
  *     fail identically until the user un-blocks. No point retrying.
  *   • TELEGRAM_CHAT_NOT_FOUND — chat_id no longer exists (user
  *     deleted account, etc.). Permanent.
- *   • TELEGRAM_NON_JSON — Telegram returned malformed response.
- *     Suggests a routing issue (wrong base URL?) more than a
- *     transient blip — don't retry-loop forever.
  *
  * Non-terminal failures → claim should be REVERTED (next tick retries):
  *   • TELEGRAM_RATE_LIMITED — Telegram-side throttle; will release.
  *   • TELEGRAM_SERVER_ERROR — Telegram outage; will recover.
  *   • TELEGRAM_TRANSPORT — fetch threw; transient.
+ *   • TELEGRAM_NON_JSON — reclassified retryable on 2026-05-19 (audit
+ *     P1 7b). Most non-JSON responses during a Telegram outage are
+ *     transient HTML pages (Cloudflare 502 error page, DDoS challenge,
+ *     maintenance) — treating them as terminal would permanently
+ *     suppress retries to affected users during a brief outage. Wrong-
+ *     domain routing bugs (the OTHER non-JSON cause) would re-trigger
+ *     on the next tick and would eventually surface via the 6h
+ *     high-failure-rate alert anyway. Net: retryable is the safer
+ *     default; the cost is at most one duplicate-message-on-recovery
+ *     edge case (negligible vs permanently dropping a real notification).
  *   • TELEGRAM_OTHER — uncategorized; conservatively retry.
  */
 export function shouldClaimRemainOnFailure(reason: string): boolean {
   return (
     reason === NOTIFY_FAILURE_REASONS.TELEGRAM_BOT_BLOCKED ||
-    reason === NOTIFY_FAILURE_REASONS.TELEGRAM_CHAT_NOT_FOUND ||
-    reason === NOTIFY_FAILURE_REASONS.TELEGRAM_NON_JSON
+    reason === NOTIFY_FAILURE_REASONS.TELEGRAM_CHAT_NOT_FOUND
   );
 }
 

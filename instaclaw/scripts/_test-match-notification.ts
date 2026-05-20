@@ -370,7 +370,7 @@ async function main() {
   console.log("\n=== TEST: shouldClaimRemainOnFailure (terminal vs retryable) ===\n");
   r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_BOT_BLOCKED) === true, "403 bot_blocked → claim REMAINS (terminal)");
   r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_CHAT_NOT_FOUND) === true, "400 chat_not_found → claim REMAINS (terminal)");
-  r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_NON_JSON) === true, "non_json → claim REMAINS (terminal — routing issue)");
+  r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_NON_JSON) === false, "non_json → claim REVERTED (P1 7b — Cloudflare-page-during-outage etc. is transient)");
   r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_RATE_LIMITED) === false, "429 → claim REVERTED (retry next tick)");
   r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_SERVER_ERROR) === false, "5xx → claim REVERTED");
   r(shouldClaimRemainOnFailure(NOTIFY_FAILURE_REASONS.TELEGRAM_TRANSPORT) === false, "transport → claim REVERTED");
