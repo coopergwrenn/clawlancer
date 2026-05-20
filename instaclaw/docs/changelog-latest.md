@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-20
 
-Window: `8cd9da775d9e11b3ae245de94796fff0e7aa18f7` → `HEAD` (HEAD = `bb68b8b8`)
+Window: `bb68b8b8009990abdf701bcf81f99759d88c00b9` → `HEAD` (HEAD = `50cdf39b`)
 Total commits: 3
 
-<!-- LAST_GENERATED_SHA: bb68b8b8009990abdf701bcf81f99759d88c00b9 -->
+<!-- LAST_GENERATED_SHA: 50cdf39b0f69bc17a7d797a07a51c6578e72c97b -->
 
 ## Summary
 
@@ -18,12 +18,12 @@ Total commits: 3
 
 ## What changed for users
 
-- `6d914ebb` 2026-05-19 — feat(edge): add /edge/consent page for EE26 research participation [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `a04df038` 2026-05-19 — feat(edge): thread EdgePartnerBanner through /plan and /deploying [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `bb68b8b8` 2026-05-19 — feat(index-poller): error classification + retry + threshold alert (Rule 49 dedup) [2 files] _(ai-assisted)_
-- `7df62373` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `50cdf39b` 2026-05-19 — fix(gbrain): SHA-length comparison bug in install verify + error serialization [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `3235cb69` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,11 +33,11 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `bb68b8b8` 2026-05-19 — feat(index-poller): error classification + retry + threshold alert (Rule 49 dedup) [2 files] _(ai-assisted)_
+- `50cdf39b` 2026-05-19 — fix(gbrain): SHA-length comparison bug in install verify + error serialization [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
 
 ### Feature (user-facing) (1)
 
-- `6d914ebb` 2026-05-19 — feat(edge): add /edge/consent page for EE26 research participation [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `a04df038` 2026-05-19 — feat(edge): thread EdgePartnerBanner through /plan and /deploying [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,23 +45,23 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `7df62373` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `3235cb69` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `6d914ebb` 2026-05-19 — [feature, edge] — feat(edge): add /edge/consent page for EE26 research participation
+- `50cdf39b` 2026-05-19 — [infrastructure, edge] — fix(gbrain): SHA-length comparison bug in install verify + error serialization
 
 ## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `6d914ebb` 2026-05-19 — feat(edge): add /edge/consent page for EE26 research participation
-- `bb68b8b8` 2026-05-19 — feat(index-poller): error classification + retry + threshold alert (Rule 49 dedup)
+- `a04df038` 2026-05-19 — feat(edge): thread EdgePartnerBanner through /plan and /deploying
+- `50cdf39b` 2026-05-19 — fix(gbrain): SHA-length comparison bug in install verify + error serialization
 
 ## Appendix — every commit (chronological)
 
-- `7df62373` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
-- `6d914ebb` 2026-05-19 — feat(edge): add /edge/consent page for EE26 research participation [1 files] _(multi: [feature, edge]; ai-assisted)_
-- `bb68b8b8` 2026-05-19 — feat(index-poller): error classification + retry + threshold alert (Rule 49 dedup) [2 files] _(ai-assisted)_
+- `3235cb69` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `a04df038` 2026-05-19 — feat(edge): thread EdgePartnerBanner through /plan and /deploying [2 files] _(ai-assisted)_
+- `50cdf39b` 2026-05-19 — fix(gbrain): SHA-length comparison bug in install verify + error serialization [3 files] _(multi: [infrastructure, edge]; ai-assisted)_
