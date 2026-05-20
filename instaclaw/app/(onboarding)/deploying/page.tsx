@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, AlertCircle, RotateCcw } from "lucide-react";
-import { EdgePartnerBanner } from "@/components/marketing/edge-partner-banner";
+import { EdgePartnerBanner, usePartnerCookie } from "@/components/marketing/edge-partner-banner";
 
 type StepStatus = "pending" | "active" | "done" | "error";
 
@@ -155,6 +155,12 @@ function RotatingMessage({ messages }: { messages: string[] }) {
 function DeployingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // Edge attendees don't pay (their plan is covered by the village partnership),
+  // so "Payment confirmed" reads wrong. Swap the label at render time once the
+  // partner cookie resolves. Non-edge users see the default copy on first paint
+  // and forever after.
+  const partner = usePartnerCookie();
+  const isEdge = partner === "edge_city";
   const [steps, setSteps] = useState<DeployStep[]>([
     { id: "payment", label: "Payment confirmed", status: "done" },
     { id: "assign", label: "Assigning server", status: "active" },
@@ -521,6 +527,11 @@ function DeployingPageContent() {
 
   // ---- Render helper: what text to show for a step ----
   function renderStepContent(step: DeployStep) {
+    // Edge attendees see "Plan selected" instead of "Payment confirmed" for
+    // the first step — they didn't pay; their plan is covered by the village.
+    const label =
+      isEdge && step.id === "payment" ? "Plan selected" : step.label;
+
     if (step.status === "active") {
       // Steps with rotating messages get the crossfade
       const messages = ROTATING_MESSAGES[step.id];
@@ -528,7 +539,7 @@ function DeployingPageContent() {
         return <RotatingMessage messages={messages} />;
       }
       // Fast steps (payment, assign) just show static shimmer label
-      return <span className="shimmer-text">{step.label}</span>;
+      return <span className="shimmer-text">{label}</span>;
     }
 
     // Done / pending / error — static text
@@ -541,7 +552,7 @@ function DeployingPageContent() {
         className="transition-colors duration-500"
         style={{ color }}
       >
-        {step.label}
+        {label}
       </span>
     );
   }
