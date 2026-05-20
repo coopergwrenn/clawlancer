@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-20
 
-Window: `f8ca33a2f5f95dc8f383650721ff18b30f210237` → `HEAD` (HEAD = `952ddca6`)
+Window: `952ddca607f91a216b43fd2f3fc78930e7e8baaa` → `HEAD` (HEAD = `a0137200`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 952ddca607f91a216b43fd2f3fc78930e7e8baaa -->
+<!-- LAST_GENERATED_SHA: a013720012525a3132828b6fa5e57d70e9d1678b -->
 
 ## Summary
 
@@ -13,7 +13,7 @@ Total commits: 2
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `952ddca6` 2026-05-19 — test(village): schema-alignment regression test against live broadcasts (#6) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `9856be3c` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `a0137200` 2026-05-20 — chore: promote migration 20260520000000 (Rule 56) [2 files]
+- `ae28f9ba` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `952ddca6` 2026-05-19 — test(village): schema-alignment regression test against live broadcasts (#6) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `a0137200` 2026-05-20 — chore: promote migration 20260520000000 (Rule 56) [2 files]
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,9 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `9856be3c` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `952ddca6` 2026-05-19 — [infrastructure, edge] — test(village): schema-alignment regression test against live broadcasts (#6)
-
-## AI-assisted commits (1)
-
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
-
-- `952ddca6` 2026-05-19 — test(village): schema-alignment regression test against live broadcasts (#6)
+- `ae28f9ba` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Appendix — every commit (chronological)
 
-- `9856be3c` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
-- `952ddca6` 2026-05-19 — test(village): schema-alignment regression test against live broadcasts (#6) [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `ae28f9ba` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `a0137200` 2026-05-20 — chore: promote migration 20260520000000 (Rule 56) [2 files]
