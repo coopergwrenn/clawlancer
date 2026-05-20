@@ -73,6 +73,7 @@ import { logger } from "@/lib/logger";
 import { recordIndexMatch } from "@/lib/index-match-recorder";
 import { notifyIndexMatch } from "@/lib/index-match-notifier";
 import { getSupabase } from "@/lib/supabase";
+import { sendAdminAlertEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -136,6 +137,127 @@ interface AgentPollResult {
   count: number;
   opportunities: IndexOpportunity[];
   errorBody?: string;
+  /** Classified failure kind (only set when status !== 200). */
+  errorClass?: PollErrorClass;
+  /** Whether this result is from a retried attempt (only set on retry). */
+  retried?: boolean;
+}
+
+/**
+ * Failure-mode classification — keeps "Yanek is down" distinguishable
+ * from "one VM has a dead key" in the alert log + emails.
+ *
+ *   • connect_timeout — undici UND_ERR_CONNECT_TIMEOUT (Yanek's endpoint
+ *     unreachable, e.g. Railway deploy mid-flux)
+ *   • tls_error       — TLS handshake / cert validation failure (e.g.
+ *     2026-05-19 *.up.railway.app cert on the custom domain)
+ *   • dns_failure     — ENOTFOUND / EAI_AGAIN
+ *   • http_4xx        — 400-499 (likely per-VM auth: key revoked, etc.)
+ *   • http_5xx        — Yanek's server returned 500+
+ *   • http_other      — 1xx / 3xx anything else
+ *   • transport_other — fetch threw, no specific signature matched
+ */
+export type PollErrorClass =
+  | "connect_timeout"
+  | "tls_error"
+  | "dns_failure"
+  | "http_4xx"
+  | "http_5xx"
+  | "http_other"
+  | "transport_other";
+
+/** Decide which failure classes are worth a retry. */
+const RETRYABLE_CLASSES: ReadonlySet<PollErrorClass> = new Set([
+  "http_5xx",
+  "connect_timeout",
+  "transport_other",
+]);
+
+const POLL_RETRY_DELAY_MS = 1500;
+
+/**
+ * Classify a poll outcome. `status === 0` means fetch threw (no HTTP
+ * response); fall back to message-text heuristics over `errorBody`.
+ * Exported so the dry-run verification test can exercise this without
+ * spinning up the whole route.
+ */
+export function classifyPollError(status: number, errorBody: string): PollErrorClass {
+  if (status >= 400 && status < 500) return "http_4xx";
+  if (status >= 500 && status < 600) return "http_5xx";
+  if (status === 0) {
+    const lc = errorBody.toLowerCase();
+    if (
+      lc.includes("und_err_connect_timeout") ||
+      lc.includes("connect_timeout") ||
+      (lc.includes("connect") && lc.includes("timeout"))
+    ) {
+      return "connect_timeout";
+    }
+    if (
+      lc.includes("cert") ||
+      lc.includes("tls") ||
+      lc.includes("ssl") ||
+      lc.includes("self signed") ||
+      lc.includes("subjectaltname") ||
+      lc.includes("does not match")
+    ) {
+      return "tls_error";
+    }
+    if (
+      lc.includes("enotfound") ||
+      lc.includes("eai_again") ||
+      lc.includes("getaddrinfo") ||
+      lc.includes("dns")
+    ) {
+      return "dns_failure";
+    }
+    return "transport_other";
+  }
+  return "http_other";
+}
+
+/**
+ * From an array of poll results, decide if a fleet-level alert should
+ * fire and what its dominant error class is. Pure — no DB / no email.
+ * Exported so verification tests can dry-run against synthetic input
+ * matching today's actual outage state.
+ */
+export function classifyPollBatch(results: AgentPollResult[]): {
+  shouldAlert: boolean;
+  failureRate: number;
+  failureCount: number;
+  total: number;
+  dominantClass: PollErrorClass | "none";
+  dominantCount: number;
+  classCounts: Record<string, number>;
+} {
+  const total = results.length;
+  const failures = results.filter((r) => r.status !== 200);
+  const failureCount = failures.length;
+  const failureRate = total === 0 ? 0 : failureCount / total;
+  const classCounts: Record<string, number> = {};
+  let dominantClass: PollErrorClass | "none" = "none";
+  let dominantCount = 0;
+  for (const f of failures) {
+    const cls = f.errorClass ?? "transport_other";
+    classCounts[cls] = (classCounts[cls] ?? 0) + 1;
+    if (classCounts[cls] > dominantCount) {
+      dominantCount = classCounts[cls];
+      dominantClass = cls as PollErrorClass;
+    }
+  }
+  // Threshold: alert if MORE THAN 50% of agents are failing. Equal
+  // 50/50 split is borderline-noisy and we'd rather wait another tick.
+  const shouldAlert = total > 0 && failureRate > 0.5;
+  return {
+    shouldAlert,
+    failureRate,
+    failureCount,
+    total,
+    dominantClass,
+    dominantCount,
+    classCounts,
+  };
 }
 
 export async function GET(req: NextRequest) {
@@ -311,12 +433,38 @@ export async function GET(req: NextRequest) {
   // Per-agent errors (not recordIndexMatch failures — those are per-opp above)
   const pollErrors = pollResults
     .filter((p) => p.status !== 200)
-    .map((p) => ({ agent: p.vmName, status: p.status, body: p.errorBody?.slice(0, 150) }));
+    .map((p) => ({
+      agent: p.vmName,
+      status: p.status,
+      errorClass: p.errorClass,
+      retried: p.retried ?? false,
+      body: p.errorBody?.slice(0, 150),
+    }));
 
-  if (recordSummary.recorded > 0 || recordSummary.failed > 0 || pollErrors.length > 0) {
+  // ── Threshold-based admin alert (#5, Rule 49 dedup pattern) ──
+  //
+  // If MORE THAN 50% of agents failed in this tick, fire a 6h-deduped
+  // admin alert. Alert key encodes the dominant error class so a shift
+  // from connect_timeout → tls_error mid-outage re-fires the alert
+  // (new signal).
+  //
+  // Best-effort: failure of the alert path must NOT corrupt the
+  // poller's response or block subsequent ticks. Try/catch outermost.
+  let alertOutcome: AlertOutcome = { fired: false, suppressed: false, reason: "below_threshold" };
+  try {
+    alertOutcome = await maybeFireHighFailureAlert(pollResults);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("[index-poller] alert path threw (swallowed)", {
+      error: msg.slice(0, 200),
+    });
+  }
+
+  if (recordSummary.recorded > 0 || recordSummary.failed > 0 || pollErrors.length > 0 || alertOutcome.fired) {
     logger.info("[index-poller] tick complete", {
       agents_polled: agents.length,
       agents_with_errors: pollErrors.length,
+      alert: alertOutcome,
       ...recordSummary,
     });
   }
@@ -325,6 +473,7 @@ export async function GET(req: NextRequest) {
     ok: true,
     summary: recordSummary,
     poll_errors: pollErrors,
+    alert: alertOutcome,
     record_errors: recordErrors.slice(0, 10),
     notify_errors: notifyErrors.slice(0, 10),
   });
@@ -332,7 +481,15 @@ export async function GET(req: NextRequest) {
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-async function pollOne(
+/**
+ * Single GET attempt against Yanek's /api/opportunities. Returns the
+ * normalized result. Caller decides whether to retry.
+ *
+ * Node's fetch wraps undici errors in `.cause`; we unwrap so the
+ * resulting `errorBody` carries enough signature for classifyPollError
+ * to distinguish connect_timeout from TLS issues from DNS issues.
+ */
+async function singlePoll(
   url: string,
   vmName: string,
   apiKey: string,
@@ -350,9 +507,55 @@ async function pollOne(
     const opps = Array.isArray(parsed.opportunities) ? parsed.opportunities : [];
     return { vmName, status: 200, count: opps.length, opportunities: opps };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { vmName, status: 0, count: 0, opportunities: [], errorBody: msg.slice(0, 150) };
+    let msg = err instanceof Error ? err.message : String(err);
+    // Unwrap the underlying undici / Node cause if present — undici sets
+    // err.cause with code = UND_ERR_CONNECT_TIMEOUT, EAI_AGAIN, etc.
+    // Without the unwrap, top-level err.message is "fetch failed" which
+    // classifies as transport_other (loses signal).
+    const cause = (err as { cause?: unknown })?.cause as
+      | { message?: string; code?: string }
+      | undefined;
+    if (cause) {
+      const causeParts: string[] = [];
+      if (cause.code) causeParts.push(`code=${cause.code}`);
+      if (cause.message) causeParts.push(cause.message);
+      if (causeParts.length > 0) msg += " | cause: " + causeParts.join(" ");
+    }
+    return { vmName, status: 0, count: 0, opportunities: [], errorBody: msg.slice(0, 300) };
   }
+}
+
+/**
+ * Wrap singlePoll with: error classification + retry-once-with-backoff
+ * for retryable classes (http_5xx, connect_timeout, transport_other).
+ *
+ * Non-retryable failures (http_4xx, tls_error, dns_failure, http_other)
+ * surface immediately — the operator cares about distinguishing "Yanek's
+ * endpoint is flaking" (retryable, often recovers) from "this VM has
+ * a dead key" (4xx, permanent until reprovision).
+ */
+async function pollOne(
+  url: string,
+  vmName: string,
+  apiKey: string,
+  attempt: number = 1,
+): Promise<AgentPollResult> {
+  const r = await singlePoll(url, vmName, apiKey);
+  if (r.status === 200) {
+    return attempt > 1 ? { ...r, retried: true } : r;
+  }
+  const errClass = classifyPollError(r.status, r.errorBody ?? "");
+  if (attempt === 1 && RETRYABLE_CLASSES.has(errClass)) {
+    logger.info("[index-poller] retrying after retryable error", {
+      vmName,
+      errClass,
+      status: r.status,
+      delayMs: POLL_RETRY_DELAY_MS,
+    });
+    await new Promise((res) => setTimeout(res, POLL_RETRY_DELAY_MS));
+    return pollOne(url, vmName, apiKey, attempt + 1);
+  }
+  return { ...r, errorClass: errClass, retried: attempt > 1 };
 }
 
 interface NormalizedOpportunity {
@@ -443,4 +646,203 @@ function tallyNotifyResult(
     else summary.notify_candidate_failed++;
     errors.push({ opportunityId, side, reason: result.reason, detail: result.detail });
   }
+}
+
+// ── High-failure threshold alert (#5, Rule 49 dedup) ───────────────
+
+interface AlertOutcome {
+  fired: boolean;
+  suppressed: boolean;
+  /**
+   * One of:
+   *   - "below_threshold"     ≤50% failure
+   *   - "no_agents"           empty input
+   *   - "sent"                first fire in 6h window — email sent + log row inserted
+   *   - "deduped"             same key fired within 6h — log row inserted, email skipped
+   *   - "send_failed"         dedup row written but email send threw
+   */
+  reason:
+    | "below_threshold"
+    | "no_agents"
+    | "sent"
+    | "deduped"
+    | "send_failed";
+  alertKey?: string;
+  failureRate?: number;
+  failureCount?: number;
+  total?: number;
+  dominantClass?: PollErrorClass | "none";
+  classCounts?: Record<string, number>;
+}
+
+/**
+ * If the poll batch has >50% failure rate, fire a 6h-deduped admin
+ * alert. Pattern mirrors lib/enospc-guard.ts:sendEnospcAlertDeduped
+ * and lib/vm-reconcile.ts:sendVMReadyEmail (record-before-send to
+ * prevent races; insert a "suppressed" row when deduped so the log
+ * still captures every threshold breach for forensics).
+ *
+ * Alert key encodes the DOMINANT error class so a shift from
+ * connect_timeout → tls_error mid-outage produces a NEW alert (it's
+ * new information). Per-class dedup is more useful than a single
+ * monolithic "poller-down" key.
+ */
+async function maybeFireHighFailureAlert(
+  results: AgentPollResult[],
+): Promise<AlertOutcome> {
+  const summary = classifyPollBatch(results);
+  if (summary.total === 0) {
+    return { fired: false, suppressed: false, reason: "no_agents" };
+  }
+  if (!summary.shouldAlert) {
+    return {
+      fired: false,
+      suppressed: false,
+      reason: "below_threshold",
+      failureRate: summary.failureRate,
+      failureCount: summary.failureCount,
+      total: summary.total,
+    };
+  }
+
+  const alertKey = `index_poller_high_failure_rate:${summary.dominantClass}`;
+  const sb = getSupabase();
+  const sixHoursAgoIso = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+
+  // Dedup check — has this exact key fired within last 6h?
+  let recentlySent = false;
+  try {
+    const { data } = await sb
+      .from("instaclaw_admin_alert_log")
+      .select("id")
+      .eq("alert_key", alertKey)
+      .gte("sent_at", sixHoursAgoIso)
+      .limit(1);
+    recentlySent = (data?.length ?? 0) > 0;
+  } catch (err) {
+    // Dedup-table missing or transient — proceed without dedup. Better
+    // to over-alert on a first signal than miss it. Matches the
+    // enospc-guard and vm-ready paths' failure mode.
+    logger.warn("[index-poller] dedup query failed; proceeding to send", {
+      alertKey,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  if (recentlySent) {
+    // Log the suppression for forensics — operator can still see that
+    // a threshold breach happened on this tick by scanning details.
+    try {
+      await sb.from("instaclaw_admin_alert_log").insert({
+        alert_key: alertKey,
+        vm_count: summary.failureCount,
+        details: `suppressed (dedup): ${summary.failureCount}/${summary.total} agents failing, dominant=${summary.dominantClass}, classes=${JSON.stringify(summary.classCounts)}`,
+      });
+    } catch {
+      /* log-insert failed; non-fatal */
+    }
+    return {
+      fired: false,
+      suppressed: true,
+      reason: "deduped",
+      alertKey,
+      failureRate: summary.failureRate,
+      failureCount: summary.failureCount,
+      total: summary.total,
+      dominantClass: summary.dominantClass,
+      classCounts: summary.classCounts,
+    };
+  }
+
+  // First fire in 6h — record BEFORE sending email so two near-
+  // simultaneous ticks don't both alert. Insert failure is non-fatal:
+  // the operator gets the email either way; only the dedup safety net
+  // weakens, which we can live with on a poller that runs once/min.
+  try {
+    await sb.from("instaclaw_admin_alert_log").insert({
+      alert_key: alertKey,
+      vm_count: summary.failureCount,
+      details: `sent: index poller ${summary.failureCount}/${summary.total} agents failing (${Math.round(summary.failureRate * 100)}%), dominant=${summary.dominantClass}, classes=${JSON.stringify(summary.classCounts)}`,
+    });
+  } catch (err) {
+    logger.warn("[index-poller] alert log insert failed; sending anyway", {
+      alertKey,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // Build email body. Include per-class breakdown + 3-VM sample +
+  // dominant-class-specific triage guidance so the operator can act
+  // without re-deriving context.
+  const subject = `[Index Poller] ${summary.failureCount}/${summary.total} agents failing (${summary.dominantClass})`;
+  const sample = results
+    .filter((r) => r.status !== 200)
+    .slice(0, 3)
+    .map(
+      (r) =>
+        `  • ${r.vmName.padEnd(20)} status=${r.status} class=${r.errorClass} body=${(r.errorBody ?? "").slice(0, 120)}`,
+    )
+    .join("\n");
+  const triage =
+    summary.dominantClass === "connect_timeout"
+      ? "→ Yanek's endpoint (protocol.dev.index.network) is likely unreachable. Verify: curl -I https://protocol.dev.index.network/mcp. Ping Yanek if his deploy/Railway is mid-flux."
+      : summary.dominantClass === "tls_error"
+        ? "→ TLS cert issue on Yanek's side. The custom domain mapping may be misconfigured (seen 2026-05-19: *.up.railway.app cert served on protocol.dev.index.network). Ping Yanek."
+        : summary.dominantClass === "dns_failure"
+          ? "→ DNS resolution failing. Probably transient. If persistent, check Vercel function region's resolver or Yanek's domain config."
+          : summary.dominantClass === "http_4xx"
+            ? "→ Per-VM key issue. Likely some keys were invalidated. Run scripts/_probe-mcp-tool-call.ts to identify dead keys, then scripts/_reprovision-index-keys.ts ONLY after confirming Yanek's rotateKey:boolean param is available (calling /signup blind rotates keys)."
+            : summary.dominantClass === "http_5xx"
+              ? "→ Yanek's server is returning 500s. Probably transient — watch over the next 15-30 min."
+              : "→ Mixed/unknown failures. See per-class breakdown above; correlate with the 3-VM sample.";
+  const body =
+    `Index poller tick at ${new Date().toISOString()} saw ${summary.failureCount}/${summary.total} agents fail (${Math.round(summary.failureRate * 100)}%).\n` +
+    `\n` +
+    `Dominant error class: ${summary.dominantClass} (${summary.classCounts[summary.dominantClass as string] ?? 0} agents)\n` +
+    `\n` +
+    `Per-class breakdown:\n` +
+    Object.entries(summary.classCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cls, count]) => `  • ${cls.padEnd(20)} ${count} agents`)
+      .join("\n") +
+    `\n\n` +
+    `Sample failures (first 3):\n${sample}\n` +
+    `\n` +
+    `Triage:\n${triage}\n` +
+    `\n` +
+    `Alert key: ${alertKey}\n` +
+    `Dedup window: 6h (next alert for THIS class suppressed until ${new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()})\n` +
+    `A shift in dominant class within the window WILL re-alert.\n`;
+
+  try {
+    await sendAdminAlertEmail(subject, body);
+  } catch (err) {
+    logger.error("[index-poller] sendAdminAlertEmail failed", {
+      alertKey,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      fired: false,
+      suppressed: false,
+      reason: "send_failed",
+      alertKey,
+      failureRate: summary.failureRate,
+      failureCount: summary.failureCount,
+      total: summary.total,
+      dominantClass: summary.dominantClass,
+      classCounts: summary.classCounts,
+    };
+  }
+
+  return {
+    fired: true,
+    suppressed: false,
+    reason: "sent",
+    alertKey,
+    failureRate: summary.failureRate,
+    failureCount: summary.failureCount,
+    total: summary.total,
+    dominantClass: summary.dominantClass,
+    classCounts: summary.classCounts,
+  };
 }
