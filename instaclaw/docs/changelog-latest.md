@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-20
 
-Window: `0fb0abd5aabd69654429bd64eadf9d164c526983` → `HEAD` (HEAD = `1c0ee96e`)
+Window: `1c0ee96e76f841cfa56682cc35e8ea26982fc857` → `HEAD` (HEAD = `229a9394`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 1c0ee96e76f841cfa56682cc35e8ea26982fc857 -->
+<!-- LAST_GENERATED_SHA: 229a9394f84c5a3c93cb378a572ffe7575951f2e -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `1c0ee96e` 2026-05-20 — fix(chatgpt-oauth): v110 audit — toOpenClawModel injection block + empty-token + NULL expiry log [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `d7d745d0` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `229a9394` 2026-05-20 — feat(chatgpt-oauth): Day 16-18 — refresh cron + refreshUserToken helper [4 files] _(ai-assisted)_
+- `abdcfcc4` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `1c0ee96e` 2026-05-20 — fix(chatgpt-oauth): v110 audit — toOpenClawModel injection block + empty-token + NULL expiry log [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `229a9394` 2026-05-20 — feat(chatgpt-oauth): Day 16-18 — refresh cron + refreshUserToken helper [4 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `d7d745d0` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `1c0ee96e` 2026-05-20 — [reconciler, infrastructure] — fix(chatgpt-oauth): v110 audit — toOpenClawModel injection block + empty-token + NULL expiry log
+- `abdcfcc4` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `1c0ee96e` 2026-05-20 — fix(chatgpt-oauth): v110 audit — toOpenClawModel injection block + empty-token + NULL expiry log
+- `229a9394` 2026-05-20 — feat(chatgpt-oauth): Day 16-18 — refresh cron + refreshUserToken helper
 
 ## Appendix — every commit (chronological)
 
-- `d7d745d0` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
-- `1c0ee96e` 2026-05-20 — fix(chatgpt-oauth): v110 audit — toOpenClawModel injection block + empty-token + NULL expiry log [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `abdcfcc4` 2026-05-20 — chore(changelog): auto-update [skip ci] [2 files]
+- `229a9394` 2026-05-20 — feat(chatgpt-oauth): Day 16-18 — refresh cron + refreshUserToken helper [4 files] _(ai-assisted)_
