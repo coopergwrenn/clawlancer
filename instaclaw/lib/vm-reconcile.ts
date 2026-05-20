@@ -2375,14 +2375,22 @@ async function stepEdgeOSApiKey(
 
   // ── Gate 4: env config present ──
   // Local dev / preview deploys legitimately won't have
-  // EDGEOS_BEARER_TOKEN. Silent skip there. In production we emit a
+  // EDGEOS_EVENTS_BEARER_TOKEN. Silent skip there. In production we emit a
   // single warning so the operator notices if the env var ever drops.
-  const edgeosBearer = process.env.EDGEOS_BEARER_TOKEN || "";
+  //
+  // CRITICAL: this is the api.edgeos.world JWT (events + api-keys auth),
+  // obtained via the OTP flow at /api/v1/auth/user/{login,authenticate}.
+  // It is DISTINCT from EDGEOS_BEARER_TOKEN which is the citizen-portal
+  // JWT (api-citizen-portal.simplefi.tech). Empirically confirmed
+  // 2026-05-20: the citizen-portal bearer returns 401 against
+  // api.edgeos.world. They are two different services that happen to
+  // share the "EdgeOS" brand. See CLAUDE.md "EdgeOS bearer split".
+  const edgeosBearer = process.env.EDGEOS_EVENTS_BEARER_TOKEN || "";
   if (!edgeosBearer) {
     if (process.env.VERCEL_ENV === "production") {
       recordHealWarning(
         result,
-        "edgeos: EDGEOS_BEARER_TOKEN not configured in this env",
+        "edgeos: EDGEOS_EVENTS_BEARER_TOKEN not configured in this env",
       );
     }
     return;
@@ -2488,7 +2496,14 @@ async function stepEdgeOSApiKey(
           vmName: vm.name,
           onConflict: "suffix",
         },
-        { tenantId: EDGEOS_TENANT_EDGECITY_PROD, timeoutMs: 15_000 },
+        {
+          // Explicit prod host — DEFAULT_API_BASE in lib/edgeos-auth.ts is
+          // api.dev.edgeos.world (sandbox). Without this override, every
+          // mint would target sandbox even with the prod bearer.
+          apiBase: "https://api.edgeos.world",
+          tenantId: EDGEOS_TENANT_EDGECITY_PROD,
+          timeoutMs: 15_000,
+        },
       );
     } catch (mintErr: unknown) {
       recordHealWarning(

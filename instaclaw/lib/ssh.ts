@@ -5870,24 +5870,32 @@ export async function configureOpenClaw(
       const edgeosToken = process.env.EDGEOS_BEARER_TOKEN || "";
 
       // D3 (2026-05-20): mint a per-VM EdgeOS API key (eos_live_*) scoped
-      // to events:read for the Edge Esmeralda 2026 calendar. Separate from
-      // EDGEOS_BEARER_TOKEN — the bearer reads the ATTENDEE directory; the
-      // per-VM key reads CALENDAR / events. We persist the secret because
-      // EdgeOS shows it once at create time.
+      // to events:read for the Edge Esmeralda 2026 calendar.
+      //
+      // CRITICAL: TWO DIFFERENT BEARERS, TWO DIFFERENT SERVICES.
+      //   - EDGEOS_BEARER_TOKEN (above, `edgeosToken`): citizen-portal JWT
+      //     (api-citizen-portal.simplefi.tech), used for the attendee
+      //     directory. Citizen-id-scoped. DOES NOT authenticate against
+      //     api.edgeos.world (empirically confirmed 2026-05-20: 401).
+      //   - EDGEOS_EVENTS_BEARER_TOKEN (`eventsBearer`): EdgeOS world JWT
+      //     (api.edgeos.world), obtained via the OTP flow at
+      //     /api/v1/auth/user/{login,authenticate}. THIS is the bearer
+      //     mintOrReuseApiKey needs because the api-keys + events endpoints
+      //     live on api.edgeos.world.
       //
       // Flow:
       //   1. Read instaclaw_vms.{name, edgeos_api_key}. If the column
       //      doesn't exist yet (pre-migration), skip minting cleanly.
       //   2. If a key is already persisted, reuse it (idempotent).
       //   3. If no key and we have a bearer in env, mint via
-      //      mintOrReuseApiKey with onConflict="suffix" (per Cooper's call —
-      //      orphan keys are acceptable; clean is better than reconciling
-      //      unknown state).
+      //      mintOrReuseApiKey with onConflict="suffix" + explicit
+      //      apiBase="https://api.edgeos.world" (default is api.dev.* sandbox).
       //   4. Persist the new fullKey to DB right after mint so a later
       //      configure failure doesn't lose it (EdgeOS shows it once).
       //   5. Any failure pushes a non-critical partial-failure — the agent
       //      still works (attendee directory still functions via the
-      //      shared bearer); only calendar reads degrade.
+      //      citizen-portal bearer); only calendar reads degrade.
+      const eventsBearer = process.env.EDGEOS_EVENTS_BEARER_TOKEN || "";
       let edgeosApiKey = "";
       try {
         const supabaseForEdgeOSKey = getSupabase();
@@ -5917,17 +5925,21 @@ export async function configureOpenClaw(
             vmId: vm.id,
             keyPrefix: edgeosApiKey.slice(0, 12) + "...",
           });
-        } else if (edgeosToken && vmRowForEdgeOS?.name) {
+        } else if (eventsBearer && vmRowForEdgeOS?.name) {
           // Mint a fresh key. Uses suffix-on-conflict so we always get a
           // fullKey back (deterministic name returns null fullKey, suffix
           // mode always mints + returns the secret).
           const mint = await mintOrReuseApiKey(
             {
-              bearer: edgeosToken,
+              bearer: eventsBearer,
               vmName: vmRowForEdgeOS.name,
               onConflict: "suffix",
             },
-            { tenantId: EDGEOS_TENANT_EDGECITY_PROD, timeoutMs: 15_000 }
+            {
+              apiBase: "https://api.edgeos.world",
+              tenantId: EDGEOS_TENANT_EDGECITY_PROD,
+              timeoutMs: 15_000,
+            }
           );
           if (mint.ok && mint.fullKey) {
             edgeosApiKey = mint.fullKey;
@@ -5959,10 +5971,10 @@ export async function configureOpenClaw(
               false
             );
           }
-        } else if (!edgeosToken) {
+        } else if (!eventsBearer) {
           // No bearer set in env — non-blocking, just log so a fresh deploy
           // without the secret doesn't silently skip the mint.
-          logger.warn("EDGEOS_BEARER_TOKEN missing — skipping per-VM key mint", {
+          logger.warn("EDGEOS_EVENTS_BEARER_TOKEN missing — skipping per-VM key mint", {
             route: "lib/ssh",
             vmId: vm.id,
           });

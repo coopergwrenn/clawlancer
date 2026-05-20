@@ -192,6 +192,90 @@ async function verifyEdgeosBearer(value: string): Promise<VerifierResult> {
 }
 
 /**
+ * EDGEOS_EVENTS_BEARER_TOKEN — JWT for the EdgeOS world events/calendar API.
+ *
+ * Endpoint: `https://api.edgeos.world/api/v1/api-keys`
+ * Tenant header: X-Tenant-Id: 6018917b-3bce-4333-9870-c29aae915038 (Edge City prod).
+ *
+ * CRITICAL distinction from EDGEOS_BEARER_TOKEN (verifyEdgeosBearer above):
+ *
+ *   EDGEOS_BEARER_TOKEN          EDGEOS_EVENTS_BEARER_TOKEN
+ *   ─────────────────────        ───────────────────────────
+ *   citizen-portal JWT           EdgeOS world JWT
+ *   api-citizen-portal.simplefi  api.edgeos.world
+ *   Attendees directory only     Events + calendar + api-keys
+ *   citizen_id-scoped payload    EdgeOS-user-scoped payload
+ *
+ * They are two different services that share the "EdgeOS" brand. Each
+ * has its own auth namespace. The 2026-05-20 D3 incident confirmed
+ * empirically: the citizen-portal JWT returns 401 against
+ * api.edgeos.world. They are NOT interchangeable.
+ *
+ * This bearer is obtained by running:
+ *   npx tsx scripts/_test-edgeos-auth-chain.ts --prod --email <edgeos-account-email>
+ * and capturing the JWT from the OTP exchange.
+ *
+ * `mintOrReuseApiKey` in lib/vm-reconcile.ts:stepEdgeOSApiKey + the same
+ * call in lib/ssh.ts:configureOpenClaw read this env var to mint per-VM
+ * `eos_live_*` keys for the Edge Esmeralda 2026 calendar.
+ *
+ * The list-api-keys probe is idempotent + tests the exact auth path
+ * stepEdgeOSApiKey uses (POST /api/v1/api-keys with the same bearer +
+ * tenant header). If list returns 200 with a JSON array, mint will too.
+ */
+async function verifyEdgeosEventsBearer(value: string): Promise<VerifierResult> {
+  if (!value) return { ok: false, status: "not_configured" };
+  if (!value.startsWith("eyJ")) {
+    return {
+      ok: false,
+      status: "shape_invalid",
+      error:
+        "EDGEOS_EVENTS_BEARER_TOKEN must be a JWT (starts with eyJ). Got " +
+        value.slice(0, 8) +
+        "…",
+    };
+  }
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+    const res = await fetch("https://api.edgeos.world/api/v1/api-keys", {
+      headers: {
+        Authorization: `Bearer ${value}`,
+        "X-Tenant-Id": "6018917b-3bce-4333-9870-c29aae915038",
+        Accept: "application/json",
+      },
+      signal: ctrl.signal,
+    });
+    clearTimeout(t);
+    if (res.status === 401 || res.status === 403) {
+      const bodyText = await res.text().catch(() => "");
+      return {
+        ok: false,
+        status: "auth_failed",
+        http_code: res.status,
+        body_prefix: bodyText.slice(0, 200),
+      };
+    }
+    if (res.status >= 500) {
+      return { ok: false, status: "endpoint_5xx", http_code: res.status };
+    }
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => "");
+      return {
+        ok: false,
+        status: "endpoint_other",
+        http_code: res.status,
+        body_prefix: bodyText.slice(0, 200),
+      };
+    }
+    return { ok: true, status: "ok", http_code: res.status };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, status: "unreachable", error: msg.slice(0, 200) };
+  }
+}
+
+/**
  * INDEX_NETWORK_ID — UUID of the Edge City experiment network.
  *
  * No network call — this is a static value defined when the network was
@@ -385,9 +469,15 @@ export const SECRET_VERIFIERS: SecretVerifier[] = [
   },
   {
     envKey: "EDGEOS_BEARER_TOKEN",
-    label: "EdgeOS attendee directory JWT",
+    label: "EdgeOS attendee directory JWT (citizen-portal)",
     partnerGate: "edge_city",
     verify: verifyEdgeosBearer,
+  },
+  {
+    envKey: "EDGEOS_EVENTS_BEARER_TOKEN",
+    label: "EdgeOS world events/api-keys JWT (api.edgeos.world)",
+    partnerGate: "edge_city",
+    verify: verifyEdgeosEventsBearer,
   },
   {
     envKey: "BANKR_PARTNER_KEY",

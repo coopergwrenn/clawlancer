@@ -1496,6 +1496,27 @@ Rule: <new R<N> | existing R<N> | none-mapped>.
 
 When receiving JWTs via Telegram or any messaging platform, the rendered text may contain soft-wrap line breaks that alter the token when naively joined. Always base64-decode the payload section (middle part between the two dots) and verify the decoded JSON contains expected values (email, citizen_id, etc.) BEFORE deploying. The 2026-05-14 EDGEOS_BEARER_TOKEN incident lost an hour of debugging because a single character was inserted at a line-break boundary (muvionai.com vs muvinai.com).
 
+### EdgeOS bearer split — EDGEOS_BEARER_TOKEN vs EDGEOS_EVENTS_BEARER_TOKEN
+
+Two separate JWTs back two separate "EdgeOS" services. Confusing them produces silent 401s under the same name. Both are partner-gated to `edge_city`.
+
+| Env var | Service | Endpoint | Used for | Verifier |
+|---|---|---|---|---|
+| `EDGEOS_BEARER_TOKEN` | citizen-portal | `api-citizen-portal.simplefi.tech/applications/attendees_directory/8` | attendee directory lookups (Cooper's agent search; Edge skill's `find_attendee_by_email`) | `verifyEdgeosBearer` |
+| `EDGEOS_EVENTS_BEARER_TOKEN` | EdgeOS world | `api.edgeos.world/api/v1/api-keys` + `/api/v1/events/portal/list` etc | minting per-VM `eos_live_*` keys for the Edge Esmeralda 2026 calendar (`stepEdgeOSApiKey` reconciler step + `configureOpenClaw` D3 block) | `verifyEdgeosEventsBearer` |
+
+Empirically confirmed 2026-05-20: a citizen-portal JWT returns 401 against `api.edgeos.world` and vice versa. They share the brand name "EdgeOS" but have independent auth namespaces. Each must be set independently in Vercel env.
+
+**Provisioning a fresh `EDGEOS_EVENTS_BEARER_TOKEN`:**
+1. `npx tsx scripts/_test-edgeos-auth-chain.ts --prod --email <your-edgeos-account>` — sends OTP via EdgeOS world.
+2. Enter OTP. The script prints the JWT bearer it receives back.
+3. Verify shape: decoded payload should NOT have `citizen_id` (that's the citizen-portal shape); it should have EdgeOS-world claims (user_id, scopes, etc.). If the payload looks like citizen-portal data, you ran the wrong OTP flow.
+4. Set in Vercel: `printf 'eyJ...' | npx vercel env add EDGEOS_EVENTS_BEARER_TOKEN production` (Rule 6 — `printf`, not `<<<`).
+5. Verify end-to-end: `npx tsx scripts/_verify-edgeos-events-auth.ts` — confirms list-api-keys returns 200 (mint will work).
+6. Trigger Vercel redeploy (or wait for next deploy) so the cron picks up the new env value.
+
+Once verified, the reconciler's next 3-min cycle picks up all 9 edge_city VMs (currently at cv<111 with `edgeos_api_key=null` and warning-only failures), mints fresh `eos_live_*` keys, persists to `instaclaw_vms.edgeos_api_key`, and deploys to `~/.openclaw/.env:EDGEOS_API_KEY`. Full sweep: `npx tsx scripts/_verify-edgeos-api-key.ts`.
+
 ### Operational runbook: rotating secrets
 
 When rotating any secret in `SECRET_ENV_VAR_SOURCES` (`lib/vm-reconcile.ts`), bump `SECRET_VERSION` in the same file and deploy. The reconciler will redistribute to all VMs on the next tick — caught-up VMs (those at `config_version = VM_MANIFEST.version`) re-enter the candidate queue because the cron's filter OR-s `secret_version.lt.<SECRET_VERSION>` with the config-version staleness filter. After a successful `stepEnvVarPush`, the route bumps the VM's `secret_version` to current, taking it back out of the queue.
