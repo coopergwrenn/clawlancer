@@ -1,19 +1,19 @@
 # Changelog — generated 2026-05-21
 
-Window: `441f632171e4c0fe51e016c51d08710e1505f1c6` → `HEAD` (HEAD = `41e8373f`)
-Total commits: 2
+Window: `41e8373f6f1b7d063559361ebec93649a1c9eb32` → `HEAD` (HEAD = `91016d3c`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 41e8373f6f1b7d063559361ebec93649a1c9eb32 -->
+<!-- LAST_GENERATED_SHA: 91016d3c1d801e08977346e61afe8d3b1f1714a0 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- **Docs / PRD only:** 2
+- AI-assisted commits (co-authored): 2
 - Merge commits: 0
 
 ## What changed for users
@@ -22,18 +22,19 @@ _None in this window._
 
 ## What changed under the hood
 
-- `41e8373f` 2026-05-21 — feat(bake): _bake-gap-fixes.sh — close 9 genuine gaps; correct 3 stale validator expectations [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `f0c32860` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `508ca904` 2026-05-21 — self-audit: 2 minor cosmetic corrections (post-park audit) [2 files] _(ai-assisted)_
+- `5630df54` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `91016d3c` 2026-05-21 — docs(snapshot-bake-runbook): §3a.10 — verify gates for install-gbrain.sh side effects (gaps #2, #5, #6, #7) [1 files] _(ai-assisted)_
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `41e8373f` 2026-05-21 — feat(bake): _bake-gap-fixes.sh — close 9 genuine gaps; correct 3 stale validator expectations [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `508ca904` 2026-05-21 — self-audit: 2 minor cosmetic corrections (post-park audit) [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -43,23 +44,20 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `f0c32860` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `5630df54` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `91016d3c` 2026-05-21 — docs(snapshot-bake-runbook): §3a.10 — verify gates for install-gbrain.sh side effects (gaps #2, #5, #6, #7) [1 files] _(ai-assisted)_
 
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `41e8373f` 2026-05-21 — [reconciler, infrastructure] — feat(bake): _bake-gap-fixes.sh — close 9 genuine gaps; correct 3 stale validator expectations
-
-## AI-assisted commits (1)
+## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `41e8373f` 2026-05-21 — feat(bake): _bake-gap-fixes.sh — close 9 genuine gaps; correct 3 stale validator expectations
+- `508ca904` 2026-05-21 — self-audit: 2 minor cosmetic corrections (post-park audit)
+- `91016d3c` 2026-05-21 — docs(snapshot-bake-runbook): §3a.10 — verify gates for install-gbrain.sh side effects (gaps #2, #5, #6, #7)
 
 ## Appendix — every commit (chronological)
 
-- `f0c32860` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `41e8373f` 2026-05-21 — feat(bake): _bake-gap-fixes.sh — close 9 genuine gaps; correct 3 stale validator expectations [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `5630df54` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `508ca904` 2026-05-21 — self-audit: 2 minor cosmetic corrections (post-park audit) [2 files] _(ai-assisted)_
+- `91016d3c` 2026-05-21 — docs(snapshot-bake-runbook): §3a.10 — verify gates for install-gbrain.sh side effects (gaps #2, #5, #6, #7) [1 files] _(ai-assisted)_
