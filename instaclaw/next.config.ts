@@ -4,8 +4,14 @@ import { withSentryConfig } from "@sentry/nextjs";
 const nextConfig: NextConfig = {
   serverExternalPackages: ["node-ssh", "ssh2"],
   outputFileTracingIncludes: {
+    // 2026-05-21: cache-bust marker (force Next.js to re-run nft trace)
     "/api/**": [
       "./skills/**/*",
+      // Belt-and-suspenders for browser-relay-server.js: previous deploy
+      // l7i4g5g7p still threw the same ENOENT after the glob fix, suggesting
+      // Vercel's @vercel/nft trace was cached. Adding multiple shapes:
+      "./scripts/browser-relay-server/browser-relay-server.js",
+      "./scripts/browser-relay-server/browser-relay-server.service",
 
       // 2026-05-21: cloud-init self-test ENOENT post-mortem.
       //
