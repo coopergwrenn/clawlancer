@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-21
 
-Window: `4844f7494ead0bdfb1e7c279ceb2f69aaa9236c3` → `HEAD` (HEAD = `441f6321`)
+Window: `441f632171e4c0fe51e016c51d08710e1505f1c6` → `HEAD` (HEAD = `41e8373f`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 441f632171e4c0fe51e016c51d08710e1505f1c6 -->
+<!-- LAST_GENERATED_SHA: 41e8373f6f1b7d063559361ebec93649a1c9eb32 -->
 
 ## Summary
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `441f6321` 2026-05-17 — feat(reconcile-fleet): mid-tier persistent-failure alert + end-of-cron staleness sweep [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `b5f094a8` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `41e8373f` 2026-05-21 — feat(bake): _bake-gap-fixes.sh — close 9 genuine gaps; correct 3 stale validator expectations [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f0c32860` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `441f6321` 2026-05-17 — feat(reconcile-fleet): mid-tier persistent-failure alert + end-of-cron staleness sweep [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `41e8373f` 2026-05-21 — feat(bake): _bake-gap-fixes.sh — close 9 genuine gaps; correct 3 stale validator expectations [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `b5f094a8` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `f0c32860` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `441f6321` 2026-05-17 — [reconciler, infrastructure] — feat(reconcile-fleet): mid-tier persistent-failure alert + end-of-cron staleness sweep
+- `41e8373f` 2026-05-21 — [reconciler, infrastructure] — feat(bake): _bake-gap-fixes.sh — close 9 genuine gaps; correct 3 stale validator expectations
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `441f6321` 2026-05-17 — feat(reconcile-fleet): mid-tier persistent-failure alert + end-of-cron staleness sweep
+- `41e8373f` 2026-05-21 — feat(bake): _bake-gap-fixes.sh — close 9 genuine gaps; correct 3 stale validator expectations
 
 ## Appendix — every commit (chronological)
 
-- `b5f094a8` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `441f6321` 2026-05-17 — feat(reconcile-fleet): mid-tier persistent-failure alert + end-of-cron staleness sweep [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `f0c32860` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `41e8373f` 2026-05-21 — feat(bake): _bake-gap-fixes.sh — close 9 genuine gaps; correct 3 stale validator expectations [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
