@@ -48,6 +48,10 @@
  *   - [✓] BE-11: npm install §17b.2 packages
  *   - [✓] BE-12: xvfb/x11vnc/websockify systemd units (defensive idempotent)
  *   - [✓] BE-13: daemon-reload (folded into BE-12)
+ *   - [✓] BE-14: gbrain MCP re-wire via install-gbrain.sh (Rule 58 — single
+ *               source of truth; closes the 3-5 min UX gap where the post-
+ *               §1.5 openclaw.json overwrite erased mcp.servers.gbrain
+ *               from the snapshot's pre-baked config)
  *
  * Snapshot inventory cross-reference (verified 2026-05-14 against vm-944,
  * a status=ready cv=0 VM — pure snapshot baseline):
@@ -935,6 +939,73 @@ WSEOF
   exit 1
 }
 
+# ════════════════════════════════════════════════════════════════════════
+# §1.35 BEST_EFFORT [BE-14]: re-wire gbrain MCP into per-user openclaw.json
+# ════════════════════════════════════════════════════════════════════════
+# Why: §1.5 OVERWROTE openclaw.json with per-user content that does NOT
+# include mcp.servers.gbrain. The snapshot's pre-baked gbrain on-disk state
+# remains intact (gbrain.service running, brain.pglite initialized,
+# access_tokens row, ~/.gbrain/openclaw-bearer-token.txt) but openclaw.json
+# no longer references it. The gateway restart in §1.32 came up WITHOUT
+# gbrain MCP wired. install-gbrain.sh's idempotent path re-establishes the
+# connection.
+#
+# Why BE-14 is BEFORE the §1.37 sentinel + §1.38 callback: cloud-init-poll
+# uses the sentinel and callback flips health_status='healthy' directly.
+# We do NOT want the VM marked ready until gbrain is up — otherwise Edge
+# attendees hit a freshly-ready VM with no persistent memory for the first
+# 3-5 min (until reconciler stepGbrain heals on next cron tick). BE-14
+# closes that gap. Cost: +70-165s on provisioning latency. Worth it.
+#
+# What install-gbrain.sh does on this path:
+#   - Phase A 5-invariant check: transport="" → fails → triggers reinstall
+#   - Phase B (bun): no-op (snapshot has bun 1.3.13 pinned)
+#   - Phase C-D: no-op if gbrain repo at GBRAIN_PINNED_COMMIT
+#   - Phase E: wipes brain.pglite (fresh anyway on cloud-init VM — empty
+#     brain, no user data loss), mints fresh per-VM bearer
+#   - Phase G: openclaw mcp set gbrain → writes mcp.servers.gbrain to
+#     openclaw.json. Hot-reload picks up (Rule 32: mcp.servers.* is hot-
+#     reload-capable; no second gateway restart needed)
+#
+# Rule 58 compliance: SINGLE source of truth for gbrain bearer state.
+# Both the reconciler (stepGbrain) and this BE-14 step call install-
+# gbrain.sh. No separate mint paths to drift.
+#
+# Pinned values MUST match lib/vm-reconcile.ts:180-181. If they drift, the
+# next reconciler tick will re-install gbrain to the reconciler's pin —
+# visible noise but not destructive. Update both sites together.
+#
+# Failure mode: WARN fires. Reconciler heals on next 3-min tick. User has
+# degraded persistent memory until then. NOT fail-loud — gbrain absence is
+# UX degradation, not gateway-down. Pre-Esmeralda criticality justifies
+# the BE-classification (vs CRITICAL); post-Esmeralda when paying users
+# accumulate memories, consider promoting to CRITICAL.
+{
+  sudo -u openclaw bash -lc '
+    set -o pipefail
+    [ -x /home/openclaw/.openclaw/scripts/install-gbrain.sh ] || {
+      echo "BE-14: install-gbrain.sh missing or not executable at /home/openclaw/.openclaw/scripts/install-gbrain.sh"
+      exit 1
+    }
+    export GBRAIN_PINNED_COMMIT=1d5f69f
+    export GBRAIN_PINNED_VERSION=0.36.3.0
+    export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+    timeout 240 bash /home/openclaw/.openclaw/scripts/install-gbrain.sh \
+      > /tmp/be14-gbrain-install.log 2>&1
+    rc=\$?
+    # Accept any successful terminal marker — ALREADY_INSTALLED is the
+    # idempotent re-run case (rare on first cloud-init boot but possible
+    # on retries); INSTALL_COMPLETE / BEARER_SYNCED / UPGRADE_COMPLETE are
+    # the active-work success markers.
+    if grep -q "INSTALL_COMPLETE\|ALREADY_INSTALLED\|BEARER_SYNCED\|UPGRADE_COMPLETE" /tmp/be14-gbrain-install.log; then
+      exit 0
+    fi
+    echo "BE-14: install-gbrain.sh exited rc=\$rc without a success marker"
+    tail -20 /tmp/be14-gbrain-install.log
+    exit 1
+  '
+} || echo "[\$(date -u +%FT%TZ)] WARN: BE-14 (gbrain install via install-gbrain.sh) failed — VM proceeds to ready WITHOUT gbrain MCP wired. Reconciler stepGbrain heals on next 3-min tick; user has degraded persistent memory until then. Check /tmp/be14-gbrain-install.log on the VM for forensics."
+
 # ── §1.37 sentinels (must precede callback so cloud-init-poll picks up ─
 # the ready signal even if callback POST flakes briefly).
 touch /tmp/.instaclaw-ready
@@ -982,7 +1053,10 @@ echo "OPENCLAW_CONFIGURE_DONE"
 # BE-10 (pip install §17b.2 packages), BE-11 (npm install agentkit-cli
 # + mcporter + usecomputer), BE-12+BE-13 (defensive idempotent VNC
 # pipeline — xvfb/x11vnc/websockify units + apt deps + openbox +
-# ufw/iptables + Caddyfile /vnc/ patch + daemon-reload folded).
+# ufw/iptables + Caddyfile /vnc/ patch + daemon-reload folded),
+# BE-14 (gbrain MCP re-wire via install-gbrain.sh — closes 3-5 min UX
+# gap on cloud-init VMs; runs BEFORE the §1.37 sentinel so VM doesn't
+# go ready until gbrain is wired).
 # Pending (all skip/cosmetic/redundant): BE-2 (mkdir defenses), BE-3
 # (privacy wipe), BE-4 (stop pre-existing gateway — redundant with
 # §1.32 restart), BE-6 (@bankr/cli — reconciler heals via
@@ -990,7 +1064,7 @@ echo "OPENCLAW_CONFIGURE_DONE"
 # All landed BEST_EFFORT steps follow:
 #   { ... } || echo "[\$(date -u +%FT%TZ)] WARN: BE-N (label) — recovery"
 
-echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 + BE-5 + BE-7 + BE-9 + BE-10 + BE-11 + BE-12)"
+echo "[\$(date -u +%FT%TZ)] setup.sh complete (CRITICAL + BE-1 + BE-5 + BE-7 + BE-9 + BE-10 + BE-11 + BE-12 + BE-14)"
 exit 0
 `;
 }
