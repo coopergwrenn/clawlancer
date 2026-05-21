@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-21
 
-Window: `bb872dbda373959352a343429ba8f0f769b23ef5` → `HEAD` (HEAD = `a3dfe602`)
+Window: `a3dfe6026105e9fc1262b2606d196bf3f32595c8` → `HEAD` (HEAD = `22a5df69`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: a3dfe6026105e9fc1262b2606d196bf3f32595c8 -->
+<!-- LAST_GENERATED_SHA: 22a5df69f819b2abca6bf5680f888cc93f3cf941 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `a3dfe602` 2026-05-21 — fix(install-gbrain): regenerate embedded gbrain-scripts-content.ts (companion to bun pin fix) [1 files] _(ai-assisted)_
-- `ca564a1e` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `979112d8` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `22a5df69` 2026-05-21 — docs(bake-runbook): patch §6 item 4 — 10 strip-thinking.py sentinel checks [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `a3dfe602` 2026-05-21 — fix(install-gbrain): regenerate embedded gbrain-scripts-content.ts (companion to bun pin fix) [1 files] _(ai-assisted)_
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -43,17 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `ca564a1e` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `979112d8` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `22a5df69` 2026-05-21 — docs(bake-runbook): patch §6 item 4 — 10 strip-thinking.py sentinel checks [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `a3dfe602` 2026-05-21 — fix(install-gbrain): regenerate embedded gbrain-scripts-content.ts (companion to bun pin fix)
+- `22a5df69` 2026-05-21 — docs(bake-runbook): patch §6 item 4 — 10 strip-thinking.py sentinel checks
 
 ## Appendix — every commit (chronological)
 
-- `ca564a1e` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `a3dfe602` 2026-05-21 — fix(install-gbrain): regenerate embedded gbrain-scripts-content.ts (companion to bun pin fix) [1 files] _(ai-assisted)_
+- `979112d8` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `22a5df69` 2026-05-21 — docs(bake-runbook): patch §6 item 4 — 10 strip-thinking.py sentinel checks [1 files] _(ai-assisted)_
