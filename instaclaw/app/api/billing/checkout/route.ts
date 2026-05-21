@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
             id: "AMBASSADOR_25_OFF",
             percent_off: 25,
             duration: "once",
-            name: "Ambassador Referral — 25% Off First Month",
+            name: "Ambassador 25% Off First Month",
           });
         }
         discounts = [{ coupon: "AMBASSADOR_25_OFF" }];
