@@ -1,32 +1,20 @@
 # Changelog — generated 2026-05-21
 
-Window: `588b5b2af341ee275ccbd96a12c71bfaa75a9cc2` → `HEAD` (HEAD = `ed32e3e3`)
-Total commits: 3
+Window: `ed32e3e38fe1db2981c0936d046ba862b1128199` → `HEAD` (HEAD = `7ddb81f0`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: ed32e3e38fe1db2981c0936d046ba862b1128199 -->
+<!-- LAST_GENERATED_SHA: 7ddb81f0f435d6d61072b8702b7d4c19b7a70fa4 -->
 
 ## Summary
 
-- **Manifest version bumps:** 1
-  - Range: v112 → v112
-- **Reconciler / manifest:** 1
+- **Manifest version bumps:** 0
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 0
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
-
-## Manifest version timeline
-
-### v112 — 2026-05-21 — `ed32e3e3`
-
-feat(v112): manifest + reconciler wiring (followup to 2d189495)
-
-> Wires the reasoning router + ack-watchdog message + vm-watchdog
-> threshold changes through lib/ssh.ts (templates), lib/vm-manifest.ts
-> (files[], cronJobs[], configSettings, version bump → 112, changelog),
-> and lib/vm-reconcile.ts (new stepPiAiReasoningPatch in orchestrator).
 
 ## What changed for users
 
@@ -34,19 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `ed32e3e3` 2026-05-21 — feat(v112): manifest + reconciler wiring (followup to 2d189495) [4 files] _(**MANIFEST v112**; multi: [reconciler, infrastructure])_
-- `7b681dd6` 2026-05-21 — feat(v112): intelligent reasoning router + watchdog v2 for ChatGPT OAuth [4 files] _(multi: [infrastructure, edge, docs])_
-- `73540016` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `7ddb81f0` 2026-05-21 — fix(billing/checkout): shorten AMBASSADOR_25_OFF coupon name to 30 chars [1 files] _(ai-assisted)_
+- `d84d32a9` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `ed32e3e3` 2026-05-21 — feat(v112): manifest + reconciler wiring (followup to 2d189495) [4 files] _(**MANIFEST v112**; multi: [reconciler, infrastructure])_
+_(none)_
 
 ### Infrastructure (1)
 
-- `7b681dd6` 2026-05-21 — feat(v112): intelligent reasoning router + watchdog v2 for ChatGPT OAuth [4 files] _(multi: [infrastructure, edge, docs])_
+- `7ddb81f0` 2026-05-21 — fix(billing/checkout): shorten AMBASSADOR_25_OFF coupon name to 30 chars [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -58,17 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `73540016` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `d84d32a9` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
-## Multi-category commits (2)
+## AI-assisted commits (1)
 
-These touch more than one category root and are listed in every applicable section above.
+Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `7b681dd6` 2026-05-21 — [infrastructure, edge, docs] — feat(v112): intelligent reasoning router + watchdog v2 for ChatGPT OAuth
-- `ed32e3e3` 2026-05-21 — [reconciler, infrastructure] — feat(v112): manifest + reconciler wiring (followup to 2d189495)
+- `7ddb81f0` 2026-05-21 — fix(billing/checkout): shorten AMBASSADOR_25_OFF coupon name to 30 chars
 
 ## Appendix — every commit (chronological)
 
-- `73540016` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `7b681dd6` 2026-05-21 — feat(v112): intelligent reasoning router + watchdog v2 for ChatGPT OAuth [4 files] _(multi: [infrastructure, edge, docs])_
-- `ed32e3e3` 2026-05-21 — feat(v112): manifest + reconciler wiring (followup to 2d189495) [4 files] _(**MANIFEST v112**; multi: [reconciler, infrastructure])_
+- `d84d32a9` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `7ddb81f0` 2026-05-21 — fix(billing/checkout): shorten AMBASSADOR_25_OFF coupon name to 30 chars [1 files] _(ai-assisted)_
