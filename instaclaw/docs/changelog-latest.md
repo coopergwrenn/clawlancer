@@ -1,19 +1,19 @@
 # Changelog — generated 2026-05-21
 
-Window: `7ddb81f0f435d6d61072b8702b7d4c19b7a70fa4` → `HEAD` (HEAD = `19da3c44`)
+Window: `19da3c44dc469cec63c318a423f0574a56191223` → `HEAD` (HEAD = `c2e52fd4`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 19da3c44dc469cec63c318a423f0574a56191223 -->
+<!-- LAST_GENERATED_SHA: c2e52fd4b9f3ea805b497e8945c4b9803ec8c36c -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
-- AI-assisted commits (co-authored): 0
+- **Docs / PRD only:** 1
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `16bdf4df` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `19da3c44` 2026-05-21 — docs(P1): track silence-watchdog cron-cleanup as P1-10 [1 files]
+- `c2e52fd4` 2026-05-21 — fix(cloud-init): remove non-existent api_key column from Phase A INSERT [1 files] _(ai-assisted)_
+- `7bb82585` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `c2e52fd4` 2026-05-21 — fix(cloud-init): remove non-existent api_key column from Phase A INSERT [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -43,12 +43,17 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `16bdf4df` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `19da3c44` 2026-05-21 — docs(P1): track silence-watchdog cron-cleanup as P1-10 [1 files]
+- `7bb82585` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+
+## AI-assisted commits (1)
+
+Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+
+- `c2e52fd4` 2026-05-21 — fix(cloud-init): remove non-existent api_key column from Phase A INSERT
 
 ## Appendix — every commit (chronological)
 
-- `16bdf4df` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `19da3c44` 2026-05-21 — docs(P1): track silence-watchdog cron-cleanup as P1-10 [1 files]
+- `7bb82585` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `c2e52fd4` 2026-05-21 — fix(cloud-init): remove non-existent api_key column from Phase A INSERT [1 files] _(ai-assisted)_
