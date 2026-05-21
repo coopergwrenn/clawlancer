@@ -2276,6 +2276,14 @@ Single source of truth for what each `VM_MANIFEST.version` bump contains. Used f
 
 Bugs and audit items deferred from active work. Each entry must include: discovery date, symptom, hypothesis, why we can't fix tonight, and an investigation plan. Resolve in-place; never silently delete.
 
+### P1-10: silence-watchdog.py still cron-active on VMs the 2026-05-01 SSH disable-push missed
+
+- **Discovered**: 2026-05-21 during v112 fleet rollout audit. vm-892 (auto-reconciled to v112) showed silence-watchdog.py running in crontab at `* * * * *` despite v76's manifest removal + the 2026-05-01 fleet-wide SSH push that commented it out on existing VMs. vm-780 correctly shows `# DISABLED 2026-05-01 demo-stabilize:` — the disable-push reached it. vm-892 didn't.
+- **Risk**: `SILENCE_THRESHOLD_SEC=60` fires fallback Telegram message + gateway restart in the 60-90s user_age window, killing legitimate >60s GPT-5.5 reasoning. Mitigated currently by session-detection mismatch (most fires silently no-op), but the v112 reasoning router now sends MORE long-effort requests — chance of an actual silence-watchdog fire goes up. The 2026-04-30 last-fire timestamp on vm-780 understates the risk for the post-v112 world.
+- **Why we can't fix tonight**: `stepCronJobs` in `lib/vm-reconcile.ts` only ENFORCES the configured cron entries are present — it doesn't tear down entries it doesn't recognize. Pre-existing crons persist invisibly. Survey census + fix design need a daylight session.
+- **Recommended fix (per Cooper 2026-05-21)**: add a `cronJobsRemove[]` field to `VM_MANIFEST` listing markers to actively uninstall. Extend `stepCronJobs` to scan crontab for any line containing each remove-marker and rewrite the crontab without those lines. Idempotent. Land with one-shot SSH sweep for the cohort currently affected (estimate via `parallel ssh` against `assigned+healthy` VMs grepping crontab for `silence-watchdog.py` without leading `#`).
+- **Investigation plan**: (1) census how many VMs have silence-watchdog active (vs commented). (2) Implement `cronJobsRemove[]` in manifest + `stepCronJobs` extension. (3) Add `silence-watchdog.py` to the new list. (4) Bump manifest version. (5) Verify on a sample VM that the cron is gone after reconcile.
+
 ### P1-9: `installAgdpSkill` produces acp-serve.service that fails with exit 127 under systemd
 
 - **Discovered**: 2026-05-14 (Doug Rathell vm-725, but failure mode is generic to all `agdp_enabled=true` VMs).
