@@ -483,15 +483,20 @@ async function run() {
     const eclipseCount = (cron.match(/skills\/eclipse/g) || []).length;
     record("no eclipse cron entries", "P0", ["bake"], eclipseCount === 0, `${eclipseCount} entries`);
 
-    // v76 prune — vm-watchdog and silence-watchdog MUST NOT be in cron
-    // (scripts present on disk, but no scheduler entries — CLAUDE.md note
-    // about v79 snapshot specifically flags this risk for new VMs).
+    // v112 (2026-05-21): vm-watchdog RE-ENABLED at AGENT_STALE_MINUTES=15.
+    // Removed in v76 (2026-05-01 "demo-stabilize") because the original
+    // 5-min threshold killed slow-but-working agents. Re-added in v112 with
+    // a 15-min threshold per Cooper's call: "agents shouldn't be able to
+    // sit stuck forever with no recovery." Polarity inverted from the
+    // earlier "MUST NOT be in cron" check. silence-watchdog stays removed
+    // (Phase 3 in-flight manifest replaces it).
+    // Source: lib/vm-manifest.ts:1629 (v112 changelog) + :2474 (cronJobs entry).
     const vmWatchdogInCron = / vm-watchdog\.py/.test(cron);
-    record("v76 prune: NO vm-watchdog.py in cron", "P0", ["bake", "test"], !vmWatchdogInCron,
-      vmWatchdogInCron ? "vm-watchdog.py STILL in cron (v76 prune missing)" : "");
+    record("v112 cron: vm-watchdog.py PRESENT in cron", "P0", ["bake", "test"], vmWatchdogInCron,
+      vmWatchdogInCron ? "" : "vm-watchdog.py MISSING from cron (v112 re-enable not applied)");
     const silenceWatchdogInCron = / silence-watchdog\.py/.test(cron);
     record("v76 prune: NO silence-watchdog.py in cron", "P0", ["bake", "test"], !silenceWatchdogInCron,
-      silenceWatchdogInCron ? "silence-watchdog.py STILL in cron (v76 prune missing)" : "");
+      silenceWatchdogInCron ? "silence-watchdog.py STILL in cron (v76 prune missing — stays removed per v112)" : "");
 
     // Required cron markers per map §8.
     const expectedCronMarkers: Array<{ pattern: RegExp; name: string; severity: Severity }> = [
@@ -500,7 +505,17 @@ async function run() {
       { pattern: /skill-integrity-check\.sh/, name: "skill-integrity-check.sh (Rule 24)", severity: "P0" },
       { pattern: /auto-approve-pairing\.py/, name: "auto-approve-pairing.py", severity: "P1" },
       { pattern: /push-heartbeat\.sh/, name: "push-heartbeat.sh", severity: "P1" },
-      { pattern: /consensus_match_pipeline\.py/, name: "consensus_match_pipeline.py", severity: "P1" },
+      // v112 cron: vm-watchdog.py RE-ENABLED (manifest line 2473-2476). 5-min
+      // schedule, AGENT_STALE_MINUTES=15. Pairs with the inverted-polarity
+      // check above. P0 because customer-down recovery depends on it.
+      { pattern: /vm-watchdog\.py/, name: "vm-watchdog.py (v112 re-enable)", severity: "P0" },
+      // consensus_match_pipeline.py was COMMENTED OUT in manifest cronJobs
+      // (lib/vm-manifest.ts:2538-2540) per Component-3-deferral. The script
+      // still exists on disk (used by other components), but no cron should
+      // run it. Validator previously expected the cron entry — incorrect
+      // post-v112. The script presence is still checked separately in
+      // expectScripts (line 549) — that's correct, this cron expectation
+      // was wrong.
       { pattern: /consensus_intent_sync\.py/, name: "consensus_intent_sync.py", severity: "P1" },
       { pattern: /openclaw memory index/, name: "openclaw memory index", severity: "P1" },
       { pattern: /workspace\/backups/, name: "workspace/backups cleanup", severity: "P2" },
@@ -656,7 +671,13 @@ async function run() {
       { key: "agents.defaults.compaction.mode", want: "safeguard", severity: "P0" },     // compaction policy
       { key: "agents.defaults.compaction.reserveTokensFloor", want: "35000", severity: "P0" },
       { key: "commands.useAccessGroups", want: "false", severity: "P0" },                // agents callable without group gate
-      { key: "agents.defaults.timeoutSeconds", want: "300", severity: "P0" },            // v80
+      // v112 (2026-05-21): bumped 300 → 1800 (30 min). Per Cooper's
+      // changelog entry at lib/vm-manifest.ts:1614: "simple is better than
+      // clever — 1800 covers everything OpenAI can throw at us." OpenAI's
+      // gpt-5.5-pro server-side max is 10 min; 30 min is the generous
+      // client-side ceiling. Per-request budgets via in-flight manifest
+      // deferred to Phase 3.
+      { key: "agents.defaults.timeoutSeconds", want: "1800", severity: "P0" },           // v112 (was "300" pre-v112)
       { key: "agents.defaults.bootstrapMaxChars", want: "40000", severity: "P0" },       // v92
       { key: "agents.defaults.compaction.maxActiveTranscriptBytes", want: "150000", severity: "P0" }, // v90 Layer 1
       { key: "channels.telegram.streaming.mode", want: "partial", severity: "P0" },      // v95
