@@ -15,9 +15,24 @@ import { randomUUID } from "node:crypto";
 
 // Give the function enough time for background processing via after().
 // The response to Stripe is sent immediately (line 43) — maxDuration only
-// controls how long the after() callback can run. Needs enough headroom for
-// assignVMWithSSHCheck (~10s) + awaiting the configure endpoint (~50s).
-export const maxDuration = 90;
+// controls how long the after() callback can run.
+//
+// Pool path needs ~60s: assignVMWithSSHCheck (~10s) + awaiting configure (~50s).
+//
+// Cloud-init path needs significantly more: createUserVM does Phase A
+// (INSERT, ~1s) + Phase B (Linode createServer, ~5-10s) + Phase C
+// (provider.waitForServer, polls 60-120s for Linode boot) + Phase C UPDATE
+// (~1s). Total: 70-130s. The previous 90s ceiling killed Phase C mid-poll
+// before the UPDATE ran on ~50% of cloud-init signups, leaving ip_address
+// NULL in the DB. setup.sh's callback then 401'd because the route's §3
+// pre-claim peek required ip_address NOT NULL.
+//
+// Bumped to 300 (Vercel Pro max) per Rule 11. Even with Phase C taking the
+// 99th-percentile Linode-boot tail, there's ~3min of headroom. The actual
+// race-free fix (setup.sh sends its own ipAddress, route uses it
+// regardless of DB) lands as Fix B — this maxDuration bump alone closes
+// the race in ~100% of cases observed today.
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   const body = await req.text();

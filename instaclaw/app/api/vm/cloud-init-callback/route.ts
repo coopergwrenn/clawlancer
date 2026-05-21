@@ -103,12 +103,29 @@ const HEX_TOKEN_RE = /^[a-fA-F0-9]{32,128}$/;
 // EVM address: 0x-prefixed 40 hex chars. Don't checksum-verify (downstream
 // consumers accept either case).
 const EVM_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
+// IPv4 dotted-quad. Each octet 0-255. Defensive — setup.sh derives IP
+// from `ip -4 -o addr show eth0` so input is generally clean, but we
+// validate at the boundary to refuse anything ill-formed before we
+// concat it into gateway_url. IPv6 is intentionally rejected (gateway
+// URL pattern is http://{ip}:18789 which doesn't bracket — IPv6 needs
+// [host] syntax we don't currently produce anywhere in the codebase).
+const IPV4_RE = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
 
 interface CallbackBody {
   userId?: unknown;
   vmName?: unknown;
   agentbookAddress?: unknown;
   status?: unknown;
+  /**
+   * 2026-05-21 Fix B: optional VM-reported IP. setup.sh on the VM now
+   * derives its own IP (`ip -4 -o addr show eth0`) and sends it here so
+   * the callback no longer races createUserVM Phase C's UPDATE. When
+   * present + valid, this IP is used for gateway_url and (if the DB row
+   * has ip_address NULL) written to the row as part of the §4 atomic
+   * claim. Backward-compat: callers who don't send ipAddress still work
+   * if the DB row has ip_address from Phase C (legacy path).
+   */
+  ipAddress?: unknown;
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -182,28 +199,43 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     agentbookAddressForUpdate = agentbookAddressRaw;
   }
 
+  // ── 2026-05-21 Fix B: parse + validate VM-reported ipAddress ──
+  // Optional field. setup.sh derives the IP locally; route uses it to
+  // close the race with createUserVM Phase C's UPDATE. Validation is
+  // strict — invalid IPv4 returns 400 (clear signal to forensic debug).
+  // Missing is OK (backward-compat with pre-Fix-B setup.sh and the
+  // pool-path test surface).
+  const ipAddressFromBodyRaw =
+    typeof body.ipAddress === "string" ? body.ipAddress.trim() : "";
+  let ipAddressFromBody: string | undefined;
+  if (ipAddressFromBodyRaw) {
+    if (!IPV4_RE.test(ipAddressFromBodyRaw)) {
+      logger.warn("cloud-init-callback: rejected malformed ipAddress", {
+        route: "vm/cloud-init-callback",
+        userId,
+        vmName,
+        ipAddressRaw: ipAddressFromBodyRaw.slice(0, 40),
+      });
+      return new NextResponse("invalid ipAddress", { status: 400 });
+    }
+    ipAddressFromBody = ipAddressFromBodyRaw;
+  }
+
   const supabase = getSupabase();
 
-  // ── 3. Pre-claim read for ip_address (immutable post-Phase-C) ──
+  // ── 3. Pre-claim read — auth via token + verify row exists ──
   //
-  // The atomic UPDATE below sets `gateway_url = http://{ip}:18789` for
-  // pool-path parity (configureOpenClaw constructs the same shape at
-  // lib/ssh.ts:7599-7601). To compute that URL we need ip_address from
-  // the row. ip_address is set ONCE by createUserVM Phase C UPDATE and
-  // never mutated thereafter, so reading it before the claim is race-safe:
-  //   - The pre-read is token-gated (same auth as the claim).
-  //   - ip_address can't be missing on a row that reached the bootstrap+
-  //     fetch handshake (config-token consumption requires ip_address-
-  //     bearing-row state — Phase C runs before Linode boots).
-  //   - If the pre-read finds nothing OR returns NULL ip_address, we
-  //     401 with no DB mutation (caller's retry will also 401; setup.sh
-  //     marks failed; cloud-init-poll cleans up).
+  // Pre-Fix-B (2026-05-21) this peek required ip_address NOT NULL,
+  // because the §4 UPDATE relied on the DB-stored IP to construct
+  // gateway_url. That assumption broke whenever createUserVM Phase C's
+  // UPDATE didn't complete before setup.sh's callback fired (which
+  // happened reliably whenever billing/webhook hit its 90s maxDuration
+  // ceiling while Phase C was still polling Linode for boot).
   //
-  // 2026-05-16 P0-A fix: cloud-init-callback used to leave gateway_url
-  // NULL, which (a) prevented /deploying from redirecting to /dashboard
-  // (UI's `data.vm.gatewayUrl` predicate), and (b) excluded cloud-init
-  // VMs from the reconciler's candidate query (`.not("gateway_url",
-  // "is", null)` at app/api/cron/reconcile-fleet/route.ts).
+  // Post-Fix-B: setup.sh sends its own IP in the body. Route accepts
+  // either source. The peek now only verifies the row exists and the
+  // token matches — that's sufficient auth (32-byte random token is
+  // unique per VM, mint-time bound to assigned_to + name).
   const { data: rowPeek } = await supabase
     .from("instaclaw_vms")
     .select("ip_address")
@@ -212,8 +244,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .eq("name", vmName)
     .maybeSingle();
 
-  if (!rowPeek || typeof (rowPeek as { ip_address?: string | null }).ip_address !== "string") {
-    logger.warn("cloud-init-callback: pre-claim peek failed (no row or NULL ip_address)", {
+  if (!rowPeek) {
+    logger.warn("cloud-init-callback: pre-claim peek failed (no row for token)", {
       route: "vm/cloud-init-callback",
       userId,
       vmName,
@@ -222,7 +254,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return new NextResponse("unauthorized", { status: 401 });
   }
 
-  const ipAddress = (rowPeek as { ip_address: string }).ip_address;
+  // Resolve effective IP: body-supplied (new, race-free) wins over
+  // DB-stored (legacy Phase-C path, still works). At least one must
+  // be present — otherwise we can't construct gateway_url.
+  const ipAddressFromDb = (rowPeek as { ip_address?: string | null }).ip_address ?? null;
+  const ipAddress = ipAddressFromBody ?? (ipAddressFromDb && IPV4_RE.test(ipAddressFromDb) ? ipAddressFromDb : null);
+  if (!ipAddress) {
+    logger.warn("cloud-init-callback: no usable IP (body empty + DB NULL)", {
+      route: "vm/cloud-init-callback",
+      userId,
+      vmName,
+      tokenPrefix: callbackToken.slice(0, 8),
+    });
+    return new NextResponse("missing ipAddress", { status: 400 });
+  }
+
   // GATEWAY_PORT is exported from lib/ssh.ts:221 as 18789. Inlined here
   // (rather than imported) to keep this route handler's bundle small —
   // lib/ssh.ts pulls SSH client deps that don't belong on the edge of
@@ -269,6 +315,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   //                                       picks up and pushes manifest content
   //                                       per Rule 47 continuous reconciliation
   // agentbook_wallet_address (cond.)   — vmUpdate line 7650
+  // ip_address                          — 2026-05-21 Fix B: always set
+  //                                       from effective IP (body or
+  //                                       DB) so the row's ip_address
+  //                                       is non-NULL after callback
+  //                                       regardless of Phase C's
+  //                                       completion status. Idempotent
+  //                                       when DB already had the same
+  //                                       IP (Phase C completed first);
+  //                                       fills the gap when Phase C's
+  //                                       UPDATE got killed by webhook
+  //                                       maxDuration.
   const nowIso = new Date().toISOString();
   const HEARTBEAT_INITIAL_DELAY_MS = 10_800_000; // 3h — matches lib/ssh.ts:7646
   const update: Record<string, unknown> = {
@@ -276,6 +333,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     health_status: "healthy",
     status: "assigned",
     assigned_at: nowIso,
+    ip_address: ipAddress,
     gateway_url: gatewayUrl,
     control_ui_url: gatewayUrl,
     last_health_check: nowIso,

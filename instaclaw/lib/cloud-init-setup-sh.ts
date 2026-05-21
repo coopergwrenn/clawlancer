@@ -1024,13 +1024,33 @@ echo "OPENCLAW_CONFIGURE_DONE"
 # \$USER_ID / \$VM_NAME / \$AGENTBOOK_ADDRESS values are bash-substituted
 # at runtime; the TS template substitution was done at the top of this
 # file.
+#
+# 2026-05-21 Fix B: we now derive our own public IPv4 and include it in
+# the body as ipAddress. The route previously required ip_address on the
+# DB row to be non-NULL (written by createUserVM Phase C's UPDATE after
+# waitForServer), but billing/webhook's 90s maxDuration ceiling killed
+# Phase C mid-poll on ~100% of cloud-init signups under load, leaving
+# ip_address NULL. Sending our own IP eliminates the race entirely —
+# the route uses body.ipAddress if provided, falls back to DB ip_address
+# (legacy Phase-C path) otherwise. See app/api/vm/cloud-init-callback/
+# route.ts §2.5 + §3 for the receive side.
+#
+# IP derivation: \`ip -4 -o addr show eth0\` reliably returns the public
+# IPv4 on every Linode g6-dedicated-2 we've shipped. \`hostname -I\` is a
+# fallback (returns IPv4 + IPv6 space-separated; awk '{print \$1}' gets
+# the first which is always IPv4 on Linode's interface ordering).
+# Linode metadata service (169.254.169.254) is NOT available — verified
+# 2026-05-21 on vm-970, returns 404.
+IP_ADDRESS=\$(ip -4 -o addr show eth0 2>/dev/null | awk '{print \$4}' | cut -d/ -f1 | head -1)
+[ -z "\$IP_ADDRESS" ] && IP_ADDRESS=\$(hostname -I | awk '{print \$1}')
+
 {
   CALLBACK_OK=false
   for _attempt in 1 2 3; do
     if curl -fsS -X POST "\$NEXTAUTH_URL/api/vm/cloud-init-callback" \\
         -H "Content-Type: application/json" \\
         -H "X-Cloud-Init-Callback-Token: \$CALLBACK_TOKEN" \\
-        -d "{\\"userId\\":\\"\$USER_ID\\",\\"vmName\\":\\"\$VM_NAME\\",\\"agentbookAddress\\":\\"\$AGENTBOOK_ADDRESS\\",\\"status\\":\\"healthy\\"}" \\
+        -d "{\\"userId\\":\\"\$USER_ID\\",\\"vmName\\":\\"\$VM_NAME\\",\\"agentbookAddress\\":\\"\$AGENTBOOK_ADDRESS\\",\\"ipAddress\\":\\"\$IP_ADDRESS\\",\\"status\\":\\"healthy\\"}" \\
         -m 10 > /dev/null 2>&1; then
       CALLBACK_OK=true
       break
@@ -1039,7 +1059,7 @@ echo "OPENCLAW_CONFIGURE_DONE"
   done
   [ "\$CALLBACK_OK" = "true" ]
 } || {
-  echo "[\$(date -u +%FT%TZ)] FATAL: step 38 (callback POST) failed after 3 attempts"
+  echo "[\$(date -u +%FT%TZ)] FATAL: step 38 (callback POST) failed after 3 attempts (ip=\$IP_ADDRESS)"
   rm -f /tmp/.instaclaw-ready
   touch /tmp/.instaclaw-failed
   exit 1
