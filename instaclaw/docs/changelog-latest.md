@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-21
 
-Window: `a34600333ea8f63fbb89fa282af81877ed1a16b3` → `HEAD` (HEAD = `223ff286`)
+Window: `223ff286dbfda12e70b8731422bf2f94c088c665` → `HEAD` (HEAD = `7eaf4bfe`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 223ff286dbfda12e70b8731422bf2f94c088c665 -->
+<!-- LAST_GENERATED_SHA: 7eaf4bfe9deb9d84e24b3b86f652583e49cee2a4 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `223ff286` 2026-05-21 — fix(cloud-init): bump setup.sh §1.32 gateway-health probe 60s → 240s [1 files] _(ai-assisted)_
-- `53563e72` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `7eaf4bfe` 2026-05-21 — fix(cloud-init): disable snapshot's vm-watchdog cron in setup.sh §1.0.5 [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `b59ab7ee` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `223ff286` 2026-05-21 — fix(cloud-init): bump setup.sh §1.32 gateway-health probe 60s → 240s [1 files] _(ai-assisted)_
+- `7eaf4bfe` 2026-05-21 — fix(cloud-init): disable snapshot's vm-watchdog cron in setup.sh §1.0.5 [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `53563e72` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `b59ab7ee` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `7eaf4bfe` 2026-05-21 — [infrastructure, edge] — fix(cloud-init): disable snapshot's vm-watchdog cron in setup.sh §1.0.5
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `223ff286` 2026-05-21 — fix(cloud-init): bump setup.sh §1.32 gateway-health probe 60s → 240s
+- `7eaf4bfe` 2026-05-21 — fix(cloud-init): disable snapshot's vm-watchdog cron in setup.sh §1.0.5
 
 ## Appendix — every commit (chronological)
 
-- `53563e72` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `223ff286` 2026-05-21 — fix(cloud-init): bump setup.sh §1.32 gateway-health probe 60s → 240s [1 files] _(ai-assisted)_
+- `b59ab7ee` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `7eaf4bfe` 2026-05-21 — fix(cloud-init): disable snapshot's vm-watchdog cron in setup.sh §1.0.5 [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
