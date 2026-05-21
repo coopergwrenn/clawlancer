@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-21
 
-Window: `08542c63758c75fe84d4a07887c41366954b2afe` → `HEAD` (HEAD = `3a2cbd5f`)
+Window: `3a2cbd5fa977d19fdff44882126d547791cd76b5` → `HEAD` (HEAD = `74c98b56`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 3a2cbd5fa977d19fdff44882126d547791cd76b5 -->
+<!-- LAST_GENERATED_SHA: 74c98b56c20ec8082321c3bba22b095cb22d1282 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `3a2cbd5f` 2026-05-21 — fix(cloud-init): race-free callback via VM-reported ipAddress + 90→300s webhook timeout [3 files] _(ai-assisted)_
-- `3cc88ad9` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `74c98b56` 2026-05-21 — feat(gmail): add GMAIL_POPUP_DISABLED kill-switch for blocked OAuth client [2 files] _(ai-assisted)_
+- `8da4e841` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `3a2cbd5f` 2026-05-21 — fix(cloud-init): race-free callback via VM-reported ipAddress + 90→300s webhook timeout [3 files] _(ai-assisted)_
+- `74c98b56` 2026-05-21 — feat(gmail): add GMAIL_POPUP_DISABLED kill-switch for blocked OAuth client [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `3cc88ad9` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `8da4e841` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `3a2cbd5f` 2026-05-21 — fix(cloud-init): race-free callback via VM-reported ipAddress + 90→300s webhook timeout
+- `74c98b56` 2026-05-21 — feat(gmail): add GMAIL_POPUP_DISABLED kill-switch for blocked OAuth client
 
 ## Appendix — every commit (chronological)
 
-- `3cc88ad9` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `3a2cbd5f` 2026-05-21 — fix(cloud-init): race-free callback via VM-reported ipAddress + 90→300s webhook timeout [3 files] _(ai-assisted)_
+- `8da4e841` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `74c98b56` 2026-05-21 — feat(gmail): add GMAIL_POPUP_DISABLED kill-switch for blocked OAuth client [2 files] _(ai-assisted)_
