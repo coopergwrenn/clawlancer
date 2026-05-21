@@ -8,6 +8,7 @@ import { logger } from "@/lib/logger";
 import { getProvider } from "@/lib/providers";
 import { bankrWalletLifecycle } from "@/lib/bankr-wallet-lifecycle";
 import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
+import { deleteLinodeInstance } from "@/lib/vm-lifecycle-helpers";
 
 // Prevent Vercel CDN from caching per-user responses
 export const dynamic = "force-dynamic";
@@ -1588,15 +1589,35 @@ else:
   }
 
   // ========================================================================
-  // 3c: Reclaim VMs suspended > 30 days (wipe data + return to pool)
-  // This is the ONLY path that wipes user data.
+  // 3c: Reclaim VMs suspended > 30 days
+  //
+  // TWO BEHAVIORS gated on TERMINATE_ON_RECLAIM env flag:
+  //
+  //  (default, flag !== "true") — "recycle to pool":
+  //    Wipe filesystem + set status='ready'. Linode instance keeps running.
+  //    This was the original 2026-03-17 design (c406df701) — the rationale
+  //    was "preserve onboarding latency" by recycling existing instances.
+  //    The structural cost: Linode billed every recycled VM forever. The
+  //    PRD (10cf92e18 2026-04-02) explicitly called for step "LINODE DELETE"
+  //    in Section 6.2 but the implementation shipped without it. The
+  //    2026-05-20 $4k/mo zombie-cleanup audit (97 VMs terminated, $2,813/mo
+  //    eliminated) was the trigger for adding the proper termination path.
+  //
+  //  (TERMINATE_ON_RECLAIM=true) — "terminate on reclaim":
+  //    Wipe + DELETE Linode instance + set status='terminated'. New signups
+  //    consume from the ready pool (refilled by replenish-pool cron from
+  //    snapshot). This matches the PRD intent (Section 6.2 Step 4).
+  //    Flag default is OFF so the rollout is operator-controlled — flip
+  //    TERMINATE_ON_RECLAIM=true in Vercel env once replenish-pool health
+  //    is verified (currently 12 ready, floor=10, target=15).
   // ========================================================================
   let reclaimed = 0;
   const RECLAIM_AFTER_DAYS = 30;
+  const TERMINATE_ON_RECLAIM = process.env.TERMINATE_ON_RECLAIM === "true";
 
   const { data: staleSupended } = await supabase
     .from("instaclaw_vms")
-    .select("id, assigned_to, suspended_at, ip_address, ssh_port, ssh_user, name")
+    .select("id, assigned_to, suspended_at, ip_address, ssh_port, ssh_user, name, provider_server_id, partner")
     .eq("health_status", "suspended")
     .not("status", "in", '("terminated","destroyed","failed")')
     .not("suspended_at", "is", null)
@@ -1606,6 +1627,13 @@ else:
     for (const vm of staleSupended) {
       const daysSuspended = (Date.now() - new Date(vm.suspended_at).getTime()) / (1000 * 60 * 60 * 24);
       if (daysSuspended < RECLAIM_AFTER_DAYS) continue;
+
+      // Safety gate: NEVER terminate edge_city VMs even in flag-on mode.
+      // Edge Esmeralda is sponsor-funded; partner VMs stay alive through
+      // the village. The recycle path is also wrong for them, but the
+      // partner column would normally have already gated them out of the
+      // suspension path entirely — defense in depth.
+      const isProtectedPartner = vm.partner === "edge_city";
 
       try {
         // Stamp last_assigned_to before reclaim
@@ -1623,29 +1651,122 @@ else:
           p_user_id: vm.assigned_to,
         });
 
-        // Wipe filesystem
+        // Wipe filesystem (unconditional — required regardless of post-wipe
+        // path; both recycle-to-pool and terminate paths need a clean disk).
         const wipeResult = await wipeVMForNextUser(vm);
-        if (wipeResult.success) {
-          await supabase
-            .from("instaclaw_vms")
-            .update({ status: "ready", suspended_at: null })
-            .eq("id", vm.id);
-        } else {
-          logger.error("VM wipe failed during 30-day reclaim", {
+        if (!wipeResult.success) {
+          logger.error("VM wipe failed during 30-day reclaim — leaving VM intact this cycle", {
             route: "cron/health-check",
             vmId: vm.id,
             error: wipeResult.error,
           });
+          // Don't proceed to recycle or terminate on a wipe failure — would
+          // leak the previous user's data into the pool, or risk a paid
+          // Linode delete on something still-mounted-stale. Retry next cycle.
+          continue;
+        }
+
+        // ── Branch: terminate (flag-gated) vs recycle (default) ──
+        if (TERMINATE_ON_RECLAIM && !isProtectedPartner) {
+          // Terminate-on-reclaim path: delete from Linode and mark
+          // status='terminated'. Replenish-pool cron tops up the ready
+          // pool from snapshot on its next 5-min tick.
+          //
+          // 404 from Linode is success (instance already gone — possibly
+          // deleted by an admin or a prior cron run that DB-rolled-back).
+          let linodeDeleted = false;
+          if (vm.provider_server_id) {
+            try {
+              await deleteLinodeInstance(Number(vm.provider_server_id));
+              linodeDeleted = true;
+            } catch (delErr) {
+              const errStr = delErr instanceof Error ? delErr.message : String(delErr);
+              if (/404|not found/i.test(errStr)) {
+                // Already gone on Linode side — treat as success.
+                linodeDeleted = true;
+                logger.info("Linode instance already deleted (404) — marking terminated", {
+                  route: "cron/health-check",
+                  vmId: vm.id,
+                  vmName: vm.name,
+                  providerId: vm.provider_server_id,
+                });
+              } else {
+                logger.error("Linode delete failed during reclaim — leaving suspended for next cycle", {
+                  route: "cron/health-check",
+                  vmId: vm.id,
+                  vmName: vm.name,
+                  providerId: vm.provider_server_id,
+                  error: errStr.slice(0, 200),
+                });
+                // Don't flip status — next cycle retries.
+                continue;
+              }
+            }
+          } else {
+            // No provider_server_id but we somehow got here. Just mark
+            // terminated to clear the row from the candidate pool.
+            linodeDeleted = true;
+            logger.warn("Reclaim: no provider_server_id, marking terminated without Linode call", {
+              route: "cron/health-check",
+              vmId: vm.id,
+              vmName: vm.name,
+            });
+          }
+
+          if (linodeDeleted) {
+            await supabase
+              .from("instaclaw_vms")
+              .update({
+                status: "terminated",
+                health_status: "unknown",
+                suspended_at: null,
+              })
+              .eq("id", vm.id);
+
+            // Lifecycle log — keeps the same forensic trail as the
+            // _terminate-zombie-vms.ts script.
+            try {
+              await supabase.from("instaclaw_vm_lifecycle_log").insert({
+                vm_id: vm.id,
+                vm_name: vm.name,
+                ip_address: vm.ip_address,
+                user_id: vm.assigned_to,
+                user_email: null,
+                subscription_status: null,
+                credit_balance: 0,
+                action: "reclaim_terminated",
+                reason: `30-day reclaim, TERMINATE_ON_RECLAIM=true (daysSuspended=${Math.floor(daysSuspended)})`,
+                provider_server_id: vm.provider_server_id ? String(vm.provider_server_id) : null,
+              });
+            } catch { /* non-fatal */ }
+
+            logger.info("VM terminated after 30-day suspension (TERMINATE_ON_RECLAIM=true)", {
+              route: "cron/health-check",
+              userId: vm.assigned_to,
+              vmId: vm.id,
+              vmName: vm.name,
+              daysSuspended: Math.floor(daysSuspended),
+              providerId: vm.provider_server_id,
+            });
+          }
+        } else {
+          // Default (recycle-to-pool) path — legacy behavior preserved.
+          await supabase
+            .from("instaclaw_vms")
+            .update({ status: "ready", suspended_at: null })
+            .eq("id", vm.id);
+
+          logger.info("VM reclaimed after 30-day suspension (recycle-to-pool)", {
+            route: "cron/health-check",
+            userId: vm.assigned_to,
+            vmId: vm.id,
+            vmName: vm.name,
+            daysSuspended: Math.floor(daysSuspended),
+            terminateOnReclaim: false,
+          });
         }
 
         reclaimed++;
-        logger.info("VM reclaimed after 30-day suspension", {
-          route: "cron/health-check",
-          userId: vm.assigned_to,
-          vmId: vm.id,
-          vmName: vm.name,
-          daysSuspended: Math.floor(daysSuspended),
-        });
       } catch (err) {
         logger.error("Failed to reclaim suspended VM", {
           error: String(err),
