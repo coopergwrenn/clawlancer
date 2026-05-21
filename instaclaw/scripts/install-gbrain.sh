@@ -96,6 +96,15 @@
 #       not co-deployed. Was a WARN until 2026-05-20 canary surfaced 15/15 VMs missing
 #       src/core/checkpoint-operation.ts → MCP `checkpoint` tool absent → cron's
 #       call to it fails. Now HARD-FAIL.
+#  37   FATAL_PHASE_C2_PATCH_{APPLY,CHECK,VERIFY}_FAILED — Phase C2: patch found and
+#       co-deployed but the actual `git apply` failed, OR `git apply --check` failed
+#       even after self-heal of half-applied state. Was a WARN-and-continue branch
+#       until 2026-05-21 vm-517/602/634 incident — three VMs landed in half-applied
+#       state (file present, import missing) after Phase B's `git checkout -- .`
+#       reset operations.ts but left untracked checkpoint-operation.ts in place.
+#       Phase C2 now self-heals half-applied state (delete orphan file, re-apply
+#       patch cleanly) AND hard-fails on any remaining apply failure so the
+#       reconciler doesn't mark install successful with a missing CHECKPOINT tool.
 #
 # Co-deployed file requirement (ALL must be uploaded by the TS wrapper alongside
 # this script, available at /tmp/<basename> at exec time — checked at each phase):
@@ -780,28 +789,51 @@ else
 
   if [ "$HAS_FILE" = "1" ] && [ "$HAS_IMPORT" = "1" ]; then
     echo "PHASE_C2_OK patch_already_applied (file=$HAS_FILE import=$HAS_IMPORT, idempotent)"
-  elif git apply --check "$PATCH_FILE" 2>/dev/null; then
-    # Clean apply path. Use PIPESTATUS so we capture git apply's exit code,
-    # not tail's (which is always 0 unless given a bad arg).
-    git apply --verbose "$PATCH_FILE" 2>&1 | tail -3
-    APPLY_RC=${PIPESTATUS[0]}
-    if [ "$APPLY_RC" -ne 0 ]; then
-      echo "PHASE_C2_WARN patch_apply_failed rc=$APPLY_RC — fresh install will NOT have CHECKPOINT tool"
-      echo "  hint: upstream may have changed src/core/operations.ts shape; rebase the patch"
-    else
+  else
+    # SELF-HEAL HALF-APPLIED STATE (2026-05-21 vm-517 / vm-602 / vm-634 incident):
+    # When Phase B's `git checkout -- .` resets tracked operations.ts but leaves
+    # untracked checkpoint-operation.ts in place, we land in HAS_FILE=1 +
+    # HAS_IMPORT=0 — the "half-applied" state. `git apply --check` then fails
+    # because the patch tries to ADD a file that exists. Pre-fix the half-applied
+    # state by deleting the orphan file so `git apply` can re-apply cleanly.
+    # The patch will recreate the file with identical content (it's pinned to a
+    # commit; deterministic).
+    if [ "$HAS_FILE" = "1" ] && [ "$HAS_IMPORT" = "0" ]; then
+      echo "PHASE_C2_HEAL half-applied state detected (file=1 import=0) — deleting orphan file to allow re-apply"
+      rm -f "$HOME/gbrain/src/core/checkpoint-operation.ts"
+      HAS_FILE=0
+    fi
+
+    if git apply --check "$PATCH_FILE" 2>/dev/null; then
+      # Clean apply path. Use PIPESTATUS so we capture git apply's exit code,
+      # not tail's (which is always 0 unless given a bad arg).
+      git apply --verbose "$PATCH_FILE" 2>&1 | tail -3
+      APPLY_RC=${PIPESTATUS[0]}
+      if [ "$APPLY_RC" -ne 0 ]; then
+        # HARD FAIL (2026-05-21): was WARN, but a missing CHECKPOINT tool means
+        # the pg_control cron will permanently FAIL with "Unknown: checkpoint",
+        # which is the exact bug Rule 54 exists to prevent. Fail loud so the
+        # reconciler retries instead of marking install successful.
+        echo "FATAL_PHASE_C2_PATCH_APPLY_FAILED rc=$APPLY_RC — operations.ts likely diverged from pinned commit"
+        echo "  hint: rebase 0001-add-checkpoint-mcp-tool.patch against current GBRAIN_PINNED_COMMIT"
+        exit 37
+      fi
       # Verify-after-apply: re-check both halves landed (Rule 10 / Rule 34 discipline).
       [ -f "$HOME/gbrain/src/core/checkpoint-operation.ts" ] && HAS_FILE=1
       grep -q "import { checkpoint } from './checkpoint-operation.ts'" "$HOME/gbrain/src/core/operations.ts" 2>/dev/null && HAS_IMPORT=1
       if [ "$HAS_FILE" = "1" ] && [ "$HAS_IMPORT" = "1" ]; then
         echo "PHASE_C2_OK patch_applied=$(basename "$PATCH_FILE") (file=$HAS_FILE import=$HAS_IMPORT)"
       else
-        echo "PHASE_C2_WARN patch_apply_verify_failed (file=$HAS_FILE import=$HAS_IMPORT) — half-applied state"
+        echo "FATAL_PHASE_C2_VERIFY_FAILED file=$HAS_FILE import=$HAS_IMPORT — apply returned 0 but verify failed"
+        exit 37
       fi
+    else
+      # --check failed AND we're not in half-applied state (self-heal already ran).
+      # Real conflict with upstream — patch needs rebase.
+      echo "FATAL_PHASE_C2_PATCH_CHECK_FAILED file=$HAS_FILE import=$HAS_IMPORT — patch conflicts with upstream"
+      echo "  hint: rebase 0001-add-checkpoint-mcp-tool.patch against current GBRAIN_PINNED_COMMIT"
+      exit 37
     fi
-  else
-    # --check failed AND we're not already-applied — half-applied or conflict.
-    echo "PHASE_C2_WARN patch_check_failed file=$HAS_FILE import=$HAS_IMPORT — half-applied or conflicts with upstream"
-    echo "  hint: rebase 0001-add-checkpoint-mcp-tool.patch against the current GBRAIN_PINNED_COMMIT"
   fi
 fi
 
@@ -997,7 +1029,15 @@ fi
 # slate. If we crash after file-write, idempotency check on next install
 # detects (V=ok, T=empty since no openclaw.json change yet) and re-installs.
 
-MINT_TS_PY="/tmp/_mint-gbrain-token-$TS.ts"
+# Bun module resolution gotcha (2026-05-21 vm-602/634 incident):
+# `bun run /tmp/script.ts` cannot resolve bare imports like '@electric-sql/pglite'
+# even when CWD is $HOME/gbrain — bun resolves from the SCRIPT's directory, not
+# CWD's package.json. The behavior is non-deterministic: it can succeed on VMs
+# where bun's global install cache has been "primed" by prior Phase D `bun install`,
+# but fails on cold-cache VMs. Placing the mint script INSIDE $HOME/gbrain makes
+# bun resolve directly from $HOME/gbrain/node_modules — works deterministically.
+# The bunfig.toml in $HOME/gbrain doesn't conflict (we don't run tests).
+MINT_TS_PY="$HOME/gbrain/_mint-gbrain-token-$TS.ts"
 cat > "$MINT_TS_PY" <<'TSEOF'
 import { PGlite } from '@electric-sql/pglite';
 import { createHash, randomBytes } from 'crypto';
