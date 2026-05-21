@@ -145,6 +145,87 @@ AGENTBOOK_ADDRESS="${p.agentbookAddress ?? ""}"
 echo "[\$(date -u +%FT%TZ)] setup.sh starting (user=\$USER_ID vm=\$VM_NAME)"
 
 # ════════════════════════════════════════════════════════════════════════
+# §1.0.5 CRITICAL: disable snapshot's vm-watchdog + silence-watchdog crons
+# ════════════════════════════════════════════════════════════════════════
+# MUST run FIRST — before §1.32's gateway restart triggers the bug.
+#
+# vm-973 incident (2026-05-21): setup.sh's §1.32 restarted the gateway.
+# The gateway's bonjour mDNS plugin entered "stuck announcing" for 66.6s
+# on the cold Linode (verified via journalctl: "service stuck in
+# announcing for 66593ms"). /health was unresponsive for the full 100s
+# of cold-start. vm-watchdog.py (running every minute via the snapshot's
+# pre-baked cron) counted 3 consecutive HEALTH_URL=http://localhost:18789/
+# health failures, hit its GATEWAY_FAIL_THRESHOLD=3, and called
+# \`systemctl --user restart openclaw-gateway\`. The restart killed the
+# gateway mid-startup. Bonjour started over, /health was unresponsive
+# again, watchdog counted 3 more failures, restarted again. Tight loop —
+# the gateway NEVER reached the [ready] + [telegram] starting provider
+# state because the watchdog kept killing it ~60s after it finally
+# responded. Cooper's @theduuuuuudebot messages went to a bot whose
+# polling connection was perpetually dropped.
+#
+# Production-fleet practice (CLAUDE.md snapshot v79 note):
+#   "vm-watchdog + silence-watchdog crons present (carried from v64 —
+#   production fleet has these manually disabled; new VMs from this
+#   snapshot will re-enable them unless removed during configureOpenClaw)"
+#
+# The pool path's configureOpenClaw runs configCmds that disable these
+# crons via \`sed | crontab -\` via SSH. The 150+ paying-customer
+# pool-fleet has run reliably without these watchdogs for months — that
+# IS the verified-safe configuration. Cloud-init must match.
+#
+# Why disabling is safe (the watchdog's roles vs alternatives):
+#   - Gateway-restart (the killer here): REDUNDANT with OpenClaw
+#     2026.4.26's internal health-monitor — visible in gateway boot
+#     journal: "[health-monitor] started (interval: 300s, startup-grace:
+#     60s, channel-connect-grace: 120s)". OpenClaw's monitor already
+#     handles legitimate freezes and uses startup-grace correctly.
+#   - Chrome OOM protection: cgroup limits on browser plugin handle it.
+#   - Disk cleanup: file-drift cron + manual cleanup cover it.
+#   - Process aging: systemd manages process lifecycles.
+#   - Silence-watchdog: replaced by per-message ack-watchdog.py (v95)
+#     which is session-state-aware and doesn't kill the gateway.
+#
+# Approach:
+#   sed-comment the cron lines in place (preserve, don't delete). Adds
+#   "# DISABLED 2026-05-21 cloud-init-bonjour-fix: " prefix so the cron
+#   line is still present-but-inert. If we ever need to re-enable,
+#   uncomment manually OR re-bake the snapshot without these entries.
+#
+# Idempotency:
+#   The sed uses /^#/! which skips lines already starting with #. So
+#   re-running setup.sh on a VM whose crons are already disabled is a
+#   no-op. The disabled-line prefix begins with "#", so the second pass
+#   doesn't double-prepend.
+#
+# Empty-crontab safety:
+#   \`crontab -l\` returns nothing AND exit-1 when no crontab exists.
+#   The guard \`[ -s "\$TMP_CRONTAB" ]\` ensures we never pipe an empty
+#   crontab back through \`crontab -\` (which would clear all entries).
+#
+# Future-proofing:
+#   If a future snapshot bake removes these cron entries entirely (per
+#   Cooper's planned May 23 bake), the sed substitution simply doesn't
+#   match and this step is a no-op. Defense in depth.
+#
+# Failure mode (BEST_EFFORT):
+#   If \`sudo -u openclaw\` fails for some reason (sudo timeout, broken
+#   /etc/sudoers), we WARN and proceed. The gateway MAY still come up
+#   on a fast-bonjour VM. Worst case is back to the current bug — vm
+#   gets stuck in restart loop — which is no worse than today.
+{
+  sudo -u openclaw bash -lc '
+    TMP_CRONTAB=\$(mktemp /tmp/crontab.before-disable.XXXXXX)
+    if crontab -l > "\$TMP_CRONTAB" 2>/dev/null && [ -s "\$TMP_CRONTAB" ]; then
+      sed -i "/^#/!{s|^\\(.*vm-watchdog\\.py.*\\)\$|# DISABLED 2026-05-21 cloud-init-bonjour-fix: \\1|;s|^\\(.*silence-watchdog\\.py.*\\)\$|# DISABLED 2026-05-21 cloud-init-bonjour-fix: \\1|;}" "\$TMP_CRONTAB"
+      crontab "\$TMP_CRONTAB"
+    fi
+    rm -f "\$TMP_CRONTAB"
+  '
+  echo "[\$(date -u +%FT%TZ)] §1.0.5 vm-watchdog + silence-watchdog crons disabled (matches production-fleet config)"
+} || echo "[\$(date -u +%FT%TZ)] WARN: §1.0.5 failed to disable vm-watchdog/silence-watchdog crons — gateway may be killed during §1.32 bonjour-stuck window. Recovery: ssh in as openclaw user, run 'crontab -e', prefix vm-watchdog + silence-watchdog lines with '# DISABLED'."
+
+# ════════════════════════════════════════════════════════════════════════
 # §1.1 BEST_EFFORT [BE-1]: linger + sshd OOM-protect drop-in
 # ════════════════════════════════════════════════════════════════════════
 # Two independent safeties wired up before any service modification:

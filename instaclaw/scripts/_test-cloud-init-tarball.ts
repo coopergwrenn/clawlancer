@@ -3017,6 +3017,74 @@ async function test16_BuildSetupSh() {
     !be12WarnLine.includes("`"),
     "BE-12 WARN echo has no unescaped backticks",
   );
+
+  // ────────────────────────────────────────────────────────────────────
+  // 2026-05-21 §1.0.5 — watchdog-disable parity contract
+  // ────────────────────────────────────────────────────────────────────
+  //
+  // vm-973 incident (2026-05-21): the snapshot's vm-watchdog.py cron
+  // (running every minute with GATEWAY_FAIL_THRESHOLD=3) killed the
+  // gateway during the bonjour-stuck-announcing 4-minute window in
+  // §1.32. The gateway never reached [ready] state because the watchdog
+  // kept restarting it ~60s after each cold-start /health response.
+  // Cooper's Telegram messages went to a bot whose polling connection
+  // was perpetually dropped. Recovery required manually commenting out
+  // the cron — same configuration the 150+ paying pool-fleet has run
+  // with for months (per CLAUDE.md snapshot v79 note).
+  //
+  // §1.0.5 in setup.sh disables BOTH vm-watchdog.py AND silence-watchdog.py
+  // crons in-place via `sed` (preserves the line, prefixes with
+  // "# DISABLED ..." marker). MUST run BEFORE §1.32 so the watchdog
+  // can't fire during the gateway restart window.
+  //
+  // These assertions enforce the contract permanently. If anyone removes
+  // §1.0.5 from setup.sh (or weakens the sed pattern, or moves it after
+  // §1.32), this test fails BEFORE deploy and 1000 Edge Esmeralda
+  // attendees don't get stuck in a gateway restart loop on first boot.
+  assert(
+    sh.includes("§1.0.5 CRITICAL: disable snapshot's vm-watchdog + silence-watchdog crons"),
+    "§1.0.5 section header present in setup.sh",
+  );
+  // Substring match — `.py` is sed-escaped to `\.py` in the bash output,
+  // so we match the cron-script basename without the extension.
+  assert(
+    sh.includes("vm-watchdog") && sh.includes("silence-watchdog"),
+    "§1.0.5 references both vm-watchdog + silence-watchdog (both must be disabled — both cause gateway restarts)",
+  );
+  assert(
+    sh.includes("DISABLED 2026-05-21 cloud-init-bonjour-fix"),
+    "§1.0.5 uses the canonical disable marker (any change breaks idempotency contract — re-runs would double-prepend)",
+  );
+  assert(
+    sh.includes("/^#/!"),
+    "§1.0.5 sed uses /^#/! to skip already-disabled lines (idempotency invariant — without this, re-runs prepend the marker repeatedly)",
+  );
+  // Empty-crontab safety: if `crontab -l` returns nothing (no crontab exists),
+  // we MUST NOT pipe empty content through `crontab -` (which would clear
+  // any existing crons). The guard is `[ -s "$TMP_CRONTAB" ]`.
+  assert(
+    sh.includes('[ -s "$TMP_CRONTAB" ]'),
+    "§1.0.5 has empty-crontab safety check — would otherwise wipe all crons on a future snapshot without these entries",
+  );
+  // ORDERING contract: §1.0.5 MUST come before §1.32 (the gateway
+  // restart). If they swap, the watchdog would have a window to fire
+  // during the bonjour-stuck restart and kill the gateway — exactly
+  // the bug we're fixing.
+  const wdDisableIdx = sh.indexOf("§1.0.5");
+  const gatewayRestartIdx = sh.indexOf("§1.32");
+  assert(
+    wdDisableIdx > 0 && gatewayRestartIdx > 0 && wdDisableIdx < gatewayRestartIdx,
+    `§1.0.5 (watchdog-disable) MUST appear before §1.32 (gateway-restart) — found 1.0.5 at ${wdDisableIdx}, 1.32 at ${gatewayRestartIdx}`,
+  );
+  // RUN-AS contract: the cron must be edited as the `openclaw` user
+  // (NOT root). User crons are stored per-user in /var/spool/cron/crontabs/.
+  // If we run as root, we'd edit root's crontab (which doesn't have these
+  // entries) and the openclaw user's crontab would stay unchanged.
+  const wdDisableBlock = sh.slice(wdDisableIdx, sh.indexOf("§1.1", wdDisableIdx));
+  assert(
+    wdDisableBlock.includes("sudo -u openclaw bash -lc"),
+    "§1.0.5 runs as openclaw user (cron is per-user; running as root edits the wrong crontab)",
+  );
 }
 
 async function test17_BuildCloudInitTarball() {
