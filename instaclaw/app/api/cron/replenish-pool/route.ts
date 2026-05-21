@@ -220,11 +220,31 @@ async function readPoolState(): Promise<PoolState> {
     .select("name, created_at")
     .eq("status", "provisioning");
 
-  // Total active VMs (cost ceiling)
+  // Pool-eligible total (toward MAX_TOTAL_VMS cost ceiling).
+  //
+  // 2026-05-20 fix: the prior filter was `.not("status","in","(terminated,destroyed,failed)")`,
+  // which INCLUDED non-pool-eligible cost-bearing states (suspended,
+  // hibernating, frozen, configure_failed). When suspended/hibernating
+  // VMs accumulated, totalCount inflated past MAX_TOTAL_VMS, the
+  // remainingCeiling math computed 0, and the cron skipped provisioning
+  // (skip_cap) — even when the actual ready pool was below floor. The
+  // pool sat at 2 VMs while the cron returned in 52ms with no action.
+  // Consensus's parallel zombie termination effort eventually brought
+  // total back below the ceiling and the cron resumed, but the structural
+  // bug stayed latent for ~40 days (introduced in commit 0d9e612d,
+  // 2026-04-10).
+  //
+  // The positive-list filter below counts ONLY states that are either
+  // currently in the pool or actively becoming pool members. Suspended,
+  // hibernating, frozen, configure_failed are still cost-bearing on
+  // Linode but they're NOT pool inventory — they don't satisfy new
+  // customer signups. MAX_TOTAL_VMS is a *pool* ceiling, not a fleet-wide
+  // Linode-billing ceiling. Future cost-leak prevention should be a
+  // SEPARATE metric, not coupled to provisioning decisions.
   const { count: totalCount } = await supabase
     .from("instaclaw_vms")
     .select("*", { count: "exact", head: true })
-    .not("status", "in", "(terminated,destroyed,failed)");
+    .in("status", ["ready", "assigned", "provisioning"]);
 
   const now = Date.now();
   const stuckThresholdMs = STUCK_THRESHOLD_MINUTES * 60 * 1000;

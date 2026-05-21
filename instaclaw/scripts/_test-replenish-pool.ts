@@ -266,11 +266,32 @@ async function testRealQueries() {
     .eq("status", "provisioning");
   if (provErr) throw provErr;
 
+  // Pool-eligible total — matches the post-2026-05-20 fix in route.ts.
+  // Positive-list filter so suspended/hibernating/frozen/configure_failed
+  // don't inflate the count past MAX_TOTAL_VMS and block provisioning.
   const { count: totalCount, error: totalErr } = await supabase
     .from("instaclaw_vms")
     .select("*", { count: "exact", head: true })
-    .not("status", "in", "(terminated,destroyed,failed)");
+    .in("status", ["ready", "assigned", "provisioning"]);
   if (totalErr) throw totalErr;
+
+  // Diagnostic: show the BEFORE filter count too, so an operator running
+  // this test in the future can see the gap and re-confirm the fix is
+  // still warranted. If the gap is large, suspended/hibernating VMs are
+  // accumulating again and the cost-leak hunting should be re-prioritized.
+  const { count: legacyTotalCount } = await supabase
+    .from("instaclaw_vms")
+    .select("*", { count: "exact", head: true })
+    .not("status", "in", "(terminated,destroyed,failed)");
+  console.log(
+    `\n  pool-eligible filter (current): ${totalCount} | legacy filter (pre-fix): ${legacyTotalCount}`,
+  );
+  const gap = (legacyTotalCount ?? 0) - (totalCount ?? 0);
+  if (gap > 0) {
+    console.log(
+      `  → ${gap} non-pool-eligible cost-bearing VMs (suspended/hibernating/frozen/configure_failed)`,
+    );
+  }
 
   const now = Date.now();
   const stuckThresholdMs = 15 * 60 * 1000;
