@@ -1498,17 +1498,42 @@ if [ "$HOT_RELOAD_HITS" = "0" ]; then
   echo "  warn: 'config hot reload applied' not found in journal window (timing skew or slow watcher; not fatal)"
 fi
 
-# G8: gateway health (Rule 5). The hot-reload should NOT have broken the
-# gateway. If it did (parse error, etc.), we want to know immediately —
-# don't let Phase H proceed against an unhealthy gateway.
-GW_HEALTH=$(curl -sf -m 3 -o /dev/null -w '%{http_code}' http://localhost:18789/health 2>/dev/null)
+# G8: gateway health (Rule 5) with retry. The hot-reload should NOT have
+# broken the gateway. If it did (parse error, etc.), we want to know
+# immediately — don't let Phase H proceed against an unhealthy gateway.
+#
+# Retry up to 3 attempts × 3s spacing (P2 followup 2026-05-21 — fixed Bug E
+# recurrence on vm-517 which re-quarantined 3 times overnight despite the
+# gateway being healthy seconds later). Hot-reload completion timing is
+# non-deterministic in OpenClaw 2026.4.26:
+#   • config-watcher emits "config hot reload applied" within <1s (typical)
+#     but on a loaded VM with active sessions, the gateway may briefly stop
+#     serving /health while it swaps in the new MCP server config
+#   • curl returns 000 (connection refused) for the ~1-5s window the gateway
+#     is mid-swap — looks identical to "the gateway crashed" but isn't
+#   • a single probe at this point catches the transient too aggressively
+# Total budget: 3 attempts × (3s curl timeout + 3s sleep) ≈ ~12s worst case.
+# Surface attempt count on success so future timing skew is visible.
+GW_HEALTH=""
+GW_HEALTH_ATTEMPTS=0
+for ATTEMPT in 1 2 3; do
+  GW_HEALTH_ATTEMPTS=$ATTEMPT
+  GW_HEALTH=$(curl -sf -m 3 -o /dev/null -w '%{http_code}' http://localhost:18789/health 2>/dev/null)
+  if [ "$GW_HEALTH" = "200" ]; then
+    break
+  fi
+  # Don't sleep after the last attempt — pointless wait before fatal.
+  if [ "$ATTEMPT" -lt 3 ]; then
+    sleep 3
+  fi
+done
 if [ "$GW_HEALTH" != "200" ]; then
-  echo "FATAL_GATEWAY_UNHEALTHY_POST_HOT_RELOAD health=$GW_HEALTH"
+  echo "FATAL_GATEWAY_UNHEALTHY_POST_HOT_RELOAD health=$GW_HEALTH attempts=$GW_HEALTH_ATTEMPTS"
   openclaw mcp unset gbrain > /dev/null 2>&1
   exit 19
 fi
 
-echo "PHASE_G_OK transport=streamable-http gw_health=$GW_HEALTH hot_reload_hits=$HOT_RELOAD_HITS"
+echo "PHASE_G_OK transport=streamable-http gw_health=$GW_HEALTH hot_reload_hits=$HOT_RELOAD_HITS gw_health_attempts=$GW_HEALTH_ATTEMPTS"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE H: real round-trip via verify-gbrain-mcp.py
