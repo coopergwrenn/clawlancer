@@ -4084,27 +4084,59 @@ function assertSafeShellArg(value: string, label: string): void {
 
 // Map InstaClaw model IDs (Anthropic format) to OpenClaw provider/model format
 export function toOpenClawModel(model: string): string {
-  // ChatGPT-Codex models are already in OpenClaw wire format (provider/model
-  // shape) — pass through as-is. The Day 11-15 reconciler step sets
-  // vm.default_model = "openai-codex/gpt-5.5" when a user connects their
-  // ChatGPT subscription via the OAuth modal, and the stepEnforceModelPrimary
-  // mapping needs to honor that without rewriting to anthropic/claude.
+  // ════════════════════════════════════════════════════════════════════════
+  // 2026-05-21 P0: idempotent pass-through for ANY already-prefixed model
+  // ════════════════════════════════════════════════════════════════════════
   //
-  // Whitelist-validate the model string before pass-through. Callers
-  // (stepEnforceModelPrimary, stepChatGPTOAuthToken disconnect path) embed
-  // this return value into single-quoted shell commands of the form
-  // `openclaw config set ... '${target}'`. Without the regex check, an
-  // attacker with DB-write access to vm.default_model could embed quote
-  // characters to escape the shell arg and execute arbitrary commands on
-  // every reconcile. Whitelist: alphanum + dot + underscore + hyphen
-  // after the slash. Anything else falls through to the safe fallback,
-  // matching the function's existing "unknown model" behavior.
-  if (model.startsWith("openai-codex/")) {
-    if (!/^openai-codex\/[a-zA-Z0-9._-]+$/.test(model)) {
+  // vm-974 incident: buildOpenClawConfig was writing the raw `openclawModel`
+  // arg into agents.defaults.model.primary without first wrapping through
+  // this function. Pool-path callers (lib/ssh.ts:5653) pre-wrap, so they
+  // were fine; cloud-init callers (lib/cloud-init-tarball.ts:937) passed
+  // raw `p.defaultModel` ("claude-sonnet-4-6"), which landed verbatim in
+  // openclaw.json. OpenClaw's model-resolver auto-prefixes unknown-
+  // provider models to "openai/" (NOT "anthropic/" by default), producing
+  // "openai/claude-sonnet-4-6" which doesn't exist → FailoverError on
+  // every chat completion → bot silent on every message.
+  //
+  // The defense: buildOpenClawConfig now wraps openclawModel through
+  // toOpenClawModel internally. That works ONLY if this function is
+  // idempotent — i.e., re-wrapping an already-prefixed value preserves it.
+  // The original implementation was NOT idempotent for "anthropic/X"
+  // because the map lookup missed for already-prefixed keys and returned
+  // the default fallback ("anthropic/claude-sonnet-4-6"). Pool-path opus
+  // users (default_model = "anthropic/claude-opus-4-6") would silently
+  // get downgraded to sonnet.
+  //
+  // Provider-aware design (per Cooper's directive for upcoming
+  // multi-provider support — Anthropic + OpenAI OAuth + future):
+  //   - Any model already in `<provider>/<model>` shape passes through
+  //     unchanged (after shell-safety validation)
+  //   - Bare model names are mapped via the known-models table below
+  //     to the canonical "<provider>/<model>" form
+  //   - Unknown bare names fall back to "anthropic/claude-sonnet-4-6"
+  //     (safer than crashing or auto-resolving to a wrong provider)
+  //
+  // Shell-safety: callers embed this return value into single-quoted
+  // `openclaw config set ... '${target}'` commands (stepEnforceModelPrimary,
+  // stepChatGPTOAuthToken disconnect). Whitelist regex on every branch
+  // prevents an attacker with DB-write access from injecting quote chars
+  // to escape the shell arg and execute arbitrary commands on reconcile.
+
+  // Idempotent pass-through for any provider/model already in wire format.
+  // Matches: anthropic/X, openai/X, openai-codex/X, and any future provider
+  // following the lowercase-name + slash + model-id convention.
+  if (/^[a-z][a-z0-9-]*\//.test(model)) {
+    if (!/^[a-z][a-z0-9-]*\/[a-zA-Z0-9._-]+$/.test(model)) {
+      // Provider prefix present but malformed (suspicious chars after slash).
+      // Fall through to safe fallback rather than passing untrusted bytes
+      // into a shell-quoted command.
       return "anthropic/claude-sonnet-4-6";
     }
     return model;
   }
+
+  // Bare model name → canonical provider/model mapping.
+  // Add new entries here as new models / providers are onboarded.
   const map: Record<string, string> = {
     "minimax-m2.5": "anthropic/minimax-m2.5",
     "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4-5-20251001",
@@ -4864,8 +4896,20 @@ export function buildOpenClawConfig(
     },
     agents: {
       defaults: {
+        // 2026-05-21 P0 (vm-974): wrap openclawModel through toOpenClawModel
+        // here, not just at the pool-path callsite. Cloud-init's
+        // buildOpenClawJsonForTarball was passing raw `p.defaultModel`
+        // ("claude-sonnet-4-6") which landed unprefixed in agents.defaults.
+        // model.primary. OpenClaw's model resolver auto-prefixes missing-
+        // provider models to "openai/" → "openai/claude-sonnet-4-6" doesn't
+        // exist → FailoverError on every chat completion → bot silent.
+        // toOpenClawModel is now idempotent (see lib/ssh.ts:4086): wrapping
+        // an already-prefixed value passes it through unchanged, so the
+        // pool-path's existing pre-wrap (lib/ssh.ts:5653) remains correct
+        // and this internal wrap is the defense-in-depth net for cloud-init
+        // and any future caller that forgets to pre-wrap.
         model: {
-          primary: openclawModel,
+          primary: toOpenClawModel(openclawModel),
           fallbacks: ["anthropic/claude-haiku-4-5-20251001"],
         },
         bootstrapMaxChars: BOOTSTRAP_MAX_CHARS,

@@ -3085,6 +3085,104 @@ async function test16_BuildSetupSh() {
     wdDisableBlock.includes("sudo -u openclaw bash -lc"),
     "§1.0.5 runs as openclaw user (cron is per-user; running as root edits the wrong crontab)",
   );
+
+  // ────────────────────────────────────────────────────────────────────
+  // 2026-05-21 P0 — model-prefix parity contract (vm-974 bug #8)
+  // ────────────────────────────────────────────────────────────────────
+  //
+  // vm-974 incident: every model string in agents.defaults.model MUST be
+  // in `<provider>/<model>` wire format. OpenClaw's model resolver does
+  // NOT default unprefixed models to "anthropic/" — it tries "openai/"
+  // first. So "claude-sonnet-4-6" (no prefix) resolves to
+  // "openai/claude-sonnet-4-6", which doesn't exist, and every chat
+  // completion fails with "Unknown model". Bot goes silent.
+  //
+  // Pool path was unaffected because configureOpenClaw wraps the model
+  // through toOpenClawModel() BEFORE calling buildOpenClawConfig
+  // (lib/ssh.ts:5653). Cloud-init's buildOpenClawJsonForTarball passes
+  // raw p.defaultModel. The fix: buildOpenClawConfig now wraps
+  // openclawModel through toOpenClawModel() at write time, and
+  // toOpenClawModel is now idempotent (passes through already-prefixed
+  // values unchanged) so pool-path's pre-wrap remains correct.
+  //
+  // These assertions enforce the contract permanently. They verify the
+  // OUTPUT shape (every model string in openclaw.json has a "/" provider
+  // prefix), not the implementation — so they protect against ANY future
+  // refactor that bypasses toOpenClawModel.
+  // Generate the cloud-init tarball's openclaw.json output to inspect the
+  // model block. Local to test16 (test11 has its own buildOpenClawConfig
+  // call but model-prefix is specifically a buildOpenClawJsonForTarball
+  // contract — that's the function callers use for cloud-init).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const _modelTarball = buildOpenClawJsonForTarball(validParams) as any;
+  const modelBlock = _modelTarball.agents?.defaults?.model;
+  assert(
+    typeof modelBlock?.primary === "string",
+    "agents.defaults.model.primary is a string",
+  );
+  assert(
+    /^[a-z][a-z0-9-]*\/[a-zA-Z0-9._-]+$/.test(modelBlock.primary),
+    `agents.defaults.model.primary MUST be in <provider>/<model> wire format ` +
+      `(got "${modelBlock.primary}") — bare model names auto-resolve to "openai/X" ` +
+      `in OpenClaw and fail "Unknown model" on every chat completion`,
+  );
+  assert(
+    Array.isArray(modelBlock?.fallbacks),
+    "agents.defaults.model.fallbacks is an array",
+  );
+  for (const fb of modelBlock.fallbacks) {
+    assert(
+      typeof fb === "string" && /^[a-z][a-z0-9-]*\/[a-zA-Z0-9._-]+$/.test(fb),
+      `agents.defaults.model.fallbacks entry "${fb}" MUST be in <provider>/<model> wire format`,
+    );
+  }
+
+  // Idempotency contract — buildOpenClawConfig must produce the same
+  // prefixed output whether the caller pre-wraps or not. Catches any
+  // regression to toOpenClawModel that would break pool-path opus
+  // users (who pass "anthropic/claude-opus-4-6" expecting pass-through).
+  const unprefixedParams = { ...validParams, defaultModel: "claude-sonnet-4-6" };
+  const prefixedParams = { ...validParams, defaultModel: "anthropic/claude-sonnet-4-6" };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const unprefixedResult = buildOpenClawJsonForTarball(unprefixedParams) as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const prefixedResult = buildOpenClawJsonForTarball(prefixedParams) as any;
+  assert(
+    unprefixedResult.agents.defaults.model.primary === "anthropic/claude-sonnet-4-6",
+    `unprefixed "claude-sonnet-4-6" input MUST produce "anthropic/claude-sonnet-4-6" ` +
+      `(got "${unprefixedResult.agents.defaults.model.primary}") — vm-974 bug-#8 regression check`,
+  );
+  assert(
+    prefixedResult.agents.defaults.model.primary === "anthropic/claude-sonnet-4-6",
+    `already-prefixed "anthropic/claude-sonnet-4-6" MUST pass through unchanged ` +
+      `(got "${prefixedResult.agents.defaults.model.primary}") — idempotency ` +
+      `protects pool-path callers that pre-wrap`,
+  );
+  // Opus pass-through: critical regression guard. The original
+  // toOpenClawModel map lookup would miss "anthropic/claude-opus-4-6"
+  // and return the sonnet fallback, silently downgrading opus users.
+  const opusParams = { ...validParams, defaultModel: "anthropic/claude-opus-4-6" };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const opusResult = buildOpenClawJsonForTarball(opusParams) as any;
+  assert(
+    opusResult.agents.defaults.model.primary === "anthropic/claude-opus-4-6",
+    `"anthropic/claude-opus-4-6" MUST pass through unchanged ` +
+      `(got "${opusResult.agents.defaults.model.primary}") — pool-path opus users ` +
+      `would silently downgrade to sonnet without this guard`,
+  );
+  // Provider-aware: a non-anthropic prefixed model (here a hypothetical
+  // "openai/gpt-5") must also pass through. Tests the regex contract,
+  // not a specific model. Cooper's directive: fix must work for
+  // anthropic, openai, and any future provider — not hardcoded to anthropic/.
+  const openaiParams = { ...validParams, defaultModel: "openai/gpt-5" };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const openaiResult = buildOpenClawJsonForTarball(openaiParams) as any;
+  assert(
+    openaiResult.agents.defaults.model.primary === "openai/gpt-5",
+    `"openai/gpt-5" MUST pass through unchanged ` +
+      `(got "${openaiResult.agents.defaults.model.primary}") — provider-aware design ` +
+      `must work for ALL providers, not hardcoded to anthropic/`,
+  );
 }
 
 async function test17_BuildCloudInitTarball() {
