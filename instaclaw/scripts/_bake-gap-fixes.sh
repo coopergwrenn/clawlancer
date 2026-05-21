@@ -77,9 +77,12 @@ fi
 # (don't block) — the operator may have removed it before running this.
 [ -f "$HOME/.snapshot-bake-mode" ] || info "~/.snapshot-bake-mode marker absent (continuing anyway)"
 
-# Need sudo for items 8 (apt install) + 9 (apt-mark hold). Cache it now.
+# Need sudo for items 7 (apt install imagemagick) + 8 (apt-mark hold nodejs +
+# rm /etc/apt/sources.list.d/nodesource.{sources,list}). Cache it now.
+# Fixes 1-6 + 9 are user-scoped (~/.config/systemd/user, ~/.openclaw/scripts,
+# crontab, ~/.bun) and don't need sudo.
 if ! sudo -n true 2>/dev/null; then
-  echo "  WARN: cached sudo missing — items 8 + 9 will fail." >&2
+  echo "  WARN: cached sudo missing — items 7 + 8 will fail." >&2
   echo "        Run \`sudo -v\` before re-running this script." >&2
 fi
 

@@ -557,8 +557,14 @@ async function run() {
       { name: "skill-integrity-check.sh", severity: "P0" },      // Rule 24 self-heal cron
       // P1 — operational
       { name: "auto-approve-pairing.py", severity: "P1" },
-      { name: "vm-watchdog.py", severity: "P1" },                // present-but-not-in-cron per v76
-      { name: "silence-watchdog.py", severity: "P1" },           // present-but-not-in-cron per v76
+      // vm-watchdog.py: present on disk AND in cron post-v112. The cron-
+      // presence check at line ~495 enforces "MUST be in cron" with P0.
+      // This entry just confirms the script file is on disk (P1 — cron
+      // wiring is the load-bearing path).
+      { name: "vm-watchdog.py", severity: "P1" },                // on-disk presence; cron-presence P0 above (v112 re-enable)
+      // silence-watchdog.py: present on disk BUT NOT in cron. Stays
+      // removed per v112 changelog (Phase 3 in-flight manifest replaces it).
+      { name: "silence-watchdog.py", severity: "P1" },           // on-disk presence; v76 prune (no cron) checked at line ~498
       { name: "push-heartbeat.sh", severity: "P1" },
       { name: "generate_workspace_index.sh", severity: "P1" },
       { name: "consensus_match_pipeline.py", severity: "P1" },
