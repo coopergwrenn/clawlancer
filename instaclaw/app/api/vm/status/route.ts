@@ -151,6 +151,11 @@ export async function GET() {
         .eq("id", session.user.id)
         .single();
 
+      // Kill-switch: GMAIL_POPUP_DISABLED=true forces gmailPopupDismissed=true
+      // fleet-wide. Mirrors the same gate in /api/onboarding/wizard-status.
+      // Used when Google OAuth is blocked and the popup would dead-end new users.
+      const gmailPopupKilled = process.env.GMAIL_POPUP_DISABLED === "true";
+
       return NextResponse.json({
         status: "assigned",
         vm: {
@@ -174,7 +179,7 @@ export async function GET() {
           worldIdVerificationLevel: userProfile?.world_id_verification_level ?? null,
           worldIdVerifiedAt: userProfile?.world_id_verified_at ?? null,
           gmailConnected: userProfile?.gmail_connected ?? false,
-          gmailPopupDismissed: userProfile?.gmail_popup_dismissed ?? true,
+          gmailPopupDismissed: gmailPopupKilled ? true : (userProfile?.gmail_popup_dismissed ?? true),
           bankrWalletId: vm.bankr_wallet_id ?? null,
           bankrEvmAddress: vm.bankr_evm_address ?? null,
           bankrTokenAddress: liveTokenAddress ?? null,

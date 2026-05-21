@@ -55,12 +55,19 @@ export async function GET() {
     return NextResponse.json({ shouldShow: false, pending: pending ?? undefined });
   }
 
+  // Kill-switch: set GMAIL_POPUP_DISABLED=true in Vercel env to suppress the
+  // "Personalize your agent" auto-popup fleet-wide. Used when the Google OAuth
+  // client is blocked/suspended and the popup would route every new user into
+  // a dead-end "This app is blocked" screen. Forces gmailPopupDismissed=true
+  // so the popup early-outs and the onboarding wizard treats this step done.
+  const gmailPopupKilled = process.env.GMAIL_POPUP_DISABLED === "true";
+
   return NextResponse.json({
     shouldShow: true,
     currentStep: user.onboarding_wizard_step ?? 0,
     telegramBotUsername: vm.telegram_bot_username ?? null,
     botConnected: !!vm.telegram_chat_id,
-    gmailPopupDismissed: user.gmail_popup_dismissed ?? false,
+    gmailPopupDismissed: gmailPopupKilled ? true : (user.gmail_popup_dismissed ?? false),
     gmailConnected: !!user.gmail_connected,
     pending: pending ?? undefined,
   });
