@@ -44,9 +44,8 @@
  */
 import { pack as tarPack } from "tar-stream";
 import { createGzip } from "node:zlib";
-import { readFileSync } from "node:fs";
-import { resolve as resolvePath } from "node:path";
 import { Readable } from "node:stream";
+import { BROWSER_RELAY_SERVER_JS, CHECK_SKILL_UPDATES_SH } from "./inline-vm-scripts";
 
 import {
   EDGE_INSTACLAW_OVERLAY_MD,
@@ -1183,39 +1182,26 @@ export type { TarEntry };
 // to the lib/ source location at runtime — they're unaffected because
 // they invoke the builders (not just import the module).
 
-let _browserRelayServerJs: string | null = null;
 /**
- * Lazy accessor for ~/scripts/browser-relay-server.js content — VM-side
- * WebSocket server the Browser Relay Chrome extension dials into. SSH path
- * classifies its deploy as `recordFailure(critical=true)` per Rule 33;
- * Day 8b relaxes to BEST_EFFORT because a single missed deploy is
- * operator-recoverable (fleet-push), not a broken VM (gateway still
- * serves Telegram).
+ * 2026-05-21: switched from runtime readFileSync to import-time inline
+ * content via lib/inline-vm-scripts.ts. The original lazy-readFileSync
+ * pattern relied on outputFileTracingIncludes globs to bundle the source
+ * files into the Vercel function. Production failure on 2026-05-21
+ * cloud-init self-test showed Vercel's @vercel/nft tracer dropping
+ * `scripts/browser-relay-server/browser-relay-server.js` from the bundle
+ * despite multiple glob shapes tried in next.config.ts. Switching to
+ * a TS import forces the content into the function bundle via the
+ * import graph, which Vercel's tracer follows reliably.
+ *
+ * The lazy-cache pattern is preserved (function call, not raw export)
+ * to keep the signature identical to the previous implementation.
  */
 function getBrowserRelayServerJs(): string {
-  if (_browserRelayServerJs == null) {
-    _browserRelayServerJs = readFileSync(
-      resolvePath(__dirname, "../scripts/browser-relay-server/browser-relay-server.js"),
-      "utf-8",
-    );
-  }
-  return _browserRelayServerJs;
+  return BROWSER_RELAY_SERVER_JS;
 }
 
-let _checkSkillUpdatesSh: string | null = null;
-/**
- * Lazy accessor for ~/scripts/check-skill-updates.sh content — daily 3am
- * UTC cron that diffs the manifest.json from GitHub against installed pip
- * versions and upgrades drifted packages.
- */
 function getCheckSkillUpdatesSh(): string {
-  if (_checkSkillUpdatesSh == null) {
-    _checkSkillUpdatesSh = readFileSync(
-      resolvePath(__dirname, "../scripts/check-skill-updates.sh"),
-      "utf-8",
-    );
-  }
-  return _checkSkillUpdatesSh;
+  return CHECK_SKILL_UPDATES_SH;
 }
 
 // ════════════════════════════════════════════════════════════════════════

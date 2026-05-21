@@ -27,6 +27,7 @@ import {
 import { mintOrReuseApiKey } from "./edgeos-mint";
 import { EDGEOS_TENANT_EDGECITY_PROD } from "./edgeos-auth";
 import { injectGbrainSoulRoutingV1 } from "./workspace-templates-v2";
+import { BROWSER_RELAY_SERVER_JS } from "./inline-vm-scripts";
 import { GBRAIN_PARTNER_ALLOWLIST, isGbrainEligibleForVM } from "./vm-reconcile";
 import {
   validateAcpApiKey, getAcpAuthUrl, pollAcpAuthStatus,
@@ -6489,23 +6490,19 @@ export async function configureOpenClaw(
     // for the public Browser Relay feature; the systemd unit block below
     // wires it up.
     try {
-      const browserRelayServerPath = path.resolve(
-        __dirname,
-        '../scripts/browser-relay-server/browser-relay-server.js'
-      );
-      if (fs.existsSync(browserRelayServerPath)) {
-        const serverContent = fs.readFileSync(browserRelayServerPath, 'utf-8');
-        const serverB64 = Buffer.from(serverContent, 'utf-8').toString('base64');
-        const browserRelayParts: string[] = [];
-        browserRelayParts.push(`echo '${serverB64}' | base64 -d > "$HOME/scripts/browser-relay-server.js"`);
-        browserRelayParts.push('chmod +x "$HOME/scripts/browser-relay-server.js"');
-        browserRelayParts.push('');
-        scriptParts.push(...browserRelayParts);
-      } else {
-        logger.warn("browser-relay-server.js not found at expected path; skipping deploy", {
-          expected: browserRelayServerPath,
-        });
-      }
+      // 2026-05-21: switched from fs.readFileSync to imported inline
+      // content (lib/inline-vm-scripts.ts) so the bundle is guaranteed
+      // to include this file via the import graph (Vercel's @vercel/nft
+      // tracer was dropping it from the bundle when only referenced via
+      // outputFileTracingIncludes globs). The existsSync fallback path
+      // is gone — content is always defined at import time.
+      const serverContent = BROWSER_RELAY_SERVER_JS;
+      const serverB64 = Buffer.from(serverContent, 'utf-8').toString('base64');
+      const browserRelayParts: string[] = [];
+      browserRelayParts.push(`echo '${serverB64}' | base64 -d > "$HOME/scripts/browser-relay-server.js"`);
+      browserRelayParts.push('chmod +x "$HOME/scripts/browser-relay-server.js"');
+      browserRelayParts.push('');
+      scriptParts.push(...browserRelayParts);
     } catch (browserRelayErr) {
       recordFailure("browser_relay_deploy", browserRelayErr, true);
       logger.warn("Failed to load browser-relay-server.js for deployment (non-fatal)", {
