@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-21
 
-Window: `223ff286dbfda12e70b8731422bf2f94c088c665` → `HEAD` (HEAD = `7eaf4bfe`)
+Window: `7eaf4bfe9deb9d84e24b3b86f652583e49cee2a4` → `HEAD` (HEAD = `880507af`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 7eaf4bfe9deb9d84e24b3b86f652583e49cee2a4 -->
+<!-- LAST_GENERATED_SHA: 880507af2c83d73a08fbebd10dbf19212c7f484f -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `7eaf4bfe` 2026-05-21 — fix(cloud-init): disable snapshot's vm-watchdog cron in setup.sh §1.0.5 [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `b59ab7ee` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `880507af` 2026-05-21 — fix(cloud-init): provider-prefix model strings in buildOpenClawConfig [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `80fabbbe` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `880507af` 2026-05-21 — fix(cloud-init): provider-prefix model strings in buildOpenClawConfig [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `7eaf4bfe` 2026-05-21 — fix(cloud-init): disable snapshot's vm-watchdog cron in setup.sh §1.0.5 [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `b59ab7ee` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `80fabbbe` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `7eaf4bfe` 2026-05-21 — [infrastructure, edge] — fix(cloud-init): disable snapshot's vm-watchdog cron in setup.sh §1.0.5
+- `880507af` 2026-05-21 — [reconciler, infrastructure] — fix(cloud-init): provider-prefix model strings in buildOpenClawConfig
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `7eaf4bfe` 2026-05-21 — fix(cloud-init): disable snapshot's vm-watchdog cron in setup.sh §1.0.5
+- `880507af` 2026-05-21 — fix(cloud-init): provider-prefix model strings in buildOpenClawConfig
 
 ## Appendix — every commit (chronological)
 
-- `b59ab7ee` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `7eaf4bfe` 2026-05-21 — fix(cloud-init): disable snapshot's vm-watchdog cron in setup.sh §1.0.5 [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `80fabbbe` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `880507af` 2026-05-21 — fix(cloud-init): provider-prefix model strings in buildOpenClawConfig [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
