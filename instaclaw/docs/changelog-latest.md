@@ -1,19 +1,19 @@
 # Changelog — generated 2026-05-21
 
-Window: `91016d3c1d801e08977346e61afe8d3b1f1714a0` → `HEAD` (HEAD = `396ea4af`)
-Total commits: 2
+Window: `396ea4af8d50d611bc96679361450c4eb364200a` → `HEAD` (HEAD = `a94fdd48`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 396ea4af8d50d611bc96679361450c4eb364200a -->
+<!-- LAST_GENERATED_SHA: a94fdd480cb8acc1101bbd1a64b64b716500d17e -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 2
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 2
 - Merge commits: 0
 
 ## What changed for users
@@ -22,8 +22,9 @@ _None in this window._
 
 ## What changed under the hood
 
-- `396ea4af` 2026-05-21 — fix(cloud-init): bundle browser-relay-server.js + check-skill-updates.sh [1 files] _(ai-assisted)_
-- `70e5105d` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `9c117363` 2026-05-21 — chore(deploy): force fresh build to invalidate Next.js trace cache [0 files] _(ai-assisted)_
+- `a94fdd48` 2026-05-21 — fix(cloud-init): belt-and-suspenders bundling for browser-relay-server [1 files] _(ai-assisted)_
+- `90f5b766` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +32,10 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (2)
 
-- `396ea4af` 2026-05-21 — fix(cloud-init): bundle browser-relay-server.js + check-skill-updates.sh [1 files] _(ai-assisted)_
+- `9c117363` 2026-05-21 — chore(deploy): force fresh build to invalidate Next.js trace cache [0 files] _(ai-assisted)_
+- `a94fdd48` 2026-05-21 — fix(cloud-init): belt-and-suspenders bundling for browser-relay-server [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +47,17 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `70e5105d` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `90f5b766` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (1)
+## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `396ea4af` 2026-05-21 — fix(cloud-init): bundle browser-relay-server.js + check-skill-updates.sh
+- `9c117363` 2026-05-21 — chore(deploy): force fresh build to invalidate Next.js trace cache
+- `a94fdd48` 2026-05-21 — fix(cloud-init): belt-and-suspenders bundling for browser-relay-server
 
 ## Appendix — every commit (chronological)
 
-- `70e5105d` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `396ea4af` 2026-05-21 — fix(cloud-init): bundle browser-relay-server.js + check-skill-updates.sh [1 files] _(ai-assisted)_
+- `90f5b766` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `9c117363` 2026-05-21 — chore(deploy): force fresh build to invalidate Next.js trace cache [0 files] _(ai-assisted)_
+- `a94fdd48` 2026-05-21 — fix(cloud-init): belt-and-suspenders bundling for browser-relay-server [1 files] _(ai-assisted)_
