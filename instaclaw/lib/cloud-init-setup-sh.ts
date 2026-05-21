@@ -899,7 +899,7 @@ WSEOF
 } || echo "[\$(date -u +%FT%TZ)] WARN: BE-10 (pip install §17b.2 packages) partial failure — NOT reconciler-healed today. crawlee absence: web-search-browser skill scrape-fallback breaks. web3 / eth-account absence: AgentBook registration + prediction-markets broken. solders / base58 absence: solana-defi broken. Manual fleet-push to recover until stepPythonPackages is extended (P1)."
 
 # ════════════════════════════════════════════════════════════════════════
-# §1.32 CRITICAL: RESTART gateway + verify /health 200 within 60s
+# §1.32 CRITICAL: RESTART gateway + verify /health 200 within 240s
 # ════════════════════════════════════════════════════════════════════════
 # CRITICAL: \`systemctl --user RESTART\` (not start). The snapshot's linger
 # starts openclaw-gateway during boot with the placeholder openclaw.json —
@@ -911,8 +911,30 @@ WSEOF
 # Fallback: if user systemd-instance isn't up yet (cold boot, linger
 # didn't fire in time), \`systemctl --user restart\` exits non-zero. The
 # \`is-active\` check then falls through to direct \`openclaw gateway run\`.
-# 20×3s poll = 60s budget; if /health doesn't 200 in 60s, the gateway is
-# broken — fail loud.
+#
+# 2026-05-21 BUDGET INCREASE: 60s → 240s (80×3s poll).
+# vm-973 forensics: systemd restart at 20:42:02, [gateway] ready at
+# 20:43:49 = 107 seconds. Setup.sh hit FATAL at 51s budget mark and
+# exited before reaching step 38 (callback POST). The dominant delay is
+# bonjour's announcement watchdog ("service stuck in announcing for
+# 66593ms" — see plugins/bonjour.js): on a fresh Linode the mDNS
+# advertiser blocks the gateway's "ready" event for ~67s on first run
+# (subsequent restarts are faster — cache warmed).
+#
+# Sample: vm-970 + vm-971 both completed within the old 60s (early-boot
+# luck OR bonjour shorter on those Linodes). vm-973 hit 107s. With
+# single-sample p99 = 107s, doubling per Cooper's "2x p99" rule gives
+# 214s; round to 240s for clean math and ~12% headroom. Total step-32
+# cost on the happy path remains <5s (gateway usually up in 10-30s); the
+# longer ceiling only matters when bonjour stalls.
+#
+# If you ever need to investigate WHY this took the full 240s on a real
+# VM: journalctl --user -u openclaw-gateway and grep for "stuck in
+# announcing" — that's the bonjour culprit. Upstream fix would be in
+# OpenClaw's plugins/bonjour.js startup ordering, not here.
+#
+# If /health doesn't 200 in 240s, the gateway is genuinely broken —
+# fail loud.
 {
   sudo -u openclaw bash -lc '
     export XDG_RUNTIME_DIR=/run/user/\$(id -u)
@@ -924,7 +946,7 @@ WSEOF
     fi
   '
   GATEWAY_OK=false
-  for _attempt in \$(seq 1 20); do
+  for _attempt in \$(seq 1 80); do
     if sudo -u openclaw curl -s -m 2 http://localhost:18789/health >/dev/null 2>&1; then
       GATEWAY_OK=true
       break
@@ -933,7 +955,7 @@ WSEOF
   done
   [ "\$GATEWAY_OK" = "true" ]
 } || {
-  echo "[\$(date -u +%FT%TZ)] FATAL: step 32 (gateway restart + health probe) failed"
+  echo "[\$(date -u +%FT%TZ)] FATAL: step 32 (gateway restart + health probe) failed after 240s — likely bonjour announcement stall, check journalctl for 'stuck in announcing'"
   rm -f /tmp/.instaclaw-ready
   touch /tmp/.instaclaw-failed
   exit 1
