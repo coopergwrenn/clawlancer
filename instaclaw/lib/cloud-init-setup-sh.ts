@@ -1043,6 +1043,72 @@ WSEOF
 }
 
 # ════════════════════════════════════════════════════════════════════════
+# §1.33 BEST_EFFORT: wait for Telegram channel to start polling (UX fix)
+# ════════════════════════════════════════════════════════════════════════
+# §1.32's /health=200 probe only confirms the gateway's HTTP server is
+# bound. That happens BEFORE bonjour's mDNS announcer completes AND
+# BEFORE the channel providers (telegram) start polling. Without this
+# additional wait, the callback in §1.38 fires too early — the user is
+# redirected to /dashboard while Telegram polling hasn't yet started,
+# and any message they send queues at Telegram for 2-4 min until the
+# bot's long-polling connection establishes. From the user's perspective
+# the bot is silent on their first message.
+#
+# vm-975 (2026-05-21, final-test signup): callback fired T+31s after
+# /health=200, but [telegram] [default] starting provider didn't fire
+# until T+~3min later (bonjour 85s stall + channel init). Cooper messaged
+# @newewnbot at 6:57 PM ET, got first response at 7:00 PM = 3-minute
+# silence-on-first-message UX gap. Cloud-init "technically works" but
+# feels broken.
+#
+# Fix: tail journalctl for the canonical signal that long-polling has
+# begun: '[telegram] [default] starting provider'. Only then proceed to
+# §1.37 sentinels + §1.38 callback. The user spends ~2-4 extra minutes
+# on /deploying (still in animation), but when they hit /dashboard the
+# bot is genuinely ready and replies to their first message immediately.
+#
+# Edge Esmeralda (1000 attendees, May 30): UX shift is "spinner for 2-4
+# extra min" → "working bot on /dashboard arrival" — strongly preferred
+# given the alternative is 1000 confused users on day-one.
+#
+# Channel-aware: emitted only when telegram is in p.channels. Cloud-
+# init validates channels is non-empty (lib/cloud-init-tarball.ts:357)
+# and current production only has telegram users. Discord-only or future
+# multi-channel signups need a parallel probe; tracked as P1 followup.
+#
+# Budget: 300s = 60 attempts × 5s. Bonjour stall + channel init observed
+# up to ~240s (vm-973 → vm-975). 2x p99 doctrine (per fix #6 §1.32) =
+# ~480s, but capped at 300s to balance user-wait-on-/deploying with
+# eventual-success. If the probe times out, WARN but proceed — the bot
+# eventually polls naturally; this just means the user hits the OLD UX
+# gap (2-4 min silence on first message). No regression.
+#
+# Why BEST_EFFORT not CRITICAL: a polling-probe FATAL would block
+# the callback forever for any VM where the journal line never fires
+# (gateway crash mid-startup, telegram-channel-init error, etc.). That
+# leaves the user stuck on /deploying with no recovery path. BEST_EFFORT
+# proceeds + emits WARN → user gets to /dashboard, can try messages
+# (which work once polling eventually resumes OR see the broken state).${p.channels.includes("telegram") ? `
+
+{
+  TG_POLLING_OK=false
+  for _attempt in \$(seq 1 60); do
+    if sudo -u openclaw journalctl --user -u openclaw-gateway --since '10 minutes ago' --no-pager 2>/dev/null | grep -qF '[telegram] [default] starting provider'; then
+      TG_POLLING_OK=true
+      break
+    fi
+    sleep 5
+  done
+  if [ "\$TG_POLLING_OK" = "true" ]; then
+    echo "[\$(date -u +%FT%TZ)] §1.33 telegram polling started — bot will receive messages immediately on /dashboard arrival"
+  else
+    echo "[\$(date -u +%FT%TZ)] WARN: §1.33 telegram polling did not start within 300s — user may experience 2-4 min message delay on first message (callback firing anyway; bot will recover naturally)"
+  fi
+}` : `
+
+# §1.33 skipped — telegram not in this VM's channels.`}
+
+# ════════════════════════════════════════════════════════════════════════
 # §1.35 BEST_EFFORT [BE-14]: re-wire gbrain MCP into per-user openclaw.json
 # ════════════════════════════════════════════════════════════════════════
 # Why: §1.5 OVERWROTE openclaw.json with per-user content that does NOT

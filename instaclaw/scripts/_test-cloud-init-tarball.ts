@@ -3183,6 +3183,75 @@ async function test16_BuildSetupSh() {
       `(got "${openaiResult.agents.defaults.model.primary}") — provider-aware design ` +
       `must work for ALL providers, not hardcoded to anthropic/`,
   );
+
+  // ────────────────────────────────────────────────────────────────────
+  // 2026-05-21 P0 — §1.33 telegram-polling-wait contract (UX gap fix)
+  // ────────────────────────────────────────────────────────────────────
+  //
+  // vm-975 (final-test signup) exposed a 3-minute "silent bot on first
+  // message" UX gap: §1.32's /health=200 probe succeeds when the gateway
+  // HTTP server is bound, but BEFORE bonjour's mDNS announcer completes
+  // (60-90s stall) AND BEFORE the telegram channel provider starts
+  // polling. §1.38 callback fires too early → user is redirected to
+  // /dashboard while telegram polling hasn't yet established → first
+  // message queues at Telegram for 2-4 min until polling resumes.
+  //
+  // For Edge Esmeralda (1000 attendees, May 30): "silent bot on first
+  // message" is the worst first impression. Acceptable to keep user on
+  // /deploying 2-4 extra min so /dashboard arrival = working bot.
+  //
+  // §1.33 (new) tails journalctl for the canonical signal that polling
+  // has begun: `[telegram] [default] starting provider`. Only then does
+  // §1.38 fire. Channel-aware: omitted if telegram not in p.channels.
+  //
+  // These assertions enforce the contract permanently. If anyone removes
+  // §1.33 OR changes the canonical grep target OR weakens the budget OR
+  // moves §1.33 outside the §1.32 → §1.38 window, this test fails before
+  // deploy.
+  assert(
+    sh.includes("§1.33 BEST_EFFORT: wait for Telegram channel to start polling"),
+    "§1.33 section header present (telegram-polling wait — UX gap fix)",
+  );
+  assert(
+    sh.includes("[telegram] [default] starting provider"),
+    "§1.33 greps for the canonical OpenClaw 2026.4.26 'starting provider' marker " +
+      "(the load-bearing signal that long-polling has begun and the bot will " +
+      "actually receive messages — changing this string silently breaks the wait)",
+  );
+  assert(
+    sh.includes("seq 1 60") && sh.includes("sleep 5"),
+    "§1.33 has 300s probe budget (60 × 5s) — sized for cold-Linode bonjour-stuck " +
+      "windows observed up to 240s on vm-973/974/975",
+  );
+  // ORDERING contract: §1.0.5 < §1.32 < §1.33 < §1.38 — search for the
+  // SECTION HEADER strings (not the bare "§1.38" which also appears in
+  // §1.33's commentary referencing the downstream callback section).
+  const wd105Idx = sh.indexOf("§1.0.5 CRITICAL: disable snapshot's vm-watchdog");
+  const gw32Idx = sh.indexOf("§1.32 CRITICAL: RESTART gateway");
+  const tg33Idx = sh.indexOf("§1.33 BEST_EFFORT: wait for Telegram channel");
+  const cb38Idx = sh.indexOf("§1.38 CRITICAL: callback POST");
+  assert(
+    wd105Idx > 0 && gw32Idx > wd105Idx && tg33Idx > gw32Idx && cb38Idx > tg33Idx,
+    `setup.sh ORDERING must be §1.0.5 → §1.32 → §1.33 → §1.38, found ` +
+      `1.0.5=${wd105Idx}, 1.32=${gw32Idx}, 1.33=${tg33Idx}, 1.38=${cb38Idx}. ` +
+      `If §1.33 is moved AFTER §1.38, the callback fires before polling starts ` +
+      `and we regress to the vm-975 UX gap (silent bot on first message).`,
+  );
+  // BEST_EFFORT contract: §1.33 must NOT FATAL-out on timeout (would
+  // block callback forever for any VM where the journal line never
+  // fires — leaving user stuck on /deploying with no recovery path).
+  // WARN+proceed is the right shape.
+  const tg33Block = sh.slice(tg33Idx, cb38Idx);
+  assert(
+    tg33Block.includes("WARN") && tg33Block.includes("did not start within 300s"),
+    "§1.33 must WARN+proceed (not FATAL) on probe timeout — otherwise a single " +
+      "stuck journal line blocks callback forever and user is stuck on /deploying",
+  );
+  assert(
+    !tg33Block.includes("touch /tmp/.instaclaw-failed") && !tg33Block.includes("rm -f /tmp/.instaclaw-ready"),
+    "§1.33 must NOT touch the failure sentinels (would falsely mark the VM as " +
+      "broken — bot still works, just with 2-4 min initial delay)",
+  );
 }
 
 async function test17_BuildCloudInitTarball() {
