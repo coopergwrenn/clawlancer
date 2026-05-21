@@ -400,6 +400,287 @@ EOF
 
 **Gate**: `gbrain` symlink at `~/.bun/bin/gbrain`, MCP entry shows in `openclaw mcp show gbrain`, `GBRAIN_ANTHROPIC_API_KEY` and `OPENAI_API_KEY` in `.env`. If any fail → see installer error logs and re-run.
 
+## §3a — Snapshot baseline fill-in (§17b items 1–22 + BE-14 dependency item 23)
+
+> **What this does**: Closes the 22 gaps identified in `docs/cloud-init-snapshot-bake-requirements-2026-05-13.md` §17b probe (verified 2026-05-14 against vm-944, a pure snapshot baseline) PLUS item 23, the BE-14 dependency. After §3a completes, a fresh VM provisioned from the resulting snapshot has every script, package, systemd unit, and skill that `setup.sh` and `configureOpenClaw` expect to be already on disk.
+>
+> **Why this is here, not done by the reconciler**: the reconciler heals MOST template files via `stepFiles`, but it doesn't manage (a) pip packages, (b) most npm globals (only `@bankr/cli` + `openclaw`), (c) systemd unit files for xvfb/x11vnc/websockify, (d) several skill SKILL.md files, or (e) the `install-gbrain.sh` placement that BE-14 in cloud-init `setup.sh` requires. The reconciler also runs ~3 min after first boot — for cloud-init Edge attendees, anything reconciler-only is a 3-min UX gap. §3a lands all of it AT BAKE TIME so the snapshot is self-sufficient.
+>
+> **Inventory cross-reference**: every item below maps 1:1 to a §17b row. If you add an item here, also update `cloud-init-snapshot-bake-requirements-2026-05-13.md` §17b.2.
+
+### 3a.1 — Pre-flight: confirm source files are extractable
+
+The extraction script writes manifest files to `/tmp/snapshot-files/`. Some items below require copying from the repo (paths assume `cd /Users/cooperwrenn/wild-west-bots`). Verify these source paths exist locally BEFORE proceeding:
+
+```bash
+cd /Users/cooperwrenn/wild-west-bots
+
+# Source-of-truth paths for §3a items
+for p in \
+  instaclaw/scripts/install-gbrain.sh \
+  instaclaw/skills/frontier/SKILL.md \
+  instaclaw/skills/agent-status/SKILL.md \
+  instaclaw/skills/clawlancer/SKILL.md \
+  instaclaw/scripts/browser-relay-server/browser-relay-server.js \
+  instaclaw/scripts/check-skill-updates.sh
+do
+  if [ -f "$p" ]; then echo "✓ $p"; else echo "✗ MISSING: $p"; fi
+done
+
+# If any ✗, the bake will fail downstream. Add the file or skip the
+# corresponding 3a.N step with documented rationale.
+```
+
+### 3a.2 — Python packages (pip; §17b items 8–13)
+
+The current bake step 3 installs only `openai`. Add the remaining 6 packages:
+
+```bash
+ssh -i /tmp/vm-050-key -o StrictHostKeyChecking=no openclaw@$BAKE_IP <<'EOF'
+set -e
+sudo python3 -m pip install --break-system-packages \
+  "crawlee[beautifulsoup,playwright]==1.5.0" \
+  web3 \
+  "solders==0.27.1" \
+  eth-account \
+  websockets \
+  base58
+
+# Verify all six import successfully
+python3 -c 'import crawlee, web3, solders, eth_account, websockets, base58; print("✓ all six pip packages import OK")'
+EOF
+```
+
+**Gate**: `✓ all six pip packages import OK` echoed. If `crawlee` errors on the playwright extra, run `python3 -m playwright install chromium` and retry — though chromium is already on the snapshot at `/usr/local/bin/chromium-browser` so playwright should pick it up.
+
+### 3a.3 — NPM globals (§17b items 14–16)
+
+The current bake step 2 installs only `openclaw@latest`. Add three more:
+
+```bash
+ssh -i /tmp/vm-050-key -o StrictHostKeyChecking=no openclaw@$BAKE_IP <<'EOF'
+source ~/.nvm/nvm.sh
+set -e
+npm install -g \
+  "@worldcoin/agentkit-cli@0.1.3" \
+  usecomputer \
+  mcporter
+
+# Verify
+npm list -g --depth=0 2>&1 | grep -E "@worldcoin/agentkit-cli|usecomputer|mcporter"
+EOF
+```
+
+**Gate**: three lines printed, each showing the package + version. Pin `@worldcoin/agentkit-cli` to `0.1.3` per the version drift risk called out in `cloud-init-snapshot-bake-requirements-2026-05-13.md` §17 Q5. `usecomputer` + `mcporter` are unpinned (latest is fine).
+
+### 3a.4 — Place install-gbrain.sh at ~/.openclaw/scripts/ (item 23 — BE-14 dependency)
+
+This is REQUIRED for `setup.sh`'s BE-14 step to succeed on cloud-init VMs. Without this, cloud-init Edge attendees go ready WITHOUT gbrain MCP wired for the first 3-5 minutes. Per `lib/cloud-init-setup-sh.ts` BE-14 docblock + Rule 58.
+
+```bash
+# From your local machine — scp the script to the bake VM
+scp -i /tmp/vm-050-key -o StrictHostKeyChecking=no \
+  /Users/cooperwrenn/wild-west-bots/instaclaw/scripts/install-gbrain.sh \
+  openclaw@$BAKE_IP:/tmp/install-gbrain.sh
+
+# Then on the bake VM, move into place + chmod
+ssh -i /tmp/vm-050-key -o StrictHostKeyChecking=no openclaw@$BAKE_IP <<'EOF'
+set -e
+mkdir -p ~/.openclaw/scripts
+mv /tmp/install-gbrain.sh ~/.openclaw/scripts/install-gbrain.sh
+chmod 755 ~/.openclaw/scripts/install-gbrain.sh
+ls -la ~/.openclaw/scripts/install-gbrain.sh
+head -1 ~/.openclaw/scripts/install-gbrain.sh
+# Verify the file contains BUN_PINNED_VERSION="1.3.13" + the v0.36.x pinned bits
+grep -q 'BUN_PINNED_VERSION="1.3.13"' ~/.openclaw/scripts/install-gbrain.sh && echo "✓ bun pin landed"
+grep -q '0.36.3.0\|1d5f69f' ~/.openclaw/scripts/install-gbrain.sh && echo "✓ gbrain pin landed"
+EOF
+```
+
+**Gate**: file mode `-rwxr-xr-x`, first line is `#!/usr/bin/env bash`, both `✓` markers echoed. If any fail, BE-14 will fail on every cloud-init VM provisioned from this snapshot — re-run §3a.4 before proceeding to §4.
+
+### 3a.5 — Scripts at ~/.openclaw/scripts/ (§17b items 1–2)
+
+`skill-integrity-check.sh` is a P0 file (Rule 24 self-heal cron expects it). `privacy-bridge.sh` is edge_city-only (lazy-registered) — include if the snapshot will serve edge_city VMs; otherwise skip.
+
+The reconciler heals `skill-integrity-check.sh` via `stepFiles` from the manifest's `SKILL_INTEGRITY_CHECK_SH` constant on every reconcile cycle, so the manifest-driven path covers fresh VMs at first reconcile tick. But the snapshot should have it directly so it's there immediately on boot:
+
+```bash
+# Extract from the TS const via the manifest extractor (preferred) OR scp
+# from the repo source-of-truth.
+# Manifest extractor populates /tmp/snapshot-files/ during bake step 4.
+# After step 4, copy to ~/.openclaw/scripts/:
+ssh -i /tmp/vm-050-key -o StrictHostKeyChecking=no openclaw@$BAKE_IP <<'EOF'
+set -e
+# Expect /tmp/snapshot-files/skill-integrity-check.sh to exist after step 4
+if [ ! -f /tmp/snapshot-files/skill-integrity-check.sh ]; then
+  echo "FATAL: /tmp/snapshot-files/skill-integrity-check.sh missing — re-run extraction (step 4)"
+  exit 1
+fi
+mkdir -p ~/.openclaw/scripts
+cp /tmp/snapshot-files/skill-integrity-check.sh ~/.openclaw/scripts/skill-integrity-check.sh
+chmod 755 ~/.openclaw/scripts/skill-integrity-check.sh
+grep -q 'verify_or_heal_git_skill' ~/.openclaw/scripts/skill-integrity-check.sh && echo "✓ Rule 24 sentinel landed"
+grep -q 'SKILL_RECOVERED' ~/.openclaw/scripts/skill-integrity-check.sh && echo "✓ Rule 24 log marker landed"
+EOF
+```
+
+**Gate**: both `✓` markers echoed (Rule 23 sentinel — confirms the canonical script, not stale content).
+
+### 3a.6 — Outer scripts at ~/scripts/ (§17b items 3–4)
+
+`browser-relay-server.js` is a Rule 33 CRITICAL file (configureOpenClaw treated it as critical-failure if missing). `check-skill-updates.sh` is a P1 cron entry.
+
+```bash
+# Copy from local source-of-truth via scp
+scp -i /tmp/vm-050-key -o StrictHostKeyChecking=no \
+  /Users/cooperwrenn/wild-west-bots/instaclaw/scripts/browser-relay-server/browser-relay-server.js \
+  openclaw@$BAKE_IP:/home/openclaw/scripts/browser-relay-server.js
+scp -i /tmp/vm-050-key -o StrictHostKeyChecking=no \
+  /Users/cooperwrenn/wild-west-bots/instaclaw/scripts/check-skill-updates.sh \
+  openclaw@$BAKE_IP:/home/openclaw/scripts/check-skill-updates.sh
+
+# Then set perms + verify
+ssh -i /tmp/vm-050-key -o StrictHostKeyChecking=no openclaw@$BAKE_IP <<'EOF'
+set -e
+chmod 755 ~/scripts/browser-relay-server.js
+chmod 755 ~/scripts/check-skill-updates.sh
+ls -la ~/scripts/browser-relay-server.js ~/scripts/check-skill-updates.sh
+head -1 ~/scripts/browser-relay-server.js
+head -1 ~/scripts/check-skill-updates.sh
+EOF
+```
+
+**Gate**: both files present, mode `-rwxr-xr-x`, first lines are valid shebang lines (`#!/usr/bin/env node` and `#!/bin/bash` respectively).
+
+### 3a.7 — Systemd unit files at /etc/systemd/system/ (§17b items 17–19)
+
+The bake step 7 verifies the binaries (Xvfb + x11vnc + websockify) but doesn't install the service unit files. Add them — byte-identical to BE-12's idempotent install in `cloud-init-setup-sh.ts:683-695`.
+
+```bash
+ssh -i /tmp/vm-050-key -o StrictHostKeyChecking=no openclaw@$BAKE_IP <<'EOF'
+set -e
+
+sudo tee /etc/systemd/system/xvfb.service > /dev/null << 'XVFBEOF'
+[Unit]
+Description=Xvfb Virtual Display for Dispatch Mode
+After=network.target
+[Service]
+Type=simple
+User=openclaw
+ExecStart=/usr/bin/Xvfb :99 -screen 0 1280x720x24 -ac
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
+XVFBEOF
+
+sudo tee /etc/systemd/system/x11vnc.service > /dev/null << 'X11EOF'
+[Unit]
+Description=x11vnc VNC Server for Xvfb
+After=xvfb.service
+[Service]
+Type=simple
+User=openclaw
+Environment=DISPLAY=:99
+ExecStart=/usr/bin/x11vnc -display :99 -forever -shared -rfbport 5901 -localhost -noxdamage -nopw
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
+X11EOF
+
+sudo tee /etc/systemd/system/websockify.service > /dev/null << 'WSEOF'
+[Unit]
+Description=websockify VNC-to-WebSocket bridge
+After=x11vnc.service
+[Service]
+Type=simple
+User=openclaw
+ExecStart=/usr/bin/websockify --web=/usr/share/novnc/ --token-plugin ReadOnlyTokenFile --token-source /home/openclaw/.vnc/live-tokens 6080
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
+WSEOF
+
+sudo systemctl daemon-reload
+for unit in xvfb x11vnc websockify; do
+  sudo systemctl enable $unit.service
+  sudo systemctl start $unit.service
+  systemctl is-active $unit.service
+done
+EOF
+```
+
+**Gate**: three `active` lines echoed. If any unit refuses to start, check logs (`journalctl -u <name>`) — most common cause is a missing apt package the existing bake step 3 didn't install (xvfb / x11vnc / websockify / novnc).
+
+### 3a.8 — Skills at ~/.openclaw/skills/ (§17b items 5–7)
+
+Three SKILL.md files the manifest's `skillsFromRepo` walk SHOULD deploy via the reconciler — but the snapshot should have them directly. The local source-of-truth lives at `instaclaw/skills/<name>/SKILL.md`.
+
+```bash
+# scp from local
+for skill in frontier agent-status clawlancer; do
+  scp -i /tmp/vm-050-key -o StrictHostKeyChecking=no \
+    /Users/cooperwrenn/wild-west-bots/instaclaw/skills/$skill/SKILL.md \
+    openclaw@$BAKE_IP:/tmp/$skill-SKILL.md
+done
+
+# Place on the bake VM
+ssh -i /tmp/vm-050-key -o StrictHostKeyChecking=no openclaw@$BAKE_IP <<'EOF'
+set -e
+for skill in frontier agent-status clawlancer; do
+  mkdir -p ~/.openclaw/skills/$skill
+  mv /tmp/$skill-SKILL.md ~/.openclaw/skills/$skill/SKILL.md
+  chmod 644 ~/.openclaw/skills/$skill/SKILL.md
+done
+ls -la ~/.openclaw/skills/{frontier,agent-status,clawlancer}/SKILL.md
+EOF
+```
+
+**Gate**: three `-rw-r--r--` files at expected paths. The reconciler will keep them current after first reconcile tick — but the snapshot starts with them.
+
+### 3a.9 — Privacy-bridge.sh (edge_city only, §17b item — partner-conditional)
+
+If this snapshot will serve edge_city VMs, deploy `privacy-bridge.sh` to `~/.openclaw/scripts/`. The script is lazy-registered (see `lib/privacy-bridge-script.ts`). If unsure whether the snapshot is edge_city-serving → skip; the reconciler installs it on edge_city VMs lazily.
+
+```bash
+# Only run if this snapshot will serve edge_city — verify with Cooper
+# before executing.
+# scp /Users/cooperwrenn/wild-west-bots/instaclaw/scripts/privacy-bridge.sh
+#   to bake VM, place at ~/.openclaw/scripts/privacy-bridge.sh, chmod 755.
+echo "Skipped — privacy-bridge.sh is lazy-registered, reconciler installs on edge_city VMs at first cycle."
+```
+
+### 3a.10 — Verify item 23 chain (cloud-init BE-14 dependency)
+
+After §3 (gbrain installed) AND §3a.4 (install-gbrain.sh on disk), verify the BE-14 dependency chain is intact. This is a NEW gate added 2026-05-21 with the BE-14 commit.
+
+```bash
+ssh -i /tmp/vm-050-key -o StrictHostKeyChecking=no openclaw@$BAKE_IP <<'EOF'
+set -e
+echo "── BE-14 dependency chain ──"
+
+# 1. install-gbrain.sh executable
+[ -x ~/.openclaw/scripts/install-gbrain.sh ] && echo "✓ install-gbrain.sh executable" || (echo "✗ install-gbrain.sh missing or not exec — re-run §3a.4"; exit 1)
+
+# 2. gbrain.service active (from §3)
+systemctl --user is-active gbrain.service && echo "✓ gbrain.service active" || (echo "✗ gbrain.service not active — re-run §3.2"; exit 1)
+
+# 3. openclaw.json has mcp.servers.gbrain (from §3)
+jq -r '.mcp.servers.gbrain.transport' ~/.openclaw/openclaw.json | grep -q '^streamable-http$' && echo "✓ openclaw.json transport=streamable-http" || (echo "✗ openclaw.json missing gbrain entry — re-run §3.2 or §3.3"; exit 1)
+
+# 4. install-gbrain.sh pins match the lib/vm-reconcile.ts:180-181 constants
+grep -q '0.36.3.0' ~/.openclaw/scripts/install-gbrain.sh && echo "✓ install-gbrain.sh pinned to v0.36.3.0"
+grep -q '1d5f69f' ~/.openclaw/scripts/install-gbrain.sh && echo "✓ install-gbrain.sh pinned to commit 1d5f69f"
+
+echo "── BE-14 chain green — cloud-init VMs will re-wire gbrain on first boot ──"
+EOF
+```
+
+**Gate**: all 5 `✓` markers echoed. If any fail, BE-14 will fail on every cloud-init VM provisioned from this snapshot. Re-run the indicated step before continuing to §4 prebake cleanup.
+
 ## §4 — Prebake cleanup (wipe per-VM state)
 
 > **What this does**: 20 sections, ~30 categories of cleanup. Wipes secrets, user data, partner state, caches, logs, /tmp, browser cookies, stale locks, backup file proliferation, shell history, and Cooper's bean-mining experiment scripts. See `_prebake-cleanup.sh` header for the full list.
