@@ -1579,8 +1579,84 @@ export const VM_MANIFEST = {
    *  makes the agent actually use the connected subscription. Without it,
    *  every Day 1-4 OAuth completion was a broken promise — DB said
    *  "connected" but VM still routed to Claude.
+   *
+   * v112 — 2026-05-21 (intelligent reasoning router + watchdog v2)
+   *
+   *  Five coordinated changes, all targeting ChatGPT OAuth users' experience
+   *  with GPT-5.5. Triggered by Cooper's "yoo" test on @edgecitybot taking
+   *  3 minutes (OpenClaw defaulted to reasoning.effort="high" + the
+   *  in-VM watchdogs were either too aggressive or already disabled).
+   *
+   *  1. NEW SCRIPT — reasoning-router.js
+   *     Pure-function classifier (no LLM, no async, <5ms per classify on
+   *     1KB messages). Selects reasoning.effort per user message:
+   *       low     — greetings, acks, status checks         (<15s expected)
+   *       medium  — default for unclassified normal messages (<45s)
+   *       high    — analysis, creative, code, multi-part   (<180s)
+   *       xhigh   — deep-research, explicit "think harder" (<600s)
+   *     Decision precedence: dashboard preference → session NL override
+   *     (persistent) → in-message NL override → heuristic taxonomy →
+   *     medium default. 96/96 unit tests pass (scripts/_test-reasoning-
+   *     router.ts). Source of truth: instaclaw/scripts/reasoning-router.js.
+   *     Embedded in lib/ssh.ts as REASONING_ROUTER_SCRIPT (base64 → byte-
+   *     identical decode). Deployed via files[] entry with Rule 23
+   *     sentinels (REASONING_ROUTER_V1, classifyMessage exports.classifyMessage).
+   *
+   *  2. NEW RECONCILER STEP — stepPiAiReasoningPatch
+   *     Idempotently patches pi-ai's openai-codex-responses.js (inside
+   *     node_modules) to call into the router when options.reasoningEffort
+   *     is undefined. Survives OpenClaw upgrades because the reconciler
+   *     re-applies on every cycle (sentinel check → skip when present,
+   *     anchor-find + atomic write when needed). Sentinel:
+   *     INSTACLAW_REASONING_ROUTER_V1. Runs after stepNpmPinDrift so a
+   *     fresh npm install re-applies the patch in the same cycle.
+   *
+   *  3. AGENTS.DEFAULTS.TIMEOUTSECONDS 300 → 1800 (30 min)
+   *     Per Cooper: "simple is better than clever — 1800 covers everything
+   *     OpenAI can throw at us." Per-request budgets via in-flight
+   *     manifest deferred to Phase 3. OpenAI's gpt-5.5-pro server-side
+   *     max is 10 min; 30 min as a generous client-side ceiling.
+   *
+   *  4. ACK-WATCHDOG MESSAGE + THRESHOLD
+   *     HARD_FAIL_AGE_MS 180s → 600s (10 min). Message changed from
+   *     misleading "Hit my limit on this one — taking too long. Mind
+   *     retrying or rephrasing?" → "Still thinking on this — give me a
+   *     bit more time. If you'd rather speed it up, send a new message
+   *     starting with 'quick:'." The old 180s threshold falsely fired on
+   *     legitimate GPT-5.5 high-reasoning responses, telling users the
+   *     agent had "hit its limit" when in fact it was still thinking.
+   *
+   *  5. VM-WATCHDOG RE-ENABLED at AGENT_STALE_MINUTES=15 (was 5, disabled)
+   *     Removed from cronJobs in v76 (2026-05-01 "demo-stabilize" because
+   *     the 5-min threshold was killing slow-but-working agents). Per
+   *     Cooper 2026-05-20: "agents shouldn't be able to sit stuck forever
+   *     with no recovery. 15 min effective (30 min with the 2x) is plenty
+   *     of headroom for any reasoning response while still catching
+   *     genuinely dead agents." Re-added to cronJobs at * * * * * with
+   *     marker "vm-watchdog.py". silence-watchdog STAYS REMOVED (the
+   *     in-flight manifest design in Phase 3 replaces it with SSE-event-
+   *     aware liveness).
+   *
+   *  Canary on vm-780 (2026-05-21 ~01:24-02:04 UTC): both test prompts
+   *  passed. "yoo" — router → low → OpenAI returned in 5.5s (per trajectory
+   *  prompt.submitted → model.completed). "analyze the Edge Esmeralda
+   *  schedule" — router → high → OpenAI returned in expected window.
+   *  Validated by reading the reasoning-router.log telemetry + trajectory
+   *  jsonl. Cooper signed off on fleet rollout 2026-05-21.
+   *
+   *  Fleet rollout: stepFiles deploys the router on every assigned+healthy
+   *  VM (file-drift cron catches caught-up VMs per Rule 47). stepPiAiReasoningPatch
+   *  applies the pi-ai patch + sets gatewayRestartNeeded=true on first
+   *  successful apply (one-time restart per VM). stepConfigSettings pushes
+   *  agents.defaults.timeoutSeconds=1800. stepCronJobs re-installs the
+   *  vm-watchdog cron. Per Rule 23, all files are sentinel-guarded against
+   *  stale-cache regressions.
+   *
+   *  Design doc: instaclaw/docs/prd/chatgpt-oauth-reasoning-routing-design-2026-05-20.md
+   *  Rollback: revert this commit; backup files at .pre-router.bak on each
+   *  VM. Per-VM rollback command in the design doc §rollback section.
    */
-  version: 111,
+  version: 112,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -1780,7 +1856,14 @@ export const VM_MANIFEST = {
     // 300 = Vercel Pro maxDuration ceiling (CLAUDE.md Rule 11), so we're not
     // exceeding any upstream cap.  Per-chat token cost rises slightly because
     // Sonnet has more time to over-deliberate; net UX is dramatically better.
-    "agents.defaults.timeoutSeconds": "300",
+    // v112 (2026-05-20): bumped 300 → 1800 (30 min) — covers OpenAI gpt-5.5
+    // xhigh-effort reasoning on heavy prompts. OpenAI's gpt-5.5-pro server-side
+    // max is 10 min; we set 30 min as a generous client-side ceiling so we
+    // never preempt a legitimate OpenAI response. Per Cooper 2026-05-20:
+    // "simple is better than clever — 1800 covers everything OpenAI can throw
+    // at us." Reasoning router (v112) selects per-request effort; this is the
+    // overall agent-turn hard ceiling, not per-effort.
+    "agents.defaults.timeoutSeconds": "1800",
     // v61: Enable OpenClaw's OpenAI-compatible POST /v1/chat/completions endpoint.
     // Disabled by default per the runtime schema. Without this, Vercel's three
     // gateway-calling paths all fall back to direct Anthropic (no workspace
@@ -2094,6 +2177,42 @@ export const VM_MANIFEST = {
       mode: "overwrite",
       executable: true,
       useSFTP: true,
+      // Rule 23 sentinels — both load-bearing per the v112 ChatGPT OAuth
+      // reasoning rollout. AGENT_STALE_MINUTES = 15 is the post-v112 value
+      // (was 5; bumped to give GPT-5.5 high-effort responses enough headroom
+      // before stale-agent restart fires). check_agent_staleness is the
+      // function that enforces the 2x consecutive checks — refactoring/
+      // removing it would silently disable stale-agent protection.
+      requiredSentinels: [
+        "AGENT_STALE_MINUTES = 15",
+        "def check_agent_staleness",
+      ],
+    },
+    {
+      // v112: Reasoning router for ChatGPT OAuth Codex requests. Loaded by
+      // the patched pi-ai openai-codex-responses.js via createRequire (see
+      // stepPiAiReasoningPatch in vm-reconcile.ts). Classifies user messages
+      // to select reasoning.effort per request (low/medium/high/xhigh).
+      // Source of truth: instaclaw/scripts/reasoning-router.js (96/96 tests
+      // pass via scripts/_test-reasoning-router.ts). Embedded in lib/ssh.ts
+      // as REASONING_ROUTER_SCRIPT (base64 → byte-identical decode).
+      //
+      // Rule 23 sentinels:
+      //   "classifyMessage exports.classifyMessage" — sentinel string in the
+      //     module footer; would catch any future refactor that breaks the
+      //     classifyMessage export shape (the load-bearing public API).
+      //   "REASONING_ROUTER_V1" — top-of-file version marker; bumped only
+      //     on breaking changes to the classifier's decision contract.
+      remotePath: "~/.openclaw/scripts/reasoning-router.js",
+      source: "template",
+      templateKey: "REASONING_ROUTER_SCRIPT",
+      mode: "overwrite",
+      executable: false,
+      useSFTP: true,
+      requiredSentinels: [
+        "classifyMessage exports.classifyMessage",
+        "REASONING_ROUTER_V1",
+      ],
     },
     {
       remotePath: "~/.openclaw/scripts/push-heartbeat.sh",
@@ -2332,16 +2451,29 @@ export const VM_MANIFEST = {
     // every ~6 minutes, which dropped Telegram polling for ~5s per restart
     // and made messages disappear into the gap.
     //
-    // The script files themselves stay deployed in ~/.openclaw/scripts/ so a
-    // rewrite can land without re-pushing them — but no cron will run them
-    // until that rewrite ships with:
-    //   1. AGENT_STALE_MINUTES bumped from 5 → 15-30
-    //   2. Real liveness check (active outbound API conn from gateway PID,
-    //      OR last_proxy_call_at timestamp from DB) instead of jsonl mtime
+    // ── v112 (2026-05-20): vm-watchdog.py RE-ENABLED with AGENT_STALE_MINUTES=15 ──
     //
-    // A fleet-wide one-shot SSH push commented out the cron entries on all
-    // existing VMs (2026-05-01); this manifest change ensures new VMs
-    // provisioned from a fresh snapshot don't get them either.
+    // Per Cooper 2026-05-20: "re-enable vm-watchdog at 15min: yes. agents
+    // shouldn't be able to sit stuck forever with no recovery. 15 min
+    // effective (30 min with the 2x) is plenty of headroom for any
+    // reasoning response while still catching genuinely dead agents."
+    //
+    // The threshold change addresses concern #1 from the v76 disable
+    // (jsonl-mtime heuristic was too aggressive at 5 min). The 2x consecutive
+    // checks gate (AGENT_STALE_RESTARTS=2) gives 30 min effective stale time
+    // before restart — comfortably above OpenAI's documented 10-min server
+    // max for gpt-5.5-pro foreground reasoning. The v76 concern #2 (real
+    // liveness check via outbound API conn) is a Phase 3 improvement tracked
+    // in docs/prd/chatgpt-oauth-reasoning-routing-design-2026-05-20.md §3.1
+    // (in-flight request manifest).
+    //
+    // silence-watchdog.py REMAINS REMOVED — the in-flight manifest design
+    // (Phase 3) replaces it with a smarter SSE-event-aware liveness check.
+    {
+      schedule: "* * * * *",
+      command: "python3 ~/.openclaw/scripts/vm-watchdog.py > /dev/null 2>&1",
+      marker: "vm-watchdog.py",
+    },
     {
       // Rule 24 self-healing skill cron. Hourly at :17 to avoid colliding
       // with the existing :00 SHM_CLEANUP / push-heartbeat / memory-index burst.

@@ -601,6 +601,16 @@ export async function reconcileVM(
     currentStep = "npm-pin-drift";
     await stepNpmPinDrift(ssh, result, dryRun);
 
+    // ── Step 3c.5 (v112): pi-ai reasoning-router patch ──
+    // Idempotently patches pi-ai's openai-codex-responses.js to call into the
+    // reasoning router (deployed to ~/.openclaw/scripts/reasoning-router.js
+    // by stepFiles) when options.reasoningEffort is undefined. MUST run after
+    // stepNpmPinDrift because that step can re-install OpenClaw, which
+    // overwrites the patched dist file inside node_modules. Idempotent via
+    // INSTACLAW_REASONING_ROUTER_V1 sentinel — skips when present.
+    currentStep = "pi-ai-reasoning-router-patch";
+    await stepPiAiReasoningPatch(ssh, result, dryRun);
+
     // ── Step 3d: Enforce agents.defaults.model.primary ──
     // OpenClaw's built-in default is openai/gpt-5.4. If model.primary is
     // <unset> (which can happen if updateModel() was never called for a VM),
@@ -4133,6 +4143,213 @@ async function stepEnforceModelPrimary(
  * upgrade discipline, but we regenerate the drop-in here on every cycle
  * if the resolved npm root drifts from what's on disk.
  */
+// ─── stepPiAiReasoningPatch (v112) ────────────────────────────────────────
+//
+// Idempotently patches pi-ai's openai-codex-responses.js to call into the
+// reasoning router when options.reasoningEffort is undefined. Survives
+// OpenClaw upgrades — the reconciler re-applies on every cycle if the
+// sentinel is missing (e.g., after stepNpmPinDrift re-installed OpenClaw).
+//
+// The patch is a TWO-SITE insertion:
+//   A. After the `const DEFAULT_CODEX_BASE_URL = ...` import-block end:
+//      adds a top-level createRequire load of the router into a module-
+//      scoped _instaclawRouter variable.
+//   B. In `buildRequestBody`, after the existing `if (options?.reasoningEffort
+//      !== undefined) { ... }` block: adds an `else if (_instaclawRouter)`
+//      branch that extracts the latest user message, classifies it via
+//      router.classifyMessage(), and sets body.reasoning accordingly. The
+//      else-branch wraps the entire router call in try/catch so router
+//      failures NEVER block a request (falls back to OpenClaw's default).
+//
+// Both insertions are gated by the INSTACLAW_REASONING_ROUTER_V1 sentinel.
+// If the sentinel is already in the file, the step is a no-op (alreadyCorrect).
+// If pi-ai's source has changed enough that the anchor strings don't match,
+// the step pushes a warning (not an error) so cv-bump isn't blocked — the
+// patch can be re-anchored manually in a follow-up.
+//
+// Backup is created at .pre-router.bak on first apply. Verification post-
+// write includes: sentinel count (must be ≥ 2), Node syntax check via
+// `node --check`. On syntax failure, the .pre-router.bak is restored
+// (Rule 22 — never leave a customer's pi-ai in a broken state).
+//
+// Sets result.gatewayRestartNeeded = true on first apply (Node caches
+// module imports — the patched file needs a fresh import which only happens
+// on gateway restart).
+//
+// Sentinel: INSTACLAW_REASONING_ROUTER_V1 (matches what's emitted into the
+// patched file by both insertions). Counted twice — once at top of file,
+// once in the else-branch's comment.
+async function stepPiAiReasoningPatch(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  const TARGET =
+    "/home/openclaw/.nvm/versions/node/v22.22.2/lib/node_modules/openclaw/node_modules/@mariozechner/pi-ai/dist/providers/openai-codex-responses.js";
+  const SENTINEL = "INSTACLAW_REASONING_ROUTER_V1";
+
+  // 1. Cheap sentinel check — skip if already patched.
+  const checkRes = await ssh.execCommand(
+    `grep -c "${SENTINEL}" ${TARGET} 2>/dev/null || echo 0`,
+  );
+  const count = parseInt(checkRes.stdout.trim(), 10);
+  if (count >= 2) {
+    result.alreadyCorrect.push("pi-ai-reasoning-router-patch (sentinel present)");
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push("[dry-run] pi-ai-reasoning-router-patch: would apply");
+    return;
+  }
+
+  // 2. Read source.
+  const readRes = await ssh.execCommand(`cat ${TARGET}`);
+  if (readRes.code !== 0 || !readRes.stdout) {
+    // pi-ai not installed yet (fresh VM before stepNpmPinDrift completed) —
+    // warning, not error. Will retry next cycle once pi-ai lands.
+    result.warnings.push(
+      `pi-ai-reasoning-router-patch: target missing or unreadable (${TARGET})`,
+    );
+    return;
+  }
+  const src = readRes.stdout;
+
+  // 3. Anchors — must match byte-for-byte in pi-ai's current dist.
+  const ANCHOR_AFTER_IMPORTS =
+    'const DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api";';
+  const ANCHOR_REASONING_BLOCK = [
+    '    if (options?.reasoningEffort !== undefined) {',
+    '        body.reasoning = {',
+    '            effort: clampReasoningEffort(model.id, options.reasoningEffort),',
+    '            summary: options.reasoningSummary ?? "auto",',
+    '        };',
+    '    }',
+  ].join("\n");
+
+  if (!src.includes(ANCHOR_AFTER_IMPORTS) || !src.includes(ANCHOR_REASONING_BLOCK)) {
+    // pi-ai source changed — warn (don't block cv-bump) so the patch can
+    // be re-anchored in a follow-up commit.
+    result.warnings.push(
+      `pi-ai-reasoning-router-patch: anchors not found in ${TARGET} — pi-ai source likely changed; re-anchor needed`,
+    );
+    return;
+  }
+
+  // 4. Construct patched content. Both injections include the sentinel.
+  const INJECT_TOP = [
+    "",
+    `// ${SENTINEL} — load router from canonical script path.`,
+    "// Falls back silently if absent. Router decides effort when options doesn't set one.",
+    'import { createRequire as _instaclawCreateRequire } from "node:module";',
+    "let _instaclawRouter = null;",
+    "try {",
+    "    const _ir = _instaclawCreateRequire(import.meta.url);",
+    '    _instaclawRouter = _ir("/home/openclaw/.openclaw/scripts/reasoning-router.js");',
+    "} catch (_e) { _instaclawRouter = null; }",
+    "",
+  ].join("\n");
+
+  const INJECT_REASONING_REPLACEMENT = [
+    '    if (options?.reasoningEffort !== undefined) {',
+    '        body.reasoning = {',
+    '            effort: clampReasoningEffort(model.id, options.reasoningEffort),',
+    '            summary: options.reasoningSummary ?? "auto",',
+    '        };',
+    '    } else if (_instaclawRouter && typeof _instaclawRouter.classifyMessage === "function") {',
+    `        // ${SENTINEL} — route reasoning effort by message content.`,
+    "        try {",
+    "            const _userMsg = _instaclawRouter.extractLatestUserMessage(context?.input);",
+    "            if (_userMsg) {",
+    "                const _decision = _instaclawRouter.classifyMessage(_userMsg, {",
+    "                    modelId: model.id,",
+    "                    sessionId: options?.sessionId,",
+    "                });",
+    "                if (_decision && _decision.effort) {",
+    "                    body.reasoning = {",
+    "                        effort: clampReasoningEffort(model.id, _decision.effort),",
+    '                        summary: options?.reasoningSummary ?? "auto",',
+    "                    };",
+    "                }",
+    "            }",
+    "        } catch (_e) { /* router failure must never block the request */ }",
+    "    }",
+  ].join("\n");
+
+  let patched = src.replace(
+    ANCHOR_AFTER_IMPORTS,
+    ANCHOR_AFTER_IMPORTS + INJECT_TOP,
+  );
+  patched = patched.replace(
+    ANCHOR_REASONING_BLOCK,
+    INJECT_REASONING_REPLACEMENT,
+  );
+
+  // 5. Sentinel-count + brace-balance pre-write verification.
+  const sentinelCount = (patched.match(new RegExp(SENTINEL, "g")) || []).length;
+  if (sentinelCount < 2) {
+    result.errors.push(
+      `pi-ai-reasoning-router-patch: post-patch sentinel count is ${sentinelCount}, expected ≥ 2`,
+    );
+    return;
+  }
+  const openBraces = (patched.match(/\{/g) || []).length;
+  const closeBraces = (patched.match(/\}/g) || []).length;
+  if (openBraces !== closeBraces) {
+    result.errors.push(
+      `pi-ai-reasoning-router-patch: post-patch brace imbalance (${openBraces} vs ${closeBraces})`,
+    );
+    return;
+  }
+
+  // 6. Backup + atomic write via base64 (avoids shell-escaping the JS body).
+  const b64 = Buffer.from(patched, "utf-8").toString("base64");
+  const writeRes = await ssh.execCommand(
+    `cp ${TARGET} ${TARGET}.pre-router.bak 2>/dev/null || true; ` +
+      `echo '${b64}' | base64 -d > ${TARGET}.tmp && mv ${TARGET}.tmp ${TARGET}`,
+  );
+  if (writeRes.code !== 0) {
+    result.errors.push(
+      `pi-ai-reasoning-router-patch: write failed: ${(writeRes.stderr || writeRes.stdout).slice(0, 200)}`,
+    );
+    return;
+  }
+
+  // 7. Verify-after-write (Rule 10) — sentinel must be present on disk.
+  const verifyRes = await ssh.execCommand(`grep -c "${SENTINEL}" ${TARGET}`);
+  const verifyCount = parseInt(verifyRes.stdout.trim(), 10);
+  if (verifyCount < 2) {
+    result.errors.push(
+      `pi-ai-reasoning-router-patch: post-write sentinel count is ${verifyCount}, expected ≥ 2`,
+    );
+    return;
+  }
+
+  // 8. Syntax check via node --check. On failure: rollback from backup
+  // (Rule 22 — never leave the customer's pi-ai broken).
+  const syntaxRes = await ssh.execCommand(
+    `${NVM_PREAMBLE} && node --check ${TARGET} 2>&1`,
+  );
+  if (syntaxRes.code !== 0) {
+    // ROLLBACK
+    await ssh.execCommand(`cp ${TARGET}.pre-router.bak ${TARGET}`);
+    result.errors.push(
+      `pi-ai-reasoning-router-patch: node --check failed, rolled back to .pre-router.bak: ${syntaxRes.stdout.slice(0, 200)}`,
+    );
+    return;
+  }
+
+  result.fixed.push("pi-ai-reasoning-router-patch: applied");
+  // Node caches module imports — the gateway must restart to re-import
+  // the patched file. Per Rule 32 / Rule 58.
+  result.gatewayRestartNeeded = true;
+  logger.info("PI_AI_REASONING_ROUTER_PATCH_APPLIED", {
+    route: "vm-reconcile",
+    target: TARGET,
+    sentinel: SENTINEL,
+  });
+}
+
 async function stepPrctlSubreaper(
   ssh: SSHConnection,
   result: ReconcileResult,
