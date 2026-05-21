@@ -288,8 +288,34 @@ export const linodeProvider: CloudProvider = {
 
   async waitForServer(
     providerId: string,
-    timeoutMs = 120_000
+    timeoutMs = 240_000
   ): Promise<ServerResult> {
+    // 2026-05-21 P0 (vm-974 parity audit): bumped 120s → 240s.
+    //
+    // vm-974 incident: webhook fired createUserVM → waitForServer(timeoutMs=120s).
+    // Linode instance 97952734 took 127s to reach status=running (just
+    // 7s past the 120s budget). createUserVM threw "did not become running
+    // within 120s". The webhook caught the throw and fell back to "pending
+    // email" — skipping the downstream `await provisionBankrWallet(...)`
+    // call (app/api/billing/webhook/route.ts:542). Result: vm-974 had
+    // bankr_evm_address = null in DB → cloud-init tarball built without
+    // BANKR_WALLET_ADDRESS in .env → bankr skill on the VM is broken.
+    //
+    // The Linode dedicated-CPU boot has variance (observed: 60s-130s+ for
+    // status=running across today's test VMs). 120s was the original
+    // budget; vm-974 hit it at the edge. 240s gives ~2x headroom and
+    // matches the §1.32 health-probe pattern (commit 223ff286).
+    //
+    // Webhook maxDuration is 300s (Rule 11, commit 3a2cbd5f), so 240s
+    // still leaves 60s of webhook budget for the subsequent
+    // provisionBankrWallet + pool-configure-fork.
+    //
+    // Long-term P1: createUserVM Phase C (waitForServer) is technically
+    // optional now that setup.sh's callback includes body.ipAddress
+    // (race-free callback fix 3a2cbd5f). The proper architecture is
+    // createUserVM returns immediately after Phase B (createServer) and
+    // ip_address is populated by setup.sh's callback. Then waitForServer
+    // — and its budget — go away entirely. Tracked as follow-up.
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       const data = await linodeFetch(`/linode/instances/${providerId}`);
