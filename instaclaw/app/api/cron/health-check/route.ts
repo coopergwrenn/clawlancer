@@ -2728,12 +2728,23 @@ else:
   let autoMigrated = 0;
 
   // Re-query quarantined VMs that still have users (auto-recovery may have fixed some)
+  //
+  // P1-7 (2026-05-20): respect operator_quarantined_at. The 2026-05-20
+  // vm-043 incident: an operator manually flipped a VM to status=failed
+  // to quarantine it, but the cron block below detected the gateway
+  // was healthy and silently flipped it back. Operators NEED a way to
+  // pin a VM in failed state without a cron undoing them.
+  //
+  // The operator_quarantined_at column is cron-untouched — only
+  // operators write to it (via scripts/_quarantine-vm.ts). Cron paths
+  // read it as a refusal-to-mutate gate.
   const { data: deadAssignedVms } = await supabase
     .from("instaclaw_vms")
     .select("id, ip_address, name, assigned_to, tier, ssh_port, ssh_user, cloud_reboot_count, telegram_bot_token, telegram_bot_username, telegram_chat_id, channels_enabled")
     .eq("status", "failed")
     .not("assigned_to", "is", null)
-    .not("ip_address", "is", null);
+    .not("ip_address", "is", null)
+    .is("operator_quarantined_at", null);
 
   if (deadAssignedVms?.length) {
     // Check which users have active subscriptions — only migrate paying users
