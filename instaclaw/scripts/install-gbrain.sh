@@ -662,10 +662,44 @@ EOF
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE B: install Bun (with unzip prereq) — preserved verbatim from stdio era
+# PHASE B: install Bun (PINNED to BUN_PINNED_VERSION)
+#
+# 2026-05-20: pinned to v1.3.13 after bun 1.3.14 regression broke module
+# resolution for `bun run /tmp/script.ts` (cwd-based resolution stopped
+# walking up from the script's directory to find node_modules). vm-602,
+# vm-634 quarantined with `stepGbrain: TOKEN_MINT_FAILED rc=1` because
+# Phase E's mint script (written to /tmp/) couldn't resolve
+# @electric-sql/pglite from cwd ~/gbrain. All 9 working edge_city VMs
+# have 1.3.13 (installed pre-regression on 2026-05-16). Pinning here
+# closes the regression vector for new installs AND auto-heals existing
+# VMs via the version-drift detection block below.
+#
+# Version-drift handling: if bun is already installed at a different
+# version, reinstall the pinned version. This is the only way to fix
+# the 3 quarantined VMs that already have 1.3.14 — Phase B used to be
+# strictly idempotent on `command -v bun` presence, which meant a wrong
+# version stayed wrong forever.
+#
+# To bump: change BUN_PINNED_VERSION here. The post-install verify
+# block will fail loud if the bun installer ignored the pin (e.g.,
+# upstream installer changed argument shape). Reviewers should re-test
+# `bun run /tmp/file.ts` cwd-resolution on the new version before
+# bumping — same test that surfaced this regression.
 # ═══════════════════════════════════════════════════════════════════════════════
+BUN_PINNED_VERSION="1.3.13"
 echo "PHASE_B_START"
+NEEDS_BUN_INSTALL=0
 if ! command -v bun > /dev/null 2>&1; then
+  NEEDS_BUN_INSTALL=1
+  echo "  bun not installed — installing pinned v$BUN_PINNED_VERSION"
+else
+  CURRENT_BUN=$(bun --version 2>/dev/null)
+  if [ "$CURRENT_BUN" != "$BUN_PINNED_VERSION" ]; then
+    NEEDS_BUN_INSTALL=1
+    echo "  bun version drift: current=$CURRENT_BUN expected=$BUN_PINNED_VERSION — reinstalling pinned"
+  fi
+fi
+if [ "$NEEDS_BUN_INSTALL" = "1" ]; then
   if ! command -v unzip > /dev/null 2>&1; then
     sudo apt-get install -y -qq unzip 2>&1 | tail -3
     if ! command -v unzip > /dev/null 2>&1; then
@@ -673,7 +707,7 @@ if ! command -v bun > /dev/null 2>&1; then
       exit 3
     fi
   fi
-  curl -fsSL https://bun.sh/install | bash 2>&1 | tail -5
+  curl -fsSL https://bun.sh/install | bash -s "bun-v$BUN_PINNED_VERSION" 2>&1 | tail -5
   export PATH="$HOME/.bun/bin:$PATH"
   if ! command -v bun > /dev/null 2>&1; then
     echo "FATAL_BUN_INSTALL_FAILED"
@@ -681,7 +715,15 @@ if ! command -v bun > /dev/null 2>&1; then
   fi
 fi
 BUN_VERSION=$(bun --version)
-echo "PHASE_B_OK bun=$BUN_VERSION"
+# Post-install verify: bun installer must have honored the pin. If not, this
+# is a Rule 10 / Rule 23 territory — fail loud rather than silently shipping
+# the wrong version and re-hitting the 1.3.14 regression on first install.
+if [ "$BUN_VERSION" != "$BUN_PINNED_VERSION" ]; then
+  echo "FATAL_BUN_INSTALL_FAILED version_mismatch expected=$BUN_PINNED_VERSION got=$BUN_VERSION"
+  echo "  bun installer (https://bun.sh/install) may have changed its version-pin argument shape."
+  exit 3
+fi
+echo "PHASE_B_OK bun=$BUN_VERSION (pinned)"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE C: clone + checkout pinned commit
