@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-21
 
-Window: `19da3c44dc469cec63c318a423f0574a56191223` → `HEAD` (HEAD = `c2e52fd4`)
+Window: `c2e52fd4b9f3ea805b497e8945c4b9803ec8c36c` → `HEAD` (HEAD = `f79937f2`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: c2e52fd4b9f3ea805b497e8945c4b9803ec8c36c -->
+<!-- LAST_GENERATED_SHA: f79937f2f4720bdc114610a3fc245f464cf60c51 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `c2e52fd4` 2026-05-21 — fix(cloud-init): remove non-existent api_key column from Phase A INSERT [1 files] _(ai-assisted)_
-- `7bb82585` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `f79937f2` 2026-05-21 — feat(cloud-init): BE-14 — re-wire gbrain MCP via install-gbrain.sh after §1.32 gateway restart [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `c5f03cfe` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `c2e52fd4` 2026-05-21 — fix(cloud-init): remove non-existent api_key column from Phase A INSERT [1 files] _(ai-assisted)_
+- `f79937f2` 2026-05-21 — feat(cloud-init): BE-14 — re-wire gbrain MCP via install-gbrain.sh after §1.32 gateway restart [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `7bb82585` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `c5f03cfe` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `f79937f2` 2026-05-21 — [infrastructure, edge] — feat(cloud-init): BE-14 — re-wire gbrain MCP via install-gbrain.sh after §1.32 gateway restart
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `c2e52fd4` 2026-05-21 — fix(cloud-init): remove non-existent api_key column from Phase A INSERT
+- `f79937f2` 2026-05-21 — feat(cloud-init): BE-14 — re-wire gbrain MCP via install-gbrain.sh after §1.32 gateway restart
 
 ## Appendix — every commit (chronological)
 
-- `7bb82585` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `c2e52fd4` 2026-05-21 — fix(cloud-init): remove non-existent api_key column from Phase A INSERT [1 files] _(ai-assisted)_
+- `c5f03cfe` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `f79937f2` 2026-05-21 — feat(cloud-init): BE-14 — re-wire gbrain MCP via install-gbrain.sh after §1.32 gateway restart [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
