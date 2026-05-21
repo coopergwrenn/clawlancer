@@ -810,10 +810,18 @@ async function test9_BuildSystemPromptForTarball() {
  * byte-compare audit will normalize wizard.lastRunAt across VMs.
  */
 function stripWizardTimestamp(obj: object): object {
-  // Deep-clone via JSON to avoid mutating the original
+  // Deep-clone via JSON to avoid mutating the original. Also strips
+  // meta.lastTouchedAt — buildOpenClawConfig populates this with
+  // new Date().toISOString() at call time (2026-05-21 P0 fix), so two
+  // back-to-back calls produce different timestamps and the byte-parity
+  // assertion would flap. lastTouchedVersion is stable (OPENCLAW_PINNED_
+  // VERSION constant) and is left in for comparison.
   const cloned = JSON.parse(JSON.stringify(obj));
   if (cloned.wizard) {
     delete cloned.wizard.lastRunAt;
+  }
+  if (cloned.meta) {
+    delete cloned.meta.lastTouchedAt;
   }
   return cloned;
 }
@@ -1015,6 +1023,81 @@ async function test11_BuildOpenClawJsonForTarball() {
   assert(
     allInclusiveResult.plugins.entries.telegram.enabled === true,
     "plugins.entries.telegram.enabled === true",
+  );
+
+  // ────────────────────────────────────────────────────────────────────
+  // 2026-05-21 P0 — gateway auto-restore safety contract
+  // ────────────────────────────────────────────────────────────────────
+  //
+  // OpenClaw 2026.4.26's resolveConfigObserveSuspiciousReasons$1 fires
+  // "missing-meta-vs-last-good" when:
+  //   isRecord(value.meta) && (
+  //     typeof value.meta.lastTouchedVersion === "string" ||
+  //     typeof value.meta.lastTouchedAt === "string"
+  //   ) === FALSE
+  //
+  // …on the freshly-installed file, while last-known-good (placeholder)
+  // has meta. The gateway then auto-restores from last-known-good,
+  // RENAMING the tarball-installed file to `<path>.clobbered.<ts>` and
+  // copying last-known-good over it. User-specific telegram fields
+  // (botToken, allowFrom, dmPolicy, plugins.entries.telegram) are wiped.
+  //
+  // vm-971 (2026-05-21) hit this — every cloud-init user got
+  // "OpenClaw: access not configured" pairing-code prompt instead of a
+  // working bot. The fix is `meta.lastTouchedAt` + `meta.lastTouchedVersion`
+  // on the ocConfig returned by buildOpenClawConfig.
+  //
+  // These assertions enforce the contract permanently — if anyone removes
+  // the meta block (or changes its shape) from buildOpenClawConfig, this
+  // test fails LOUDLY before deploy. Future signups depend on this.
+  assert(
+    typeof allInclusiveResult.meta === "object" && allInclusiveResult.meta !== null,
+    "meta is an object (auto-restore safety: gateway's hasConfigMeta$1 requires isRecord(value.meta))",
+  );
+  assert(
+    typeof allInclusiveResult.meta.lastTouchedAt === "string" &&
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(allInclusiveResult.meta.lastTouchedAt),
+    "meta.lastTouchedAt is an ISO-8601 string (auto-restore safety)",
+  );
+  assert(
+    typeof allInclusiveResult.meta.lastTouchedVersion === "string" &&
+      allInclusiveResult.meta.lastTouchedVersion.length > 0,
+    "meta.lastTouchedVersion is a non-empty string (auto-restore safety)",
+  );
+
+  // gatewayMode parity — auto-restore also fires "gateway-mode-missing-vs-
+  // last-good" if baseline has gateway.mode (string) and current doesn't.
+  // Pool path and tarball both produce gateway.mode='local' today; this
+  // assertion guards against future drift that would also brick fresh signups.
+  assert(
+    typeof allInclusiveResult.gateway?.mode === "string" &&
+      allInclusiveResult.gateway.mode.length > 0,
+    "gateway.mode is a string (auto-restore safety: resolveGatewayMode$1 contract)",
+  );
+
+  // Pool-path parity — verbatim mirror of configureOpenClaw's
+  // openclaw.json structure. Cloud-init MUST produce the same shape
+  // configureOpenClaw produces post-write (modulo the additional
+  // `openclaw config set` commands the pool path runs after).
+  assert(
+    JSON.stringify(allInclusiveResult.channels.telegram.allowFrom) === '["*"]',
+    "channels.telegram.allowFrom === ['*'] (configureOpenClaw line 4985 parity)",
+  );
+  assert(
+    allInclusiveResult.channels.telegram.dmPolicy === "open",
+    "channels.telegram.dmPolicy === 'open' (configureOpenClaw line 4986 parity)",
+  );
+  assert(
+    allInclusiveResult.channels.telegram.groupPolicy === "open",
+    "channels.telegram.groupPolicy === 'open' (configureOpenClaw line 4989 parity)",
+  );
+  assert(
+    allInclusiveResult.channels.telegram.streaming === "partial",
+    "channels.telegram.streaming === 'partial' string form (configureOpenClaw line 4996 parity)",
+  );
+  assert(
+    allInclusiveResult.channels.telegram.groups?.["*"]?.requireMention === false,
+    "channels.telegram.groups['*'].requireMention === false (configureOpenClaw line 4991 parity)",
   );
 
   // No discord (validParams has no discordBotToken)
@@ -3292,9 +3375,17 @@ async function test17_BuildCloudInitTarball() {
         const w2 = j2.wizard as Record<string, unknown> | undefined;
         if (w1) delete w1.lastRunAt;
         if (w2) delete w2.lastRunAt;
+        // 2026-05-21: meta.lastTouchedAt is also a build-time timestamp
+        // (added to satisfy gateway's auto-restore check). Redact in
+        // the same shape — meta.lastTouchedVersion is stable and remains
+        // part of the comparison.
+        const m1 = j1.meta as Record<string, unknown> | undefined;
+        const m2 = j2.meta as Record<string, unknown> | undefined;
+        if (m1) delete m1.lastTouchedAt;
+        if (m2) delete m2.lastTouchedAt;
         assert(
           JSON.stringify(j1) === JSON.stringify(j2),
-          "determinism: openclaw.json structurally identical (wizard.lastRunAt redacted)",
+          "determinism: openclaw.json structurally identical (wizard.lastRunAt + meta.lastTouchedAt redacted)",
         );
       } else {
         assert(

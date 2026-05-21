@@ -5077,6 +5077,61 @@ export function buildOpenClawConfig(
     }
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // 2026-05-21 P0: meta block — required by gateway's auto-restore check
+  // ════════════════════════════════════════════════════════════════════════
+  //
+  // OpenClaw 2026.4.26's gateway has a config-observe/auto-restore mechanism
+  // (dist/io-CFdEhZuM.js: resolveConfigObserveSuspiciousReasons$1). On every
+  // openclaw.json read it compares the current file against
+  // openclaw.json.last-known-good. If the baseline has meta but the current
+  // file does NOT, it pushes "missing-meta-vs-last-good" to the suspicious-
+  // reasons array → triggers auto-restore from last-known-good. This RENAMES
+  // the current file to `<path>.clobbered.<iso-timestamp>` and COPIES
+  // last-known-good over it.
+  //
+  // The exact check (verbatim from dist/io-CFdEhZuM.js):
+  //   function hasConfigMeta$1(value) {
+  //     return isRecord$1(value) && isRecord$1(value.meta) && (
+  //       typeof value.meta.lastTouchedVersion === "string" ||
+  //       typeof value.meta.lastTouchedAt === "string"
+  //     );
+  //   }
+  //   ...
+  //   if (baseline.hasMeta && !params.hasMeta) reasons.push("missing-meta-vs-last-good");
+  //
+  // Pool path was unaffected because configureOpenClaw writes ocConfig to
+  // disk, THEN runs `openclaw config set ...` commands (lib/ssh.ts:10402+,
+  // lib/vm-reconcile.ts:3479) — each `openclaw config set` updates
+  // meta.lastTouchedAt as a side effect, so by the time the gateway loads
+  // the file, meta is present and the auto-restore check passes.
+  //
+  // Cloud-init path writes ocConfig via tarball (lib/cloud-init-tarball.ts
+  // calls this same buildOpenClawConfig at the end of buildOpenClawJsonFor-
+  // Tarball). setup.sh `install`s the file and restarts the gateway WITHOUT
+  // running any intermediate config-set, so the gateway loads a meta-less
+  // file → auto-restore fires → user-specific telegram fields (botToken,
+  // allowFrom, dmPolicy) are wiped → bot prompts new users for a pairing
+  // code instead of just working.
+  //
+  // 2026-05-21 vm-971 forensics: setup.sh installed correct tarball content
+  // at 18:26:50; gateway journal at 18:26:56 logged "Config auto-restored
+  // from backup: /home/openclaw/.openclaw/openclaw.json (missing-meta-vs-
+  // last-good)". The CLOBBERED file (renamed) has the user's botToken;
+  // openclaw.json reverted to the snapshot's last-known-good placeholder.
+  // Without meta in the tarball, every Edge Esmeralda attendee would hit
+  // this — and there are ~1000 attendees.
+  //
+  // Fix: include a valid meta block in ocConfig so the tarball's openclaw.
+  // json passes hasConfigMeta$1 on first gateway read. lastTouchedAt is a
+  // build-time ISO timestamp; lastTouchedVersion mirrors the value that
+  // `openclaw config set` writes. Pool path will overwrite this with its
+  // own timestamp at the first config-set call (no behavior change).
+  ocConfig.meta = {
+    lastTouchedAt: new Date().toISOString(),
+    lastTouchedVersion: OPENCLAW_PINNED_VERSION,
+  };
+
   return ocConfig;
 }
 
