@@ -315,10 +315,36 @@ journalctl --user -u openclaw-gateway --since "20 minutes ago" --no-pager \
   | wc -l
 # Expect ≥4 (one per messages.* key written during reconcile). If 0, the
 # gateway needs a real restart before the bake captures runtime state.
+
+# Rule 23 — strip-thinking.py must contain all 10 v90 sentinels (audit
+# 2026-05-13 §6 item 4). The reconciler's sentinel-gated stepFiles refuses
+# to write a stale template; this is the bake-time gate that the same
+# in-memory check ran at fleet deploy. If any sentinel is missing, the
+# baked snapshot will ship a pre-v90 strip-thinking.py and every new VM
+# from this snapshot will produce the session-bloat regression v90 fixed
+# (Rule 22 / Rule 30 violation — destructive on-disk session ops).
+echo "─ strip-thinking.py — 10 v90 sentinels ─"
+for sentinel in \
+  "def trim_failed_turns" \
+  "SESSION TRIMMED:" \
+  "def run_periodic_summary_hook" \
+  "PERIODIC_SUMMARY_V1" \
+  "PRE_ARCHIVE_SUMMARY_V1" \
+  "PERIODIC_SUMMARY_V1_RESHRINK" \
+  "def compact_session_in_place_lines" \
+  "SESSION COMPACTED:" \
+  "def _extract_large_tool_results_to_cache" \
+  "LAYER3_EXTRACTED:"; do
+  if grep -q -F -- "$sentinel" ~/.openclaw/scripts/strip-thinking.py 2>/dev/null; then
+    echo "  ✓ $sentinel"
+  else
+    echo "  ✗ MISSING: $sentinel — REBAKE FAIL"
+  fi
+done
 EOF
 ```
 
-**Gate**: `openclaw 2026.4.26`, `node v22.22.2`, `TasksMax=120`, `gcc` present, 9 ack-ux keys correct, `bootstrapMaxChars=40000`, no `edge-esmeralda` skill, NODE_PATH alignment ✓, messages.* hot-reload journal lines ≥4. If any fail → see §rollback.
+**Gate**: `openclaw 2026.4.26`, `node v22.22.2`, `TasksMax=120`, `gcc` present, 9 ack-ux keys correct, `bootstrapMaxChars=40000`, no `edge-esmeralda` skill, NODE_PATH alignment ✓, messages.* hot-reload journal lines ≥4, 10/10 strip-thinking.py sentinels present. If any fail → see §rollback.
 
 The expanded `_postbake-validation.ts` (per audit 2026-05-13) automates this whole verify block at §5 — but running these spot checks BEFORE invoking the full validation gives you a fast fail signal if something obvious is wrong.
 
