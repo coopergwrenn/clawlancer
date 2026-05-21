@@ -272,7 +272,16 @@ export async function createUserVM(
         region,
         tier: p.tier,
         api_mode: p.apiMode,
-        api_key: p.apiKey ?? null,
+        // 2026-05-21 P0: removed `api_key: p.apiKey ?? null` — the column
+        // never existed on instaclaw_vms (verified 126-col schema probe vs
+        // 'api_key' lookup returns false). The INSERT failed for shelpinc's
+        // signup with PostgREST 'Could not find the api_key column in the
+        // schema cache'. For all_inclusive users (most signups), apiKey is
+        // null anyway. For BYOK users, the api_key needs to be routed
+        // through pending_users.api_key to the tarball builder — separate
+        // migration needed to either ADD the column (and re-introduce this
+        // INSERT) or refactor buildParamsFromVmRow to read from
+        // pending_users instead. Flagged in task #126.
         default_model: p.defaultModel,
         telegram_bot_token: p.telegramBotToken,
         telegram_bot_username: p.telegramBotUsername,
