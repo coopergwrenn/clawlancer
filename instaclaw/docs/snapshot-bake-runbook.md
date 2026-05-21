@@ -653,33 +653,63 @@ If this snapshot will serve edge_city VMs, deploy `privacy-bridge.sh` to `~/.ope
 echo "Skipped — privacy-bridge.sh is lazy-registered, reconciler installs on edge_city VMs at first cycle."
 ```
 
-### 3a.10 — Verify item 23 chain (cloud-init BE-14 dependency)
+### 3a.10 — Verify item 23 chain + install-gbrain.sh side effects
 
 After §3 (gbrain installed) AND §3a.4 (install-gbrain.sh on disk), verify the BE-14 dependency chain is intact. This is a NEW gate added 2026-05-21 with the BE-14 commit.
+
+Also verifies the side-effect installations that `install-gbrain.sh` Phase B (bun) and Phase I (PGLite CHECKPOINT) produce on the bake VM — gaps #2, #5, #6, #7 from the parallel Audit-terminal cross-reference. Audit's `scripts/_bake-gap-fixes.sh` (commit `41e8373f`) covers gaps #1, #3, #7-#9, #10 separately; this section ONLY verifies what install-gbrain.sh's own phases produce. Zero overlap.
 
 ```bash
 ssh -i /tmp/vm-050-key -o StrictHostKeyChecking=no openclaw@$BAKE_IP <<'EOF'
 set -e
-echo "── BE-14 dependency chain ──"
+echo "── BE-14 dependency chain + install-gbrain.sh side effects ──"
 
-# 1. install-gbrain.sh executable
+# ── 1. install-gbrain.sh executable (gap #23 — placed by §3a.4) ──
 [ -x ~/.openclaw/scripts/install-gbrain.sh ] && echo "✓ install-gbrain.sh executable" || (echo "✗ install-gbrain.sh missing or not exec — re-run §3a.4"; exit 1)
 
-# 2. gbrain.service active (from §3)
+# ── 2. gbrain.service active (from §3) ──
 systemctl --user is-active gbrain.service && echo "✓ gbrain.service active" || (echo "✗ gbrain.service not active — re-run §3.2"; exit 1)
 
-# 3. openclaw.json has mcp.servers.gbrain (from §3)
+# ── 3. openclaw.json has mcp.servers.gbrain (from §3) ──
 jq -r '.mcp.servers.gbrain.transport' ~/.openclaw/openclaw.json | grep -q '^streamable-http$' && echo "✓ openclaw.json transport=streamable-http" || (echo "✗ openclaw.json missing gbrain entry — re-run §3.2 or §3.3"; exit 1)
 
-# 4. install-gbrain.sh pins match the lib/vm-reconcile.ts:180-181 constants
+# ── 4. install-gbrain.sh pins match lib/vm-reconcile.ts:180-181 ──
 grep -q '0.36.3.0' ~/.openclaw/scripts/install-gbrain.sh && echo "✓ install-gbrain.sh pinned to v0.36.3.0"
 grep -q '1d5f69f' ~/.openclaw/scripts/install-gbrain.sh && echo "✓ install-gbrain.sh pinned to commit 1d5f69f"
 
-echo "── BE-14 chain green — cloud-init VMs will re-wire gbrain on first boot ──"
+# ── 5. bun installed at pinned version (gap #2 — install-gbrain.sh Phase B) ──
+# install-gbrain.sh pins bun to 1.3.13 (post-1.3.14 module-resolution regression
+# fix shipped 2026-05-20). Verify the Phase B install landed at the pinned
+# version, not the latest from bun.sh/install.
+BUN_VERSION=$(~/.bun/bin/bun --version 2>/dev/null || echo "MISSING")
+[ "$BUN_VERSION" = "1.3.13" ] && echo "✓ bun 1.3.13 installed (pinned)" || (echo "✗ bun version mismatch — got '$BUN_VERSION' expected '1.3.13' — re-run §3 (install-gbrain.sh Phase B)"; exit 1)
+
+# ── 6. pglite-checkpoint.sh deployed (gap #5 — install-gbrain.sh Phase I) ──
+# Per CLAUDE.md Rule 54: the periodic CHECKPOINT cron is what bounds pg_control
+# staleness to 30 min, so SIGKILL between cron ticks remains safe. Missing the
+# script => the cron will silent-fail and a long-running gbrain sidecar can
+# end up with pg_control >2h stale => unrecoverable PGLite on next cold-start.
+[ -x ~/.openclaw/scripts/pglite-checkpoint.sh ] && echo "✓ pglite-checkpoint.sh present + executable" || (echo "✗ pglite-checkpoint.sh missing — install-gbrain.sh Phase I failed; re-run §3"; exit 1)
+
+# ── 7. PGLite CHECKPOINT cron entry installed (gap #6 — Phase I) ──
+# The cron fires `*/30 * * * *` calling pglite-checkpoint.sh against the MCP
+# admin tool to checkpoint PGLite. Marker-based install in Phase I.
+crontab -l 2>/dev/null | grep -q 'pglite-checkpoint.sh' && echo "✓ pglite-checkpoint cron entry installed (*/30 * * * *)" || (echo "✗ pglite-checkpoint cron missing — install-gbrain.sh Phase I failed; re-run §3"; exit 1)
+
+# ── 8. PGLite CHECKPOINT ExecStop drop-in installed (gap #7 — Phase I) ──
+# Drop-in at ~/.config/systemd/user/gbrain.service.d/20-execstop-checkpoint.conf
+# fires a CHECKPOINT before SIGKILL on any systemctl stop/restart/reload. Pairs
+# with Rule 54's SIGKILL safety: without the ExecStop hook, restart on a long-
+# running sidecar with stale pg_control = unrecoverable WASM panic on cold-start.
+[ -f ~/.config/systemd/user/gbrain.service.d/20-execstop-checkpoint.conf ] && echo "✓ gbrain.service ExecStop checkpoint drop-in present" || (echo "✗ gbrain.service ExecStop drop-in missing — install-gbrain.sh Phase I failed; re-run §3"; exit 1)
+
+echo "── BE-14 chain + install-gbrain.sh side effects all green ──"
 EOF
 ```
 
-**Gate**: all 5 `✓` markers echoed. If any fail, BE-14 will fail on every cloud-init VM provisioned from this snapshot. Re-run the indicated step before continuing to §4 prebake cleanup.
+**Gate**: all 8 `✓` markers echoed. If any fail, the bake VM is missing a load-bearing piece of the gbrain pipeline. Re-run the indicated step before continuing to §4 prebake cleanup.
+
+Note: the consensus crons (gap #11) and dispatch/browser-relay Node-path realignment (gap #1), nodejs apt-mark hold (gap #9), gateway bun PATH drop-in (gap #10), imagemagick (gap #8) are NOT verified here — they're covered by Audit terminal's `scripts/_bake-gap-fixes.sh` (commit `41e8373f`) which runs after §3a. The bake operator sequence is: §3 → §3a → `_bake-gap-fixes.sh` → §4 prebake cleanup → §5 postbake validation.
 
 ## §4 — Prebake cleanup (wipe per-VM state)
 
