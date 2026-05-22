@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-22
 
-Window: `85ed6f61a62175e2f362dd52ad70da15b1262012` → `HEAD` (HEAD = `00eb8d7f`)
+Window: `00eb8d7f028d880668d0740b594b15f33ef716a4` → `HEAD` (HEAD = `539b1b57`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 00eb8d7f028d880668d0740b594b15f33ef716a4 -->
+<!-- LAST_GENERATED_SHA: 539b1b5725c2812a0dd17d0905830b750e08dc1c -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `00eb8d7f` 2026-05-22 — revert: re-enable cloud-init-poll + replenish-pool crons (e2e test complete) [2 files] _(ai-assisted)_
-- `82fac4d7` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `539b1b57` 2026-05-22 — feat(auth): ChatGPT as first-class sign-in alongside Google [11 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
+- `25d9a33f` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `00eb8d7f` 2026-05-22 — revert: re-enable cloud-init-poll + replenish-pool crons (e2e test complete) [2 files] _(ai-assisted)_
+- `539b1b57` 2026-05-22 — feat(auth): ChatGPT as first-class sign-in alongside Google [11 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `82fac4d7` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `25d9a33f` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `539b1b57` 2026-05-22 — [infrastructure, feature, edge] — feat(auth): ChatGPT as first-class sign-in alongside Google
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `00eb8d7f` 2026-05-22 — revert: re-enable cloud-init-poll + replenish-pool crons (e2e test complete)
+- `539b1b57` 2026-05-22 — feat(auth): ChatGPT as first-class sign-in alongside Google
 
 ## Appendix — every commit (chronological)
 
-- `82fac4d7` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `00eb8d7f` 2026-05-22 — revert: re-enable cloud-init-poll + replenish-pool crons (e2e test complete) [2 files] _(ai-assisted)_
+- `25d9a33f` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `539b1b57` 2026-05-22 — feat(auth): ChatGPT as first-class sign-in alongside Google [11 files] _(multi: [infrastructure, feature, edge]; ai-assisted)_
