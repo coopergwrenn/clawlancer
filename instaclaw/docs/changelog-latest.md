@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-22
 
-Window: `3f0c865db02e97a7c45140fbac34b9a89b66953a` → `HEAD` (HEAD = `8a673c31`)
+Window: `8a673c31ec49540df7a90bef601de9f5ef0d875d` → `HEAD` (HEAD = `ccb89a26`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 8a673c31ec49540df7a90bef601de9f5ef0d875d -->
+<!-- LAST_GENERATED_SHA: ccb89a26068be51b5d3ace5e5e07e3c3c391c912 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `8a673c31` 2026-05-22 — TEMP: pause cloud-init-poll + replenish-pool crons for e2e test — REVERT REQUIRED [2 files] _(ai-assisted)_
-- `2b983ef7` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `ccb89a26` 2026-05-22 — revert(gmail): re-enable post-onboarding Gmail connect popup (reverts a69fb74) [1 files] _(ai-assisted)_
+- `663ea2ba` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `8a673c31` 2026-05-22 — TEMP: pause cloud-init-poll + replenish-pool crons for e2e test — REVERT REQUIRED [2 files] _(ai-assisted)_
+- `ccb89a26` 2026-05-22 — revert(gmail): re-enable post-onboarding Gmail connect popup (reverts a69fb74) [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `2b983ef7` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `663ea2ba` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `8a673c31` 2026-05-22 — TEMP: pause cloud-init-poll + replenish-pool crons for e2e test — REVERT REQUIRED
+- `ccb89a26` 2026-05-22 — revert(gmail): re-enable post-onboarding Gmail connect popup (reverts a69fb74)
 
 ## Appendix — every commit (chronological)
 
-- `2b983ef7` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `8a673c31` 2026-05-22 — TEMP: pause cloud-init-poll + replenish-pool crons for e2e test — REVERT REQUIRED [2 files] _(ai-assisted)_
+- `663ea2ba` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `ccb89a26` 2026-05-22 — revert(gmail): re-enable post-onboarding Gmail connect popup (reverts a69fb74) [1 files] _(ai-assisted)_
