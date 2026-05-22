@@ -6,6 +6,35 @@ import { EdgePartnerBanner, usePartnerCookie } from "@/components/marketing/edge
 
 const TOKEN_RE = /^\d+:[A-Za-z0-9_-]+$/;
 
+/**
+ * 2026-05-22 FIX A — smart paste extractor.
+ *
+ * Charlie's Edge beta-test feedback: pasting the entire BotFather "Done!
+ * Congratulations on your new bot." reply is annoying — users have to
+ * carefully select just the token from a wall of text, which is
+ * error-prone on mobile. This regex finds a valid bot token ANYWHERE in
+ * arbitrary text (no ^/$ anchors). Length floor of {35,} ensures we
+ * don't half-extract a still-typing-in-progress fragment — BotFather
+ * tokens are always 46+ chars after the colon.
+ *
+ * Used by handleTokenChange: if regex finds a token in the pasted text,
+ * extract just the token. Falls back to raw value if no match (supports
+ * both single-token paste AND character-by-character manual typing).
+ */
+const BOT_TOKEN_EXTRACT_RE = /\d+:[A-Za-z0-9_-]{35,}/;
+
+/**
+ * BotFather deep link with /newbot pre-typed. Tapping this on a phone
+ * (or clicking on desktop with Telegram installed) opens BotFather with
+ * the command ready — one tap instead of "open Telegram → search BotFather
+ * → tap Start → type /newbot". Charlie's Edge feedback flagged the
+ * existing flow as the slowest part of onboarding on mobile.
+ *
+ * %2F = URL-encoded "/" so the slash command lands literally typed in
+ * the BotFather input.
+ */
+const BOTFATHER_NEWBOT_DEEP_LINK = "https://t.me/BotFather?text=%2Fnewbot";
+
 const glassStyle = {
   background:
     "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
@@ -296,7 +325,15 @@ export default function ConnectPage() {
   }
 
   function handleTokenChange(value: string) {
-    setBotToken(value);
+    // 2026-05-22 FIX A — smart paste: if the input contains a valid bot
+    // token anywhere in it (e.g., user pasted the entire BotFather "Done!
+    // Congratulations on your new bot" reply), extract just the token.
+    // Falls through to the raw value when nothing matches — preserves
+    // character-by-character manual typing where the partial value never
+    // satisfies the 35+ char floor.
+    const match = value.match(BOT_TOKEN_EXTRACT_RE);
+    const finalValue = match ? match[0] : value;
+    setBotToken(finalValue);
     if (verified) {
       setVerified(false);
       setBotUsername("");
@@ -552,18 +589,84 @@ export default function ConnectPage() {
                 </button>
               </div>
             ) : (
-              <div className="flex gap-3">
-                <input
-                  type="text"
-                  placeholder="123456789:ABCdefGHIjklMNOpqrs..."
-                  value={botToken}
-                  onChange={(e) => handleTokenChange(e.target.value)}
-                  className="flex-1 px-4 py-3 rounded-xl text-sm font-mono outline-none transition-all"
+              <>
+                {/* 2026-05-22 FIX A — BotFather deep link button (Charlie's
+                    Edge feedback). One tap opens Telegram with /newbot
+                    pre-typed in the BotFather chat, eliminating "open
+                    Telegram, search BotFather, tap Start, type /newbot".
+                    Placed ABOVE the input so users see the fast path first;
+                    manual instructions below stay for users who prefer them. */}
+                <a
+                  href={BOTFATHER_NEWBOT_DEEP_LINK}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 mb-3 w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:opacity-95 active:scale-[0.99]"
                   style={{
-                    ...glassInputStyle,
-                    border: error ? "2px solid #DC6743" : "none",
+                    background:
+                      "linear-gradient(135deg, rgba(38,165,228,0.95), rgba(34,153,217,1))",
+                    color: "#ffffff",
+                    boxShadow:
+                      "rgba(255,255,255,0.25) 0px -1px 1px 0px inset, rgba(38,165,228,0.35) 0px 4px 14px 0px",
                   }}
-                />
+                >
+                  {/* Telegram brand color for instant recognition. Icon is
+                      inlined SVG — Telegram paper-plane, no extra dep. */}
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71l-4.13-3.05-1.99 1.93c-.23.23-.42.42-.84.42z" />
+                  </svg>
+                  Open BotFather with /newbot pre-typed
+                  {/* External-link arrow — inlined to avoid pulling in
+                      lucide-react just for this one icon. */}
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="opacity-80"
+                    aria-hidden="true"
+                  >
+                    <path d="M7 17 17 7" />
+                    <path d="M7 7h10v10" />
+                  </svg>
+                </a>
+
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    placeholder="Paste the full BotFather reply or just the token..."
+                    value={botToken}
+                    onChange={(e) => handleTokenChange(e.target.value)}
+                    onPaste={(e) => {
+                      // 2026-05-22 FIX A — explicit paste handler for the
+                      // smart-extract case. Browsers fire onChange after
+                      // onPaste so handleTokenChange already runs, but
+                      // pulling the clipboard text here directly bypasses
+                      // any input-validation interception that might strip
+                      // newlines or whitespace from the pasted blob (the
+                      // BotFather reply contains literal newlines).
+                      const pasted = e.clipboardData.getData("text");
+                      const match = pasted.match(BOT_TOKEN_EXTRACT_RE);
+                      if (match) {
+                        e.preventDefault();
+                        handleTokenChange(match[0]);
+                      }
+                    }}
+                    className="flex-1 px-4 py-3 rounded-xl text-sm font-mono outline-none transition-all"
+                    style={{
+                      ...glassInputStyle,
+                      border: error ? "2px solid #DC6743" : "none",
+                    }}
+                  />
                 <button
                   type="button"
                   onClick={handleVerifyToken}
@@ -606,7 +709,8 @@ export default function ConnectPage() {
                     "Verify"
                   )}
                 </button>
-              </div>
+                </div>
+              </>
             )}
           </div>
         )}

@@ -28,6 +28,14 @@ import { DispatchRelaySection } from "@/components/dashboard/dispatch-relay-sect
 import { ConnectWorldWallet } from "@/components/dashboard/connect-world-wallet";
 import { ChatGPTConnectionSection } from "@/components/dashboard/chatgpt-connection-section";
 
+/**
+ * 2026-05-22 FIX A — smart paste extractor for the Telegram bot token field.
+ * Mirrors the same constant in app/(onboarding)/connect/page.tsx — Charlie's
+ * Edge feedback: pasting the entire BotFather reply should auto-extract the
+ * token. {35,} floor avoids half-extracting in-progress typing.
+ */
+const BOT_TOKEN_EXTRACT_RE = /\d+:[A-Za-z0-9_-]{35,}/;
+
 const MODEL_OPTIONS = [
   { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
   { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
@@ -855,13 +863,33 @@ export default function SettingsPage() {
           <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="password"
-              placeholder={vm.telegramBotUsername ? "New Telegram bot token..." : "Paste your Telegram bot token from @BotFather..."}
+              placeholder={vm.telegramBotUsername ? "Paste the BotFather reply or just the new token..." : "Paste the BotFather reply or just the token..."}
               value={telegramToken}
               onChange={(e) => {
-                setTelegramToken(e.target.value);
+                // 2026-05-22 FIX A — smart paste: extract bot token from
+                // arbitrary text (e.g., entire BotFather "Done!" reply).
+                // Falls through to raw value when nothing matches —
+                // preserves character-by-character manual typing.
+                const value = e.target.value;
+                const match = value.match(BOT_TOKEN_EXTRACT_RE);
+                setTelegramToken(match ? match[0] : value);
                 if (telegramError) setTelegramError("");
                 if (telegramSuccess) setTelegramSuccess(false);
                 if (telegramWarning) setTelegramWarning("");
+              }}
+              onPaste={(e) => {
+                // 2026-05-22 FIX A — explicit paste handler (defense in depth
+                // for browsers that strip newlines from onChange — the
+                // BotFather reply contains literal newlines).
+                const pasted = e.clipboardData.getData("text");
+                const match = pasted.match(BOT_TOKEN_EXTRACT_RE);
+                if (match) {
+                  e.preventDefault();
+                  setTelegramToken(match[0]);
+                  if (telegramError) setTelegramError("");
+                  if (telegramSuccess) setTelegramSuccess(false);
+                  if (telegramWarning) setTelegramWarning("");
+                }
               }}
               className="flex-1 px-3 py-2 rounded-lg text-sm font-mono outline-none min-w-0"
               style={{
