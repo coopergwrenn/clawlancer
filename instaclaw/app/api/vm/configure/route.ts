@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No VM assigned" }, { status: 404 });
     }
 
-    // ── Cloud-init first-10-min protection guard (2026-05-22 vm-1019 incident) ──
+    // ── Cloud-init first-15-min protection guard (2026-05-22 vm-1019 incident) ──
     //
     // Cloud-init VMs (created_via='on_demand') handle their own configure
     // ON-VM via setup.sh (§1.5 → §1.32 gateway restart → §1.38 callback).
@@ -80,7 +80,12 @@ export async function POST(req: NextRequest) {
     //
     // Bypass: --force=true (admin emergency reset, e.g., recovering from
     // a stuck cloud-init signup).
-    const cloudInitProtectionMs = 10 * 60 * 1000;
+    // 2026-05-22 amendment: widened 10 → 15 min. The original 10-min spec
+    // would not have caught the vm-1019 incident, which fired at T+12min
+    // (outside the original window). 15 min covers vm-1019's actual time
+    // PLUS ~25% headroom for slower variants. Beyond 15 min legitimate
+    // post-onboarding configure is unlikely.
+    const cloudInitProtectionMs = 15 * 60 * 1000;
     const vmAgeMs = vm.created_at
       ? Date.now() - new Date(vm.created_at).getTime()
       : Infinity;
@@ -89,7 +94,7 @@ export async function POST(req: NextRequest) {
       vmAgeMs < cloudInitProtectionMs &&
       body.force !== true
     ) {
-      logger.warn("Configure skipped — cloud-init VM in first-10-min protection window", {
+      logger.warn("Configure skipped — cloud-init VM in first-15-min protection window", {
         route: "vm/configure",
         userId,
         vmId: vm.id,
@@ -100,7 +105,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         configured: true,
         skipped: true,
-        reason: "cloud-init-first-10min-protection",
+        reason: "cloud-init-first-15min-protection",
         message: "Cloud-init VMs handle their own setup via setup.sh. Re-configure is blocked during the first 10 minutes to protect the critical first-message window.",
       });
     }
