@@ -3087,6 +3087,56 @@ async function test16_BuildSetupSh() {
   );
 
   // ────────────────────────────────────────────────────────────────────
+  // 2026-05-22 P1 — §1.0.7 bonjour-disable contract (UX optimization)
+  // ────────────────────────────────────────────────────────────────────
+  //
+  // §1.0.7 installs a systemd drop-in that sets OPENCLAW_DISABLE_BONJOUR=true
+  // for the gateway service. Verified by reading OpenClaw 2026.4.26's
+  // dist/server.impl-hNr66nDN.js: startGatewayDiscovery checks both the
+  // discovery.mdns.mode config AND the env var; either disables the bonjour
+  // announcer (which can stall 60-90s on cold Linodes — vm-975 observed).
+  //
+  // Canary on vm-050 (edge_city, 2026-05-22 00:22 UTC): drop-in installed,
+  // gateway restarted cleanly, no breakage. Disabling bonjour on a Linode
+  // VM is safe — no LAN peers to announce to.
+  //
+  // These assertions prevent regression: if anyone removes §1.0.7 OR changes
+  // the canonical env var name OR moves it after §1.32 (defeating the
+  // purpose), this test fails before deploy.
+  assert(
+    sh.includes("§1.0.7 BEST_EFFORT: disable OpenClaw bonjour"),
+    "§1.0.7 section header present (bonjour-disable drop-in — UX optimization)",
+  );
+  assert(
+    sh.includes("OPENCLAW_DISABLE_BONJOUR=true"),
+    "§1.0.7 sets canonical env var OPENCLAW_DISABLE_BONJOUR=true (the exact " +
+      "name checked by dist/server.impl-hNr66nDN.js's startGatewayDiscovery — " +
+      "changing this string silently re-enables bonjour)",
+  );
+  assert(
+    sh.includes("99-disable-bonjour.conf"),
+    "§1.0.7 writes the canonical drop-in filename 99-disable-bonjour.conf " +
+      "(99- prefix ensures it loads AFTER any earlier drop-ins that might set " +
+      "Environment= variables for the same key)",
+  );
+  assert(
+    sh.includes("/home/openclaw/.config/systemd/user/openclaw-gateway.service.d/"),
+    "§1.0.7 writes to the canonical user-unit drop-in directory (NOT the " +
+      "system-wide /etc/systemd/system/... — openclaw-gateway is a user service)",
+  );
+  // ORDERING: §1.0.7 must come BEFORE §1.32 (gateway restart) so the env
+  // var is in effect when the gateway loads.
+  const bonjourDisableIdx = sh.indexOf("§1.0.7 BEST_EFFORT: disable OpenClaw bonjour");
+  const gw32IdxForBonjour = sh.indexOf("§1.32 CRITICAL: RESTART gateway");
+  assert(
+    bonjourDisableIdx > 0 && gw32IdxForBonjour > bonjourDisableIdx,
+    `§1.0.7 (bonjour-disable) MUST appear before §1.32 (gateway-restart) — ` +
+      `found 1.0.7=${bonjourDisableIdx}, 1.32=${gw32IdxForBonjour}. If §1.0.7 ` +
+      `runs AFTER the restart, the env var isn't in effect when the gateway ` +
+      `loads and bonjour stalls anyway.`,
+  );
+
+  // ────────────────────────────────────────────────────────────────────
   // 2026-05-21 P0 — model-prefix parity contract (vm-974 bug #8)
   // ────────────────────────────────────────────────────────────────────
   //
