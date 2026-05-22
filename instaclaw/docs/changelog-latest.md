@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-22
 
-Window: `661735b749c745ec31b21b54b0c82bd32550c1ba` → `HEAD` (HEAD = `848c5e95`)
+Window: `848c5e959a59c2e78319257be077792957f7570b` → `HEAD` (HEAD = `afbeca6f`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 848c5e959a59c2e78319257be077792957f7570b -->
+<!-- LAST_GENERATED_SHA: afbeca6f3114cc9aa3f839e327f64cceef910474 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `848c5e95` 2026-05-21 — fix(vm-lifecycle): Pass -1 orphan reconciler uses Rule 50 user-activity instead of broken SSH-mtime check [1 files] _(ai-assisted)_
-- `b1b63ed4` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `afbeca6f` 2026-05-21 — fix(health-check): three-layer false-positive guard on telegram-token auto-fix [1 files] _(ai-assisted)_
+- `48207563` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `848c5e95` 2026-05-21 — fix(vm-lifecycle): Pass -1 orphan reconciler uses Rule 50 user-activity instead of broken SSH-mtime check [1 files] _(ai-assisted)_
+- `afbeca6f` 2026-05-21 — fix(health-check): three-layer false-positive guard on telegram-token auto-fix [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `b1b63ed4` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `48207563` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `848c5e95` 2026-05-21 — fix(vm-lifecycle): Pass -1 orphan reconciler uses Rule 50 user-activity instead of broken SSH-mtime check
+- `afbeca6f` 2026-05-21 — fix(health-check): three-layer false-positive guard on telegram-token auto-fix
 
 ## Appendix — every commit (chronological)
 
-- `b1b63ed4` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `848c5e95` 2026-05-21 — fix(vm-lifecycle): Pass -1 orphan reconciler uses Rule 50 user-activity instead of broken SSH-mtime check [1 files] _(ai-assisted)_
+- `48207563` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `afbeca6f` 2026-05-21 — fix(health-check): three-layer false-positive guard on telegram-token auto-fix [1 files] _(ai-assisted)_
