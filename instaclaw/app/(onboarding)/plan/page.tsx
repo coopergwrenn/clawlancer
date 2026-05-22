@@ -687,10 +687,28 @@ export default function PlanPage() {
           disabled={loading}
           className="w-full px-6 py-4 rounded-lg font-semibold transition-all cursor-pointer disabled:opacity-50"
           style={{
-            background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+            // 2026-05-22 W2 polish: Continue/Confirm CTA was orange-gradient for
+            // everyone, including Edge attendees who'd just come through the
+            // olive Edge funnel. Same brand-seam class F4 (commit 074f3bd6)
+            // closed for /signin's EdgePartnerBanner. Edge users now get the
+            // olive solid; non-Edge users keep the kinetic orange gradient.
+            // Shadow + brand-orange highlight glow swapped to olive tones to
+            // match. Headline + body for Edge already done in aa96584d.
+            // --edge-olive is scoped under /edge/* via app/edge/layout.tsx; /plan
+            // is under (onboarding), so the var is undefined here. Use the
+            // canonical olive hex (#0f1a12) literal — matches every /edge
+            // primary CTA + the Edge terminal's claim-client.tsx solid buttons.
+            background: isEdge
+              ? "#0f1a12"
+              : "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
             backdropFilter: "blur(2px)",
             WebkitBackdropFilter: "blur(2px)",
-            boxShadow: `
+            boxShadow: isEdge
+              ? `
+                rgba(255,255,255,0.18) 0px -1px 1px 0px inset,
+                rgba(41,49,30,0.35) 0px 4px 16px 0px
+              `
+              : `
               rgba(255,255,255,0.2) 0px 2px 2px 0px inset,
               rgba(255,255,255,0.3) 0px -1px 1px 0px inset,
               rgba(220,103,67,0.35) 0px 4px 16px 0px,
