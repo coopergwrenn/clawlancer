@@ -1,16 +1,16 @@
 # Changelog — generated 2026-05-22
 
-Window: `539b1b5725c2812a0dd17d0905830b750e08dc1c` → `HEAD` (HEAD = `a4d144e1`)
+Window: `a4d144e14f9db7a7971953eea4b24ef96ba17318` → `HEAD` (HEAD = `eb255bad`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: a4d144e14f9db7a7971953eea4b24ef96ba17318 -->
+<!-- LAST_GENERATED_SHA: eb255badb84c8a1ee8bfdd5b7d4ca2931cf4f3c1 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
+- **Reconciler / manifest:** 1
 - **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,25 +18,26 @@ Total commits: 2
 
 ## What changed for users
 
-- `a4d144e1` 2026-05-22 — feat(deploying): premium cloud-init banner + "what's happening right now?" accordion (BOTH paths) [2 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `a5c01f58` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `eb255bad` 2026-05-22 — fix(reconcile): stepBootstrapConsumed — require REAL conversation before treating bootstrap as consumed (restores vm-1019 quirky greeting) [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `77b75ae9` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
 
-_(none)_
+- `eb255bad` 2026-05-22 — fix(reconcile): stepBootstrapConsumed — require REAL conversation before treating bootstrap as consumed (restores vm-1019 quirky greeting) [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
 _(none)_
 
-### Feature (user-facing) (1)
+### Feature (user-facing) (0)
 
-- `a4d144e1` 2026-05-22 — feat(deploying): premium cloud-init banner + "what's happening right now?" accordion (BOTH paths) [2 files] _(ai-assisted)_
+_(none)_
 
 ### Edge City partner (0)
 
@@ -44,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `a5c01f58` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `77b75ae9` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `eb255bad` 2026-05-22 — [reconciler, infrastructure] — fix(reconcile): stepBootstrapConsumed — require REAL conversation before treating bootstrap as consumed (restores vm-1019 quirky greeting)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `a4d144e1` 2026-05-22 — feat(deploying): premium cloud-init banner + "what's happening right now?" accordion (BOTH paths)
+- `eb255bad` 2026-05-22 — fix(reconcile): stepBootstrapConsumed — require REAL conversation before treating bootstrap as consumed (restores vm-1019 quirky greeting)
 
 ## Appendix — every commit (chronological)
 
-- `a5c01f58` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `a4d144e1` 2026-05-22 — feat(deploying): premium cloud-init banner + "what's happening right now?" accordion (BOTH paths) [2 files] _(ai-assisted)_
+- `77b75ae9` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `eb255bad` 2026-05-22 — fix(reconcile): stepBootstrapConsumed — require REAL conversation before treating bootstrap as consumed (restores vm-1019 quirky greeting) [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
