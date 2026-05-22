@@ -3348,6 +3348,71 @@ async function test16_BuildSetupSh() {
     "§1.33 must NOT touch the failure sentinels (would falsely mark the VM as " +
       "broken — bot still works, just with 2-4 min initial delay)",
   );
+
+  // ────────────────────────────────────────────────────────────────────
+  // 2026-05-22 — §1.34 Telegram bot description contract (TASK 4 sub)
+  // ────────────────────────────────────────────────────────────────────
+  //
+  // §1.34 sets the bot's profile description so users see the cold-start
+  // expectation BEFORE sending their first message. Set via Telegram Bot
+  // API setMyDescription + setMyShortDescription. Verified against the
+  // live API on 2026-05-22 — both return {"ok":true,"result":true} in
+  // ~500ms.
+  //
+  // These assertions enforce the contract:
+  //   - §1.34 section header present
+  //   - both API methods are called
+  //   - canonical descriptions match Cooper's spec
+  //   - non-fatal failure semantics (WARN, not exit 1)
+  //   - reads TELEGRAM_BOT_TOKEN from .env (not a hardcoded token)
+  //   - placed AFTER §1.33 (polling confirmed) and BEFORE §1.38 (callback)
+  assert(
+    sh.includes("§1.34 BEST_EFFORT: Telegram bot description"),
+    "§1.34 section header present (Telegram bot description — first-touch expectation setter)",
+  );
+  assert(
+    sh.includes("/setMyDescription"),
+    "§1.34 calls Telegram Bot API setMyDescription",
+  );
+  assert(
+    sh.includes("/setMyShortDescription"),
+    "§1.34 calls Telegram Bot API setMyShortDescription",
+  );
+  assert(
+    sh.includes("i take a moment to wake up on your first message"),
+    "§1.34 uses canonical first-touch description copy (Cooper spec)",
+  );
+  assert(
+    sh.includes("your personal AI agent \\u2014 powered by instaclaw") ||
+      sh.includes("your personal AI agent — powered by instaclaw"),
+    "§1.34 uses canonical short_description copy (Cooper spec)",
+  );
+  assert(
+    sh.includes("grep '^TELEGRAM_BOT_TOKEN=' ~/.openclaw/.env"),
+    "§1.34 reads TELEGRAM_BOT_TOKEN from .env (not hardcoded)",
+  );
+  // ORDERING: §1.34 must come AFTER §1.33 (so bot exists + polling
+  // confirmed) and BEFORE §1.38 (so description is set before callback).
+  const desc34Idx = sh.indexOf("§1.34 BEST_EFFORT: Telegram bot description");
+  const tg33HeaderIdx = sh.indexOf("§1.33 BEST_EFFORT: wait for Telegram channel");
+  const cb38HeaderIdx = sh.indexOf("§1.38 CRITICAL: callback POST");
+  assert(
+    desc34Idx > 0 && desc34Idx > tg33HeaderIdx && desc34Idx < cb38HeaderIdx,
+    `§1.34 ORDERING must be after §1.33 + before §1.38, found ` +
+      `1.33=${tg33HeaderIdx}, 1.34=${desc34Idx}, 1.38=${cb38HeaderIdx}`,
+  );
+  const desc34Block = sh.slice(desc34Idx, cb38HeaderIdx);
+  assert(
+    desc34Block.includes("WARN: §1.34") && desc34Block.includes("non-fatal"),
+    "§1.34 must WARN+proceed on Telegram API failure (non-fatal — must not " +
+      "block the callback or fail the deploy)",
+  );
+  assert(
+    !desc34Block.includes("touch /tmp/.instaclaw-failed") &&
+      !desc34Block.includes("rm -f /tmp/.instaclaw-ready"),
+    "§1.34 must NOT touch failure sentinels (Telegram-API errors must " +
+      "never fail the deploy)",
+  );
 }
 
 async function test17_BuildCloudInitTarball() {

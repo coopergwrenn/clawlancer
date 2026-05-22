@@ -3537,12 +3537,38 @@ BOOTSTRAP_CHECK_PY`
 
   // Real conversation confirmed — safe to clean up.
   if (dryRun) {
-    result.fixed.push('[dry-run] delete BOOTSTRAP.md + create .bootstrap_consumed');
+    result.fixed.push('[dry-run] delete BOOTSTRAP.md + create .bootstrap_consumed + swap bot description');
     return;
   }
 
   await ssh.execCommand(`rm -f ${bootstrapFile} && touch ${flag}`);
   result.fixed.push('bootstrap cleanup (deleted BOOTSTRAP.md, created .bootstrap_consumed)');
+
+  // 2026-05-22: post-first-conversation bot description swap.
+  //
+  // setup.sh §1.34 sets the initial "i take a moment to wake up on your
+  // first message — totally normal, just loading my brain" description.
+  // That language is helpful for new users (sets cold-start expectations)
+  // but stale for returning users who view the bot profile later. Swap
+  // to a clean, permanent description now that the user has had a real
+  // conversation.
+  //
+  // Done from the VM via curl (TELEGRAM_BOT_TOKEN is in .env there).
+  // Non-fatal: any failure here just leaves the old description in place
+  // for one more reconcile cycle. Idempotent — Telegram accepts overwrites.
+  await ssh.execCommand(
+    `BOT_TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' ~/.openclaw/.env | head -1 | cut -d= -f2- | tr -d '"') && ` +
+      `[ -n "$BOT_TOKEN" ] && ` +
+      `curl -sf -m 10 -X POST "https://api.telegram.org/bot$BOT_TOKEN/setMyDescription" ` +
+      `-H "Content-Type: application/json" ` +
+      `-d '{"description":"your personal AI agent. message me anytime."}' > /dev/null 2>&1 || true`,
+  );
+  // Note: no result.fixed.push for the description swap — it's a side
+  // effect of bootstrap cleanup, not a separately-tracked outcome. If it
+  // fails, the next reconcile tick won't re-trigger this step (BOOTSTRAP.md
+  // is already gone) so we'd never retry. That's acceptable for a cosmetic
+  // description update; the worst-case is a slightly-out-of-date
+  // "waking up" string on the bot profile.
 }
 
 async function stepFixBlankIdentity(

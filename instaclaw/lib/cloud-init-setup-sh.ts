@@ -1208,6 +1208,66 @@ WSEOF
 # §1.33 skipped — telegram not in this VM's channels.`}
 
 # ════════════════════════════════════════════════════════════════════════
+# §1.34 BEST_EFFORT: Telegram bot description (sets first-touch expectations)
+# ════════════════════════════════════════════════════════════════════════
+# Sets the bot's description text via Telegram's setMyDescription +
+# setMyShortDescription methods. Shown to users BEFORE they send their
+# first message:
+#
+#   - description: shown on the bot's profile page AND on the start
+#     screen of an empty chat (when user opens a new chat with the bot
+#     but hasn't /start'd yet). Sets expectations about the cold-start
+#     delay so the wait feels normal instead of broken.
+#   - short_description: shown in bot search results + when shared.
+#
+# Verified against Telegram Bot API 2026-05-22:
+#   POST https://api.telegram.org/bot<TOKEN>/setMyDescription
+#     body: {"description": "..."} (max 512 chars)
+#   POST https://api.telegram.org/bot<TOKEN>/setMyShortDescription
+#     body: {"short_description": "..."} (max 120 chars)
+#   Both return {"ok":true,"result":true} on success, ~500ms latency.
+#
+# Idempotent (Telegram allows overwriting any time). Non-fatal — if
+# Telegram is temporarily unreachable or 429-rate-limits us, we WARN
+# but proceed. The callback in §1.38 still fires; the user just won't
+# see the expectation-setting description until the next reconciler
+# cycle (or the user's first message updates it via
+# stepBootstrapConsumed's description-swap once they have a real
+# conversation).
+#
+# Channel-aware: same as §1.33 — only fires when telegram is in
+# p.channels.
+${p.channels.includes("telegram") ? `
+{
+  BOT_TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' ~/.openclaw/.env | head -1 | cut -d= -f2- | tr -d '"')
+  if [ -n "$BOT_TOKEN" ]; then
+    # description (long-form, shown in profile + empty-chat start screen)
+    if curl -sf -m 10 -X POST "https://api.telegram.org/bot$BOT_TOKEN/setMyDescription" \\
+      -H "Content-Type: application/json" \\
+      -d '{"description":"i take a moment to wake up on your first message \\u2014 totally normal, just loading my brain. after that, responses are instant."}' \\
+      -o /tmp/.tg-desc-resp.json
+    then
+      echo "[\$(date -u +%FT%TZ)] §1.34 Telegram setMyDescription OK"
+    else
+      echo "[\$(date -u +%FT%TZ)] WARN: §1.34 Telegram setMyDescription failed (non-fatal; reconciler will retry on next conversation)"
+    fi
+    # short_description (shown in search + bot list)
+    if curl -sf -m 10 -X POST "https://api.telegram.org/bot$BOT_TOKEN/setMyShortDescription" \\
+      -H "Content-Type: application/json" \\
+      -d '{"short_description":"your personal AI agent \\u2014 powered by instaclaw"}' \\
+      -o /tmp/.tg-shortdesc-resp.json
+    then
+      echo "[\$(date -u +%FT%TZ)] §1.34 Telegram setMyShortDescription OK"
+    else
+      echo "[\$(date -u +%FT%TZ)] WARN: §1.34 Telegram setMyShortDescription failed (non-fatal)"
+    fi
+  else
+    echo "[\$(date -u +%FT%TZ)] WARN: §1.34 TELEGRAM_BOT_TOKEN not found in .env — skipping bot-description setup"
+  fi
+}` : `
+# §1.34 skipped — telegram not in this VM's channels.`}
+
+# ════════════════════════════════════════════════════════════════════════
 # §1.35 BEST_EFFORT [BE-14]: re-wire gbrain MCP into per-user openclaw.json
 # ════════════════════════════════════════════════════════════════════════
 # Why: §1.5 OVERWROTE openclaw.json with per-user content that does NOT
