@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-22
 
-Window: `18d9a86f53c3a6eb4fb238f14814bcc8bacdf05f` → `HEAD` (HEAD = `56e8f467`)
+Window: `56e8f467825d707478d657b6affb3e24bba88e1f` → `HEAD` (HEAD = `661735b7`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 56e8f467825d707478d657b6affb3e24bba88e1f -->
+<!-- LAST_GENERATED_SHA: 661735b749c745ec31b21b54b0c82bd32550c1ba -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `56e8f467` 2026-05-21 — feat(reconcile): stepGbrainEnvSync — propagate GBRAIN_ANTHROPIC_API_KEY rotation to gbrain process (SECRET_VERSION 2→3) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
-- `89e5fbf6` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `661735b7` 2026-05-21 — fix(cloud-init): §1.0.7 disable OpenClaw bonjour on cloud VMs (UX win) [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `550f07f6` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `56e8f467` 2026-05-21 — feat(reconcile): stepGbrainEnvSync — propagate GBRAIN_ANTHROPIC_API_KEY rotation to gbrain process (SECRET_VERSION 2→3) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `661735b7` 2026-05-21 — fix(cloud-init): §1.0.7 disable OpenClaw bonjour on cloud VMs (UX win) [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `89e5fbf6` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `550f07f6` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `56e8f467` 2026-05-21 — [reconciler, infrastructure, edge] — feat(reconcile): stepGbrainEnvSync — propagate GBRAIN_ANTHROPIC_API_KEY rotation to gbrain process (SECRET_VERSION 2→3)
+- `661735b7` 2026-05-21 — [infrastructure, edge] — fix(cloud-init): §1.0.7 disable OpenClaw bonjour on cloud VMs (UX win)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `56e8f467` 2026-05-21 — feat(reconcile): stepGbrainEnvSync — propagate GBRAIN_ANTHROPIC_API_KEY rotation to gbrain process (SECRET_VERSION 2→3)
+- `661735b7` 2026-05-21 — fix(cloud-init): §1.0.7 disable OpenClaw bonjour on cloud VMs (UX win)
 
 ## Appendix — every commit (chronological)
 
-- `89e5fbf6` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `56e8f467` 2026-05-21 — feat(reconcile): stepGbrainEnvSync — propagate GBRAIN_ANTHROPIC_API_KEY rotation to gbrain process (SECRET_VERSION 2→3) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `550f07f6` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `661735b7` 2026-05-21 — fix(cloud-init): §1.0.7 disable OpenClaw bonjour on cloud VMs (UX win) [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
