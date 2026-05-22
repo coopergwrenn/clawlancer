@@ -1,16 +1,16 @@
 # Changelog — generated 2026-05-22
 
-Window: `afbeca6f3114cc9aa3f839e327f64cceef910474` → `HEAD` (HEAD = `ab8c2c4e`)
+Window: `ab8c2c4e6f7de1d9449261848d8c116485ae1fcc` → `HEAD` (HEAD = `3f0c865d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: ab8c2c4e6f7de1d9449261848d8c116485ae1fcc -->
+<!-- LAST_GENERATED_SHA: 3f0c865db02e97a7c45140fbac34b9a89b66953a -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
-- **Feature (user-facing):** 0
+- **Infrastructure:** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,12 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-_None in this window._
+- `3f0c865d` 2026-05-22 — fix(landing): counter floors at 1; remove "Servers restocking" banner (conversion-critical) [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `ab8c2c4e` 2026-05-21 — feat(assignOrProvisionUserVm): pool-first ALWAYS; cloud-init is fallback (Edge Esmeralda UX) [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `5a4820fa` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `5bfa5902` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,13 +30,13 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
-
-- `ab8c2c4e` 2026-05-21 — feat(assignOrProvisionUserVm): pool-first ALWAYS; cloud-init is fallback (Edge Esmeralda UX) [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
-
-### Feature (user-facing) (0)
+### Infrastructure (0)
 
 _(none)_
+
+### Feature (user-facing) (1)
+
+- `3f0c865d` 2026-05-22 — fix(landing): counter floors at 1; remove "Servers restocking" banner (conversion-critical) [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,21 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `5a4820fa` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `ab8c2c4e` 2026-05-21 — [infrastructure, edge] — feat(assignOrProvisionUserVm): pool-first ALWAYS; cloud-init is fallback (Edge Esmeralda UX)
+- `5bfa5902` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `ab8c2c4e` 2026-05-21 — feat(assignOrProvisionUserVm): pool-first ALWAYS; cloud-init is fallback (Edge Esmeralda UX)
+- `3f0c865d` 2026-05-22 — fix(landing): counter floors at 1; remove "Servers restocking" banner (conversion-critical)
 
 ## Appendix — every commit (chronological)
 
-- `5a4820fa` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `ab8c2c4e` 2026-05-21 — feat(assignOrProvisionUserVm): pool-first ALWAYS; cloud-init is fallback (Edge Esmeralda UX) [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `5bfa5902` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `3f0c865d` 2026-05-22 — fix(landing): counter floors at 1; remove "Servers restocking" banner (conversion-critical) [1 files] _(ai-assisted)_
