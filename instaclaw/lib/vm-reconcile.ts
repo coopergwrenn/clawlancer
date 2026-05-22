@@ -223,7 +223,22 @@ const GBRAIN_INSTALL_TIMEOUT_MS = 240_000;
 //                  reconciler propagates the same change to any VM that
 //                  comes online from a snapshot baked before the
 //                  rotation.
-export const SECRET_VERSION = 3;
+// v4 (2026-05-22): OPENAI_API_KEY enrollment (SECRET_ENV_VAR_SOURCES new
+//                  entry — universal, no partnerGate). The bake-VM-3
+//                  install today surfaced FATAL_NO_OPENAI_KEY because
+//                  install-gbrain.sh Phase A4 reads OPENAI_API_KEY from
+//                  ~/.openclaw/.env but no reconciler step was writing
+//                  it. Snapshot terminal had to manually SSH push the
+//                  key to unblock the bake. Enrolling in stepEnvVarPush
+//                  closes the structural gap: every VM gets the key on
+//                  the next reconcile tick. Combined with v3's
+//                  GBRAIN_ANTHROPIC_API_KEY distribution, the third
+//                  bake runs zero-manual-intervention. See companion
+//                  scripts/install-gbrain.sh Phase G8 budget extension
+//                  (commit 9201a3fc) + EnvironmentFile architecture
+//                  (commit c9d3c5b1) for the full "clean 3rd bake"
+//                  trio.
+export const SECRET_VERSION = 4;
 
 // ── Result types ──
 
@@ -1342,6 +1357,41 @@ export const SECRET_ENV_VAR_SOURCES: SecretEnvVarSource[] = [
   // v1 EDGEOS rotation) re-enter the reconcile queue and pick up the
   // new key.
   { envKey: "BRAVE_API_KEY", vercelKey: "BRAVE_SEARCH_API_KEY", label: "Brave Search API key" },
+  // 2026-05-22: OPENAI_API_KEY enrollment for zero-manual-intervention bakes.
+  //
+  // The 2026-05-22 bake-VM-3 surfaced a structural gap: install-gbrain.sh
+  // Phase A4 reads OPENAI_API_KEY from ~/.openclaw/.env (it's needed for
+  // text-embedding-3-large embedding calls at 1536 dims). The bake VM
+  // didn't have OPENAI_API_KEY in its .env at install time → Phase A4
+  // exited FATAL_NO_OPENAI_KEY → snapshot terminal had to manually SSH
+  // push it before retrying install-gbrain.sh. Same gap on every snapshot
+  // — the env var was assumed present but never actually propagated by
+  // any reconciler step.
+  //
+  // OPENAI_API_KEY is in Vercel production (created 2026-02-19, 92 days
+  // ago). It's already used by other agent code paths (`lib/openai-*.ts`
+  // for ChatGPT OAuth signup, `app/api/onboarding/*` for personalization).
+  // It just wasn't enrolled in stepEnvVarPush's distribution.
+  //
+  // Universal (no partnerGate): every VM that installs gbrain needs this,
+  // and gbrain is partner-gated to edge_city today — but the env var is
+  // cheap to deploy on every VM and there's no reason to restrict it
+  // (matches the BRAVE_API_KEY universal-deploy pattern).
+  //
+  // Companion bump: SECRET_VERSION 3 → 4 so caught-up VMs (sv=3 from the
+  // v3 GBRAIN_ANTHROPIC_API_KEY rotation) re-enter the reconcile queue
+  // and receive OPENAI_API_KEY via the next stepEnvVarPush tick. Fleet
+  // converges to sv=4 within ~30 min at default cadence.
+  //
+  // Why this eliminates the manual SSH push: the next bake's reconcile
+  // audit step writes OPENAI_API_KEY to ~/.openclaw/.env BEFORE the
+  // gbrain-install phase runs install-gbrain.sh Phase A4. Phase A4 reads
+  // a present-and-valid value → no FATAL_NO_OPENAI_KEY. Combined with
+  // commit c9d3c5b1 (EnvironmentFile architecture eliminating bake-time
+  // ANTHROPIC_API_KEY staleness) and commit 9201a3fc (Phase G8 health
+  // budget 12s → 120s eliminating 8-plugin cold-boot false-negatives),
+  // the next bake runs zero-manual-intervention.
+  { envKey: "OPENAI_API_KEY", label: "OpenAI API key (gbrain text-embedding-3-large + ChatGPT OAuth)" },
 ];
 
 // Bash payload that does the write. Assembled as a string array so there's no
