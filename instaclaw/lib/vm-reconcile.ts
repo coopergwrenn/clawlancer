@@ -207,7 +207,23 @@ const GBRAIN_INSTALL_TIMEOUT_MS = 240_000;
 // v2 (2026-05-15): BRAVE_API_KEY enrollment (SECRET_ENV_VAR_SOURCES new
 //                  entry via vercelKey: Vercel-side BRAVE_SEARCH_API_KEY →
 //                  VM-side BRAVE_API_KEY). Universal — every VM gets it.
-export const SECRET_VERSION = 2;
+// v3 (2026-05-21): GBRAIN_ANTHROPIC_API_KEY rotation in Vercel. Cooper
+//                  set a new Anthropic project key for gbrain. The OLD
+//                  key was still valid (both keys returned HTTP 200 from
+//                  Anthropic at rotation time) but gbrain on edge_city
+//                  VMs was running with the OLD value baked into its
+//                  systemd unit's Environment=ANTHROPIC_API_KEY= at
+//                  install time. The new stepGbrainEnvSync (added in
+//                  this commit) detects drift between .env (refreshed
+//                  by stepEnvVarPush) and the systemd unit, then sed-
+//                  syncs the unit + restarts gbrain so the rotated key
+//                  actually reaches the gbrain process. Manual fleet-
+//                  push on 2026-05-21 ~23:55 UTC handled today's
+//                  rotation (9 edge_city VMs); this bump ensures the
+//                  reconciler propagates the same change to any VM that
+//                  comes online from a snapshot baked before the
+//                  rotation.
+export const SECRET_VERSION = 3;
 
 // ── Result types ──
 
@@ -511,6 +527,24 @@ export async function reconcileVM(
     // PRD-gbrain-fleet-rollout-2026-05-12.md §1 for design rationale.
     currentStep = "env-var-push";
     await stepEnvVarPush(ssh, vm, result, dryRun);
+
+    // ── Step 1b': gbrain systemd Environment sync (key rotation) ──
+    // 2026-05-21 (SECRET_VERSION v3): GBRAIN_ANTHROPIC_API_KEY rotation
+    // exposed a gap. stepEnvVarPush updates ~/.openclaw/.env, but gbrain
+    // doesn't read from .env at runtime — it reads from systemd's
+    // `Environment=ANTHROPIC_API_KEY=` (the unit value is baked in once
+    // at install-gbrain.sh time and never re-derived). So a rotated key
+    // landed in .env but gbrain kept using the OLD value indefinitely.
+    //
+    // stepGbrainEnvSync detects drift between .env (just refreshed by
+    // stepEnvVarPush above) and the gbrain systemd unit's Environment=
+    // ANTHROPIC_API_KEY= line, then sed-syncs the unit and restarts
+    // gbrain so the new key actually reaches the gbrain process. Partner-
+    // gated to edge_city + skip-if-gbrain-not-installed (cheap probe).
+    // Idempotent (no-op when in sync, ~1 SSH call). Restart uses gbrain's
+    // KillSignal=SIGKILL drop-in to avoid PGLite corruption (Rule 54).
+    currentStep = "gbrain-env-sync";
+    await stepGbrainEnvSync(ssh, vm, result, dryRun);
 
     // ── Step 1c: gbrain install (partner-gated, env-flag-gated) ──
     // Phase 4c of gbrain fleet rollout. Auto-installs gbrain (PGLite KG +
@@ -1447,6 +1481,172 @@ async function stepEnvVarPush(
       result.envPushSucceeded = false;
     }
   }
+}
+
+/**
+ * stepGbrainEnvSync — sync .env's GBRAIN_ANTHROPIC_API_KEY into gbrain's
+ * systemd unit's `Environment=ANTHROPIC_API_KEY=` and restart gbrain so the
+ * rotated value actually reaches the running process.
+ *
+ * Background (2026-05-21 SECRET_VERSION v3 incident):
+ *   stepEnvVarPush keeps ~/.openclaw/.env in sync with Vercel-side secret
+ *   rotations. But gbrain doesn't read from .env at runtime — install-gbrain.sh
+ *   reads the .env value ONCE at install time and bakes it into the systemd
+ *   unit (~/.config/systemd/user/gbrain.service) as
+ *   `Environment=ANTHROPIC_API_KEY=<value>`. After install, the unit's value
+ *   never updates unless something explicitly rewrites the unit. So when
+ *   Cooper rotated GBRAIN_ANTHROPIC_API_KEY in Vercel, stepEnvVarPush
+ *   updated .env on the next reconcile tick, but the 9 edge_city VMs kept
+ *   running with the OLD key forever (until manual SSH push).
+ *
+ * Fix (this step):
+ *   1. Partner-gate: edge_city only (no other partner installs gbrain today).
+ *   2. Presence-gate: skip if gbrain.service unit file is missing.
+ *   3. Read .env GBRAIN_ANTHROPIC_API_KEY (the value stepEnvVarPush just wrote).
+ *   4. Read unit's Environment=ANTHROPIC_API_KEY= (current baked-in value).
+ *   5. If equal → alreadyCorrect (single cheap SSH call on the happy path).
+ *   6. If different → atomic sed-in-place of the unit + daemon-reload +
+ *      `systemctl --user restart gbrain` (uses gbrain's KillSignal=SIGKILL
+ *      drop-in per Rule 54 — safe for PGLite). Verify is-active post-restart.
+ *
+ * Idempotency: matches the existing reconciler discipline. Re-running this
+ * step on a VM with .env value == unit value is a single read + early return.
+ *
+ * Failure modes:
+ *   - .env missing GBRAIN_ANTHROPIC_API_KEY (e.g., stepEnvVarPush hasn't run
+ *     yet because Vercel env is unset): alreadyCorrect with reason (Rule 39
+ *     skip class — non-critical).
+ *   - Unit missing Environment=ANTHROPIC_API_KEY= line (e.g., install-gbrain.sh
+ *     used a different layout): skip + warn (don't sed-write a new line that
+ *     would conflict with install-gbrain.sh's next run).
+ *   - Restart fails (gbrain crash-loop, port conflict): push to errors so
+ *     pushFailed gate holds the secret_version bump. Next tick retries.
+ */
+async function stepGbrainEnvSync(
+  ssh: SSHConnection,
+  vm: VMRecord & { partner?: string | null },
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // Partner gate — only edge_city installs gbrain today. Mirrors stepGbrain's
+  // partnerGate semantics: skip silently, don't pollute result.errors.
+  if (vm.partner !== "edge_city") {
+    return;
+  }
+
+  // Presence gate — gbrain may not be installed yet (install-gbrain.sh hasn't
+  // run, or VM was provisioned from a snapshot that predates install-gbrain.sh).
+  // Single cheap probe for the unit file.
+  const presenceCheck = await ssh.execCommand(
+    "test -f $HOME/.config/systemd/user/gbrain.service && echo INSTALLED || echo MISSING",
+  );
+  if (presenceCheck.stdout.trim() !== "INSTALLED") {
+    result.alreadyCorrect.push("gbrainEnvSync (gbrain.service unit not present)");
+    return;
+  }
+
+  // Read .env value (canonical source — just refreshed by stepEnvVarPush).
+  // Strip optional surrounding quotes. If absent or too short, skip — there's
+  // nothing to sync into the unit yet.
+  const envRead = await ssh.execCommand(
+    "grep '^GBRAIN_ANTHROPIC_API_KEY=' $HOME/.openclaw/.env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\"'",
+  );
+  const envValue = envRead.stdout.trim();
+  if (!envValue || envValue.length < 20) {
+    result.alreadyCorrect.push("gbrainEnvSync (.env value absent or empty)");
+    return;
+  }
+
+  // Value-shape validation — defense against a malformed Vercel env that
+  // would otherwise be embedded into a bash chain or sed pattern.
+  // Anthropic project keys are `sk-ant-api03-[A-Za-z0-9_-]+` (alphanumeric
+  // + dash + underscore after the prefix; ~100 chars total). If we ever see
+  // shell metacharacters, refuse to sync — operator must clean up Vercel
+  // env first. Pushes warning (not error) so the cv bump isn't blocked on a
+  // bad Vercel value — the .env has already been updated by stepEnvVarPush
+  // with the same bad value, no worse off than before.
+  if (!/^[A-Za-z0-9_.-]+$/.test(envValue)) {
+    logger.warn("stepGbrainEnvSync: env value contains unsafe chars — refusing to sync", {
+      vmId: vm.id,
+      value_prefix: envValue.slice(0, 8),
+      value_len: envValue.length,
+    });
+    result.alreadyCorrect.push("gbrainEnvSync (unsafe-char value, refused)");
+    return;
+  }
+
+  // Read unit's current value. Format we expect (from install-gbrain.sh Phase E):
+  //   Environment=ANTHROPIC_API_KEY=<key>
+  // cut -d= -f3- captures the full value after the second `=` (handles values
+  // that happen to contain `=`, though Anthropic keys never do).
+  const unitRead = await ssh.execCommand(
+    "grep '^Environment=ANTHROPIC_API_KEY=' $HOME/.config/systemd/user/gbrain.service | head -1 | cut -d= -f3-",
+  );
+  const unitValue = unitRead.stdout.trim();
+
+  if (!unitValue) {
+    // Unit exists but Environment=ANTHROPIC_API_KEY= line is missing. Don't
+    // synthesize one — let install-gbrain.sh (stepGbrain) own the unit layout.
+    // Push to warnings so the operator notices but don't block cv-bump.
+    logger.warn("stepGbrainEnvSync: unit present but Environment=ANTHROPIC_API_KEY= absent — skipping (install-gbrain.sh should own this layout)", {
+      vmId: vm.id,
+    });
+    result.alreadyCorrect.push("gbrainEnvSync (unit Environment= line missing)");
+    return;
+  }
+
+  if (unitValue === envValue) {
+    result.alreadyCorrect.push("gbrainEnvSync");
+    return;
+  }
+
+  // Drift detected — sync .env → unit + daemon-reload + restart gbrain.
+  if (dryRun) {
+    result.fixed.push(
+      `[dry-run] gbrainEnvSync: would rotate key (env=${envValue.slice(0, 20)}..., unit=${unitValue.slice(0, 20)}...)`,
+    );
+    return;
+  }
+
+  // Escape sed metacharacters in the value. Anthropic keys are
+  // sk-ant-api03-<base64ish> — only `&` and `|` are sed-special on the RHS.
+  const sedSafe = envValue.replace(/[&|]/g, "\\$&");
+
+  const sync = await ssh.execCommand(
+    [
+      // Backup with timestamp suffix (kept on disk for forensic recovery)
+      `cp $HOME/.config/systemd/user/gbrain.service /tmp/gbrain.service.bak-$(date +%s)`,
+      // In-place sed (matches install-gbrain.sh's exact line format)
+      `sed -i 's|^Environment=ANTHROPIC_API_KEY=.*|Environment=ANTHROPIC_API_KEY=${sedSafe}|' $HOME/.config/systemd/user/gbrain.service`,
+      // Verify the sed landed (post-write read; same parse logic as above)
+      `NEW_UNIT_VAL=$(grep '^Environment=ANTHROPIC_API_KEY=' $HOME/.config/systemd/user/gbrain.service | head -1 | cut -d= -f3-)`,
+      `[ "$NEW_UNIT_VAL" = "${envValue}" ] || { echo "SYNC_FAILED unit-not-written"; exit 1; }`,
+      // daemon-reload + restart (uses unit's KillSignal=SIGKILL drop-in — Rule 54-safe)
+      `systemctl --user daemon-reload`,
+      `systemctl --user restart gbrain`,
+      `sleep 3`,
+      // Verify gbrain came back active + the process actually has the new value
+      `systemctl --user is-active gbrain | grep -q '^active$' || { echo "SYNC_FAILED gbrain-not-active"; exit 2; }`,
+      `PID=$(systemctl --user show gbrain --property=MainPID --value)`,
+      `PROC_VAL=$(cat /proc/$PID/environ 2>/dev/null | tr '\\0' '\\n' | grep '^ANTHROPIC_API_KEY=' | head -1 | cut -d= -f2-)`,
+      `[ "$PROC_VAL" = "${envValue}" ] || { echo "SYNC_FAILED proc-env-mismatch"; exit 3; }`,
+      `echo "SYNC_OK"`,
+    ].join(" && "),
+  );
+
+  if (sync.code !== 0 || !sync.stdout.includes("SYNC_OK")) {
+    result.errors.push(
+      `stepGbrainEnvSync: failed exit=${sync.code} stdout=${(sync.stdout || "").slice(0, 200)} stderr=${(sync.stderr || "").slice(0, 200)}`,
+    );
+    return;
+  }
+
+  result.fixed.push("gbrainEnvSync: ANTHROPIC_API_KEY rotated in gbrain unit + restarted");
+  logger.info("stepGbrainEnvSync: rotated key + restarted gbrain", {
+    vmId: vm.id,
+    oldKeyPrefix: unitValue.slice(0, 20),
+    newKeyPrefix: envValue.slice(0, 20),
+  });
 }
 
 /**
