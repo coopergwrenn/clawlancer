@@ -7,6 +7,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { ChatGPTConnectModal } from "@/components/dashboard/chatgpt-connect-modal";
+import { EdgePartnerBanner } from "@/components/marketing/edge-partner-banner";
 import { SupportFooter } from "@/components/marketing/support-footer";
 
 function SignInContent() {
@@ -27,13 +28,23 @@ function SignInContent() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center px-4"
+      className="min-h-screen flex flex-col"
       style={{
         background: "#f8f7f4",
         color: "#333334",
       }}
     >
-      <div className="w-full max-w-md space-y-10">
+      {/* EdgePartnerBanner — F4 audit fix 2026-05-22. Closes the brand
+          seam between /edge/setup (olive Edge palette) and /signin
+          (previously: bare cream/orange InstaClaw chrome with no Edge
+          signal). The banner reads the instaclaw_partner cookie and
+          renders nothing for non-partner users — so this addition is
+          invisible to the 99% of /signin visitors who aren't Edge
+          attendees and load-bearing for the 1% who are. */}
+      <EdgePartnerBanner />
+
+      <div className="flex-1 flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md space-y-10">
         {/* Logo */}
         <Link href="/" className="flex items-center justify-center gap-2">
           <Image src="/logo.png" alt="Instaclaw" width={40} height={40} unoptimized style={{ imageRendering: "pixelated" }} />
@@ -144,6 +155,7 @@ function SignInContent() {
         >
           <SupportFooter />
         </p>
+        </div>
       </div>
 
       {/* ChatGPT signup-mode modal. Mounted at this level so it can
