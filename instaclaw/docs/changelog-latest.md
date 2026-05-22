@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-22
 
-Window: `1422c3f921b3d73f06f9589b12ecc8ae0ec51a3a` → `HEAD` (HEAD = `01098160`)
+Window: `010981600e0820544f28cae935e263722866bb9f` → `HEAD` (HEAD = `48f458d1`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 010981600e0820544f28cae935e263722866bb9f -->
+<!-- LAST_GENERATED_SHA: 48f458d16429c7ef4db204cf784386ca70db3ebb -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `01098160` 2026-05-22 — feat(cloud-init): §1.34 set Telegram bot description on first-touch (UX expectation) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `263d2b6e` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `6a29c672` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `48f458d1` 2026-05-22 — docs(CLAUDE.md): add Rule 60 — migration files MUST be self-contained; never rely on the Supabase Studio "Run and enable RLS" prompt [1 files] _(ai-assisted)_
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `01098160` 2026-05-22 — feat(cloud-init): §1.34 set Telegram bot description on first-touch (UX expectation) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+_(none)_
 
 ### Infrastructure (0)
 
@@ -43,23 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `263d2b6e` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `01098160` 2026-05-22 — [reconciler, infrastructure] — feat(cloud-init): §1.34 set Telegram bot description on first-touch (UX expectation)
+- `6a29c672` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `48f458d1` 2026-05-22 — docs(CLAUDE.md): add Rule 60 — migration files MUST be self-contained; never rely on the Supabase Studio "Run and enable RLS" prompt [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `01098160` 2026-05-22 — feat(cloud-init): §1.34 set Telegram bot description on first-touch (UX expectation)
+- `48f458d1` 2026-05-22 — docs(CLAUDE.md): add Rule 60 — migration files MUST be self-contained; never rely on the Supabase Studio "Run and enable RLS" prompt
 
 ## Appendix — every commit (chronological)
 
-- `263d2b6e` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `01098160` 2026-05-22 — feat(cloud-init): §1.34 set Telegram bot description on first-touch (UX expectation) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `6a29c672` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `48f458d1` 2026-05-22 — docs(CLAUDE.md): add Rule 60 — migration files MUST be self-contained; never rely on the Supabase Studio "Run and enable RLS" prompt [1 files] _(ai-assisted)_
