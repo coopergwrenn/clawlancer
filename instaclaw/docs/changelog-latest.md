@@ -1,15 +1,15 @@
-# Changelog — generated 2026-05-21
+# Changelog — generated 2026-05-22
 
-Window: `f478a4fd334556f6896a68eed85ab870f5d2b626` → `HEAD` (HEAD = `18d9a86f`)
+Window: `18d9a86f53c3a6eb4fb238f14814bcc8bacdf05f` → `HEAD` (HEAD = `56e8f467`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 18d9a86f53c3a6eb4fb238f14814bcc8bacdf05f -->
+<!-- LAST_GENERATED_SHA: 56e8f467825d707478d657b6affb3e24bba88e1f -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `18d9a86f` 2026-05-21 — fix(cloud-init): §1.33 wait for telegram polling before callback (UX gap fix) [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `9a56806d` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `56e8f467` 2026-05-21 — feat(reconcile): stepGbrainEnvSync — propagate GBRAIN_ANTHROPIC_API_KEY rotation to gbrain process (SECRET_VERSION 2→3) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `89e5fbf6` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `56e8f467` 2026-05-21 — feat(reconcile): stepGbrainEnvSync — propagate GBRAIN_ANTHROPIC_API_KEY rotation to gbrain process (SECRET_VERSION 2→3) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `18d9a86f` 2026-05-21 — fix(cloud-init): §1.33 wait for telegram polling before callback (UX gap fix) [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `9a56806d` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `89e5fbf6` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `18d9a86f` 2026-05-21 — [infrastructure, edge] — fix(cloud-init): §1.33 wait for telegram polling before callback (UX gap fix)
+- `56e8f467` 2026-05-21 — [reconciler, infrastructure, edge] — feat(reconcile): stepGbrainEnvSync — propagate GBRAIN_ANTHROPIC_API_KEY rotation to gbrain process (SECRET_VERSION 2→3)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `18d9a86f` 2026-05-21 — fix(cloud-init): §1.33 wait for telegram polling before callback (UX gap fix)
+- `56e8f467` 2026-05-21 — feat(reconcile): stepGbrainEnvSync — propagate GBRAIN_ANTHROPIC_API_KEY rotation to gbrain process (SECRET_VERSION 2→3)
 
 ## Appendix — every commit (chronological)
 
-- `9a56806d` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
-- `18d9a86f` 2026-05-21 — fix(cloud-init): §1.33 wait for telegram polling before callback (UX gap fix) [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `89e5fbf6` 2026-05-21 — chore(changelog): auto-update [skip ci] [2 files]
+- `56e8f467` 2026-05-21 — feat(reconcile): stepGbrainEnvSync — propagate GBRAIN_ANTHROPIC_API_KEY rotation to gbrain process (SECRET_VERSION 2→3) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
