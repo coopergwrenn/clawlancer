@@ -47,15 +47,22 @@ export default async function EdgeDashboardPage() {
 
   const supabase = getSupabase();
 
-  // Fetch the user's edge VM (for Index credentials — drives the
-  // current-intent fetch + the "setup complete" empty-state branching).
+  // Fetch the user's edge VM. Used for:
+  //   - index_api_key: drives the current-intent fetch + the
+  //     "setup complete" empty-state branching.
+  //   - telegram_bot_username: drives the "Open in Telegram" CTA at
+  //     the top of the dashboard (F2 audit fix 2026-05-22 — recovery
+  //     surface for attendees who lost the Telegram deep-link via
+  //     thread deletion, device switch, or bookmark-only navigation).
   const { data: edgeVm } = await supabase
     .from("instaclaw_vms")
-    .select("index_api_key")
+    .select("index_api_key, telegram_bot_username")
     .eq("assigned_to", session.user.id)
     .eq("partner", "edge_city")
     .maybeSingle();
   const indexApiKey = (edgeVm?.index_api_key as string | null) ?? null;
+  const telegramBotUsername =
+    (edgeVm?.telegram_bot_username as string | null) ?? null;
 
   // Parallel fetch: village overlay + rendered name + match history +
   // current intent + trial state. The MCP call for current-intent is
@@ -132,6 +139,7 @@ export default async function EdgeDashboardPage() {
       // since either way the user's actionable next step is the same.
       intentFetchSucceeded={!!indexApiKey}
       trialEndsAt={trialEndsAt}
+      telegramBotUsername={telegramBotUsername}
     />
   );
 }
