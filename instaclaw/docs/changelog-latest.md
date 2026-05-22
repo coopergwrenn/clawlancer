@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-22
 
-Window: `8554c339cfc7ba124a21dfb3fd925406f752e513` → `HEAD` (HEAD = `d10b84d2`)
+Window: `d10b84d2464728d2bd9cdb50325665c960a83ffe` → `HEAD` (HEAD = `49e2862a`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: d10b84d2464728d2bd9cdb50325665c960a83ffe -->
+<!-- LAST_GENERATED_SHA: 49e2862ac041ca131b42eb9e27eff2ad481273d4 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `9fd717b6` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `d10b84d2` 2026-05-22 — docs(CLAUDE.md): Rule 61 — boolean env vars validated by VALUE, silent skips on misconfig BANNED [1 files] _(ai-assisted)_
+- `03665e29` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `49e2862a` 2026-05-22 — docs(incidents): 2026-05-22 RECONCILE_SOUL_MIGRATION_ENABLED empty 9 days [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -45,16 +45,16 @@ _(none)_
 
 ### Docs / PRD only (2)
 
-- `9fd717b6` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `d10b84d2` 2026-05-22 — docs(CLAUDE.md): Rule 61 — boolean env vars validated by VALUE, silent skips on misconfig BANNED [1 files] _(ai-assisted)_
+- `03665e29` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `49e2862a` 2026-05-22 — docs(incidents): 2026-05-22 RECONCILE_SOUL_MIGRATION_ENABLED empty 9 days [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `d10b84d2` 2026-05-22 — docs(CLAUDE.md): Rule 61 — boolean env vars validated by VALUE, silent skips on misconfig BANNED
+- `49e2862a` 2026-05-22 — docs(incidents): 2026-05-22 RECONCILE_SOUL_MIGRATION_ENABLED empty 9 days
 
 ## Appendix — every commit (chronological)
 
-- `9fd717b6` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `d10b84d2` 2026-05-22 — docs(CLAUDE.md): Rule 61 — boolean env vars validated by VALUE, silent skips on misconfig BANNED [1 files] _(ai-assisted)_
+- `03665e29` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `49e2862a` 2026-05-22 — docs(incidents): 2026-05-22 RECONCILE_SOUL_MIGRATION_ENABLED empty 9 days [1 files] _(ai-assisted)_
