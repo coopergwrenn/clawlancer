@@ -1253,7 +1253,11 @@ else:
 
   const { data: telegramEnabledVms } = await supabase
     .from("instaclaw_vms")
-    .select("id, name, ip_address, assigned_to")
+    .select(
+      // 2026-05-22: added created_at, lifecycle_locked_at, gateway_url for
+      // three-layer false-positive guard added below.
+      "id, name, ip_address, assigned_to, created_at, lifecycle_locked_at, gateway_url",
+    )
     .eq("status", "assigned")
     .not("assigned_to", "is", null)
     .contains("channels_enabled", ["telegram"])
@@ -1262,6 +1266,109 @@ else:
   if (telegramEnabledVms?.length) {
     for (const tvm of telegramEnabledVms) {
       telegramTokenMissing++;
+
+      // ════════════════════════════════════════════════════════════════
+      // 2026-05-22 — Three-layer false-positive guard
+      // ════════════════════════════════════════════════════════════════
+      //
+      // The auto-fix below is genuinely useful for the Feb 18-20 bug class
+      // (commit 46bd26f) where a reconfigure on an EXISTING VM wiped the
+      // telegram_bot_token. But it has fired false-positively at least once
+      // on a healthy VM:
+      //
+      //   vm-975 (shelpinc, 2026-05-21): freshly provisioned via cloud-init.
+      //   At T+~20min, the auto-fix triggered (some transient token-NULL
+      //   window), called /api/vm/configure with force:true. configure ran
+      //   for 4+ min, hit a gateway-start failure, triggered Config rollback
+      //   FAILED, set health_status='configure_failed'. Cooper's bot kept
+      //   working but the DB was lying about its state.
+      //
+      // Three false-positive classes the auto-fix should NEVER fire on:
+      //
+      //   CLASS 1 — Fresh VM mid-setup (cloud-init still running OR initial
+      //             configure not yet complete). Token might be transiently
+      //             NULL during INSERT → setup.sh callback window.
+      //             → Guard: VM age must be >= 30 minutes.
+      //
+      //   CLASS 2 — Concurrent operation in flight (another configure or
+      //             reconfigure is running RIGHT NOW). Brief token-NULL
+      //             during writes is normal.
+      //             → Guard: lifecycle_locked_at must be > 5 minutes ago
+      //               (or NULL).
+      //
+      //   CLASS 3 — Gateway is genuinely healthy. The token-NULL might be
+      //             a transient DB race or a partial-write that's already
+      //             been corrected on disk. Don't trigger destructive
+      //             configure on a working VM (Rule 33's lesson — partial
+      //             commits create trap states).
+      //             → Guard: /health probe on gateway_url; skip if 200.
+      //
+      // All three guards are conservative (skip on uncertainty). Each adds
+      // ONE cheap operation (one DB column read, one network probe). The
+      // Feb bug class is still covered because:
+      //   - Feb-bug VMs are old (Class 1 passes)
+      //   - The reconfigure that wiped the token has completed (Class 2 passes)
+      //   - The gateway is running with stale/missing token state, so
+      //     /health may or may not be 200 — if it IS 200, the bot is
+      //     probably still polling stale state and the operator can
+      //     intervene via the alert; if NOT 200, auto-fix proceeds.
+      //
+      // Skipped-with-reason alerts are still raised so operators see the
+      // state — just without the destructive configure call.
+
+      // CLASS 1 — VM age guard (fresh-VM false-positive)
+      const ageMin = tvm.created_at
+        ? (Date.now() - Date.parse(tvm.created_at)) / 60000
+        : Infinity;
+      if (ageMin < 30) {
+        alerts.add(
+          "Telegram Token Missing — SKIPPED (VM <30min old, mid-setup)",
+          tvm.name ?? tvm.id,
+          `User: ${tvm.assigned_to}\nAge: ${Math.round(ageMin)}min\nGuard: Class 1 (fresh-VM false-positive).\nLet cloud-init / initial configure complete before auto-fix.`,
+        );
+        continue;
+      }
+
+      // CLASS 2 — Lock-in-flight guard (concurrent-operation false-positive)
+      if (tvm.lifecycle_locked_at) {
+        const lockAgeMin = (Date.now() - Date.parse(tvm.lifecycle_locked_at)) / 60000;
+        if (lockAgeMin < 5) {
+          alerts.add(
+            "Telegram Token Missing — SKIPPED (lifecycle lock held)",
+            tvm.name ?? tvm.id,
+            `User: ${tvm.assigned_to}\nLock age: ${Math.round(lockAgeMin)}min\nGuard: Class 2 (concurrent operation in flight).\nAnother configure is running — let it finish before auto-fix.`,
+          );
+          continue;
+        }
+      }
+
+      // CLASS 3 — Healthy-gateway guard (working-VM false-positive)
+      // Probe /health on the VM. If 200 → gateway is up and likely working
+      // (bot may have temporarily-stale DB but is functional). Skip the
+      // destructive configure. Operator sees the alert + can intervene.
+      if (tvm.gateway_url) {
+        try {
+          const healthRes = await fetch(`${tvm.gateway_url}/health`, {
+            method: "GET",
+            signal: AbortSignal.timeout(5000),
+          });
+          if (healthRes.status === 200) {
+            alerts.add(
+              "Telegram Token Missing — SKIPPED (gateway /health = 200)",
+              tvm.name ?? tvm.id,
+              `User: ${tvm.assigned_to}\nGateway URL: ${tvm.gateway_url}\nGuard: Class 3 (gateway is healthy).\nNot triggering destructive configure on working VM. Manual intervention if needed.`,
+            );
+            continue;
+          }
+        } catch {
+          // Probe failed (timeout, TLS error, network issue) — gateway IS
+          // unreachable. Proceed with auto-fix as a genuine recovery
+          // attempt. This is the Feb-bug class.
+        }
+      }
+
+      // All three guards passed (VM is old enough, no active lock, gateway
+      // not reachable via /health). Auto-fix is safe to attempt.
 
       // Auto-fix: look for the token on the user's previous VM
       let autoFixed = false;
