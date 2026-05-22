@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Mail, ShieldAlert } from "lucide-react";
+import { X, Mail, ShieldAlert, Sparkles } from "lucide-react";
 
 type Phase =
   | "prompt"
@@ -28,6 +28,22 @@ const BUBBLE_SHADOWS = [
 interface GmailConnectPopupProps {
   gmailConnected: boolean;
   gmailPopupDismissed: boolean;
+  /**
+   * 2026-05-22: feature flag from /api/vm/status. When false (the default
+   * when GMAIL_POPUP_DISABLED env var is not "true"), the Gmail card in
+   * the prompt phase is rendered grayed out with a "temporarily unavailable
+   * — back soon" tag. ChatGPT remains fully active. This lets us toggle
+   * Gmail personalization on/off without code changes whenever the Google
+   * verification status changes.
+   */
+  gmailPersonalizationEnabled: boolean;
+  /**
+   * Callback to open the ChatGPTConnectModal. Triggered by the ChatGPT
+   * card's primary CTA in the new dual-option prompt phase. The parent
+   * (dashboard/page.tsx) owns the modal's open state since it already
+   * owns several other modals; this keeps modal ownership in one place.
+   */
+  onOpenChatGPT: () => void;
   onClose: () => void;
   onConnected: () => void;
 }
@@ -35,6 +51,8 @@ interface GmailConnectPopupProps {
 export function GmailConnectPopup({
   gmailConnected,
   gmailPopupDismissed,
+  gmailPersonalizationEnabled,
+  onOpenChatGPT,
   onClose,
   onConnected,
 }: GmailConnectPopupProps) {
@@ -212,97 +230,261 @@ export function GmailConnectPopup({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
-                className="text-center"
               >
-                <div className="mb-6">
-                  <div
-                    className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto"
+                {/* ──────────────────────────────────────────────────────
+                    2026-05-22 — dual-option personalization (Cooper-approved
+                    spec). ChatGPT card first (active option, no scrolling
+                    past disabled content). Responsive: stacked vertically
+                    on mobile, side-by-side on desktop (md+ breakpoint).
+                    Gmail card grays out (opacity 0.5, no grayscale) when
+                    gmailPersonalizationEnabled is false — keeps icon
+                    recognizable + shows "temporarily unavailable - back
+                    soon" tag. Footer: low-weight "Maybe later" text link.
+                ────────────────────────────────────────────────────────── */}
+
+                <div className="text-center mb-7">
+                  <h2
+                    className="text-2xl mb-2"
+                    style={{ fontFamily: "var(--font-serif)", fontWeight: 400 }}
+                  >
+                    Personalize your agent
+                  </h2>
+                  <p
+                    className="text-sm leading-relaxed max-w-sm mx-auto"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    Pick the integration that fits your style.
+                  </p>
+                </div>
+
+                <div className="flex flex-col md:flex-row gap-3 mb-5">
+                  {/* ─── ChatGPT card (always active, first/left) ──── */}
+                  <button
+                    onClick={() => {
+                      // Close THIS popup before opening the ChatGPT modal so
+                      // they don't stack visually. The dashboard owns the
+                      // ChatGPT modal's open state via the onOpenChatGPT
+                      // callback.
+                      setVisible(false);
+                      onOpenChatGPT();
+                    }}
+                    className="flex-1 text-left rounded-2xl p-5 transition-all cursor-pointer hover:scale-[1.01]"
                     style={{
-                      background: "linear-gradient(135deg, rgba(220,103,67,0.1), rgba(220,103,67,0.2))",
-                      border: "1px solid rgba(220,103,67,0.15)",
+                      background:
+                        "linear-gradient(135deg, rgba(220,103,67,0.06), rgba(220,103,67,0.02))",
+                      border: "1.5px solid rgba(220,103,67,0.25)",
+                      boxShadow:
+                        "rgba(220,103,67,0.08) 0px 4px 12px -2px, rgba(255,255,255,0.4) 0px -1px 1px 0px inset",
                     }}
                   >
-                    <Mail className="w-7 h-7" style={{ color: "#DC6743" }} />
-                  </div>
-                </div>
-
-                <h2
-                  className="text-2xl mb-3"
-                  style={{ fontFamily: "var(--font-serif)", fontWeight: 400 }}
-                >
-                  Personalize your agent
-                </h2>
-
-                <p
-                  className="text-sm mb-5 leading-relaxed max-w-sm mx-auto"
-                  style={{ color: "var(--muted)" }}
-                >
-                  Connect Gmail so your agent can learn about you from your
-                  inbox patterns. Only metadata is read — never full emails.
-                </p>
-
-                {/* Google unverified app warning */}
-                <div
-                  className="rounded-xl p-4 mb-6 text-left"
-                  style={{
-                    background: "rgba(234,179,8,0.06)",
-                    border: "1px solid rgba(234,179,8,0.2)",
-                  }}
-                >
-                  <div className="flex items-start gap-3">
-                    <ShieldAlert
-                      className="w-5 h-5 shrink-0 mt-0.5"
-                      style={{ color: "#ca8a04" }}
-                    />
-                    <div>
-                      <p className="text-sm font-semibold mb-1.5" style={{ color: "#92400e" }}>
-                        Heads up — Google will show a warning
-                      </p>
-                      <p className="text-xs leading-relaxed mb-2" style={{ color: "#78716c" }}>
-                        Google will say &quot;Google hasn&apos;t verified this app.&quot; This is
-                        normal for new platforms — we&apos;re in the process of getting verified
-                        (takes a few weeks). It&apos;s safe to proceed.
-                      </p>
-                      <p className="text-xs font-medium leading-relaxed" style={{ color: "#92400e" }}>
-                        Click <span style={{ fontWeight: 700 }}>&quot;Advanced&quot;</span> &rarr;{" "}
-                        <span style={{ fontWeight: 700 }}>&quot;Go to instaclaw.io (unsafe)&quot;</span> to
-                        continue. We only request read-only access to personalize your agent.
-                      </p>
+                    <div className="flex items-center gap-3 mb-3">
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, rgba(220,103,67,0.12), rgba(220,103,67,0.22))",
+                          border: "1px solid rgba(220,103,67,0.18)",
+                        }}
+                      >
+                        <Sparkles className="w-5 h-5" style={{ color: "#DC6743" }} />
+                      </div>
+                      <span
+                        className="text-lg"
+                        style={{
+                          fontFamily: "var(--font-serif)",
+                          fontWeight: 500,
+                          color: "var(--foreground)",
+                        }}
+                      >
+                        ChatGPT
+                      </span>
                     </div>
-                  </div>
+                    <p
+                      className="text-sm leading-relaxed mb-2.5"
+                      style={{ color: "var(--foreground)" }}
+                    >
+                      Personalization plus a model switch to your own ChatGPT —
+                      and we can import your conversation history into your
+                      agent&apos;s memory.
+                    </p>
+                    <p
+                      className="text-xs mb-4"
+                      style={{ color: "var(--muted)", opacity: 0.85 }}
+                    >
+                      Best if you already use ChatGPT daily.
+                    </p>
+                    <div
+                      className="text-sm font-semibold py-2 rounded-lg text-center"
+                      style={{
+                        background:
+                          "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+                        boxShadow:
+                          "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(255,255,255,0.3) 0px -1px 1px 0px inset, rgba(220,103,67,0.3) 0px 3px 10px 0px",
+                        color: "#ffffff",
+                      }}
+                    >
+                      Connect ChatGPT
+                    </div>
+                  </button>
+
+                  {/* ─── Gmail card (active when flag enabled, dimmed otherwise) ─── */}
+                  {gmailPersonalizationEnabled ? (
+                    <button
+                      onClick={handleConnect}
+                      className="flex-1 text-left rounded-2xl p-5 transition-all cursor-pointer hover:scale-[1.01]"
+                      style={{
+                        background: "rgba(255,255,255,0.5)",
+                        border: "1.5px solid var(--border)",
+                        boxShadow:
+                          "rgba(0,0,0,0.04) 0px 4px 12px -2px, rgba(255,255,255,0.4) 0px -1px 1px 0px inset",
+                      }}
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                          style={{
+                            background:
+                              "linear-gradient(135deg, rgba(220,103,67,0.08), rgba(220,103,67,0.14))",
+                            border: "1px solid rgba(220,103,67,0.12)",
+                          }}
+                        >
+                          <Mail className="w-5 h-5" style={{ color: "#DC6743" }} />
+                        </div>
+                        <span
+                          className="text-lg"
+                          style={{
+                            fontFamily: "var(--font-serif)",
+                            fontWeight: 500,
+                            color: "var(--foreground)",
+                          }}
+                        >
+                          Gmail
+                        </span>
+                      </div>
+                      <p
+                        className="text-sm leading-relaxed mb-2.5"
+                        style={{ color: "var(--foreground)" }}
+                      >
+                        Personalization from your inbox patterns — your
+                        communication style, recurring contacts, what you care
+                        about. Only metadata is read.
+                      </p>
+                      <p
+                        className="text-xs mb-4"
+                        style={{ color: "var(--muted)", opacity: 0.85 }}
+                      >
+                        Best if you live in your inbox.
+                      </p>
+                      {/* Compact Google-warning hint, only when Gmail is actually clickable */}
+                      <div
+                        className="flex items-start gap-2 mb-3 px-2.5 py-2 rounded-lg"
+                        style={{
+                          background: "rgba(234,179,8,0.06)",
+                          border: "1px solid rgba(234,179,8,0.18)",
+                        }}
+                      >
+                        <ShieldAlert
+                          className="w-3.5 h-3.5 shrink-0 mt-0.5"
+                          style={{ color: "#ca8a04" }}
+                        />
+                        <p
+                          className="text-xs leading-snug"
+                          style={{ color: "#78716c" }}
+                        >
+                          Google will show an unverified-app warning.
+                          Click <strong>Advanced</strong> →
+                          <strong> Go to instaclaw.io</strong> to continue.
+                        </p>
+                      </div>
+                      <div
+                        className="text-sm font-semibold py-2 rounded-lg text-center"
+                        style={{
+                          background: "rgba(0,0,0,0.04)",
+                          border: "1px solid var(--border)",
+                          color: "var(--foreground)",
+                        }}
+                      >
+                        Connect Gmail
+                      </div>
+                    </button>
+                  ) : (
+                    // Disabled state — fully visible (icon recognizable) but
+                    // not interactive. Tag in place of the CTA so the
+                    // alternative is obvious without scaring or apologizing.
+                    <div
+                      className="flex-1 text-left rounded-2xl p-5 cursor-not-allowed select-none"
+                      style={{
+                        background: "rgba(255,255,255,0.5)",
+                        border: "1.5px solid var(--border)",
+                        opacity: 0.5,
+                      }}
+                      aria-disabled="true"
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                          style={{
+                            background:
+                              "linear-gradient(135deg, rgba(220,103,67,0.08), rgba(220,103,67,0.14))",
+                            border: "1px solid rgba(220,103,67,0.12)",
+                          }}
+                        >
+                          <Mail className="w-5 h-5" style={{ color: "#DC6743" }} />
+                        </div>
+                        <span
+                          className="text-lg"
+                          style={{
+                            fontFamily: "var(--font-serif)",
+                            fontWeight: 500,
+                            color: "var(--foreground)",
+                          }}
+                        >
+                          Gmail
+                        </span>
+                      </div>
+                      <p
+                        className="text-sm leading-relaxed mb-2.5"
+                        style={{ color: "var(--foreground)" }}
+                      >
+                        Personalization from your inbox patterns — your
+                        communication style, recurring contacts, what you care
+                        about. Only metadata is read.
+                      </p>
+                      <p
+                        className="text-xs mb-4"
+                        style={{ color: "var(--muted)", opacity: 0.85 }}
+                      >
+                        Best if you live in your inbox.
+                      </p>
+                      <div
+                        className="text-xs font-medium py-2 rounded-lg text-center"
+                        style={{
+                          background: "rgba(0,0,0,0.04)",
+                          border: "1px dashed var(--border)",
+                          color: "var(--muted)",
+                        }}
+                      >
+                        temporarily unavailable - back soon
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                <button
-                  onClick={handleConnect}
-                  className="w-full px-6 py-3.5 rounded-xl text-base font-semibold transition-all cursor-pointer"
-                  style={{
-                    background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
-                    boxShadow:
-                      "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(255,255,255,0.3) 0px -1px 1px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px, rgba(255,255,255,0.08) 0px 0px 1.6px 4px inset",
-                    color: "#ffffff",
-                  }}
-                >
-                  Connect Gmail
-                </button>
-
-                <button
-                  onClick={handleDismiss}
-                  className="w-full mt-3 px-6 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer"
-                  style={{
-                    background: "rgba(0,0,0,0.04)",
-                    border: "1px solid var(--border)",
-                    color: "var(--foreground)",
-                  }}
-                >
-                  Skip for now — connect later in Settings
-                </button>
-
-                <p
-                  className="text-xs mt-6 max-w-xs mx-auto leading-relaxed"
-                  style={{ color: "var(--muted)", opacity: 0.6 }}
-                >
-                  Your data stays private and is only used to personalize your agent.
-                </p>
+                {/* Footer — low-weight "Maybe later" text link */}
+                <div className="text-center">
+                  <button
+                    onClick={handleDismiss}
+                    className="text-sm font-medium transition-opacity hover:opacity-70 cursor-pointer"
+                    style={{
+                      color: "var(--muted)",
+                      background: "transparent",
+                      border: "none",
+                      padding: "8px 12px",
+                    }}
+                  >
+                    Maybe later
+                  </button>
+                </div>
               </motion.div>
             )}
 

@@ -156,6 +156,18 @@ export async function GET() {
       // Used when Google OAuth is blocked and the popup would dead-end new users.
       const gmailPopupKilled = process.env.GMAIL_POPUP_DISABLED === "true";
 
+      // 2026-05-22 TASK 9 feature flag: GMAIL_PERSONALIZATION_ENABLED gates
+      // whether the Gmail card in the dual-option personalization popup is
+      // clickable. Defaults to false (Gmail grayed out with "temporarily
+      // unavailable - back soon" tag) so we never accidentally surface the
+      // unverified-app warning if Google OAuth verification status changes.
+      // ChatGPT card stays fully active regardless. Independent of
+      // GMAIL_POPUP_DISABLED above (that controls whether the popup
+      // appears AT ALL; this controls whether the Gmail OPTION within
+      // the popup is interactive).
+      const gmailPersonalizationEnabled =
+        process.env.GMAIL_PERSONALIZATION_ENABLED === "true";
+
       return NextResponse.json({
         status: "assigned",
         vm: {
@@ -180,6 +192,7 @@ export async function GET() {
           worldIdVerifiedAt: userProfile?.world_id_verified_at ?? null,
           gmailConnected: userProfile?.gmail_connected ?? false,
           gmailPopupDismissed: gmailPopupKilled ? true : (userProfile?.gmail_popup_dismissed ?? false),
+          gmailPersonalizationEnabled,
           bankrWalletId: vm.bankr_wallet_id ?? null,
           bankrEvmAddress: vm.bankr_evm_address ?? null,
           bankrTokenAddress: liveTokenAddress ?? null,

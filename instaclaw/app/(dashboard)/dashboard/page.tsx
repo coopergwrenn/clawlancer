@@ -29,6 +29,7 @@ import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
 import { BankrWalletCard } from "@/components/dashboard/bankr-wallet-card";
 import { AgentWalletFundingCard } from "@/components/dashboard/agent-wallet-funding-card";
 import { GmailConnectPopup } from "@/components/dashboard/gmail-connect-popup";
+import { ChatGPTConnectModal } from "@/components/dashboard/chatgpt-connect-modal";
 import { DesktopThumbnail } from "@/components/dashboard/desktop-thumbnail";
 import { EdgeCityCard } from "@/components/dashboard/edge-city-card";
 import { useSession } from "next-auth/react";
@@ -63,6 +64,13 @@ interface VMStatus {
     gatewayToken: string | null;
     gmailConnected: boolean;
     gmailPopupDismissed: boolean;
+    // 2026-05-22 TASK 9: feature flag from /api/vm/status. When false (the
+    // default when GMAIL_PERSONALIZATION_ENABLED env var !== "true"), the
+    // Gmail card in the personalization popup is grayed out with a
+    // "temporarily unavailable - back soon" tag. ChatGPT card remains
+    // fully active. Lets us toggle Gmail personalization on/off without
+    // code changes whenever Google verification status changes.
+    gmailPersonalizationEnabled: boolean;
     bankrWalletId: string | null;
     bankrEvmAddress: string | null;
     bankrTokenAddress: string | null;
@@ -107,6 +115,10 @@ export default function DashboardPage() {
   const [usage, setUsage] = useState<UsageData | null>(null);
   const [buyingPack, setBuyingPack] = useState<string | null>(null);
   const [showCreditPacks, setShowCreditPacks] = useState(false);
+  // 2026-05-22 TASK 9: ChatGPT modal state. Triggered from the dual-option
+  // personalization popup's "Connect ChatGPT" card. The popup closes itself
+  // and calls onOpenChatGPT → this flips true → ChatGPTConnectModal renders.
+  const [chatGptModalOpen, setChatGptModalOpen] = useState(false);
   const [creditsPurchased, setCreditsPurchased] = useState(false);
   // Welcome card is permanent (per Cooper: users can never fully dismiss it).
   // Collapse state persists in localStorage. Default = expanded (false).
@@ -1391,15 +1403,31 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Gmail connect popup */}
+      {/* Personalization popup (Gmail + ChatGPT dual-option, TASK 9) */}
       {vmStatus?.status === "assigned" && vm && (
         <GmailConnectPopup
           gmailConnected={vm.gmailConnected}
           gmailPopupDismissed={vm.gmailPopupDismissed}
+          gmailPersonalizationEnabled={vm.gmailPersonalizationEnabled}
+          onOpenChatGPT={() => setChatGptModalOpen(true)}
           onClose={() => fetchStatus()}
           onConnected={() => fetchStatus()}
         />
       )}
+
+      {/* ChatGPT connect modal — triggered from the personalization popup's
+          "Connect ChatGPT" card. Parent owns the modal state so multiple
+          surfaces (this popup, /settings panel) can share one modal. */}
+      <ChatGPTConnectModal
+        isOpen={chatGptModalOpen}
+        onClose={() => setChatGptModalOpen(false)}
+        onConnected={() => {
+          setChatGptModalOpen(false);
+          fetchStatus();
+        }}
+        mode="connect"
+      />
+
 
       {/* Reset confirmation modal */}
       <AnimatePresence>
