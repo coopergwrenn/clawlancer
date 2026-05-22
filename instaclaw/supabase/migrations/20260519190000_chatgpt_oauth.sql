@@ -170,8 +170,54 @@ CREATE UNIQUE INDEX IF NOT EXISTS instaclaw_oauth_device_flows_one_pending_per_u
   ON public.instaclaw_oauth_device_flows(user_id)
   WHERE status = 'pending';
 
+-- ─── Row Level Security ──────────────────────────────────────────────────
+--
+-- Added to the file 2026-05-22 alongside the parallel RLS work on
+-- instaclaw_oauth_signup_flows (see 20260522144000_oauth_signup_flows.sql).
+--
+-- Prod state at the time of this edit: RLS was ALREADY enabled on
+-- instaclaw_oauth_device_flows. The original 2026-05-19 application
+-- went through Supabase Studio, which presented the "Run and enable RLS"
+-- prompt and Cooper accepted it — so prod has been correctly RLS-on
+-- since day one of the table's existence. Verified via pg_class probe
+-- 2026-05-22: `SELECT relrowsecurity FROM pg_class ... = true`.
+--
+-- What this edit FIXES is FILE/PROD DIVERGENCE: the original SQL file
+-- omitted the ENABLE RLS statement, so a re-run of this migration on a
+-- fresh database (staging restore, local-dev seed, disaster recovery)
+-- would have produced an RLS-OFF table. That divergence existed for
+-- ~3 days. Same class of bug as the signup_flows file omission — and
+-- it's exactly the failure mode where the "Studio prompt accepted in
+-- prod" safety net does NOT extend to non-Studio replay paths (psql,
+-- supabase db push, pg_restore). The file MUST be self-contained.
+--
+-- Threat model on this table (narrower than signup_flows but still real):
+--   - device-code/poll reads by (flow_id, authenticated user_id). An
+--     anon-key INSERT can't impersonate a user (user_id NOT NULL +
+--     poll's WHERE clause uses session.user.id), so the signup_flows-
+--     style "mint a token for the victim" attack does NOT apply here.
+--   - BUT: anon-key access lets a stranger READ pending user_codes
+--     across the fleet during the 15-min polling window. user_codes
+--     are shown to users for entry at auth.openai.com — leaking them
+--     to a third party is a privacy issue and a phishing assist.
+--   - Anon-key UPDATE could mark legitimate in-flight flows as
+--     status='error' or change the user_code (DoS on the user's own
+--     connect attempt). The /poll route reads status; flipping it
+--     would break the user's flow until they re-click Connect.
+--   - Anon-key DELETE could prune rows before the user finishes
+--     polling, also DoS-ing the connect flow.
+--
+-- Mitigation: enable RLS with no policies. Service-role bypasses RLS
+-- so our route handlers (which use getSupabase() — service-role)
+-- continue to work unchanged. Anon and authenticated roles get full
+-- deny. No client-side code reads or writes this table directly.
+--
+-- Idempotent: ENABLE ROW LEVEL SECURITY on an already-enabled table
+-- is a no-op.
+ALTER TABLE public.instaclaw_oauth_device_flows ENABLE ROW LEVEL SECURITY;
+
 COMMENT ON TABLE public.instaclaw_oauth_device_flows IS
-  'In-flight device-code OAuth flow state. One pending row per user at a time (enforced by partial unique idx). Cleaned up by a cleanup cron when expires_at < NOW().';
+  'In-flight device-code OAuth flow state. One pending row per user at a time (enforced by partial unique idx). Cleaned up by a cleanup cron when expires_at < NOW(). RLS-enabled, no policies: service-role-only.';
 COMMENT ON COLUMN public.instaclaw_oauth_device_flows.device_auth_id IS
   'Opaque ID returned by OpenAI deviceauth/usercode. Used with user_code on every poll to /deviceauth/token.';
 COMMENT ON COLUMN public.instaclaw_oauth_device_flows.user_code IS
