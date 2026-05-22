@@ -3290,6 +3290,105 @@ P1 followup (worth filing): a CI grep gate that fails the build if any migration
 - **Rule 19** (`.select("*")` for safety-critical reads): partial selects can hide column-grant misconfig. With RLS as the gate, column-level grants matter less; both layers together produce the defense-in-depth posture.
 - **Rule 23** (sentinel-grep required templates): same "the file is the source of truth, not operator runtime choice" pattern applied to reconciler templates instead of migration SQL.
 
+### Rule 61 — Boolean env vars MUST be validated by VALUE, not presence; silent skips on misconfig are BANNED
+
+Any code path gated on a boolean env var (`if (process.env.X !== "true") return;` and friends) MUST log a WARN-level line WHEN the env var is set but not the canonical "true" value. Silent returns on misconfigured env vars are a class of bug that can hide for days while engineers keep building features that are silently inactive. Operator tooling (pre-bake checks, deploy scripts) MUST validate the actual VALUE of boolean env vars, not just their presence.
+
+#### The 2026-05-22 RECONCILE_SOUL_MIGRATION_ENABLED incident
+
+V2 SOUL.md and AGENTS.md templates were designed 2026-05-01, the reconciler step `stepMigrateSoulV2` was written + shipped 2026-05-11, and `RECONCILE_SOUL_MIGRATION_ENABLED` was supposed to flip alongside the v106 manifest bump. **It never got set in Vercel production.** From 2026-05-13 → 2026-05-22 (~9 days):
+
+- Multiple docs explicitly noted "NOT set in Vercel" (`bake-readiness-audit-2026-05-13.md`, `canary-handoff-2026-05-13.md`, `cloud-init-implementation-map.md`)
+- `snapshot-bake-v105-checklist.md:178` flagged it as "Q-C decision: flip alongside v106 deploy"
+- Multiple terminals continued building V2 content (workspace-templates-v2.ts, partner content overlays, identity reorderings) on the assumption that the migration was firing
+- The kill switch `if (process.env.RECONCILE_SOUL_MIGRATION_ENABLED !== "true") return;` ran on every reconcile-fleet tick (every 3 min × 9 days × ~150 VMs = ~600,000 silent returns) with zero operator signal
+- Zero fleet VMs migrated to V2 templates for 9 days
+- Caught only by the snapshot terminal's DP2 verification on the bake VM, which directly inspected the on-disk SOUL.md content and saw V1 markers
+
+The same bug class would have hit if the operator HAD set the env var but with the wrong value — `echo "" | npx vercel env add RECONCILE_SOUL_MIGRATION_ENABLED production` produces an empty-string value which passes "env var is set" checks but breaks `=== "true"`. Per Rule 6, `echo` (and `<<<`) appends a trailing newline that corrupts the value; `printf` is the only safe way.
+
+#### Mandatory pattern
+
+For ANY code that gates on a boolean env var:
+
+```typescript
+// BANNED pattern — silent skip on any non-"true" value
+if (process.env.X !== "true") return;
+
+// REQUIRED pattern — distinguish "explicitly disabled" from "looks misconfigured"
+const raw = process.env.X;
+if (raw !== "true") {
+  const looksMisconfigured = raw !== undefined && raw !== "false" && raw !== "0" && raw !== "no";
+  if (looksMisconfigured) {
+    logger.warn(
+      "stepXxx SKIPPED — X is set but not 'true'. " +
+        "If this is unintentional, run: " +
+        "printf 'true' | npx vercel env add X production",
+      {
+        route: "lib/yyy",
+        step: "stepXxx",
+        actual: JSON.stringify(raw),
+        expected: "true",
+      },
+    );
+    result.warnings.push(`stepXxx skipped: X='${raw}' (expected 'true')`);
+  }
+  return;
+}
+```
+
+The reference implementation is `stepMigrateSoulV2` (`lib/vm-reconcile.ts:8050+`, shipped 2026-05-22). Future feature flags should match this shape.
+
+#### Mandatory pattern for operator tooling
+
+Any pre-bake check, deploy gate, or env-validation utility MUST validate VALUE, not just PRESENCE, for boolean env vars. The reference implementation is `checkBooleanEnvVarValues()` in `scripts/_pre-bake-check.ts` (shipped 2026-05-22) — it iterates a typed `BOOLEAN_ENVS` spec table with each var's `requiredOnForBake` flag and rationale.
+
+Operator semantics:
+
+- **Unset OR explicitly disabled** (`undefined`, `""`, `"false"`, `"0"`, `"no"`): allowed if the feature is intentionally off in this context. INFO log.
+- **Set to "true"**: passes. INFO log.
+- **Set to ANYTHING else** (`"True"`, `"TRUE"`, `"1"`, `"yes"`, whitespace, accidental empty-string from `echo`, typos): CRITICAL fail with actionable fix line. This is the 2026-05-22 incident class — operator-intended-to-enable but got the syntax wrong.
+
+#### Mandatory pattern for setting boolean env vars
+
+ALWAYS use `printf` (never `echo`, never `<<<`):
+
+```bash
+# CORRECT — no trailing newline
+printf 'true' | npx vercel env add VARNAME production
+
+# WRONG — echo appends '\n' which makes value "true\n" not "true"
+echo 'true' | npx vercel env add VARNAME production
+
+# WRONG — here-string also appends '\n'
+npx vercel env add VARNAME production <<< 'true'
+
+# CATASTROPHIC — empty-string with trailing '\n' passes "set" checks, fails === "true"
+echo '' | npx vercel env add VARNAME production
+```
+
+Pair with Rule 6 (no trailing newlines in env vars) — Rule 6 is the WHY, Rule 61 is the systemic gate.
+
+#### Detection rule
+
+For any PR that adds a new `if (process.env.X !== "true") return;` (or equivalent), code review MUST verify:
+
+1. The bare-return path includes a WARN log for the misconfigured-but-set case (per pattern above).
+2. The env var name is added to `BAKE_BOOLEAN_ENVS` in `_pre-bake-check.ts` with `requiredOnForBake: true|false` and a rationale.
+3. The PR description states whether this env var is currently set in Vercel production and to what value.
+
+For any operator running `vercel env add` on a boolean env var:
+
+1. The command MUST use `printf 'true' | ...` (never `echo`, never `<<<`).
+2. After running, the operator MUST verify via `vercel env pull` that the value is exactly `true` (4 bytes, no trailing whitespace, no newline).
+
+#### Related rules
+
+- **Rule 6** (no trailing newlines in env vars): the lower-level mechanism. Rule 6 explains WHY `echo` / `<<<` corrupt env values; Rule 61 enforces the systemic discipline.
+- **Rule 10** (verify every config set; no `|| true` suppression): same "loud-on-misconfig" principle, applied to `openclaw config set` instead of env vars.
+- **Rule 39** (distinguish critical-step failures from optional-sidecar failures): Rule 61's `result.warnings.push(...)` lands here — feature flags are optional; misconfig is observable; cv-bump still proceeds.
+- **Rule 49** (partner secrets actively verified): same principle for cross-API tokens — never trust "set" alone; verify the actual value works.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
