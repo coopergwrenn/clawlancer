@@ -53,6 +53,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No VM assigned" }, { status: 404 });
     }
 
+    // ── Cloud-init first-10-min protection guard (2026-05-22 vm-1019 incident) ──
+    //
+    // Cloud-init VMs (created_via='on_demand') handle their own configure
+    // ON-VM via setup.sh (§1.5 → §1.32 gateway restart → §1.38 callback).
+    // /api/vm/configure should NEVER fire for a cloud-init VM during its
+    // first 10 minutes of life — it would race setup.sh, kill the gateway
+    // mid-LLM-call, and trigger Config rollback FAILED.
+    //
+    // vm-1019 incident: at T+~12min (13:55:07Z), an unidentified caller hit
+    // /api/vm/configure, which timed out at T+300s (14:00:07Z). The SSH +
+    // gateway restart inside configureOpenClaw killed the agent mid-
+    // processing of Cooper's /start message, causing the 4-minute "no reply"
+    // UX gap and setting health_status=configure_failed. A second call at
+    // 14:05:04Z hit "Config rollback FAILED" leaving the VM in worse state.
+    //
+    // Defense-in-depth: 4 callers (process-pending, checkout/verify, vm/
+    // retry-configure, billing/webhook) already have cloud-init guards. This
+    // route-level guard catches any remaining caller (admin/vms/actions,
+    // vm/repair, billing/checkout, dashboard auto-poll, or any future
+    // caller that forgets the guard).
+    //
+    // Returns 200 with {configured: true, skipped: true} so callers don't
+    // see a 4xx and trigger retry loops. The shape mirrors the existing
+    // "Configure skipped — VM already healthy" pattern below.
+    //
+    // Bypass: --force=true (admin emergency reset, e.g., recovering from
+    // a stuck cloud-init signup).
+    const cloudInitProtectionMs = 10 * 60 * 1000;
+    const vmAgeMs = vm.created_at
+      ? Date.now() - new Date(vm.created_at).getTime()
+      : Infinity;
+    if (
+      vm.created_via === "on_demand" &&
+      vmAgeMs < cloudInitProtectionMs &&
+      body.force !== true
+    ) {
+      logger.warn("Configure skipped — cloud-init VM in first-10-min protection window", {
+        route: "vm/configure",
+        userId,
+        vmId: vm.id,
+        createdVia: vm.created_via,
+        ageMinutes: Math.round(vmAgeMs / 60_000),
+        protectionRemainingMs: cloudInitProtectionMs - vmAgeMs,
+      });
+      return NextResponse.json({
+        configured: true,
+        skipped: true,
+        reason: "cloud-init-first-10min-protection",
+        message: "Cloud-init VMs handle their own setup via setup.sh. Re-configure is blocked during the first 10 minutes to protect the critical first-message window.",
+      });
+    }
+
     // Rate limiting: max 3 configure attempts per 10 minutes
     const configureAttempts = vm.configure_attempts ?? 0;
     const lastConfigureTime = vm.last_health_check
