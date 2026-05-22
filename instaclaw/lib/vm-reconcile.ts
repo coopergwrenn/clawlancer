@@ -599,6 +599,13 @@ export async function reconcileVM(
     currentStep = "bootstrap-consumed";
     await stepBootstrapConsumed(ssh, result, dryRun);
 
+    // ── Step 2b.1: Telegram bot description (pool-path coverage gap fix) ──
+    // setup.sh §1.34 only runs on cloud-init VMs; pool VMs never get the
+    // bot description set without this step. Runs AFTER stepBootstrapConsumed
+    // so .bootstrap_consumed existence drives which description to use.
+    currentStep = "telegram-bot-description";
+    await stepTelegramBotDescription(ssh, vm as { id: string; channels_enabled?: string[] | null }, result, dryRun);
+
     // ── Step 2c: Rename video-production → motion-graphics ──
     currentStep = "rename-video-skill";
     await stepRenameVideoSkill(ssh, result, dryRun);
@@ -3544,31 +3551,163 @@ BOOTSTRAP_CHECK_PY`
   await ssh.execCommand(`rm -f ${bootstrapFile} && touch ${flag}`);
   result.fixed.push('bootstrap cleanup (deleted BOOTSTRAP.md, created .bootstrap_consumed)');
 
-  // 2026-05-22: post-first-conversation bot description swap.
-  //
-  // setup.sh §1.34 sets the initial "i take a moment to wake up on your
-  // first message — totally normal, just loading my brain" description.
-  // That language is helpful for new users (sets cold-start expectations)
-  // but stale for returning users who view the bot profile later. Swap
-  // to a clean, permanent description now that the user has had a real
-  // conversation.
-  //
-  // Done from the VM via curl (TELEGRAM_BOT_TOKEN is in .env there).
-  // Non-fatal: any failure here just leaves the old description in place
-  // for one more reconcile cycle. Idempotent — Telegram accepts overwrites.
-  await ssh.execCommand(
-    `BOT_TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' ~/.openclaw/.env | head -1 | cut -d= -f2- | tr -d '"') && ` +
-      `[ -n "$BOT_TOKEN" ] && ` +
-      `curl -sf -m 10 -X POST "https://api.telegram.org/bot$BOT_TOKEN/setMyDescription" ` +
-      `-H "Content-Type: application/json" ` +
-      `-d '{"description":"your personal AI agent. message me anytime."}' > /dev/null 2>&1 || true`,
+  // Note (2026-05-22 amendment): post-conversation description swap MOVED
+  // to the dedicated stepTelegramBotDescription step which runs on every
+  // reconcile tick, gated by getMyDescription idempotency check. That step
+  // handles BOTH the initial "waking up" description AND the post-bootstrap
+  // "your personal AI agent" swap based on .bootstrap_consumed existence —
+  // so it correctly serves pool-path VMs (which never run setup.sh §1.34)
+  // and self-heals failures across cycles.
+}
+
+// ────────────────────────────────────────────────────────────────────
+// 2026-05-22 — stepTelegramBotDescription (pool-path coverage gap fix)
+// ────────────────────────────────────────────────────────────────────
+//
+// setup.sh §1.34 (commit 01098160) calls Telegram setMyDescription +
+// setMyShortDescription to set the bot's profile text BEFORE the user
+// sends their first message. That step lives in setup.sh, which runs
+// ONLY on cloud-init VMs. Pool-path VMs (the ~95% common case for
+// Edge attendees who hit a warm pool) never run setup.sh and therefore
+// shipped with EMPTY bot descriptions — no "waking up" expectation-
+// setting, nothing in bot profile.
+//
+// This step closes that gap. Runs on every reconcile tick for every
+// telegram-channel VM. Idempotent via getMyDescription gate (skip
+// setMyDescription if current text already matches expected). Handles
+// both states automatically based on .bootstrap_consumed existence:
+//
+//   - .bootstrap_consumed ABSENT → set the FIRST-RUN description that
+//     explains the cold-start delay ("i take a moment to wake up on
+//     your first message...")
+//   - .bootstrap_consumed PRESENT → set the permanent description
+//     ("your personal AI agent. message me anytime.") — same swap that
+//     stepBootstrapConsumed previously did inline; now centralized here
+//     so it also self-heals if the first attempt failed.
+//
+// Telegram API limits: 30 calls/sec per bot token. We're well under
+// (one bot per VM, one call per reconcile cycle gated by idempotency).
+// short_description is set on every cycle only when getMyShortDescription
+// differs — almost always once per VM lifetime.
+//
+// Channel-aware: skips entirely when telegram is not in vm.channels_enabled.
+// Non-fatal: any failure leaves descriptions in their current state and
+// retries next cycle.
+const BOT_DESC_FIRST_RUN =
+  "i take a moment to wake up on your first message — totally normal, just loading my brain. after that, responses are instant.";
+const BOT_DESC_AFTER_FIRST_CONVO =
+  "your personal AI agent. message me anytime.";
+const BOT_SHORT_DESC =
+  "your personal AI agent — powered by instaclaw";
+
+async function stepTelegramBotDescription(
+  ssh: SSHConnection,
+  vm: { id: string; channels_enabled?: string[] | null },
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // Channel gate: only relevant for telegram-enabled VMs (default channel
+  // list is ["telegram"] when null, so undefined falls through to enabled).
+  const channels = vm.channels_enabled ?? ["telegram"];
+  if (!channels.includes("telegram")) {
+    result.alreadyCorrect.push("telegram bot description (not a telegram VM)");
+    return;
+  }
+
+  // 1. Read bot token from .env
+  const tokenRes = await ssh.execCommand(
+    `grep '^TELEGRAM_BOT_TOKEN=' ~/.openclaw/.env | head -1 | cut -d= -f2- | tr -d '"'`,
   );
-  // Note: no result.fixed.push for the description swap — it's a side
-  // effect of bootstrap cleanup, not a separately-tracked outcome. If it
-  // fails, the next reconcile tick won't re-trigger this step (BOOTSTRAP.md
-  // is already gone) so we'd never retry. That's acceptable for a cosmetic
-  // description update; the worst-case is a slightly-out-of-date
-  // "waking up" string on the bot profile.
+  const token = tokenRes.stdout.trim();
+  if (!token) {
+    // Pool VMs without telegram token (rare): nothing to do
+    result.alreadyCorrect.push("telegram bot description (no bot token)");
+    return;
+  }
+
+  // 2. Decide expected description based on bootstrap-consumed state
+  const consumedCheck = await ssh.execCommand(
+    `test -f ~/.openclaw/workspace/.bootstrap_consumed && echo CONSUMED || echo NOT_CONSUMED`,
+  );
+  const expectedDesc =
+    consumedCheck.stdout.trim() === "CONSUMED"
+      ? BOT_DESC_AFTER_FIRST_CONVO
+      : BOT_DESC_FIRST_RUN;
+
+  // 3. Idempotency gate: check current description via getMyDescription.
+  //    If it matches expected, no POST needed.
+  const getDescRes = await ssh.execCommand(
+    `curl -sf -m 10 "https://api.telegram.org/bot${token}/getMyDescription" || echo ""`,
+  );
+  let currentDesc = "";
+  try {
+    const parsed = JSON.parse(getDescRes.stdout || "{}");
+    if (parsed?.result?.description && typeof parsed.result.description === "string") {
+      currentDesc = parsed.result.description;
+    }
+  } catch {
+    // Tolerate parse failure — fall through to setMyDescription which
+    // is idempotent server-side anyway.
+  }
+
+  const descMatches = currentDesc === expectedDesc;
+
+  // 4. Same idempotency gate for short_description
+  const getShortRes = await ssh.execCommand(
+    `curl -sf -m 10 "https://api.telegram.org/bot${token}/getMyShortDescription" || echo ""`,
+  );
+  let currentShort = "";
+  try {
+    const parsed = JSON.parse(getShortRes.stdout || "{}");
+    if (parsed?.result?.short_description && typeof parsed.result.short_description === "string") {
+      currentShort = parsed.result.short_description;
+    }
+  } catch {
+    // Tolerate parse failure
+  }
+  const shortMatches = currentShort === BOT_SHORT_DESC;
+
+  if (descMatches && shortMatches) {
+    result.alreadyCorrect.push("telegram bot description (already current)");
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push(
+      `[dry-run] would update bot descriptions ` +
+        `(desc match=${descMatches}, short match=${shortMatches})`,
+    );
+    return;
+  }
+
+  // 5. Set whichever fields are out of date. Single-quote escape needed
+  //    inside the JSON payload — bash single-quoted strings can't contain
+  //    single quotes. Use jq-free escape: '\'' breaks the literal, inserts
+  //    escaped quote, resumes literal.
+  if (!descMatches) {
+    const descBodyJson = JSON.stringify({ description: expectedDesc });
+    const escapedDescBody = descBodyJson.replace(/'/g, "'\\''");
+    await ssh.execCommand(
+      `curl -sf -m 10 -X POST "https://api.telegram.org/bot${token}/setMyDescription" ` +
+        `-H "Content-Type: application/json" ` +
+        `-d '${escapedDescBody}' > /dev/null 2>&1 || true`,
+    );
+  }
+  if (!shortMatches) {
+    const shortBodyJson = JSON.stringify({ short_description: BOT_SHORT_DESC });
+    const escapedShortBody = shortBodyJson.replace(/'/g, "'\\''");
+    await ssh.execCommand(
+      `curl -sf -m 10 -X POST "https://api.telegram.org/bot${token}/setMyShortDescription" ` +
+        `-H "Content-Type: application/json" ` +
+        `-d '${escapedShortBody}' > /dev/null 2>&1 || true`,
+    );
+  }
+
+  const which =
+    consumedCheck.stdout.trim() === "CONSUMED"
+      ? "post-conversation"
+      : "first-run";
+  result.fixed.push(`telegram bot description (${which})`);
 }
 
 async function stepFixBlankIdentity(
