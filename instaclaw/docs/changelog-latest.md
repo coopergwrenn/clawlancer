@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-22
 
-Window: `4d45d01e74a24e47703ce02d5aade57ebc93170c` → `HEAD` (HEAD = `074f3bd6`)
+Window: `074f3bd65f4627c169b334cf60738102b2f18a19` → `HEAD` (HEAD = `e5f04d21`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 074f3bd65f4627c169b334cf60738102b2f18a19 -->
+<!-- LAST_GENERATED_SHA: e5f04d21acc541bc02347411fcb024a89835593e -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `074f3bd6` 2026-05-22 — fix(edge): F4 — EdgePartnerBanner on /signin closes the brand seam [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `e5f04d21` 2026-05-22 — fix(edge): W1 — em-dash sweep across the Edge funnel + aria-labels [12 files] _(multi: [feature, edge]; ai-assisted)_
 
 ## What changed under the hood
 
-- `edf0a754` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `a26736a6` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `074f3bd6` 2026-05-22 — fix(edge): F4 — EdgePartnerBanner on /signin closes the brand seam [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `e5f04d21` 2026-05-22 — fix(edge): W1 — em-dash sweep across the Edge funnel + aria-labels [12 files] _(multi: [feature, edge]; ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,21 +44,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `edf0a754` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `a26736a6` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `074f3bd6` 2026-05-22 — [feature, edge] — fix(edge): F4 — EdgePartnerBanner on /signin closes the brand seam
+- `e5f04d21` 2026-05-22 — [feature, edge] — fix(edge): W1 — em-dash sweep across the Edge funnel + aria-labels
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `074f3bd6` 2026-05-22 — fix(edge): F4 — EdgePartnerBanner on /signin closes the brand seam
+- `e5f04d21` 2026-05-22 — fix(edge): W1 — em-dash sweep across the Edge funnel + aria-labels
 
 ## Appendix — every commit (chronological)
 
-- `edf0a754` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `074f3bd6` 2026-05-22 — fix(edge): F4 — EdgePartnerBanner on /signin closes the brand seam [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `a26736a6` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `e5f04d21` 2026-05-22 — fix(edge): W1 — em-dash sweep across the Edge funnel + aria-labels [12 files] _(multi: [feature, edge]; ai-assisted)_
