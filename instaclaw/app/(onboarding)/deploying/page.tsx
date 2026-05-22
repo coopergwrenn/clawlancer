@@ -895,10 +895,20 @@ function DeployingPageContent() {
               <div
                 className="mb-6 px-5 py-3.5 rounded-lg"
                 style={{
+                  // 2026-05-22 W3 polish: this banner (TASK 3, commit a4d144e1)
+                  // was orange-tinted glass. For Edge attendees on cloud-init
+                  // path it was the only remaining orange surface on the page
+                  // after Edge terminal's 29c5f668 swapped the orbs + progress
+                  // bar to olive. Match the olive tone here so the banner
+                  // doesn't break the brand seam mid-page. Non-Edge users
+                  // keep the orange (cloud-init was always orange-accented).
                   ...glassStyle,
-                  background:
-                    "linear-gradient(to right, rgba(220,103,67,0.05), rgba(220,103,67,0.025))",
-                  border: "1px solid rgba(220,103,67,0.15)",
+                  background: isEdge
+                    ? "linear-gradient(to right, rgba(41,49,30,0.05), rgba(41,49,30,0.025))"
+                    : "linear-gradient(to right, rgba(220,103,67,0.05), rgba(220,103,67,0.025))",
+                  border: isEdge
+                    ? "1px solid rgba(41,49,30,0.18)"
+                    : "1px solid rgba(220,103,67,0.15)",
                 }}
               >
                 <p
