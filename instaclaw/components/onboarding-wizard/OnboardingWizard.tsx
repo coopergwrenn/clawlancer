@@ -302,6 +302,7 @@ export default function OnboardingWizard({
         <CompletionModal
           key="complete"
           gmailConnected={state.gmailConnected}
+          telegramBotUsername={state.botUsername}
           onDone={() => {
             completeWizard();
             dispatch({ type: "DONE" });

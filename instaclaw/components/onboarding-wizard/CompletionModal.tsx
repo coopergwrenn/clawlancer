@@ -6,6 +6,14 @@ import { PartyPopper, Zap, Clock, MessageSquare, MessageCircle, Loader2 } from "
 
 interface CompletionModalProps {
   gmailConnected: boolean;
+  /**
+   * 2026-05-22 FIX B — the user's Telegram bot username (e.g.,
+   * "myagent_bot"). Drives the prominent "Open your bot in Telegram"
+   * CTA at the top of the modal. When null/empty, the CTA is suppressed
+   * (e.g., for Discord-only users — they wouldn't have a Telegram bot).
+   * Plumbed from OnboardingWizard's `state.botUsername`.
+   */
+  telegramBotUsername: string | null;
   onDone: () => void;
   onSuggestion: (action: string) => void;
 }
@@ -35,7 +43,7 @@ const FALLBACK_SUGGESTION: Suggestion = {
   description: "Start a conversation with your agent",
 };
 
-export default function CompletionModal({ gmailConnected, onDone, onSuggestion }: CompletionModalProps) {
+export default function CompletionModal({ gmailConnected, telegramBotUsername, onDone, onSuggestion }: CompletionModalProps) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>(DEFAULT_SUGGESTIONS);
   const [loading, setLoading] = useState(gmailConnected);
 
@@ -112,7 +120,48 @@ export default function CompletionModal({ gmailConnected, onDone, onSuggestion }
           className="text-sm text-center mb-5 leading-relaxed"
           style={{ color: "var(--muted)" }}
         >
-          Your agent is ready and waiting. The more you use it, the smarter it gets. Here are a few things to try right now:
+          Your agent is ready and waiting. The more you use it, the smarter it gets.
+        </p>
+
+        {/* 2026-05-22 FIX B — prominent "Open your bot in Telegram" CTA.
+            Deep link includes ?start=start which auto-sends /start the
+            moment the chat opens — so the user lands in Telegram with
+            their agent already responding to the first message. Eliminates
+            the "now what do I type?" moment Charlie's beta test flagged.
+            Suppressed for Discord-only users (no telegram bot to link to). */}
+        {telegramBotUsername && (
+          <a
+            href={`https://t.me/${telegramBotUsername}?start=start`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2.5 mb-4 w-full px-5 py-3.5 rounded-xl text-base font-semibold transition-all cursor-pointer hover:opacity-95 active:scale-[0.99]"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(38,165,228,0.95), rgba(34,153,217,1))",
+              color: "#ffffff",
+              boxShadow:
+                "rgba(255,255,255,0.25) 0px -1px 1px 0px inset, rgba(38,165,228,0.4) 0px 6px 18px -2px",
+            }}
+          >
+            {/* Telegram paper-plane logo — inlined SVG, no extra dep. */}
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71l-4.13-3.05-1.99 1.93c-.23.23-.42.42-.84.42z" />
+            </svg>
+            Open your bot in Telegram
+          </a>
+        )}
+
+        <p
+          className="text-xs text-center mb-5"
+          style={{ color: "var(--muted)" }}
+        >
+          Or try one of these to get started:
         </p>
 
         {/* Pro tip callout */}
