@@ -5,6 +5,7 @@ import { createMetadata } from "@/lib/seo";
 import { JsonLd } from "@/components/marketing/json-ld";
 import { getEdgeUserState } from "../edge-user-state";
 import { ClaimClient } from "./claim-client";
+import { SupportFooter } from "@/components/marketing/support-footer";
 
 /**
  * /edge/claim — the EdgeOS ticket-verification gate.
@@ -36,7 +37,7 @@ export const metadata = createMetadata({
 const eventJsonLd = {
   "@context": "https://schema.org",
   "@type": "Event",
-  name: "Edge Esmeralda 2026 — Agent Village",
+  name: "Edge Esmeralda 2026 - Agent Village",
   description:
     "Personal AI agents for every Edge Esmeralda resident. A longitudinal field study in human–AI collective intelligence.",
   startDate: "2026-05-30",
@@ -76,7 +77,7 @@ export default async function EdgeClaimPage() {
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
             <Link
               href="/edge"
-              aria-label="Edge Esmeralda — back to landing"
+              aria-label="Edge Esmeralda - back to landing"
               className="flex items-center"
             >
               <Image
@@ -122,13 +123,16 @@ export default async function EdgeClaimPage() {
                 InstaClaw
               </Link>
             </span>
-            <Link
-              href="/edge"
-              className="underline-offset-4 hover:underline"
-              style={{ color: "var(--edge-ink)" }}
-            >
-              ← Back to /edge
-            </Link>
+            <div className="flex items-center gap-4 sm:gap-5">
+              <SupportFooter />
+              <Link
+                href="/edge"
+                className="underline-offset-4 hover:underline"
+                style={{ color: "var(--edge-ink)" }}
+              >
+                ← Back to /edge
+              </Link>
+            </div>
           </div>
         </footer>
       </main>

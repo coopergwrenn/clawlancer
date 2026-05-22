@@ -298,7 +298,7 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
             >
               {gateState.kind === "verified" && gateState.degraded ? (
                 <p>
-                  Your spot is held. EdgeOS is briefly unavailable —
+                  Your spot is held. EdgeOS is briefly unavailable;
                   proceeding without remote confirmation.
                 </p>
               ) : (
@@ -387,7 +387,7 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
                   style={{ color: "var(--edge-olive)" }}
                   role="alert"
                 >
-                  That doesn&apos;t look like an email — double-check and try
+                  That doesn&apos;t look like an email. Double-check and try
                   again.
                 </p>
               )}
@@ -417,7 +417,7 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
                   style={{ color: "var(--edge-olive)" }}
                   role="status"
                 >
-                  Verify your Edge Esmeralda email below first — that&apos;s
+                  Verify your Edge Esmeralda email below first. That&apos;s
                   how we know your spot in the village is real.
                 </p>
               )}

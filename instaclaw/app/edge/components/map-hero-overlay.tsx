@@ -32,7 +32,7 @@ export function MapHeroOverlay({
         className="font-[family-name:var(--font-display)] text-[18px] font-bold mb-6"
         style={{ letterSpacing: "0.01em" }}
       >
-        May 30 — June 27, 2026 · Healdsburg, California
+        May 30 – June 27, 2026 · Healdsburg, California
       </div>
 
       {isLive ? (

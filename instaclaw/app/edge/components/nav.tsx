@@ -26,7 +26,7 @@ export function Nav({ ctaHref, ctaLabel, ctaExternal }: NavProps) {
         href="/edge"
         className="pointer-events-auto inline-flex items-center gap-2.5 px-4 py-2.5 rounded-full border border-white/50 backdrop-blur-md"
         style={{ background: "rgba(228, 240, 210, 0.67)" }}
-        aria-label="Edge Esmeralda — Agent Village"
+        aria-label="Edge Esmeralda - Agent Village"
       >
         <Image
           src="/edge/EdgeEsmeraldaLogo.svg"

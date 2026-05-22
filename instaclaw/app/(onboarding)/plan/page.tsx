@@ -481,7 +481,7 @@ export default function PlanPage() {
           </div>
           {apiMode === "byok" && (
             <p className="text-xs mt-3" style={{ color: "#666666" }}>
-              Bring Your Own Anthropic API Key — lower monthly cost, you pay Anthropic directly.
+              Bring Your Own Anthropic API Key. Lower monthly cost, you pay Anthropic directly.
             </p>
           )}
         </div>

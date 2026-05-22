@@ -110,7 +110,7 @@ export function SetupClient() {
           className="text-[14px] leading-[1.5] max-w-[42ch] mb-10 sm:mb-12 reveal-anim"
           style={{ color: "var(--edge-ink-soft)" }}
         >
-          Sign in with Google or ChatGPT — your pick.
+          Sign in with Google or ChatGPT. Your pick.
         </p>
 
         {/* ─── Continue ─── */}
@@ -150,7 +150,7 @@ export function SetupClient() {
             <span style={{ color: "var(--edge-ink)" }}>
               $0 is charged today.
             </span>{" "}
-            First charge: June 30, 2026 — three days after the village ends.
+            First charge: June 30, 2026. Three days after the village ends.
             Cancel anytime from your dashboard.
           </p>
         </div>

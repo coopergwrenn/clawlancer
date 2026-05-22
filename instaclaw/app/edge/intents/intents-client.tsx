@@ -132,9 +132,9 @@ export function IntentsClient() {
             <>
               Your village agent just came online. It works overnight, finding
               people who overlap with you. To do that well, it needs to hear
-              from you once —{" "}
+              from you once.{" "}
               <span style={{ color: "var(--edge-ink)" }}>
-                in your own words.
+                In your own words.
               </span>
             </>
           )}
@@ -180,7 +180,7 @@ export function IntentsClient() {
                 }}
               >
                 <p className="text-[13px] leading-[1.6]">
-                  Intent registration is briefly unavailable — we&apos;re
+                  Intent registration is briefly unavailable. We&apos;re
                   working with the Index team to bring it back online. You can
                   continue to your dashboard and try again from there in a few
                   minutes.

@@ -62,7 +62,7 @@ export default function EdgeSetupPage() {
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
           <Link
             href="/edge"
-            aria-label="Edge Esmeralda — back to landing"
+            aria-label="Edge Esmeralda - back to landing"
             className="flex items-center"
           >
             <Image

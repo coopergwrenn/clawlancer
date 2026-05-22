@@ -29,7 +29,7 @@ export const metadata = createMetadata({
 const eventJsonLd = {
   "@context": "https://schema.org",
   "@type": "Event",
-  name: "Edge Esmeralda 2026 — Agent Village",
+  name: "Edge Esmeralda 2026 - Agent Village",
   description:
     "Personal AI agents for every Edge Esmeralda resident. A longitudinal field study in human–AI collective intelligence.",
   startDate: "2026-05-30",

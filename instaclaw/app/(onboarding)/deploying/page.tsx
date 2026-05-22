@@ -834,7 +834,7 @@ function DeployingPageContent() {
             </p>
             {polling && !configureFailed && (
               <p className="text-xs mt-3" style={{ color: "#999999" }}>
-                This takes about a minute — please don&apos;t leave this screen.
+                This takes about a minute. Please don&apos;t leave this screen.
               </p>
             )}
           </div>
@@ -886,7 +886,7 @@ function DeployingPageContent() {
                   className="text-sm leading-relaxed"
                   style={{ color: "#555555" }}
                 >
-                  Carving out a server just for you — takes a touch longer, but it&apos;s yours alone.
+                  Carving out a server just for you. Takes a touch longer, but it&apos;s yours alone.
                 </p>
               </div>
             )}

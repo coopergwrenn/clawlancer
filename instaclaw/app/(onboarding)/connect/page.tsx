@@ -104,7 +104,7 @@ const PALETTE_OLIVE = {
 const FAQ_ITEMS = [
   {
     q: "What is a Telegram bot?",
-    a: "It's your personal AI assistant that lives inside Telegram. You message it like a friend and it responds using AI — but unlike ChatGPT, it can actually run code, search the web, manage files, and take actions on your behalf.",
+    a: "It's your personal AI assistant that lives inside Telegram. You message it like a friend and it responds using AI, but unlike ChatGPT it can actually run code, search the web, manage files, and take actions on your behalf.",
   },
   {
     q: "Is creating the bot free?",
@@ -112,7 +112,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "Can I change the bot's name later?",
-    a: "Yes — message @BotFather and use /setname or /setusername anytime.",
+    a: "Yes. Message @BotFather and use /setname or /setusername anytime.",
   },
   {
     q: "What can my bot do?",
@@ -313,7 +313,7 @@ export default function ConnectPage() {
         lastVerifiedToken.current = botToken.trim();
       } else {
         setError(
-          "Invalid token — check that you copied the full token from BotFather."
+          "Invalid token. Check that you copied the full token from BotFather."
         );
         lastVerifiedToken.current = botToken.trim();
       }
@@ -541,7 +541,7 @@ export default function ConnectPage() {
                         /newbot
                       </code>
                     </p>
-                    <p>4. Pick a display name (anything — e.g. &quot;My AI Agent&quot;)</p>
+                    <p>4. Pick a display name (anything, e.g. &quot;My AI Agent&quot;)</p>
                     <p>
                       5. Pick a username ending in &quot;bot&quot; (e.g.{" "}
                       <span className="font-mono">myagent_bot</span>)
@@ -899,7 +899,7 @@ export default function ConnectPage() {
                   ))}
                 </div>
                 <p className="text-[10px] mt-2 text-center" style={{ color: "#999" }}>
-                  More channels coming soon — Slack, WhatsApp, iMessage
+                  More channels coming soon: Slack, WhatsApp, iMessage
                 </p>
               </div>
 
