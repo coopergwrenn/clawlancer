@@ -179,7 +179,7 @@ export async function GET() {
           worldIdVerificationLevel: userProfile?.world_id_verification_level ?? null,
           worldIdVerifiedAt: userProfile?.world_id_verified_at ?? null,
           gmailConnected: userProfile?.gmail_connected ?? false,
-          gmailPopupDismissed: gmailPopupKilled ? true : (userProfile?.gmail_popup_dismissed ?? true),
+          gmailPopupDismissed: gmailPopupKilled ? true : (userProfile?.gmail_popup_dismissed ?? false),
           bankrWalletId: vm.bankr_wallet_id ?? null,
           bankrEvmAddress: vm.bankr_evm_address ?? null,
           bankrTokenAddress: liveTokenAddress ?? null,
