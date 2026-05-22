@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-22
 
-Window: `8a673c31ec49540df7a90bef601de9f5ef0d875d` → `HEAD` (HEAD = `ccb89a26`)
+Window: `ccb89a26068be51b5d3ace5e5e07e3c3c391c912` → `HEAD` (HEAD = `4acc5280`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: ccb89a26068be51b5d3ace5e5e07e3c3c391c912 -->
+<!-- LAST_GENERATED_SHA: 4acc5280755206e255e30da7207267f9fdd51f5f -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `ccb89a26` 2026-05-22 — revert(gmail): re-enable post-onboarding Gmail connect popup (reverts a69fb74) [1 files] _(ai-assisted)_
-- `663ea2ba` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `4acc5280` 2026-05-22 — fix(cloud-init): §1.0.7 add daemon-reload + content-verify (vm-1019 incomplete-fix) [2 files] _(ai-assisted)_
+- `fe11f45e` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `ccb89a26` 2026-05-22 — revert(gmail): re-enable post-onboarding Gmail connect popup (reverts a69fb74) [1 files] _(ai-assisted)_
+- `4acc5280` 2026-05-22 — fix(cloud-init): §1.0.7 add daemon-reload + content-verify (vm-1019 incomplete-fix) [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `663ea2ba` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `fe11f45e` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `ccb89a26` 2026-05-22 — revert(gmail): re-enable post-onboarding Gmail connect popup (reverts a69fb74)
+- `4acc5280` 2026-05-22 — fix(cloud-init): §1.0.7 add daemon-reload + content-verify (vm-1019 incomplete-fix)
 
 ## Appendix — every commit (chronological)
 
-- `663ea2ba` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `ccb89a26` 2026-05-22 — revert(gmail): re-enable post-onboarding Gmail connect popup (reverts a69fb74) [1 files] _(ai-assisted)_
+- `fe11f45e` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `4acc5280` 2026-05-22 — fix(cloud-init): §1.0.7 add daemon-reload + content-verify (vm-1019 incomplete-fix) [2 files] _(ai-assisted)_
