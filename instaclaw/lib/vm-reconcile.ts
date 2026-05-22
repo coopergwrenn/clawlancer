@@ -1411,7 +1411,14 @@ const ENV_VAR_PUSH_BASH: string = [
   'ENV_FILE="$HOME/.openclaw/.env"',
   'TS=$(date -u +%Y%m%dT%H%M%SZ)',
   '',
-  '[ ! -f "$ENV_FILE" ] && { echo "STEPENV_FAIL no_env_file path=$ENV_FILE"; exit 2; }',
+  // touch+chmod is idempotent on existing files (the entire production fleet) but
+  // CREATES the file on fresh-from-snapshot VMs. 2026-05-22 v113 snapshot test
+  // (test VM 50.116.57.121) surfaced that the orchestrator runs stepEnvVarPush
+  // (line ~544) BEFORE the envValues/POLYGON_RPC_URL write (line ~5481+) which
+  // creates the file. Without this touch, the first reconcile tick on a fresh
+  // Edge VM fails for OPENAI/GBRAIN_ANTHROPIC/BRAVE with STEPENV_FAIL no_env_file
+  // and self-heals only on tick 2 (~3 min later). Closes that 3-min gap.
+  'touch "$ENV_FILE" 2>/dev/null && chmod 600 "$ENV_FILE" 2>/dev/null || { echo "STEPENV_FAIL touch_or_chmod path=$ENV_FILE"; exit 2; }',
   '',
   // Read current value (everything after first =, strip surrounding double quotes)
   'CURRENT=$(grep "^${KEY_NAME}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d \'"\')',
