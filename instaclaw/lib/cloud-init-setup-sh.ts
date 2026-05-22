@@ -288,6 +288,39 @@ Environment=OPENCLAW_DISABLE_BONJOUR=true
 BONJOUR_DROPIN_EOF
   chown openclaw:openclaw /home/openclaw/.config/systemd/user/openclaw-gateway.service.d/99-disable-bonjour.conf
   chmod 644 /home/openclaw/.config/systemd/user/openclaw-gateway.service.d/99-disable-bonjour.conf
+
+  # 2026-05-22 (vm-1019 discovery): writing the drop-in is NOT enough —
+  # systemd's user-manager caches the unit definition at startup. Without
+  # an explicit daemon-reload, the new Environment= line is INVISIBLE
+  # until something else triggers a reload. On vm-1019, the OPENCLAW_
+  # DISABLE_BONJOUR env var was missing from the gateway process env until
+  # I manually ran systemctl --user daemon-reload — bonjour ran for 55s
+  # during §1.32's restart despite the drop-in being on disk. Empirical
+  # proof: cat /proc/\$PID/environ | grep OPENCLAW_DISABLE returned empty
+  # before the manual reload, populated after.
+  #
+  # Approach mirrors §1.1's \`systemctl daemon-reload\` after writing
+  # /etc/systemd/system/ssh.service.d/oom-protect.conf. The user-systemd
+  # variant requires:
+  #   1. Run as the openclaw user (not root) — user-manager is per-user.
+  #   2. Set XDG_RUNTIME_DIR (per CLAUDE.md DBUS issue) so systemctl can
+  #      find the user-manager's D-Bus socket.
+  # \`bash -lc\` sources nvm/profile and ensures the env is hydrated.
+  # Failure here is non-fatal — we WARN but proceed; §1.32 will still
+  # restart the gateway, just without bonjour-disable taking effect this
+  # boot (the next reboot or operator reload will pick it up).
+  # Defensive: verify the drop-in landed with the expected canonical Environment=
+  # line BEFORE running daemon-reload. If a partial write / disk error left the
+  # file empty or malformed, daemon-reload would silently succeed but the
+  # env var would still be missing. Grep enforces the exact line we wrote.
+  if grep -qFx "Environment=OPENCLAW_DISABLE_BONJOUR=true" /home/openclaw/.config/systemd/user/openclaw-gateway.service.d/99-disable-bonjour.conf; then
+    sudo -u openclaw bash -lc 'export XDG_RUNTIME_DIR="/run/user/\$(id -u)" && systemctl --user daemon-reload' \\
+      && echo "[\$(date -u +%FT%TZ)] §1.0.7 daemon-reload OK — drop-in now visible to user-systemd" \\
+      || echo "[\$(date -u +%FT%TZ)] WARN: §1.0.7 daemon-reload failed — gateway will start without OPENCLAW_DISABLE_BONJOUR; bonjour may stall 55-90s during §1.32 restart"
+  else
+    echo "[\$(date -u +%FT%TZ)] WARN: §1.0.7 drop-in content verification failed (Environment line not found) — skipping daemon-reload to avoid loading a partial unit; gateway will start without OPENCLAW_DISABLE_BONJOUR this boot"
+  fi
+
   echo "[\$(date -u +%FT%TZ)] §1.0.7 OPENCLAW_DISABLE_BONJOUR drop-in installed (gateway will skip bonjour on next restart in §1.32)"
 } || echo "[\$(date -u +%FT%TZ)] WARN: §1.0.7 failed to install bonjour-disable drop-in — gateway may stall 60-90s during §1.32 bonjour-announce window (still absorbed by §1.32's 240s budget; non-fatal)"
 

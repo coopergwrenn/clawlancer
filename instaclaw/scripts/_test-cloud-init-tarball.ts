@@ -3137,6 +3137,52 @@ async function test16_BuildSetupSh() {
   );
 
   // ────────────────────────────────────────────────────────────────────
+  // 2026-05-22 — §1.0.7 daemon-reload contract (vm-1019 discovery)
+  // ────────────────────────────────────────────────────────────────────
+  //
+  // vm-1019 (2026-05-22 e2e) exposed that writing the drop-in file alone
+  // is not enough — systemd's user-manager caches the unit definition at
+  // startup and the new Environment= line is INVISIBLE until daemon-reload
+  // runs. Without the reload, bonjour ran for 55 seconds on first boot
+  // despite the drop-in being on disk; verified by `cat /proc/$PID/environ
+  // | grep OPENCLAW_DISABLE` returning empty pre-reload, populated after.
+  //
+  // The fix must:
+  //   (a) Run `systemctl --user daemon-reload` AS THE OPENCLAW USER
+  //       (user-systemd is per-user, root can't reload openclaw's manager).
+  //   (b) Set XDG_RUNTIME_DIR (per CLAUDE.md DBUS issue) so systemctl can
+  //       find the user-manager's D-Bus socket.
+  //   (c) Verify the drop-in's canonical Environment= line is on disk
+  //       BEFORE reloading — guards against partial-write / disk-error
+  //       creating an empty unit file that reloads cleanly but does nothing.
+  //
+  // These assertions enforce all three properties. If anyone removes the
+  // daemon-reload OR the content-verify OR runs reload as root, the
+  // bonjour-disable regresses to invisible-on-disk and we re-hit the
+  // 55-second stall.
+  const bonjourBlock = sh.slice(bonjourDisableIdx, gw32IdxForBonjour);
+  assert(
+    bonjourBlock.includes("systemctl --user daemon-reload"),
+    "§1.0.7 MUST run `systemctl --user daemon-reload` after writing the drop-in " +
+      "(vm-1019 proof: drop-in alone doesn't make the env var visible to the " +
+      "running user-systemd manager)",
+  );
+  assert(
+    bonjourBlock.includes("sudo -u openclaw"),
+    "§1.0.7 daemon-reload MUST run as the openclaw user (user-systemd is per-user)",
+  );
+  assert(
+    bonjourBlock.includes("XDG_RUNTIME_DIR"),
+    "§1.0.7 daemon-reload MUST set XDG_RUNTIME_DIR (CLAUDE.md documented DBUS issue " +
+      "— without it, systemctl can't find the user-manager's D-Bus socket)",
+  );
+  assert(
+    bonjourBlock.includes('grep -qFx "Environment=OPENCLAW_DISABLE_BONJOUR=true"'),
+    "§1.0.7 MUST verify the drop-in's canonical Environment= line BEFORE " +
+      "reloading (defense against partial-write loading an empty unit file)",
+  );
+
+  // ────────────────────────────────────────────────────────────────────
   // 2026-05-21 P0 — model-prefix parity contract (vm-974 bug #8)
   // ────────────────────────────────────────────────────────────────────
   //
