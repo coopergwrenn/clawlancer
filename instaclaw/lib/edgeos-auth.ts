@@ -32,8 +32,13 @@
  *     version; the auth/OTP path is the wobbly piece.
  */
 
+// 2026-05-22 P0 fix: default was `api.dev.edgeos.world` (the sandbox tier).
+// Tule's production attendee directory lives at `api.edgeos.world`. The dev
+// tier returns 401 "Invalid third-party credentials" for prod-tier tenant
+// keys + prod-tier attendees. Switched default to prod; dev/sandbox testing
+// must explicitly set EDGEOS_API_BASE=https://api.dev.edgeos.world.
 const DEFAULT_API_BASE =
-  process.env.EDGEOS_API_BASE || "https://api.dev.edgeos.world";
+  process.env.EDGEOS_API_BASE || "https://api.edgeos.world";
 
 const NETWORK_TIMEOUT_MS = 15_000;
 
