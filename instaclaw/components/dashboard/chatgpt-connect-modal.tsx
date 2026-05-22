@@ -38,6 +38,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { signIn } from "next-auth/react";
 import {
   X,
   Copy,
@@ -90,6 +91,15 @@ export type ModalState =
       kind: "success";
       planType: string | null;
       summary?: ConnectedSummary;
+      /**
+       * Set ONLY when mode="signup". Carries the one-shot JWT minted by
+       * /api/auth/openai/signup/poll. The success-state effect uses this
+       * to invoke `signIn(OPENAI_DEVICE_CODE_PROVIDER_ID, { signupToken })`
+       * which establishes a real NextAuth session via the Credentials
+       * provider in lib/auth.ts. Undefined in connect mode (the user
+       * already has a session; nothing to bridge).
+       */
+      signupToken?: string;
     }
   | { kind: "expired" }
   | { kind: "denied" }
@@ -98,14 +108,46 @@ export type ModalState =
   | { kind: "upstream-timeout" }
   | { kind: "error"; message: string };
 
+/**
+ * Modal mode — controls endpoint URLs, allowed initial states, and the
+ * success-state action.
+ *
+ *   "connect": post-signup. User has a session. Endpoints are
+ *     /api/auth/openai/device-code/{start,poll}. /start can return
+ *     "connected" if the user is already linked. Success → onConnected
+ *     callback + close (parent refreshes status).
+ *
+ *   "signup": session-less. User does NOT have a session yet. Endpoints
+ *     are /api/auth/openai/signup/{start,poll}. /start never returns
+ *     "connected" (the concept doesn't apply — no known user). Success →
+ *     signIn(OPENAI_DEVICE_CODE_PROVIDER_ID, { signupToken, callbackUrl })
+ *     which establishes a NextAuth session and redirects.
+ *
+ * Default is "connect" so existing callsites (settings page) work
+ * unchanged.
+ */
+export type ChatGPTModalMode = "connect" | "signup";
+
 interface ChatGPTConnectModalProps {
   /** Modal is rendered conditionally — parent controls open/close. */
   isOpen: boolean;
   onClose: () => void;
-  /** Called after a successful connection (so parent can refresh status). */
+  /** Called after a successful connection (so parent can refresh status). Connect mode only. */
   onConnected?: (summary?: ConnectedSummary) => void;
-  /** Called after the user successfully disconnects. */
+  /** Called after the user successfully disconnects. Connect mode only. */
   onDisconnected?: () => void;
+  /**
+   * Which path the modal serves. Default "connect" preserves existing
+   * /settings behavior. Pass "signup" to use the session-less path that
+   * creates a user account on completion.
+   */
+  mode?: ChatGPTModalMode;
+  /**
+   * Required when mode="signup". The URL to redirect to after the
+   * NextAuth signIn() call succeeds — typically /connect for the Edge
+   * onboarding flow. Ignored in connect mode.
+   */
+  signupCallbackUrl?: string;
   /**
    * Dev-only: bypass API calls and render the modal in this state.
    * The component refuses to honor this in production (NODE_ENV check).
@@ -178,8 +220,23 @@ export function ChatGPTConnectModal({
   onClose,
   onConnected,
   onDisconnected,
+  mode = "connect",
+  signupCallbackUrl,
   __devForceState,
 }: ChatGPTConnectModalProps) {
+  // Endpoint URLs are mode-dependent. In signup mode the routes are
+  // session-less and the cookie-set side effect on /signup/start sets the
+  // anonymous_session_id used by /signup/poll. Connect mode uses the
+  // existing session-protected device-code endpoints.
+  const START_ENDPOINT =
+    mode === "signup"
+      ? "/api/auth/openai/signup/start"
+      : "/api/auth/openai/device-code/start";
+  const POLL_ENDPOINT =
+    mode === "signup"
+      ? "/api/auth/openai/signup/poll"
+      : "/api/auth/openai/device-code/poll";
+
   const [state, setState] = useState<ModalState>(
     __devForceState ?? { kind: "initial-loading" },
   );
@@ -197,7 +254,7 @@ export function ChatGPTConnectModal({
   const triggerStart = useCallback(async (): Promise<void> => {
     setState({ kind: "initial-loading" });
     try {
-      const res = await fetch("/api/auth/openai/device-code/start", {
+      const res = await fetch(START_ENDPOINT, {
         method: "POST",
       });
       const data = (await res.json()) as Record<string, unknown>;
@@ -208,6 +265,17 @@ export function ChatGPTConnectModal({
           setState({ kind: "polling", flow: data.flow as FlowData });
           return;
         case "connected":
+          // Signup mode: this status is never returned by /signup/start
+          // (the signup path has no notion of "already connected" — there's
+          // no user yet). If it somehow arrives, treat as an error.
+          if (mode === "signup") {
+            setState({
+              kind: "error",
+              message:
+                "Unexpected response from server. Please refresh and try again.",
+            });
+            return;
+          }
           setState({
             kind: "connected",
             summary: data.summary as ConnectedSummary,
@@ -253,10 +321,23 @@ export function ChatGPTConnectModal({
   }, []);
 
   // ─── Auto-start when modal opens (production path; skipped under dev force) ──
+  // Defensive: if mode is "signup" and signupCallbackUrl is missing, refuse
+  // to start. Signup mode must have a destination to redirect to after
+  // signIn() succeeds; without one the user would land on /api/auth/signin
+  // by default which would just bounce them right back. Caller bug, not
+  // a runtime user-visible error.
   const lastIsOpenRef = useRef(false);
   useEffect(() => {
     // Dev-force: respect injected state, don't fetch.
     if (process.env.NODE_ENV === "development" && __devForceState !== undefined) {
+      return;
+    }
+    if (mode === "signup" && isOpen && !signupCallbackUrl) {
+      setState({
+        kind: "error",
+        message: "Sign-in misconfigured (missing callback URL). Please reload the page.",
+      });
+      lastIsOpenRef.current = isOpen;
       return;
     }
     // On transition from closed → open, start the flow.
@@ -264,7 +345,7 @@ export function ChatGPTConnectModal({
       void triggerStart();
     }
     lastIsOpenRef.current = isOpen;
-  }, [isOpen, triggerStart, __devForceState]);
+  }, [isOpen, triggerStart, mode, signupCallbackUrl, __devForceState]);
 
   // ─── Polling loop ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -280,10 +361,17 @@ export function ChatGPTConnectModal({
       const currentState = state;
       if (currentState.kind !== "polling") return;
       try {
-        const res = await fetch("/api/auth/openai/device-code/poll", {
+        // Signup mode uses cookie-based session identification (the
+        // anonymous_session_id HTTPOnly cookie set by /signup/start).
+        // No flow_id needs to go in the body — the poll route reads
+        // the cookie directly. Connect mode still passes flow_id since
+        // the device-code/poll route's body-validate gate requires it.
+        const pollBody =
+          mode === "signup" ? "{}" : JSON.stringify({ flow_id: currentState.flow.id });
+        const res = await fetch(POLL_ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ flow_id: currentState.flow.id }),
+          body: pollBody,
         });
         if (cancelled) return;
         const data = (await res.json()) as Record<string, unknown>;
@@ -298,10 +386,18 @@ export function ChatGPTConnectModal({
             );
             return;
           case "completed":
+            // In signup mode, the response carries a one-shot signupToken.
+            // The success effect picks it up and calls signIn() to
+            // establish the NextAuth session. In connect mode the field
+            // is absent and the success effect closes the modal normally.
             setState({
               kind: "success",
               planType: (data.plan_type as string | null) ?? null,
               summary: data.summary as ConnectedSummary | undefined,
+              signupToken:
+                typeof data.signupToken === "string"
+                  ? data.signupToken
+                  : undefined,
             });
             return;
           case "expired":
@@ -369,17 +465,76 @@ export function ChatGPTConnectModal({
     return () => clearTimeout(id);
   }, [state.kind, triggerStart, __devForceState]);
 
-  // ─── Success auto-close ────────────────────────────────────────────────
+  // ─── Success: connect-mode auto-close OR signup-mode signIn() ──────────
+  //
+  // Two distinct behaviors gated on mode:
+  //
+  //   connect mode (default): the user already has a session. We just
+  //     fire the onConnected callback (so the settings panel refreshes
+  //     status) and close the modal after a short delay (the user sees
+  //     the success state for ~2.5s before the modal dismisses).
+  //
+  //   signup mode: the user does NOT have a session yet. The success
+  //     state's signupToken is a one-shot HMAC-signed JWT (60s exp)
+  //     pointing at the freshly created/linked instaclaw_users.id.
+  //     Calling signIn() with this token invokes the Credentials
+  //     provider's authorize() in lib/auth.ts which verifies the token
+  //     and returns the user object, establishing a real NextAuth
+  //     session. On success NextAuth redirects to signupCallbackUrl.
+  //
+  // In signup mode we DON'T auto-close the modal — signIn() either
+  // redirects (success) or reloads /signin (failure). The modal unmounts
+  // either way because the page changes.
   useEffect(() => {
     if (state.kind !== "success") return;
     if (process.env.NODE_ENV === "development" && __devForceState !== undefined) return;
+
+    if (mode === "signup") {
+      // Signup path — establish NextAuth session via Credentials provider.
+      const token = state.signupToken;
+      if (!token) {
+        // Defensive: should never happen because /signup/poll always
+        // returns signupToken on completed status. If it does, surface
+        // as error so the user can retry rather than being stuck on
+        // a perpetual success screen.
+        setState({
+          kind: "error",
+          message:
+            "Sign-in token missing from response. Please try signing in again.",
+        });
+        return;
+      }
+      if (!signupCallbackUrl) {
+        // Same defensive class — caller should have provided this on
+        // mount, but if not, fail loudly rather than silently.
+        setState({
+          kind: "error",
+          message:
+            "Sign-in misconfigured (missing callback URL). Please reload the page.",
+        });
+        return;
+      }
+      // signIn returns a promise that resolves with { ok, url } on success
+      // and dispatches a navigation if `redirect: true` (default). We
+      // explicitly set `redirect: true` and let NextAuth handle the
+      // post-signin navigation to callbackUrl. The modal unmounts as
+      // the page transitions.
+      void signIn("openai-device-code", {
+        signupToken: token,
+        callbackUrl: signupCallbackUrl,
+        redirect: true,
+      });
+      return;
+    }
+
+    // Connect path — original behavior.
     const summary = state.summary;
     const id = setTimeout(() => {
       onConnected?.(summary);
       onClose();
     }, SUCCESS_AUTO_CLOSE_MS);
     return () => clearTimeout(id);
-  }, [state.kind, onClose, onConnected, __devForceState]);
+  }, [state.kind, mode, signupCallbackUrl, onClose, onConnected, __devForceState]);
 
   // ─── Trigger-focus restoration (P1-D) ─────────────────────────────────
   //

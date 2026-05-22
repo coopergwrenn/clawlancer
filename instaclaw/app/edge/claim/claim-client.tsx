@@ -173,12 +173,23 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
     // WHEN the first real charge fires — /edge/setup carries that
     // narrative in our voice register, not Stripe's.
     //
-    // /edge/setup Continue then routes to /connect, which forces OAuth
-    // for logged-out users via the signIn callback in lib/auth.ts (it
-    // reads the signed cookie and writes edge_verified_email on the
-    // user row). The flow is /edge/claim → /edge/setup → /connect →
-    // (OAuth) → /connect bot pairing → /plan → Stripe checkout with
-    // trial_end=1782802800 → /deploying → /edge/intents → /dashboard.
+    // /edge/setup Continue routes to /signin?callbackUrl=/connect.
+    // /signin presents both Google and ChatGPT as equal sign-in options
+    // (per Cooper's Option-A spec, 2026-05-22). After successful auth
+    // via either provider, NextAuth honors callbackUrl and redirects to
+    // /connect (bot pairing). The signed edge_verified cookie is
+    // honored on both auth paths — by lib/auth.ts:signIn for Google,
+    // and by lib/openai-signup-db.ts:resolveSignupUser for ChatGPT.
+    //
+    // The full flow is:
+    //   /edge/claim → /edge/setup → /signin →
+    //     (Google OAuth | ChatGPT device-code) →
+    //   /connect (bot pairing) → /plan →
+    //   Stripe checkout with trial_end=1782802800 →
+    //   /deploying → /edge/intents → /dashboard
+    //
+    // A ChatGPT-authed Edge attendee and a Google-authed Edge attendee
+    // are indistinguishable by the time they hit /deploying.
     router.push("/edge/setup");
   }
 

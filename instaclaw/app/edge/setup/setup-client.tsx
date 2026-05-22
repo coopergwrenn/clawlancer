@@ -23,11 +23,25 @@ export function SetupClient() {
   const router = useRouter();
 
   function handleContinue() {
-    // /connect dispatches based on auth state — logged-out → /signin
-    // (OAuth) → callback → /connect (bot pairing); logged-in → bot
-    // pairing directly. We don't need to detect auth state here; the
-    // downstream flow handles it.
-    router.push("/connect");
+    // Route to /signin with callbackUrl=/connect.
+    //
+    // /signin shows both auth options (Google + ChatGPT). After
+    // successful auth, NextAuth honors the callbackUrl and redirects to
+    // /connect (the bot-pairing step). For first-time Edge attendees
+    // this is the right surface — /connect itself doesn't have a
+    // sign-in button (it assumes an authenticated user), so we explicitly
+    // route through /signin first.
+    //
+    // Why the explicit redirect chain over /signup's Google button:
+    // /signup is the invite-code entry point and doesn't have the
+    // ChatGPT button. /signin presents both options equally per Cooper's
+    // Option-A spec. Edge attendees don't have invite codes (they're
+    // verified via EdgeOS), so /signin is the right choice.
+    //
+    // The callbackUrl is read by /signin and forwarded to both the
+    // Google signIn() call and the ChatGPT modal's signupCallbackUrl prop,
+    // ensuring identical post-auth redirect behavior for both providers.
+    router.push("/signin?callbackUrl=/connect");
   }
 
   return (
@@ -67,11 +81,36 @@ export function SetupClient() {
         </p>
 
         <p
-          className="text-[17px] sm:text-[19px] leading-[1.55] max-w-[42ch] mb-10 sm:mb-12 reveal-anim"
+          className="text-[17px] sm:text-[19px] leading-[1.55] max-w-[42ch] mb-7 sm:mb-8 reveal-anim"
           style={{ color: "var(--edge-ink-soft)" }}
         >
           If you keep your agent after the village ends, it&apos;s $99/month
           starting June 30. Cancel anytime, no questions.
+        </p>
+
+        {/* ─── Auth-choice label ─── */}
+        {/*
+         * Tells the user what happens when they click Continue: they'll
+         * see two equal sign-in options on the next page. The wording
+         * gives them agency ("your pick") rather than implying we've
+         * pre-selected one — important per Cooper's "make it clear users
+         * have a real choice" directive.
+         *
+         * Visual treatment: between the trust-receipt body and the
+         * Continue button. Smaller than body (14px), same ink-soft as
+         * fine print, BUT with no underline / no decoration — it's a
+         * label, not an action. The actual choice happens on /signin.
+         *
+         * Why not in the body p1/p2: those paragraphs are billing-focused
+         * (sponsorship, charge timing). Mixing auth detail with billing
+         * detail dilutes both. Placement here keeps the auth fact close
+         * to the Continue button it labels.
+         */}
+        <p
+          className="text-[14px] leading-[1.5] max-w-[42ch] mb-10 sm:mb-12 reveal-anim"
+          style={{ color: "var(--edge-ink-soft)" }}
+        >
+          Sign in with Google or ChatGPT — your pick.
         </p>
 
         {/* ─── Continue ─── */}

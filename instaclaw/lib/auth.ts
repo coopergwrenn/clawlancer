@@ -1,4 +1,5 @@
 import NextAuth from "next-auth";
+import Credentials from "next-auth/providers/credentials";
 import { cookies } from "next/headers";
 import { getSupabase } from "./supabase";
 import { sendWelcomeEmail } from "./email";
@@ -8,12 +9,125 @@ import {
   verifyEdgeVerifiedCookie,
   EDGE_VERIFIED_COOKIE_NAME,
 } from "./edge-verified-cookie";
+import { verifySignupToken } from "./openai-signup-token";
 import authConfig from "./auth.config";
+
+/**
+ * NextAuth provider id for the ChatGPT-as-signin Credentials bridge.
+ *
+ * Exported so the /signin client component + the modal's signup-mode
+ * handler can call `signIn(OPENAI_DEVICE_CODE_PROVIDER_ID, { signupToken })`
+ * without a hardcoded string drifting between callsites.
+ */
+export const OPENAI_DEVICE_CODE_PROVIDER_ID = "openai-device-code";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   ...authConfig,
+  // ─────────────────────────────────────────────────────────────────────
+  // Providers
+  //
+  // Google lives in auth.config.ts (edge-imported by middleware). The
+  // Credentials provider for ChatGPT signup lives HERE in auth.ts
+  // because its authorize() callback uses Supabase + the signSignupToken
+  // helper, neither of which is edge-runtime compatible. Middleware
+  // doesn't need to know about the Credentials provider — it only checks
+  // session validity via the JWT cookie, which is provider-agnostic.
+  //
+  // Adding Credentials does NOT change Google sign-in behavior. The two
+  // providers are independent; users who chose Google continue through
+  // the existing signIn → jwt → session callback chain unchanged.
+  // ─────────────────────────────────────────────────────────────────────
+  providers: [
+    ...authConfig.providers,
+    Credentials({
+      id: OPENAI_DEVICE_CODE_PROVIDER_ID,
+      name: "ChatGPT",
+      credentials: {
+        // One-shot HMAC-signed token minted by /api/auth/openai/signup/poll
+        // on successful device-code completion. 60s exp. Contains the
+        // resolved instaclaw_users.id in the `sub` claim.
+        signupToken: { label: "Signup Token", type: "text" },
+      },
+      async authorize(rawCredentials) {
+        const signupToken =
+          typeof rawCredentials?.signupToken === "string"
+            ? rawCredentials.signupToken
+            : null;
+        if (!signupToken) {
+          logger.warn("openai-device-code authorize: missing signupToken");
+          return null;
+        }
+
+        // 1. Verify the HMAC signature + exp + audience claim.
+        //    Any failure here → return null → NextAuth refuses sign-in.
+        //    No retry, no surface — the user just sees /signin again.
+        const verifyResult = verifySignupToken(signupToken);
+        if (!verifyResult.ok || !verifyResult.userId) {
+          logger.warn("openai-device-code authorize: signupToken verification failed", {
+            reason: verifyResult.reason,
+            // Prefix only — token is session-equivalent (Rule 53)
+            tokenPrefix: signupToken.slice(0, 12),
+          });
+          return null;
+        }
+
+        // 2. Defense-in-depth DB lookup — confirm the user actually exists.
+        //    If NEXTAUTH_SECRET ever leaks, a forger could produce a valid
+        //    signupToken for any user.id. The DB lookup is the final gate
+        //    that ensures the id corresponds to a real account.
+        const supabase = getSupabase();
+        const { data: user, error } = await supabase
+          .from("instaclaw_users")
+          .select("id, email, name")
+          .eq("id", verifyResult.userId)
+          .maybeSingle();
+
+        if (error) {
+          logger.error("openai-device-code authorize: user lookup failed", {
+            userId: verifyResult.userId,
+            error: error.message,
+          });
+          return null;
+        }
+        if (!user) {
+          logger.warn("openai-device-code authorize: user not found in DB", {
+            userId: verifyResult.userId,
+          });
+          return null;
+        }
+
+        // 3. Return the user object — NextAuth creates the JWT + session
+        //    cookie from this. The signIn callback fires next (see below).
+        return {
+          id: user.id as string,
+          email: (user.email as string | null) ?? undefined,
+          name: (user.name as string | null) ?? undefined,
+        };
+      },
+    }),
+  ],
   callbacks: {
     async signIn({ user, account }) {
+      // ─────────────────────────────────────────────────────────────────
+      // Provider routing.
+      //
+      // Three paths:
+      //   - "google": full identity-resolution + user-creation logic below
+      //   - OPENAI_DEVICE_CODE_PROVIDER_ID ("openai-device-code"): the user
+      //     was ALREADY resolved by /api/auth/openai/signup/poll's
+      //     resolveSignupUser. The Credentials provider's authorize()
+      //     verified the signupToken and confirmed the user exists.
+      //     Nothing further needed here — return true and let NextAuth
+      //     build the session.
+      //   - anything else: refuse (defense-in-depth against unregistered
+      //     providers somehow firing).
+      // ─────────────────────────────────────────────────────────────────
+      if (account?.provider === OPENAI_DEVICE_CODE_PROVIDER_ID) {
+        logger.info("openai-device-code signIn: session established", {
+          userId: user.id,
+        });
+        return true;
+      }
       if (account?.provider !== "google") return false;
 
       const supabase = getSupabase();
@@ -338,37 +452,100 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return true;
     },
 
-    async jwt({ token, account }) {
+    async jwt({ token, account, user }) {
+      // The `account` arg is non-null on the initial sign-in invocation
+      // only. On subsequent JWT decodes (subsequent requests), we have
+      // only `token` — already populated from the initial call.
       if (account) {
-        token.googleId = account.providerAccountId;
+        if (account.provider === "google") {
+          // Google's providerAccountId IS the user's Google sub — the
+          // stable identifier the session callback uses to look up the
+          // instaclaw_users row.
+          token.googleId = account.providerAccountId;
+        } else if (account.provider === OPENAI_DEVICE_CODE_PROVIDER_ID) {
+          // Credentials provider: `user.id` is the instaclaw_users.id
+          // we returned from authorize(). Store it under a distinct key
+          // (`instaclawUserId`) so the session callback can branch on
+          // which provider issued the JWT and use the right lookup.
+          //
+          // We intentionally avoid using NextAuth's default `token.sub`
+          // field because the session callback's existing Google path
+          // doesn't read `sub` — co-existence with the existing path is
+          // easier with a separate, explicit field.
+          if (user?.id) {
+            token.instaclawUserId = user.id;
+          }
+        }
       }
       return token;
     },
 
     async session({ session, token }) {
+      // ─────────────────────────────────────────────────────────────────
+      // Session hydration — two lookup paths, same downstream shape.
+      //
+      // Google-authed users: token.googleId is set; look up by google_id.
+      // ChatGPT-authed users: token.instaclawUserId is set; look up by id.
+      //
+      // BOTH paths populate the SAME session.user fields (id,
+      // onboardingComplete, partner, indexLastIntentAt) so downstream
+      // code (dashboard layout, /edge/intents gate, billing/checkout)
+      // treats both identically. This is the "indistinguishable by the
+      // time they hit /deploying" invariant from Cooper's spec.
+      // ─────────────────────────────────────────────────────────────────
+      const supabase = getSupabase();
+      let userRow: {
+        id: string;
+        onboarding_complete: boolean | null;
+        partner: string | null;
+        index_last_intent_at: string | null;
+      } | null = null;
+
       if (token.googleId) {
-        const supabase = getSupabase();
+        // Google path (existing — unchanged)
         const { data } = await supabase
           .from("instaclaw_users")
           .select("id, onboarding_complete, partner, index_last_intent_at")
           .eq("google_id", token.googleId)
           .single();
+        userRow = data
+          ? {
+              id: data.id as string,
+              onboarding_complete: data.onboarding_complete as boolean | null,
+              partner: data.partner as string | null,
+              index_last_intent_at: data.index_last_intent_at as string | null,
+            }
+          : null;
+      } else if (token.instaclawUserId) {
+        // ChatGPT path (new — Credentials provider)
+        const { data } = await supabase
+          .from("instaclaw_users")
+          .select("id, onboarding_complete, partner, index_last_intent_at")
+          .eq("id", token.instaclawUserId as string)
+          .single();
+        userRow = data
+          ? {
+              id: data.id as string,
+              onboarding_complete: data.onboarding_complete as boolean | null,
+              partner: data.partner as string | null,
+              index_last_intent_at: data.index_last_intent_at as string | null,
+            }
+          : null;
+      }
 
-        if (data) {
-          session.user.id = data.id;
-          session.user.onboardingComplete = data.onboarding_complete ?? false;
-          // partner is exposed so client components can conditionally render
-          // partner-specific UI (e.g., the Edge City nav item) without a
-          // round-trip — see app/(dashboard)/layout.tsx primaryNav.
-          session.user.partner = (data.partner as string | null) ?? null;
-          // indexLastIntentAt drives the /edge/intents mandatory-intent gate.
-          // NULL means "hasn't expressed any intent yet" — Edge attendees in
-          // this state must pass through /edge/intents before /dashboard.
-          // The dashboard layout enforces this universally; /deploying's
-          // post-provision redirect routes Edge users here too. See FUP-3a.
-          session.user.indexLastIntentAt =
-            (data.index_last_intent_at as string | null) ?? null;
-        }
+      if (userRow) {
+        session.user.id = userRow.id;
+        session.user.onboardingComplete = userRow.onboarding_complete ?? false;
+        // partner is exposed so client components can conditionally render
+        // partner-specific UI (e.g., the Edge City nav item) without a
+        // round-trip — see app/(dashboard)/layout.tsx primaryNav.
+        session.user.partner = userRow.partner ?? null;
+        // indexLastIntentAt drives the /edge/intents mandatory-intent gate.
+        // NULL means "hasn't expressed any intent yet" — Edge attendees in
+        // this state must pass through /edge/intents before /dashboard.
+        // The dashboard layout enforces this universally; /deploying's
+        // post-provision redirect routes Edge users here too. See FUP-3a.
+        session.user.indexLastIntentAt = userRow.index_last_intent_at ?? null;
       }
       return session;
     },
