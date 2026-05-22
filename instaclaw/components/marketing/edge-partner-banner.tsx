@@ -39,7 +39,7 @@ const PARTNER_THEMES: Record<string, PartnerTheme> = {
     fgMuted: "rgba(250, 250, 247, 0.65)",
     wordmarkSrc: "/edge/edge-esmeralda-wordmark.svg",
     wordmarkAlt: "Edge Esmeralda",
-    copy: "Claiming your Edge Esmeralda agent. Free for verified ticket holders.",
+    copy: "Claiming your Edge Esmeralda agent. Sponsor-funded through June 30.",
     backHref: "/edge",
   },
 };

@@ -27,7 +27,7 @@ import { ClaimClient } from "./claim-client";
 export const metadata = createMetadata({
   title: "Claim your Edge Esmeralda 2026 agent",
   description:
-    "Verify your Edge Esmeralda 2026 ticket to claim your personal AI agent for the 28-day village. Free for verified ticket holders.",
+    "Verify your Edge Esmeralda 2026 ticket to claim your personal AI agent for the 28-day village. Sponsor-funded through June 30.",
   path: "/edge/claim",
   ogTitle: "Claim your Edge Esmeralda 2026 agent",
   ogImage: "/edge/og-edge.png",

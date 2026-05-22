@@ -117,7 +117,7 @@ function SignupInner() {
           </h1>
           <p className="text-base" style={{ color: "#6b6b6b" }}>
             {isEdge
-              ? "Free for verified Edge Esmeralda 2026 attendees."
+              ? "Sponsor-funded through June 30 for Edge Esmeralda 2026 attendees."
               : "Deploy your personal AI agent in minutes."}
           </p>
         </div>

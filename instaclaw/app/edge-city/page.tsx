@@ -172,8 +172,8 @@ export default function EdgeCityPage() {
           <EdgeCityClient />
 
           <p className="text-xs mt-5" style={{ color: "#9a9a9a" }}>
-            Free for verified Edge Esmeralda ticket holders. Inference is
-            sponsor-funded.
+            Sponsor-funded through June 30 for verified Edge Esmeralda ticket
+            holders.
           </p>
         </div>
       </section>

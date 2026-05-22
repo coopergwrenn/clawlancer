@@ -506,7 +506,7 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
                 borderTop: "1px solid var(--edge-line-soft)",
               }}
             >
-              Free for verified ticket holders.
+              Sponsor-funded through June 30.
             </div>
           </>
         )}
