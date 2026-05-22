@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-22
 
-Window: `0377e01bbcb0224b414b63c3c3478f90b4beccd3` → `HEAD` (HEAD = `85ed6f61`)
+Window: `85ed6f61a62175e2f362dd52ad70da15b1262012` → `HEAD` (HEAD = `00eb8d7f`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 85ed6f61a62175e2f362dd52ad70da15b1262012 -->
+<!-- LAST_GENERATED_SHA: 00eb8d7f028d880668d0740b594b15f33ef716a4 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `85ed6f61` 2026-05-22 — fix(vm/configure): widen cloud-init protection window 10 → 15 min [1 files] _(ai-assisted)_
-- `da47d3c4` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `00eb8d7f` 2026-05-22 — revert: re-enable cloud-init-poll + replenish-pool crons (e2e test complete) [2 files] _(ai-assisted)_
+- `82fac4d7` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `85ed6f61` 2026-05-22 — fix(vm/configure): widen cloud-init protection window 10 → 15 min [1 files] _(ai-assisted)_
+- `00eb8d7f` 2026-05-22 — revert: re-enable cloud-init-poll + replenish-pool crons (e2e test complete) [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `da47d3c4` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `82fac4d7` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `85ed6f61` 2026-05-22 — fix(vm/configure): widen cloud-init protection window 10 → 15 min
+- `00eb8d7f` 2026-05-22 — revert: re-enable cloud-init-poll + replenish-pool crons (e2e test complete)
 
 ## Appendix — every commit (chronological)
 
-- `da47d3c4` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `85ed6f61` 2026-05-22 — fix(vm/configure): widen cloud-init protection window 10 → 15 min [1 files] _(ai-assisted)_
+- `82fac4d7` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `00eb8d7f` 2026-05-22 — revert: re-enable cloud-init-poll + replenish-pool crons (e2e test complete) [2 files] _(ai-assisted)_
