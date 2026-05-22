@@ -356,7 +356,7 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
                     className="mt-2 italic"
                     style={{ opacity: 0.75 }}
                   >
-                    EdgeOS may have emailed you a verification code — you
+                    EdgeOS may have emailed you a verification code - you
                     can ignore it. This step is complete.
                   </p>
                 </>
