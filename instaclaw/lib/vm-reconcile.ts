@@ -1491,41 +1491,67 @@ async function stepEnvVarPush(
 }
 
 /**
- * stepGbrainEnvSync — sync .env's GBRAIN_ANTHROPIC_API_KEY into gbrain's
- * systemd unit's `Environment=ANTHROPIC_API_KEY=` and restart gbrain so the
- * rotated value actually reaches the running process.
+ * stepGbrainEnvSync — propagate $HOME/.openclaw/.env's GBRAIN_ANTHROPIC_API_KEY
+ * into gbrain's process environment and restart gbrain so the rotated value
+ * actually reaches the running process.
  *
- * Background (2026-05-21 SECRET_VERSION v3 incident):
- *   stepEnvVarPush keeps ~/.openclaw/.env in sync with Vercel-side secret
- *   rotations. But gbrain doesn't read from .env at runtime — install-gbrain.sh
- *   reads the .env value ONCE at install time and bakes it into the systemd
- *   unit (~/.config/systemd/user/gbrain.service) as
- *   `Environment=ANTHROPIC_API_KEY=<value>`. After install, the unit's value
- *   never updates unless something explicitly rewrites the unit. So when
- *   Cooper rotated GBRAIN_ANTHROPIC_API_KEY in Vercel, stepEnvVarPush
- *   updated .env on the next reconcile tick, but the 9 edge_city VMs kept
- *   running with the OLD key forever (until manual SSH push).
+ * Background — two architecture eras:
  *
- * Fix (this step):
+ *   ── Era 1 (2026-05-11 install-gbrain.sh → 2026-05-22): inline Environment ──
+ *
+ *   install-gbrain.sh Phase E5 wrote the unit with:
+ *     [Service]
+ *     Environment=ANTHROPIC_API_KEY=<value>     ← baked at install-time
+ *   The unit's value never updates unless something explicitly rewrites the
+ *   unit. Cooper rotated GBRAIN_ANTHROPIC_API_KEY in Vercel on 2026-05-21
+ *   (SECRET_VERSION v3); stepEnvVarPush updated $HOME/.openclaw/.env on the
+ *   next reconcile tick, but the 9 edge_city VMs kept running with the OLD
+ *   key forever. This step's original implementation sed-rewrote the unit
+ *   in place + daemon-reload + restart. Works, but cumbersome.
+ *
+ *   ── Era 2 (2026-05-22 onward): EnvironmentFile architecture ──
+ *
+ *   install-gbrain.sh Phase E4.5+E5 now writes:
+ *     [Service]
+ *     EnvironmentFile=-$HOME/.gbrain/.env       ← rotatable secrets here
+ *   And $HOME/.gbrain/.env contains:
+ *     ANTHROPIC_API_KEY=<value>
+ *   To rotate: write the file + restart gbrain. systemd re-reads
+ *   EnvironmentFile= on every unit start; no sed gymnastics, no
+ *   daemon-reload. (The leading `-` makes the file optional — gbrain
+ *   still starts if the file is missing; embedding calls will then fail
+ *   loudly with Anthropic 401 instead of the unit refusing to start.)
+ *
+ * Branch decision (one cheap grep against the unit file): detect which era
+ * the VM was last installed under, then run the appropriate sync path. Both
+ * paths converge on the same final state — the gbrain process has the
+ * current canonical key in its env. The OLD path can be removed once every
+ * fleet VM has been reinstalled from a post-2026-05-22 snapshot.
+ *
+ * Sync algorithm (both eras):
  *   1. Partner-gate: edge_city only (no other partner installs gbrain today).
  *   2. Presence-gate: skip if gbrain.service unit file is missing.
- *   3. Read .env GBRAIN_ANTHROPIC_API_KEY (the value stepEnvVarPush just wrote).
- *   4. Read unit's Environment=ANTHROPIC_API_KEY= (current baked-in value).
- *   5. If equal → alreadyCorrect (single cheap SSH call on the happy path).
- *   6. If different → atomic sed-in-place of the unit + daemon-reload +
- *      `systemctl --user restart gbrain` (uses gbrain's KillSignal=SIGKILL
- *      drop-in per Rule 54 — safe for PGLite). Verify is-active post-restart.
+ *   3. Read $HOME/.openclaw/.env's GBRAIN_ANTHROPIC_API_KEY (canonical
+ *      source, just refreshed by stepEnvVarPush).
+ *   4. Value-shape validation: refuse to sync values with shell metachars
+ *      that could be embedded into a bash chain.
+ *   5. Detect era (NEW EnvironmentFile= vs OLD Environment=).
+ *   6. NEW path: read $HOME/.gbrain/.env current value, compare, atomic
+ *      file write (tmp + mv) + restart if different.
+ *   7. OLD path: read unit's Environment= line, compare, sed-rewrite +
+ *      daemon-reload + restart if different.
+ *   8. Verify-after-write: re-read AND verify /proc/<pid>/environ contains
+ *      the new value (defense vs systemd silently using stale state).
  *
  * Idempotency: matches the existing reconciler discipline. Re-running this
- * step on a VM with .env value == unit value is a single read + early return.
+ * step on a VM where canonical == current is a single read + early return.
  *
  * Failure modes:
  *   - .env missing GBRAIN_ANTHROPIC_API_KEY (e.g., stepEnvVarPush hasn't run
  *     yet because Vercel env is unset): alreadyCorrect with reason (Rule 39
  *     skip class — non-critical).
- *   - Unit missing Environment=ANTHROPIC_API_KEY= line (e.g., install-gbrain.sh
- *     used a different layout): skip + warn (don't sed-write a new line that
- *     would conflict with install-gbrain.sh's next run).
+ *   - Unit missing both EnvironmentFile= AND Environment= line: skip + warn
+ *     (let install-gbrain.sh own unit layout; don't synthesize).
  *   - Restart fails (gbrain crash-loop, port conflict): push to errors so
  *     pushFailed gate holds the secret_version bump. Next tick retries.
  */
@@ -1582,6 +1608,105 @@ async function stepGbrainEnvSync(
     return;
   }
 
+  // Detect unit layout style (new-style EnvironmentFile= vs legacy inline
+  // Environment=ANTHROPIC_API_KEY=).
+  //
+  // 2026-05-22 EnvironmentFile architecture: install-gbrain.sh Phase E4.5+E5
+  // now writes ANTHROPIC_API_KEY to $HOME/.gbrain/.env (separate file) and
+  // the unit references it via `EnvironmentFile=-$HOME/.gbrain/.env`. New
+  // VMs from the post-fix bake have this layout; existing VMs from earlier
+  // bakes still have the legacy inline `Environment=ANTHROPIC_API_KEY=`.
+  //
+  // Branch decision is one cheap grep against the unit file. Both branches
+  // converge on the same final state (gbrain process has the current
+  // canonical key in its env) — they differ in WHERE the value is stored:
+  //   - NEW: $HOME/.gbrain/.env (rotating just writes the file + restart)
+  //   - OLD: unit's Environment= line (rotating needs sed + daemon-reload)
+  //
+  // The OLD branch can be removed once every fleet VM has been reinstalled
+  // from a post-fix snapshot (next bake cycle). Until then, we support both.
+  // Regex matches `EnvironmentFile=` (with optional leading `-` for the
+  // make-it-optional prefix) followed by anything containing `.gbrain/.env`.
+  // install-gbrain.sh writes the literal path `/home/openclaw/.gbrain/.env`
+  // after heredoc-expansion of `$HOME`; the `.*` lets us match any reasonable
+  // expansion variant without committing to one specific format.
+  const styleCheck = await ssh.execCommand(
+    "grep -qE '^EnvironmentFile=-?.*\\.gbrain/\\.env' $HOME/.config/systemd/user/gbrain.service && echo NEW || echo OLD",
+  );
+  const isNewStyle = styleCheck.stdout.trim() === "NEW";
+
+  if (isNewStyle) {
+    // ── NEW PATH: write $HOME/.gbrain/.env ──
+    //
+    // Idempotency: read the file's current ANTHROPIC_API_KEY. If it matches
+    // canonical, no-op. Otherwise atomic write (tmp + mv) + restart.
+    // restart is sufficient — systemd re-reads EnvironmentFile= on start.
+    const fileRead = await ssh.execCommand(
+      "grep '^ANTHROPIC_API_KEY=' $HOME/.gbrain/.env 2>/dev/null | head -1 | cut -d= -f2-",
+    );
+    const fileValue = fileRead.stdout.trim();
+
+    if (fileValue === envValue) {
+      result.alreadyCorrect.push("gbrainEnvSync (new-style, file matches)");
+      return;
+    }
+
+    if (dryRun) {
+      result.fixed.push(
+        `[dry-run] gbrainEnvSync (new-style): would rotate key in $HOME/.gbrain/.env (current=${fileValue.slice(0, 20) || "<empty>"}..., new=${envValue.slice(0, 20)}...)`,
+      );
+      return;
+    }
+
+    // Atomic write via tmp + mv. printf (NOT echo — Rule 6) for no-trailing-
+    // newline-corruption on values. Mode 600 on the tmp before mv so the
+    // file is never readable by other users between write + chmod.
+    const sync = await ssh.execCommand(
+      [
+        `TMP=$HOME/.gbrain/.env.tmp.$$`,
+        `printf 'ANTHROPIC_API_KEY=%s\\n' '${envValue}' > "$TMP"`,
+        `chmod 600 "$TMP"`,
+        `mv "$TMP" $HOME/.gbrain/.env`,
+        // Verify the file's new value (defense vs disk-pressure silent-write-fail)
+        `NEW_FILE_VAL=$(grep '^ANTHROPIC_API_KEY=' $HOME/.gbrain/.env 2>/dev/null | head -1 | cut -d= -f2-)`,
+        `[ "$NEW_FILE_VAL" = "${envValue}" ] || { echo "SYNC_FAILED file-not-written"; exit 1; }`,
+        // Restart gbrain to re-read EnvironmentFile= (uses KillSignal=SIGKILL
+        // drop-in — Rule 54-safe for PGLite)
+        `systemctl --user restart gbrain.service`,
+        `sleep 3`,
+        // Verify active + process env has new value
+        `systemctl --user is-active gbrain.service | grep -q '^active$' || { echo "SYNC_FAILED gbrain-not-active"; exit 2; }`,
+        `PID=$(systemctl --user show gbrain.service --property=MainPID --value)`,
+        `PROC_VAL=$(cat /proc/$PID/environ 2>/dev/null | tr '\\0' '\\n' | grep '^ANTHROPIC_API_KEY=' | head -1 | cut -d= -f2-)`,
+        `[ "$PROC_VAL" = "${envValue}" ] || { echo "SYNC_FAILED proc-env-mismatch"; exit 3; }`,
+        `echo "SYNC_OK"`,
+      ].join(" && "),
+    );
+
+    if (sync.code !== 0 || !sync.stdout.includes("SYNC_OK")) {
+      result.errors.push(
+        `stepGbrainEnvSync (new-style): failed exit=${sync.code} stdout=${(sync.stdout || "").slice(0, 200)} stderr=${(sync.stderr || "").slice(0, 200)}`,
+      );
+      return;
+    }
+
+    result.fixed.push("gbrainEnvSync (new-style): ANTHROPIC_API_KEY rotated in $HOME/.gbrain/.env + restarted");
+    logger.info("stepGbrainEnvSync (new-style): rotated key + restarted gbrain", {
+      vmId: vm.id,
+      oldFilePrefix: fileValue.slice(0, 20) || "<empty>",
+      newFilePrefix: envValue.slice(0, 20),
+    });
+    return;
+  }
+
+  // ── OLD PATH (legacy inline Environment=ANTHROPIC_API_KEY=) ──
+  //
+  // Preserved for backwards compatibility with VMs provisioned from
+  // snapshots predating the 2026-05-22 EnvironmentFile architecture. Will
+  // be removed once every fleet VM has been reinstalled from a post-fix
+  // bake (track via post-bake coverage probe: grep EnvironmentFile= on the
+  // unit; expect 100% after next bake propagates).
+  //
   // Read unit's current value. Format we expect (from install-gbrain.sh Phase E):
   //   Environment=ANTHROPIC_API_KEY=<key>
   // cut -d= -f3- captures the full value after the second `=` (handles values
@@ -1595,7 +1720,7 @@ async function stepGbrainEnvSync(
     // Unit exists but Environment=ANTHROPIC_API_KEY= line is missing. Don't
     // synthesize one — let install-gbrain.sh (stepGbrain) own the unit layout.
     // Push to warnings so the operator notices but don't block cv-bump.
-    logger.warn("stepGbrainEnvSync: unit present but Environment=ANTHROPIC_API_KEY= absent — skipping (install-gbrain.sh should own this layout)", {
+    logger.warn("stepGbrainEnvSync (old-style): unit present but Environment=ANTHROPIC_API_KEY= absent — skipping (install-gbrain.sh should own this layout)", {
       vmId: vm.id,
     });
     result.alreadyCorrect.push("gbrainEnvSync (unit Environment= line missing)");
@@ -1603,14 +1728,14 @@ async function stepGbrainEnvSync(
   }
 
   if (unitValue === envValue) {
-    result.alreadyCorrect.push("gbrainEnvSync");
+    result.alreadyCorrect.push("gbrainEnvSync (old-style)");
     return;
   }
 
   // Drift detected — sync .env → unit + daemon-reload + restart gbrain.
   if (dryRun) {
     result.fixed.push(
-      `[dry-run] gbrainEnvSync: would rotate key (env=${envValue.slice(0, 20)}..., unit=${unitValue.slice(0, 20)}...)`,
+      `[dry-run] gbrainEnvSync (old-style): would rotate key (env=${envValue.slice(0, 20)}..., unit=${unitValue.slice(0, 20)}...)`,
     );
     return;
   }
@@ -1643,13 +1768,13 @@ async function stepGbrainEnvSync(
 
   if (sync.code !== 0 || !sync.stdout.includes("SYNC_OK")) {
     result.errors.push(
-      `stepGbrainEnvSync: failed exit=${sync.code} stdout=${(sync.stdout || "").slice(0, 200)} stderr=${(sync.stderr || "").slice(0, 200)}`,
+      `stepGbrainEnvSync (old-style): failed exit=${sync.code} stdout=${(sync.stdout || "").slice(0, 200)} stderr=${(sync.stderr || "").slice(0, 200)}`,
     );
     return;
   }
 
-  result.fixed.push("gbrainEnvSync: ANTHROPIC_API_KEY rotated in gbrain unit + restarted");
-  logger.info("stepGbrainEnvSync: rotated key + restarted gbrain", {
+  result.fixed.push("gbrainEnvSync (old-style): ANTHROPIC_API_KEY rotated in gbrain unit + restarted");
+  logger.info("stepGbrainEnvSync (old-style): rotated key + restarted gbrain", {
     vmId: vm.id,
     oldKeyPrefix: unitValue.slice(0, 20),
     newKeyPrefix: envValue.slice(0, 20),

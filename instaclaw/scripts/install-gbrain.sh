@@ -1161,6 +1161,51 @@ if [ -z "$BEARER_TOKEN" ]; then
   exit 10
 fi
 
+# ─── E4.5: write rotatable-secret env file ($HOME/.gbrain/.env) ───
+#
+# 2026-05-22 fix (EnvironmentFile architecture):
+# Previously ANTHROPIC_API_KEY was baked inline into the systemd unit's
+# Environment=ANTHROPIC_API_KEY=<value>. That hardcoded the key into the
+# snapshot image — every new VM from the snapshot started with the
+# bake-time key in the unit for ~3 minutes until stepGbrainEnvSync's
+# sed-rewrite + restart healed it. If GBRAIN_ANTHROPIC_API_KEY was rotated
+# in Vercel between bake + first user signup, the bake-time key was
+# stale at boot, and any agent put_page call within the heal window
+# returned 401 from Anthropic.
+#
+# New layout: ANTHROPIC_API_KEY lives in $HOME/.gbrain/.env (separate from
+# $HOME/.openclaw/.env which is owned by stepEnvVarPush). The systemd unit
+# references it via `EnvironmentFile=-$HOME/.gbrain/.env` (Phase E5 below).
+# stepGbrainEnvSync rewrites THIS file on rotation — no sed gymnastics on
+# the unit, no daemon-reload, just an atomic file write + restart.
+#
+# Atomic write via tmp + mv: a crash mid-write leaves either the OLD env
+# file (recoverable: gbrain keeps using prior key) or the NEW env file
+# (correct). Never a partial write.
+#
+# Mode 600 — the file contains the Anthropic project key. Same posture as
+# $HOME/.gbrain/openclaw-bearer-token.txt and $HOME/.openclaw/.env.
+#
+# Scope: ANTHROPIC_API_KEY only for this commit. OPENAI_API_KEY has the
+# same risk shape (rotatable secret baked into unit) but is left inline
+# pending a separate rotation-discipline decision. Migrating it later is
+# additive (add the line to this file + remove Environment= line from
+# unit). Cooper explicitly scoped this commit to ANTHROPIC_API_KEY.
+TMP_GBRAIN_ENV="$HOME/.gbrain/.env.tmp.$$"
+printf 'ANTHROPIC_API_KEY=%s\n' "$ANTHROPIC_KEY" > "$TMP_GBRAIN_ENV"
+chmod 600 "$TMP_GBRAIN_ENV"
+mv "$TMP_GBRAIN_ENV" "$HOME/.gbrain/.env"
+
+# Verify the file landed with the expected value (defense vs disk-pressure
+# silent-write-fail per Rule 37). cut -d= -f2- handles values with `=` in
+# them (though Anthropic keys never do).
+WRITTEN_VAL=$(grep '^ANTHROPIC_API_KEY=' "$HOME/.gbrain/.env" 2>/dev/null | head -1 | cut -d= -f2-)
+if [ "$WRITTEN_VAL" != "$ANTHROPIC_KEY" ]; then
+  echo "FATAL_GBRAIN_ENV_WRITE_FAILED expected_len=${#ANTHROPIC_KEY} got_len=${#WRITTEN_VAL}"
+  exit 12
+fi
+echo "PHASE_E4_5_OK gbrain_env_file_written"
+
 # ─── E5: write systemd user unit ───
 #
 # Critical details:
@@ -1195,7 +1240,17 @@ WorkingDirectory=$HOME/gbrain
 Environment=PATH=$HOME/.bun/bin:$HOME/.nvm/versions/node/v22.22.2/bin:/usr/local/bin:/usr/bin:/bin
 Environment=HOME=$HOME
 Environment=OPENAI_API_KEY=$OPENAI_KEY
-Environment=ANTHROPIC_API_KEY=$ANTHROPIC_KEY
+# 2026-05-22 EnvironmentFile architecture: ANTHROPIC_API_KEY now lives in
+# $HOME/.gbrain/.env (written by Phase E4.5 above; rotated by
+# stepGbrainEnvSync in lib/vm-reconcile.ts). The leading `-` makes it
+# OPTIONAL — if the file is missing (e.g., disk pressure deleted it),
+# gbrain still starts; embedding calls will fail loudly at Anthropic's
+# 401 rather than the unit refusing to start. The next reconciler tick
+# re-creates the file. systemd re-reads EnvironmentFile= on every start,
+# so `systemctl restart gbrain` is sufficient to pick up rotations — no
+# daemon-reload needed (unlike inline Environment= which is baked into
+# the unit's runtime-loaded view).
+EnvironmentFile=-$HOME/.gbrain/.env
 Environment=GBRAIN_EMBEDDING_MODEL=openai:text-embedding-3-large
 # v0.36.x: BOTH env vars required. Without GBRAIN_EMBEDDING_DIMENSIONS, gateway.ts
 # falls back to DEFAULT_EMBEDDING_DIMENSIONS=1280 (ZE zembed-1 default), producing
