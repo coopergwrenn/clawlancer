@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-22
 
-Window: `ccb89a26068be51b5d3ace5e5e07e3c3c391c912` → `HEAD` (HEAD = `4acc5280`)
+Window: `4acc5280755206e255e30da7207267f9fdd51f5f` → `HEAD` (HEAD = `0377e01b`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 4acc5280755206e255e30da7207267f9fdd51f5f -->
+<!-- LAST_GENERATED_SHA: 0377e01bbcb0224b414b63c3c3478f90b4beccd3 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `4acc5280` 2026-05-22 — fix(cloud-init): §1.0.7 add daemon-reload + content-verify (vm-1019 incomplete-fix) [2 files] _(ai-assisted)_
-- `fe11f45e` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `0377e01b` 2026-05-22 — fix(vm/configure): cloud-init first-10-min protection guard (vm-1019 root-fix) [1 files] _(ai-assisted)_
+- `19e39157` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `4acc5280` 2026-05-22 — fix(cloud-init): §1.0.7 add daemon-reload + content-verify (vm-1019 incomplete-fix) [2 files] _(ai-assisted)_
+- `0377e01b` 2026-05-22 — fix(vm/configure): cloud-init first-10-min protection guard (vm-1019 root-fix) [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `fe11f45e` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `19e39157` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `4acc5280` 2026-05-22 — fix(cloud-init): §1.0.7 add daemon-reload + content-verify (vm-1019 incomplete-fix)
+- `0377e01b` 2026-05-22 — fix(vm/configure): cloud-init first-10-min protection guard (vm-1019 root-fix)
 
 ## Appendix — every commit (chronological)
 
-- `fe11f45e` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `4acc5280` 2026-05-22 — fix(cloud-init): §1.0.7 add daemon-reload + content-verify (vm-1019 incomplete-fix) [2 files] _(ai-assisted)_
+- `19e39157` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `0377e01b` 2026-05-22 — fix(vm/configure): cloud-init first-10-min protection guard (vm-1019 root-fix) [1 files] _(ai-assisted)_
