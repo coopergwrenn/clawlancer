@@ -385,7 +385,7 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
                   disabled={isVerifying || isAlreadyClaimed}
                   aria-label="email registered with Edge Esmeralda"
                   autoComplete="email"
-                  className="flex-1 px-5 py-3.5 rounded-full text-[14px] outline-none transition-colors focus:border-[var(--edge-olive)] disabled:opacity-60"
+                  className="flex-1 px-5 py-3.5 rounded-full text-[14px] outline-none transition-colors focus:border-[var(--edge-olive)] disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{
                     background: "#FFFFFF",
                     border: "1px solid var(--edge-line)",
@@ -395,7 +395,8 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
                 <button
                   type="submit"
                   disabled={isVerifying || isAlreadyClaimed || !email.trim()}
-                  className="px-6 py-3.5 rounded-full text-[13px] uppercase tracking-[0.14em] font-medium transition-colors hover:bg-[var(--edge-olive-hover)] disabled:opacity-60 inline-flex items-center justify-center gap-2"
+                  className="px-6 py-3.5 rounded-full text-[13px] uppercase tracking-[0.14em] font-medium transition-colors hover:bg-[var(--edge-olive-hover)] disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                  aria-busy={isVerifying}
                   style={{
                     background: "var(--edge-olive)",
                     color: "#FFFFFF",
