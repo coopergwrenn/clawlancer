@@ -85,8 +85,85 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ url: `${origin}/deploying` });
     }
 
-    // Check for active deployment lock (within last 15 minutes)
-    if (user.deployment_lock_at) {
+    // ─── Stripe back-button recovery (Charlie #4 audit fix 2026-05-22) ──
+    //
+    // The lock check below previously made the back-button case
+    // unrecoverable: user clicked Continue → Stripe checkout → hit
+    // browser-back → returned to /plan with a 15-minute "Deployment
+    // already in progress" wall. They couldn't change plans, couldn't
+    // retry, couldn't recover. For 1000 Edge attendees this would be
+    // a Day-1 support flood — back-button after Stripe redirect is
+    // a very common user instinct.
+    //
+    // The fix: before the lock check, find any OPEN Stripe checkout
+    // sessions for this customer and expire them via Stripe's API.
+    // Stripe's `checkout.sessions.expire()` is idempotent + safe to
+    // call (returns the session in `expired` state). After expiring,
+    // we clear the deployment_lock_at — the user can now create a
+    // fresh checkout session with potentially-different plan tier.
+    //
+    // Why this is safe from double-payment: an expired Stripe session
+    // cannot be paid. So even if the user has both the old URL and
+    // the new URL open in two tabs, only the new one is payable. The
+    // old one's "Pay" button at Stripe will reject.
+    //
+    // Degradation: if Stripe's list/expire APIs fail (network, rate
+    // limit, etc.), we log + fall through to the original lock-wall
+    // behavior. Better to show the user a stuck state than to risk
+    // a real double-payment if expiration silently failed.
+    let hadOpenSessions = false;
+    if (user.stripe_customer_id && user.deployment_lock_at) {
+      try {
+        const openSessions = await stripe.checkout.sessions.list({
+          customer: user.stripe_customer_id,
+          status: "open",
+          limit: 5,
+        });
+        for (const oldSession of openSessions.data) {
+          try {
+            await stripe.checkout.sessions.expire(oldSession.id);
+            hadOpenSessions = true;
+            logger.info("Expired prior open Stripe checkout session", {
+              route: "billing/checkout",
+              userId: user.id,
+              sessionId: oldSession.id,
+            });
+          } catch (expireErr) {
+            // Session may have already transitioned to a terminal state
+            // (expired, complete) between our list and expire calls.
+            // Stripe throws for those; safe to ignore — they can't be
+            // paid anymore either way.
+            logger.warn("Stripe session expire threw (likely already terminal)", {
+              route: "billing/checkout",
+              userId: user.id,
+              sessionId: oldSession.id,
+              error: String(expireErr),
+            });
+          }
+        }
+      } catch (listErr) {
+        // Stripe list API failed. Don't crash; the lock-wall fallback
+        // below will engage. User gets the old stuck state but no new
+        // payment risk introduced.
+        logger.warn("Stripe sessions.list failed, falling through to lock check", {
+          route: "billing/checkout",
+          userId: user.id,
+          error: String(listErr),
+        });
+      }
+    }
+
+    // Check for active deployment lock (within last 15 minutes).
+    // If we just expired prior open sessions, clear the lock too —
+    // there's no in-flight checkout anymore for the lock to protect.
+    if (hadOpenSessions) {
+      await supabase
+        .from("instaclaw_users")
+        .update({ deployment_lock_at: null })
+        .eq("id", user.id);
+      // Don't enter the lock-check branch — we just cleared it.
+      // Will be re-set below to mark the new checkout in flight.
+    } else if (user.deployment_lock_at) {
       const lockAge = Date.now() - new Date(user.deployment_lock_at).getTime();
       const fifteenMinutes = 15 * 60 * 1000;
 
