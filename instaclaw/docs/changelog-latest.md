@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-22
 
-Window: `074f3bd65f4627c169b334cf60738102b2f18a19` → `HEAD` (HEAD = `e5f04d21`)
+Window: `e5f04d21acc541bc02347411fcb024a89835593e` → `HEAD` (HEAD = `7c8b5420`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: e5f04d21acc541bc02347411fcb024a89835593e -->
+<!-- LAST_GENERATED_SHA: 7c8b54205b2e5d647ac2e3c443ce031fcb65eac2 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `e5f04d21` 2026-05-22 — fix(edge): W1 — em-dash sweep across the Edge funnel + aria-labels [12 files] _(multi: [feature, edge]; ai-assisted)_
+- `7c8b5420` 2026-05-22 — fix(auth): W5 — /signin redirects authenticated users to callbackUrl server-side, with hardened param validation [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `a26736a6` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `6425c895` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `e5f04d21` 2026-05-22 — fix(edge): W1 — em-dash sweep across the Edge funnel + aria-labels [12 files] _(multi: [feature, edge]; ai-assisted)_
+- `7c8b5420` 2026-05-22 — fix(auth): W5 — /signin redirects authenticated users to callbackUrl server-side, with hardened param validation [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,21 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `a26736a6` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `e5f04d21` 2026-05-22 — [feature, edge] — fix(edge): W1 — em-dash sweep across the Edge funnel + aria-labels
+- `6425c895` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `e5f04d21` 2026-05-22 — fix(edge): W1 — em-dash sweep across the Edge funnel + aria-labels
+- `7c8b5420` 2026-05-22 — fix(auth): W5 — /signin redirects authenticated users to callbackUrl server-side, with hardened param validation
 
 ## Appendix — every commit (chronological)
 
-- `a26736a6` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `e5f04d21` 2026-05-22 — fix(edge): W1 — em-dash sweep across the Edge funnel + aria-labels [12 files] _(multi: [feature, edge]; ai-assisted)_
+- `6425c895` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `7c8b5420` 2026-05-22 — fix(auth): W5 — /signin redirects authenticated users to callbackUrl server-side, with hardened param validation [2 files] _(ai-assisted)_
