@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { EdgeUserState } from "../edge-user-state";
@@ -75,62 +75,87 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
     else if (err === "email-mismatch") setGateState({ kind: "email_mismatch" });
   }, [searchParams]);
 
+  // 2026-05-22: synchronous in-flight guard to prevent double-click from
+  // firing two parallel /api/edge/verify-ticket requests. React's state
+  // update + re-render cycle is fast but NOT instant — a fast double-tap
+  // (especially on mobile where Cooper saw this during the live demo) can
+  // fire the handler twice before `gateState.kind === "verifying"`
+  // disables the button. A useRef boolean is set + checked SYNCHRONOUSLY
+  // inside the handler, so the second click bails before any fetch fires.
+  // The downstream EdgeOS rate-limit-from-double-click bug Cooper hit
+  // becomes structurally impossible.
+  const verifyInFlightRef = useRef(false);
+
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed || !trimmed.includes("@")) {
-      setGateState({ kind: "invalid_email" });
-      return;
-    }
-
-    setGateState({ kind: "verifying" });
-    const start = Date.now();
-
-    let data: VerifyResponse;
+    if (verifyInFlightRef.current) return;
+    verifyInFlightRef.current = true;
+    // ALL paths through this handler MUST reset the in-flight ref or
+    // the user gets stuck (button looks live but does nothing because
+    // the synchronous guard short-circuits every subsequent call).
+    // Wrapping in try/finally ensures the reset happens for: validation
+    // bail, fetch network error, all post-fetch error reasons, and the
+    // success path. Pre-fix, only the validation-bail path reset the
+    // ref; every other path left it true forever, which would have
+    // turned the synchronous guard into a one-shot kill switch.
     try {
-      const res = await fetch("/api/edge/verify-ticket", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmed }),
-      });
-      data = await res.json();
-    } catch {
-      setGateState({ kind: "error" });
-      return;
-    }
-
-    // Min loading hold for deliberate-feel even if API was fast.
-    const elapsed = Date.now() - start;
-    if (elapsed < MIN_LOADING_MS) {
-      await new Promise((r) => setTimeout(r, MIN_LOADING_MS - elapsed));
-    }
-
-    if (data.verified) {
-      // Anticipation beat before the reveal animates in.
-      await new Promise((r) => setTimeout(r, REVEAL_HOLD_MS));
-      setGateState({
-        kind: "verified",
-        email: data.email ?? trimmed,
-        degraded: data.degraded,
-      });
-      return;
-    }
-
-    switch (data.reason) {
-      case "already_claimed":
-        setGateState({ kind: "already_claimed" });
-        break;
-      case "not_found":
-        setGateState({ kind: "not_found" });
-        break;
-      case "invalid_email":
+      const trimmed = email.trim().toLowerCase();
+      if (!trimmed || !trimmed.includes("@")) {
         setGateState({ kind: "invalid_email" });
-        break;
-      case "rate_limited":
-        setGateState({ kind: "rate_limited" });
-        break;
-      default:
+        return;
+      }
+
+      setGateState({ kind: "verifying" });
+      const start = Date.now();
+
+      let data: VerifyResponse;
+      try {
+        const res = await fetch("/api/edge/verify-ticket", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: trimmed }),
+        });
+        data = await res.json();
+      } catch {
         setGateState({ kind: "error" });
+        return;
+      }
+
+      // Min loading hold for deliberate-feel even if API was fast.
+      const elapsed = Date.now() - start;
+      if (elapsed < MIN_LOADING_MS) {
+        await new Promise((r) => setTimeout(r, MIN_LOADING_MS - elapsed));
+      }
+
+      if (data.verified) {
+        // Anticipation beat before the reveal animates in.
+        await new Promise((r) => setTimeout(r, REVEAL_HOLD_MS));
+        setGateState({
+          kind: "verified",
+          email: data.email ?? trimmed,
+          degraded: data.degraded,
+        });
+        return;
+      }
+
+      switch (data.reason) {
+        case "already_claimed":
+          setGateState({ kind: "already_claimed" });
+          break;
+        case "not_found":
+          setGateState({ kind: "not_found" });
+          break;
+        case "invalid_email":
+          setGateState({ kind: "invalid_email" });
+          break;
+        case "rate_limited":
+          setGateState({ kind: "rate_limited" });
+          break;
+        default:
+          setGateState({ kind: "error" });
+      }
+    } finally {
+      verifyInFlightRef.current = false;
     }
   }
 
@@ -378,7 +403,43 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
                   }}
                 >
                   {isVerifying ? (
-                    <span className="checking-pulse">Checking…</span>
+                    /* Spinner + "Verifying..." label. The previous text-pulse
+                       feedback (opacity 0.65 → 1 → 0.65) was too subtle —
+                       Cooper hit double-click during a live demo because
+                       nothing on the button visibly changed within the
+                       first 200ms of the click. A rotating spinner is the
+                       universal "system is working" affordance; combined
+                       with `disabled={isVerifying}` (line 386) and the
+                       useRef in-flight guard (line 87 / handleVerify), a
+                       double-click now has three independent stops:
+                       (1) the button is visually + functionally disabled,
+                       (2) the synchronous useRef short-circuits the second
+                       call before any state read happens, (3) the
+                       handler's "verifying" state would otherwise be the
+                       last safety net. Triple defense, single feedback. */
+                    <>
+                      <svg
+                        className="animate-spin h-3.5 w-3.5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
+                      </svg>
+                      Verifying...
+                    </>
                   ) : (
                     <>
                       Verify <span aria-hidden>→</span>
@@ -537,9 +598,6 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
         :global(.continue-anim) {
           animation: gate-continue-slide 500ms cubic-bezier(0.16, 1, 0.3, 1) 400ms both;
         }
-        :global(.checking-pulse) {
-          animation: gate-checking 1.4s ease-in-out infinite;
-        }
         @keyframes gate-fade-rise {
           0% {
             opacity: 0;
@@ -558,15 +616,6 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
           100% {
             opacity: 1;
             transform: translateY(0);
-          }
-        }
-        @keyframes gate-checking {
-          0%,
-          100% {
-            opacity: 0.65;
-          }
-          50% {
-            opacity: 1;
           }
         }
       `}</style>
