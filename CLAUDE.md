@@ -3157,6 +3157,83 @@ When reviewing any PR that says "deferred to a later milestone due to a canary f
 
 If answers 1-3 are unclear, the PR isn't ready. Investigate first.
 
+### Rule 60 — Migration files MUST be self-contained; never rely on the Supabase Studio prompt to enable RLS
+
+Every `CREATE TABLE` statement in `instaclaw/supabase/migrations/` MUST be followed in the same file by `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY;` (and, where the table needs anon or authenticated access, by explicit `CREATE POLICY` statements granting that access). The Supabase Studio "Run and enable RLS" prompt is a safety net for ONE apply path — operator clicking through Studio at original creation. It is NOT a substitute for the SQL being in the file.
+
+#### Why this rule is load-bearing
+
+When a migration runs in production, prod state matches the operator's choices: Studio shows the prompt, the operator clicks "Run and enable RLS," prod gets RLS-on. The file looks fine to the operator because the table is correctly protected in prod. The bug is invisible until someone tries to re-run the migration on a different database — staging restore, local-dev seed, `pg_restore`, `supabase db push` via CLI, disaster recovery. Those paths DO NOT trigger the Studio prompt. The CREATE TABLE statement runs and the table ends up RLS-disabled, silently exposing every row to anon-key access via PostgREST.
+
+This is structurally the same class of bug as Rule 56 (file-in-migrations-but-not-applied breaks the build pipeline): the file is a *promise* about how a fresh database produced from that file behaves. A promise that depends on operator-runtime-clicks is a broken promise.
+
+#### The 2026-05-22 audit
+
+Two tables exposed in 9 days:
+
+**`instaclaw_oauth_signup_flows`** (created 2026-05-22): the original migration file had only `CREATE TABLE` — no `ALTER ... ENABLE RLS`. When applied via Studio, Studio's RLS warning fired ("Potential issue detected — this query creates a table without enabling Row Level Security"). Cooper clicked "Run and enable RLS." Prod was correctly RLS-on from minute zero. But the file as-shipped would have produced an RLS-off table on any non-Studio replay path. This particular table has an account-takeover primitive in its consumer route: `/api/auth/openai/signup/poll` mints a session-issuing JWT for `resolved_user_id` when `status='completed'`. An attacker with the public anon key (`NEXT_PUBLIC_SUPABASE_ANON_KEY`) could `INSERT` a fabricated completed row with `resolved_user_id=<victim>` and harvest a session for any user. RLS-on closed that primitive; RLS-off (which would have happened on any fresh-DB re-apply) would have re-opened it.
+
+**`instaclaw_oauth_device_flows`** (created 2026-05-19): same file/prod divergence shape. Original Studio apply triggered the prompt; Cooper accepted; prod was correctly RLS-on. But the file omitted the statement. Audit via direct `pg_class` probe on 2026-05-22 confirmed prod state was clean (RLS-enabled since day one) — the file divergence had been latent for 3 days with no production exposure. Threat model on this table is narrower than signup_flows (the /poll route reads by authenticated `user_id`, not by attacker-controlled cookie, so the session-mint primitive doesn't apply) but still real: anon-key SELECT would leak in-flight `user_code` values (privacy + phishing assist); anon-key UPDATE/DELETE could DoS legitimate connect flows.
+
+Both files were fixed on 2026-05-22 by adding `ALTER TABLE ... ENABLE ROW LEVEL SECURITY;` directly after the `CREATE TABLE` block. ALTER ENABLE is idempotent — running it on an already-RLS-enabled table is a no-op — so the fix landed safely without touching prod state. Two commits (`a5952890` for signup_flows, `49b8789d` for device_flows) record the discovery.
+
+#### Mandatory pattern
+
+The shape of every new table migration file:
+
+```sql
+CREATE TABLE IF NOT EXISTS public.instaclaw_<name> (
+  ...columns...
+);
+
+-- Row Level Security — load-bearing for the security model.
+-- Service-role bypasses RLS; anon and authenticated get full deny
+-- absent explicit policies. Idempotent — no-op on re-run.
+ALTER TABLE public.instaclaw_<name> ENABLE ROW LEVEL SECURITY;
+
+-- Indexes (if any)
+CREATE INDEX ...
+
+-- Comments (if any)
+COMMENT ON TABLE ...
+```
+
+For tables that genuinely need anon or authenticated access (rare — e.g., a public-read product catalog, a waitlist signup form), enable RLS AND add explicit `CREATE POLICY` statements granting the narrowest access required:
+
+```sql
+ALTER TABLE public.instaclaw_<name> ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "<name>_anon_read" ON public.instaclaw_<name>
+  FOR SELECT TO anon USING (true);
+```
+
+Never skip ENABLE RLS to "make it easier." The default deny-all posture is the secure baseline; explicit policies are the controlled exceptions.
+
+#### Banned patterns
+
+- A `CREATE TABLE public.<anything>` in a migration file without a matching `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` in the same file.
+- "I'll click the Studio prompt at apply time" as a substitute for SQL. The prompt only fires for Studio applies; it does not fire for `supabase db push`, `psql -f`, `pg_restore`, or any CI/automation replay path. The file must protect ALL applies, not just the original.
+- "This table doesn't have PII so RLS isn't needed." That reasoning is upside-down. The cost of leaving RLS off is unbounded (any future column added to the table could be sensitive); the cost of enabling RLS is zero (service-role bypasses, our routes work unchanged). The default is RLS-on with no policies; the burden of proof is on the engineer who wants to skip it.
+- Adding RLS via a separate later migration as the cleanup path. The window between table creation and the cleanup migration is a real exposure window — and if the cleanup migration is skipped on staging/replay, the exposure becomes permanent on that database. Enable RLS in the SAME migration that creates the table.
+- Comment claims like "no client ever reads this table directly" as the security argument. That's a habit description, not a security guarantee — Supabase's default GRANTs to `anon` and `authenticated` make the table API-reachable regardless of whether anyone in our codebase calls it.
+
+#### Detection rule
+
+Reviewer checklist for any PR touching `instaclaw/supabase/migrations/`:
+
+1. For each `CREATE TABLE public.<name>` in the diff: is there a matching `ALTER TABLE public.<name> ENABLE ROW LEVEL SECURITY` in the same file?
+2. If yes: are there any policies granting anon/authenticated access? If yes, are they the narrowest needed (specific columns, specific row filters)?
+3. If the PR claims "Studio's prompt accepted in prod" — that's not sufficient. The file must be self-contained.
+4. If migrating an existing table whose original creation file omitted RLS: include an `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` in a CURRENT migration (idempotent in prod if already on; closes the file/prod divergence for future replays). Reference the audit-pass commit in the PR description so the forensic chain is preserved.
+
+P1 followup (worth filing): a CI grep gate that fails the build if any migration file under `instaclaw/supabase/migrations/` contains `CREATE TABLE public.<name>` without a matching `ALTER TABLE public.<name> ENABLE ROW LEVEL SECURITY`. The rule lives in CLAUDE.md as human-enforced for now; a mechanical check would catch the next regression at PR-review time instead of at audit time.
+
+#### Related rules
+
+- **Rule 56** (file/prod-apply timing): governs WHEN a migration file lands in `migrations/`. Rule 60 governs WHAT must be in the file. Both are about the file being a faithful, self-contained description of prod schema.
+- **Rule 19** (`.select("*")` for safety-critical reads): partial selects can hide column-grant misconfig. With RLS as the gate, column-level grants matter less; both layers together produce the defense-in-depth posture.
+- **Rule 23** (sentinel-grep required templates): same "the file is the source of truth, not operator runtime choice" pattern applied to reconciler templates instead of migration SQL.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
