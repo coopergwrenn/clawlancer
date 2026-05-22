@@ -1557,33 +1557,55 @@ fi
 # broken the gateway. If it did (parse error, etc.), we want to know
 # immediately — don't let Phase H proceed against an unhealthy gateway.
 #
-# Retry up to 3 attempts × 3s spacing (P2 followup 2026-05-21 — fixed Bug E
-# recurrence on vm-517 which re-quarantined 3 times overnight despite the
-# gateway being healthy seconds later). Hot-reload completion timing is
-# non-deterministic in OpenClaw 2026.4.26:
+# 2026-05-22 budget extension (bake-VM 8-plugin cold-boot fix):
+#   Bake VMs load 8 gateway plugins (acpx, bonjour, browser, device-pair,
+#   memory-core, phone-control, talk-voice, telegram) which take ~90s to
+#   cold-boot end-to-end. The pre-fix budget (3 attempts × 3s sleep = 12s
+#   total) caught the gateway in the middle of plugin init, got 000
+#   (connection refused) on all 3 probes, fired FATAL_GATEWAY_UNHEALTHY,
+#   then the cleanup ran `openclaw mcp unset gbrain` which REVERTED the
+#   MCP registration Phase G had just written. This bricked two bakes
+#   tonight before the budget was identified as the root cause.
+#
+# New budget: 24 attempts × 5s sleep = 120s total. Covers the 90s
+# 8-plugin cold-boot with 30s margin. Per-attempt log line so an operator
+# watching `tail -f` sees the gateway is still booting (not hung).
+#
+# Pre-fix rationale (kept for historical context): the 3×3s budget was
+# right for a STEADY-STATE hot-reload after `openclaw mcp set`, where
+# the gateway briefly stops serving /health while it swaps in the new
+# MCP server config (~1-5s window). It was wrong for a COLD-START bake
+# scenario where the gateway is still loading plugins. The new budget
+# accommodates both — a fast hot-reload returns on iter 1-2, a cold
+# boot returns on iter 15-20.
+#
+# Hot-reload completion timing is non-deterministic in OpenClaw 2026.4.26:
 #   • config-watcher emits "config hot reload applied" within <1s (typical)
 #     but on a loaded VM with active sessions, the gateway may briefly stop
 #     serving /health while it swaps in the new MCP server config
 #   • curl returns 000 (connection refused) for the ~1-5s window the gateway
 #     is mid-swap — looks identical to "the gateway crashed" but isn't
 #   • a single probe at this point catches the transient too aggressively
-# Total budget: 3 attempts × (3s curl timeout + 3s sleep) ≈ ~12s worst case.
 # Surface attempt count on success so future timing skew is visible.
 GW_HEALTH=""
 GW_HEALTH_ATTEMPTS=0
-for ATTEMPT in 1 2 3; do
+for ATTEMPT in $(seq 1 24); do
   GW_HEALTH_ATTEMPTS=$ATTEMPT
   GW_HEALTH=$(curl -sf -m 3 -o /dev/null -w '%{http_code}' http://localhost:18789/health 2>/dev/null)
+  # Per-attempt log line — operators watching `tail -f` need to see
+  # the gateway is still cold-booting (each plugin's init takes 5-15s).
+  # On a fast hot-reload, we typically break on iter 1-2 so the log is short.
+  echo "  G8: gateway health probe iter=$ATTEMPT/24 (t+$(((ATTEMPT-1)*5))s) http=${GW_HEALTH:-000}"
   if [ "$GW_HEALTH" = "200" ]; then
     break
   fi
   # Don't sleep after the last attempt — pointless wait before fatal.
-  if [ "$ATTEMPT" -lt 3 ]; then
-    sleep 3
+  if [ "$ATTEMPT" -lt 24 ]; then
+    sleep 5
   fi
 done
 if [ "$GW_HEALTH" != "200" ]; then
-  echo "FATAL_GATEWAY_UNHEALTHY_POST_HOT_RELOAD health=$GW_HEALTH attempts=$GW_HEALTH_ATTEMPTS"
+  echo "FATAL_GATEWAY_UNHEALTHY_POST_HOT_RELOAD health=$GW_HEALTH attempts=$GW_HEALTH_ATTEMPTS budget_seconds=120"
   openclaw mcp unset gbrain > /dev/null 2>&1
   exit 19
 fi
