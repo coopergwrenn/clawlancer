@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-22
 
-Window: `fbaeba48e1927b66642b6f87548d9ad2ca829c1d` → `HEAD` (HEAD = `72bf576e`)
+Window: `72bf576e647f7165c95468ba4612ee94a0cad48b` → `HEAD` (HEAD = `924d8fc6`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 72bf576e647f7165c95468ba4612ee94a0cad48b -->
+<!-- LAST_GENERATED_SHA: 924d8fc69eb1022d7ac0243398cc1cdb386cebfe -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `72bf576e` 2026-05-22 — fix(edge/claim): P1 — proper verify button feedback (spinner) + fix latent inflight-ref leak [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `924d8fc6` 2026-05-22 — fix(edge/claim): stronger disabled visuals on verify form (Charlie button-feedback polish) [1 files] _(multi: [feature, edge]; ai-assisted)_
 
 ## What changed under the hood
 
-- `57c5aadb` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `0434c931` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `72bf576e` 2026-05-22 — fix(edge/claim): P1 — proper verify button feedback (spinner) + fix latent inflight-ref leak [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `924d8fc6` 2026-05-22 — fix(edge/claim): stronger disabled visuals on verify form (Charlie button-feedback polish) [1 files] _(multi: [feature, edge]; ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,21 +44,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `57c5aadb` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `0434c931` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `72bf576e` 2026-05-22 — [feature, edge] — fix(edge/claim): P1 — proper verify button feedback (spinner) + fix latent inflight-ref leak
+- `924d8fc6` 2026-05-22 — [feature, edge] — fix(edge/claim): stronger disabled visuals on verify form (Charlie button-feedback polish)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `72bf576e` 2026-05-22 — fix(edge/claim): P1 — proper verify button feedback (spinner) + fix latent inflight-ref leak
+- `924d8fc6` 2026-05-22 — fix(edge/claim): stronger disabled visuals on verify form (Charlie button-feedback polish)
 
 ## Appendix — every commit (chronological)
 
-- `57c5aadb` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `72bf576e` 2026-05-22 — fix(edge/claim): P1 — proper verify button feedback (spinner) + fix latent inflight-ref leak [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `0434c931` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `924d8fc6` 2026-05-22 — fix(edge/claim): stronger disabled visuals on verify form (Charlie button-feedback polish) [1 files] _(multi: [feature, edge]; ai-assisted)_
