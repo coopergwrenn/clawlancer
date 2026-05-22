@@ -516,22 +516,68 @@ export async function assignOrProvisionUserVm(
   const flag = deps.flagOverride ?? process.env.CLOUD_INIT_ONDEMAND_ENABLED ?? "";
   const useCloudInit = flag === "true";
 
-  if (!useCloudInit) {
-    // ── Pool path (legacy, default) ─────────────────────────────────
-    // assignVMWithSSHCheck atomically claims a status='ready' VM via the
-    // `instaclaw_assign_vm` Postgres RPC. Returns null when pool is empty
-    // — caller falls back to sendPendingEmail + process-pending retries.
-    const vm = await poolAssignFn(userId);
-    if (!vm) return null;
+  // ═════════════════════════════════════════════════════════════════════
+  // POOL FIRST — try pool path regardless of CLOUD_INIT_ONDEMAND_ENABLED.
+  // ═════════════════════════════════════════════════════════════════════
+  //
+  // 2026-05-22: changed semantics. Previously CLOUD_INIT_ONDEMAND_ENABLED
+  // was a hard toggle (when true, EVERY signup went through cloud-init
+  // even when pool VMs were available). That sacrificed ~5-10 min of UX
+  // per signup unnecessarily.
+  //
+  // New semantics: pool path is the ALWAYS-PREFERRED fast path. Pool VMs
+  // are pre-warmed and reach "working bot" in ~30 seconds via the
+  // assignVMWithSSHCheck → configureOpenClaw flow. Cloud-init is the
+  // FALLBACK when the pool is empty (~5-10 min from cold Linode boot,
+  // bonjour, channel init, etc).
+  //
+  // CLOUD_INIT_ONDEMAND_ENABLED is now the gate on the FALLBACK only.
+  // When the pool is empty:
+  //   - flag=true  → cloud-init takes over, user gets a VM in 5-10 min
+  //                  instead of the "pending email" experience.
+  //   - flag=false → legacy behavior. Return null so the caller sends
+  //                  pending email + process-pending retries.
+  //
+  // This is the Edge Esmeralda architecture: pool serves the common case
+  // (most attendees in a 30s window), cloud-init is the safety net for
+  // surge moments that exceed pool capacity.
+  //
+  // assignVMWithSSHCheck atomically claims a status='ready' VM via the
+  // `instaclaw_assign_vm` Postgres RPC. Returns null when pool is empty.
+  // Any error in this function propagates up (no swallowing — caller
+  // decides whether to retry vs send pending email).
+  const poolVm = await poolAssignFn(userId);
+  if (poolVm) {
+    logger.info("assignOrProvisionUserVm: pool path (fast)", {
+      route: "lib/createUserVM",
+      userId,
+      vmId: String(poolVm.id),
+    });
     return {
-      vmId: String(vm.id),
-      ipAddress: String(vm.ip_address),
+      vmId: String(poolVm.id),
+      ipAddress: String(poolVm.ip_address),
       path: "pool",
-      vm,
+      vm: poolVm,
     };
   }
 
-  // ── Cloud-init path (Phase 1B-1) ─────────────────────────────────────
+  // Pool is empty. Fall back based on CLOUD_INIT_ONDEMAND_ENABLED flag.
+  if (!useCloudInit) {
+    // Legacy behavior (cloud-init NOT enabled): return null so the caller
+    // sends the pending email + process-pending retries until pool has
+    // capacity again.
+    logger.info("assignOrProvisionUserVm: pool empty + cloud-init disabled → null", {
+      route: "lib/createUserVM",
+      userId,
+    });
+    return null;
+  }
+
+  // ── Cloud-init fallback (Phase 1B-1, 2026-05-22 demoted to fallback) ──
+  //
+  // Pool was empty AND CLOUD_INIT_ONDEMAND_ENABLED=true → provision a
+  // fresh per-user VM via cloud-init. Slower (~5-10 min) but unblocks the
+  // user immediately instead of waiting for pool replenishment.
   //
   // Reads per-user config from pending_users + instaclaw_users, mirrors
   // the fallback chain at /api/vm/configure:206-217, calls createUserVM.
@@ -540,6 +586,10 @@ export async function assignOrProvisionUserVm(
   // throw with a clear pointer to the upstream signup-flow bug. Linode/DB
   // errors inside createUserVM also throw — caller's try/catch normalizes
   // both classes to a "send pending email + retry" outcome.
+  logger.info("assignOrProvisionUserVm: pool empty → cloud-init fallback (slow)", {
+    route: "lib/createUserVM",
+    userId,
+  });
   const { data: pending, error: pendingErr } = await supabase
     .from("instaclaw_pending_users")
     .select(

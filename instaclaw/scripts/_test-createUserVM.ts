@@ -30,9 +30,11 @@ process.env.NEXTAUTH_URL = process.env.NEXTAUTH_URL || "https://instaclaw.io";
 import {
   createUserVM,
   validateCreateUserVMParams,
+  assignOrProvisionUserVm,
   type CreateUserVMParams,
   type CreateUserVMDeps,
   type SupabaseLike,
+  type AssignedVmShape,
 } from "../lib/createUserVM";
 import type { CloudProvider, ServerResult } from "../lib/providers/types";
 
@@ -449,6 +451,164 @@ async function test8_NextauthUrlMissing() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// §4b. Tests — assignOrProvisionUserVm pool-first wiring (2026-05-22)
+// ════════════════════════════════════════════════════════════════════════
+//
+// 2026-05-22: assignOrProvisionUserVm changed semantics. Previously
+// CLOUD_INIT_ONDEMAND_ENABLED was a hard toggle (when true, EVERY signup
+// went through cloud-init even if pool VMs were available). New
+// semantics: pool ALWAYS tried first, cloud-init is the fallback when
+// pool is empty AND the flag is true.
+//
+// Three behaviors must be enforced + tested per Cooper's spec:
+//   (1) pool has VMs → pool path used (regardless of flag value)
+//   (2) pool empty + flag=true → cloud-init fires
+//   (3) pool empty + flag=false → null (legacy "pending email" preserved)
+//
+// Mocks: poolAssignFn + createUserVMFn injected via deps. supabase
+// mocked for cloud-init's pending_users + instaclaw_users lookups.
+
+function makeAssignSupabaseMock(opts: {
+  pendingRow?: Record<string, unknown> | null;
+  userRow?: Record<string, unknown> | null;
+}): { mock: SupabaseLike; calls: { table: string; op: string }[] } {
+  const calls: { table: string; op: string }[] = [];
+  const mock = {
+    from(table: string) {
+      calls.push({ table, op: "from" });
+      const chain = {
+        select(_cols: string) { return chain; },
+        eq(_col: string, _val: unknown) { return chain; },
+        order(_col: string, _opts: unknown) { return chain; },
+        limit(_n: number) { return chain; },
+        async maybeSingle() {
+          if (table === "instaclaw_pending_users") {
+            return { data: opts.pendingRow ?? null, error: null };
+          }
+          if (table === "instaclaw_users") {
+            return { data: opts.userRow ?? null, error: null };
+          }
+          return { data: null, error: null };
+        },
+      };
+      return chain;
+    },
+  } as unknown as SupabaseLike;
+  return { mock, calls };
+}
+
+async function test9_AssignOrProvision_PoolHasVms(): Promise<void> {
+  console.log("\n── §4b-T9: assignOrProvisionUserVm — pool has VMs (pool path always preferred) ──");
+
+  let poolCalls = 0;
+  let cloudInitCalls = 0;
+
+  const mockPoolVm: AssignedVmShape = {
+    id: "pool-vm-id-123",
+    ip_address: "192.0.2.100",
+  };
+
+  const poolAssignFn = async (_userId: string) => {
+    poolCalls++;
+    return mockPoolVm;
+  };
+  const createUserVMFn = (async (_p: unknown, _d: unknown) => {
+    cloudInitCalls++;
+    return { vmId: "ci-id", vmName: "ci-name", providerId: "ci-pid", ipAddress: "ci-ip" };
+  }) as unknown as typeof createUserVM;
+
+  // Test with flag=true (cloud-init enabled) — pool should STILL win
+  const { mock } = makeAssignSupabaseMock({ pendingRow: null });
+  const result = await assignOrProvisionUserVm("test-user-123", {
+    supabase: mock,
+    poolAssignFn,
+    createUserVMFn,
+    flagOverride: "true", // intentionally TRUE — pool must still win
+  });
+
+  assert(result !== null, "pool-VM-available: result is non-null");
+  assert(result?.path === "pool", `pool-VM-available: path === "pool" (got ${result?.path})`);
+  assert(result?.vmId === "pool-vm-id-123", "pool-VM-available: returns pool VM id");
+  assert(result?.ipAddress === "192.0.2.100", "pool-VM-available: returns pool VM IP");
+  assert(poolCalls === 1, `pool-VM-available: poolAssignFn called exactly once (got ${poolCalls})`);
+  assert(cloudInitCalls === 0, `pool-VM-available: createUserVMFn NOT called (got ${cloudInitCalls}) — pool-first semantics broken if this fails`);
+}
+
+async function test10_AssignOrProvision_PoolEmptyCloudInitOn(): Promise<void> {
+  console.log("\n── §4b-T10: assignOrProvisionUserVm — pool empty + cloud-init enabled (fallback fires) ──");
+
+  let poolCalls = 0;
+  let cloudInitCalls = 0;
+
+  const poolAssignFn = async (_userId: string) => {
+    poolCalls++;
+    return null; // pool empty
+  };
+  const createUserVMFn = (async (_p: unknown, _d: unknown) => {
+    cloudInitCalls++;
+    return { vmId: "ci-vm-id-456", vmName: "instaclaw-vm-456", providerId: "ci-pid-789", ipAddress: "203.0.113.50" };
+  }) as unknown as typeof createUserVM;
+
+  // Supabase mock provides pending_users + instaclaw_users rows for cloud-init
+  const { mock } = makeAssignSupabaseMock({
+    pendingRow: {
+      tier: "starter",
+      api_mode: "all_inclusive",
+      api_key: null,
+      default_model: "anthropic/claude-sonnet-4-6",
+      telegram_bot_token: "12345:test-token-value",
+      telegram_bot_username: "test_bot",
+      discord_bot_token: null,
+    },
+    userRow: { partner: null, user_timezone: "America/New_York" },
+  });
+
+  const result = await assignOrProvisionUserVm("test-user-456", {
+    supabase: mock,
+    poolAssignFn,
+    createUserVMFn,
+    flagOverride: "true",
+    nextauthUrl: "https://test.instaclaw.io",
+  });
+
+  assert(result !== null, "pool-empty+flag-on: result is non-null");
+  assert(result?.path === "cloud-init", `pool-empty+flag-on: path === "cloud-init" (got ${result?.path})`);
+  assert(result?.vmId === "ci-vm-id-456", "pool-empty+flag-on: returns cloud-init VM id");
+  assert(result?.ipAddress === "203.0.113.50", "pool-empty+flag-on: returns cloud-init VM IP");
+  assert(poolCalls === 1, `pool-empty+flag-on: poolAssignFn called once (probed first) (got ${poolCalls})`);
+  assert(cloudInitCalls === 1, `pool-empty+flag-on: createUserVMFn called exactly once (got ${cloudInitCalls}) — fallback path broken if this fails`);
+}
+
+async function test11_AssignOrProvision_PoolEmptyCloudInitOff(): Promise<void> {
+  console.log("\n── §4b-T11: assignOrProvisionUserVm — pool empty + cloud-init disabled (legacy null preserved) ──");
+
+  let poolCalls = 0;
+  let cloudInitCalls = 0;
+
+  const poolAssignFn = async (_userId: string) => {
+    poolCalls++;
+    return null; // pool empty
+  };
+  const createUserVMFn = (async (_p: unknown, _d: unknown) => {
+    cloudInitCalls++;
+    return { vmId: "ci-id", vmName: "ci-name", providerId: "ci-pid", ipAddress: "ci-ip" };
+  }) as unknown as typeof createUserVM;
+
+  const { mock } = makeAssignSupabaseMock({ pendingRow: null });
+
+  const result = await assignOrProvisionUserVm("test-user-789", {
+    supabase: mock,
+    poolAssignFn,
+    createUserVMFn,
+    flagOverride: "false", // cloud-init NOT enabled
+  });
+
+  assert(result === null, `pool-empty+flag-off: result is null (legacy preserved) (got ${JSON.stringify(result)})`);
+  assert(poolCalls === 1, `pool-empty+flag-off: poolAssignFn called once (probed first) (got ${poolCalls})`);
+  assert(cloudInitCalls === 0, `pool-empty+flag-off: createUserVMFn NOT called (got ${cloudInitCalls}) — legacy behavior broken if this fails`);
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // §5. Main
 // ════════════════════════════════════════════════════════════════════════
 
@@ -465,6 +625,9 @@ async function main(): Promise<void> {
   await test6_LinodeCreateFails();
   await test7_WaitForServerFails();
   await test8_NextauthUrlMissing();
+  await test9_AssignOrProvision_PoolHasVms();
+  await test10_AssignOrProvision_PoolEmptyCloudInitOn();
+  await test11_AssignOrProvision_PoolEmptyCloudInitOff();
 
   console.log("\n════════════════════════════════════════════════════════");
   if (fail === 0) {
