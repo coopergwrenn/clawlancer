@@ -8054,7 +8054,57 @@ async function stepMigrateSoulV2(
   dryRun: boolean,
 ): Promise<void> {
   // ── Kill switch ──
-  if (process.env.RECONCILE_SOUL_MIGRATION_ENABLED !== "true") {
+  //
+  // 2026-05-22 incident: this env var was unset in Vercel production from
+  // 2026-05-13 through 2026-05-22 (~9 days). The kill-switch silently
+  // returned with NO log, NO result.errors push, NO operator signal. Result:
+  // zero fleet VMs migrated to V2 templates for 9 days while we kept
+  // building V2 content thinking it was deploying.
+  //
+  // The root cause was operator-configuration drift (env var never set in
+  // Vercel + bake/canary scripts using the placeholder-empty value). The
+  // root fix is operator discipline + the pre-bake-check value validation
+  // shipped alongside this commit.
+  //
+  // This defensive log is the LAST line of defense: if the env var is set
+  // but NOT "true" (empty string, "false", "1", legacy spelling, typo,
+  // etc.), surface a WARN-level log line and a result.warnings entry so
+  // the reconcile-fleet operator-visible output flags the misconfiguration
+  // every cycle instead of silently skipping. Doesn't push to result.errors
+  // (would hold cv-bump, which is correct behavior for a feature-flagged
+  // step). result.warnings shows up in the cron summary email.
+  //
+  // Banned-by-this-comment pattern: `if (env !== "true") return;` with no
+  // log on the misconfigured-but-set case. See Rule 61 (added in the same
+  // commit) for the generalized rule across all boolean env vars.
+  const rcsmRaw = process.env.RECONCILE_SOUL_MIGRATION_ENABLED;
+  if (rcsmRaw !== "true") {
+    // Distinguish "feature explicitly disabled" (unset, "false", "0")
+    // from "looks like operator tried to set it but got it wrong"
+    // (empty string, whitespace, any other truthy-ish value). The first
+    // is fine + silent; the second is the 2026-05-22 bug class.
+    const looksMisconfigured =
+      rcsmRaw !== undefined &&
+      rcsmRaw !== "false" &&
+      rcsmRaw !== "0" &&
+      rcsmRaw !== "no";
+    if (looksMisconfigured) {
+      logger.warn(
+        "stepMigrateSoulV2 SKIPPED — RECONCILE_SOUL_MIGRATION_ENABLED is set but not 'true'. " +
+          "If this is unintentional, run: " +
+          "printf 'true' | npx vercel env add RECONCILE_SOUL_MIGRATION_ENABLED production",
+        {
+          route: "lib/vm-reconcile",
+          step: "stepMigrateSoulV2",
+          vmId: vm.id,
+          actual: JSON.stringify(rcsmRaw), // JSON-stringify so empty string shows as ""
+          expected: "true",
+        },
+      );
+      result.warnings.push(
+        `stepMigrateSoulV2 skipped: RECONCILE_SOUL_MIGRATION_ENABLED='${rcsmRaw}' (expected 'true')`,
+      );
+    }
     return;
   }
 
