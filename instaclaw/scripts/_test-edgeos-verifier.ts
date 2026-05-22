@@ -62,46 +62,49 @@ function assert(label: string, cond: boolean, detail?: string) {
 }
 
 async function run() {
-  // 2026-05-22: verifyAttendeeByEmail now uses requestThirdPartyLogin which
-  // requires EDGEOS_THIRD_PARTY_API_KEY. Set a test value so the function
-  // doesn't short-circuit with config_error → degraded fail-open (which
-  // would make Test 2/3 falsely pass as verified:true).
-  process.env.EDGEOS_THIRD_PARTY_API_KEY = "test-tenant-key-do-not-use-in-prod";
+  // 2026-05-22 three-auth-paths refactor: verifyAttendeeByEmail now uses
+  // SimpleFi /citizens/email/{email} (silent, no OTP). Requires
+  // EDGEOS_BEARER_TOKEN. Set a test value so the function doesn't
+  // short-circuit with "bearer missing" → degraded fail-open (which
+  // would make Test 2 falsely pass as verified:true).
+  process.env.EDGEOS_BEARER_TOKEN = "test-bearer-do-not-use-in-prod";
 
-  console.log("Test 1: verified attendee (200 OK)");
+  console.log("Test 1: verified citizen (200 OK with full profile)");
   stubFetch(async () =>
     makeResponse(200, {
-      email: "alice@example.com",
-      message: "Verification email sent",
-      expires_in_minutes: 10,
+      primary_email: "alice@example.com",
+      first_name: "Alice",
+      last_name: "Wonderland",
+      telegram: "alice_w",
+      email_validated: true,
     }),
   );
   let r = await verifyAttendeeByEmail("alice@example.com");
   assert("verified=true", r.verified === true);
   assert("no reason on success", r.reason === undefined);
   assert("not degraded", !r.degraded);
+  assert("citizen.firstName=Alice", r.citizen?.firstName === "Alice");
+  assert("citizen.telegram=alice_w", r.citizen?.telegram === "alice_w");
+  assert("citizen.email lowercased", r.citizen?.email === "alice@example.com");
   restoreFetch();
 
-  // 2026-05-22 P0 fix: switched from user/login (which returned 404 for
-  // non-attendees) to third-party/login (which returns 401 for both bad-api-key
-  // AND not-an-attendee). The 401 mapping is now the PRIMARY not_attendee
-  // signal. 404 is no longer a documented response shape — if EdgeOS ever
-  // returns 404 it falls through to api_error.
-  console.log("Test 2: 401 not-an-attendee (EdgeOS collapses 'not in directory' into 401)");
-  stubFetch(async () => makeResponse(401, { detail: "Authentication failed" }));
+  // 2026-05-22 three-auth-paths refactor: the /citizens endpoint returns
+  // 404 cleanly for non-existent emails (NOT 401 like the old third-party-
+  // login). 404 is now the primary "not_found" signal.
+  console.log("Test 2: 404 not-a-citizen (the primary not_found signal)");
+  stubFetch(async () => makeResponse(404, { detail: "Citizen not found" }));
   r = await verifyAttendeeByEmail("ghost@example.com");
   assert("verified=false", r.verified === false);
   assert("reason=not_found", r.reason === "not_found");
+  assert("no citizen returned", r.citizen === undefined);
   restoreFetch();
 
-  console.log("Test 3: 404 undocumented status → degraded fail-open (treated as unknown)");
-  // The new third-party endpoint doesn't return 404 in documented cases — 401
-  // is the "not in directory" signal. If EdgeOS ever DOES return 404 (e.g.,
-  // routing change), our code treats it as "unknown" → degraded fail-open
-  // per Cooper directive 2026-05-22 (better to let through than block).
-  stubFetch(async () => makeResponse(404, { detail: "Not Found" }));
+  console.log("Test 3: 401 (our bearer rejected) → degraded fail-open");
+  // /citizens returns 401/403 if our EDGEOS_BEARER_TOKEN is rejected.
+  // Fail-open so we don't block real attendees on operator-config drift.
+  stubFetch(async () => makeResponse(401, { detail: "Invalid token" }));
   r = await verifyAttendeeByEmail("blocked@example.com");
-  assert("verified=true (degraded fail-open on undocumented 404)", r.verified === true);
+  assert("verified=true (degraded fail-open on bearer rejected)", r.verified === true);
   assert("degraded=true", r.degraded === true);
   restoreFetch();
 
@@ -208,19 +211,36 @@ async function run() {
   restoreFetch();
   delete process.env.EDGE_VERIFIED_OVERRIDE_EMAILS;
 
-  console.log("Test 14: override unset → real path taken (uses 401 — the documented not-attendee status)");
+  console.log("Test 14: override unset → real path taken (uses 404 — the /citizens not_found status)");
   delete process.env.EDGE_VERIFIED_OVERRIDE_EMAILS;
   fetchCalled = false;
   stubFetch(async () => {
     fetchCalled = true;
-    // 2026-05-22: switched from 404 to 401 to match the new third-party
-    // endpoint's documented "not in directory" response shape.
-    return makeResponse(401, { detail: "Authentication failed" });
+    // 2026-05-22 three-auth-paths refactor: switched from third-party-login
+    // (401 for not-attendee) to /citizens/email/{email} (404 for not-citizen).
+    return makeResponse(404, { detail: "Citizen not found" });
   });
   r = await verifyAttendeeByEmail("real-attendee-not-in-overrides@example.com");
   assert("API was called", fetchCalled);
   assert("reason=not_found", r.reason === "not_found");
   restoreFetch();
+
+  console.log("Test 15: override match → synthesizes citizen with firstName from local-part");
+  process.env.EDGE_VERIFIED_OVERRIDE_EMAILS = "cooper@valtlabs.com";
+  fetchCalled = false;
+  stubFetch(async () => {
+    fetchCalled = true;
+    return makeResponse(404, {});
+  });
+  r = await verifyAttendeeByEmail("cooper@valtlabs.com");
+  assert("verified=true (override)", r.verified === true);
+  assert("no API call", !fetchCalled);
+  assert("citizen.firstName synthesized from local-part",
+    r.citizen?.firstName === "Cooper");
+  assert("citizen.telegram=null on override",
+    r.citizen?.telegram === null);
+  restoreFetch();
+  delete process.env.EDGE_VERIFIED_OVERRIDE_EMAILS;
 
   console.log("\n──────────────────────────────────────────");
   console.log(`${passed} passed, ${failed} failed`);

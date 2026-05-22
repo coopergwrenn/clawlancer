@@ -83,6 +83,25 @@ interface SuccessResponse {
   degraded?: boolean;
   /** Email echoed back, lower-cased — useful for the verified UX state. */
   email: string;
+  /**
+   * Personalization slot for the verified state. Populated by the SimpleFi
+   * /citizens lookup. Null when the user is an operator-override match
+   * (we don't have their real first name) or when verification degraded
+   * fail-open (SimpleFi was unreachable, no profile fetched).
+   *
+   * 2026-05-22 three-auth-paths refactor: the silent verify endpoint now
+   * returns the user's first name so the verified state can show "Welcome
+   * back, Cooper" instead of just "Verified." Same source provides the
+   * telegram handle below for /connect prefill.
+   */
+  firstName?: string | null;
+  /**
+   * Telegram @handle without the @, for prefilling on /connect. Null when
+   * the user didn't register a Telegram with EdgeOS or when verification
+   * degraded fail-open. The /connect page treats null as "show empty
+   * input"; non-null prefills + shows an [edit] link.
+   */
+  telegram?: string | null;
 }
 
 interface FailureResponse {
@@ -192,6 +211,11 @@ export async function POST(req: NextRequest) {
       verified: true,
       degraded: verification.degraded || undefined,
       email,
+      // Personalization fields — pass through the citizen profile from
+      // SimpleFi /citizens. Undefined when verification degraded fail-open
+      // (no profile fetched) or override match without a real lookup.
+      firstName: verification.citizen?.firstName ?? null,
+      telegram: verification.citizen?.telegram ?? null,
     },
     { status: 200 },
   );

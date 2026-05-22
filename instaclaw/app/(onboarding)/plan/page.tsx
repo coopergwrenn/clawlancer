@@ -376,13 +376,47 @@ export default function PlanPage() {
               squiggles/circles/highlighter (those are non-Edge brand
               voice — orange, kinetic, marketing). */}
           {isEdge ? (
-            <p
-              className="text-base"
-              style={{ color: "#5a6240", textWrap: "balance" }}
-            >
-              Pro is selected and sponsor-funded through June 30. Cancel
-              anytime.
-            </p>
+            <div>
+              <p
+                className="text-base mb-3"
+                style={{ color: "#5a6240", textWrap: "balance" }}
+              >
+                Your first month is{" "}
+                <span style={{ color: "#0f1a12", fontWeight: 600 }}>free</span>,
+                courtesy of Edge Esmeralda.
+              </p>
+              {/* 2026-05-22 three-auth-paths Edge spec: explicit pricing
+                  framing per Timour call. Strikethrough $99 + "$0 today"
+                  fixes the bug Timour flagged where Stripe checkout was
+                  showing "$99/mo 3-day trial" without the Edge framing.
+                  The Stripe session is created with trial_end = June 30
+                  PT (see app/api/billing/checkout/route.ts), so Stripe
+                  itself displays $0 today + first-charge-on-June-30 in
+                  the hosted checkout UI. This /plan-page framing matches. */}
+              <p
+                className="text-sm flex items-baseline gap-3 mb-3"
+                style={{ color: "#5a6240" }}
+              >
+                <span
+                  className="line-through opacity-60"
+                  style={{ fontSize: "0.95rem" }}
+                >
+                  $99/mo
+                </span>
+                <span
+                  style={{ color: "#0f1a12", fontWeight: 700, fontSize: "1.05rem" }}
+                >
+                  $0 due today
+                </span>
+              </p>
+              <p
+                className="text-sm"
+                style={{ color: "#5a6240", textWrap: "balance" }}
+              >
+                Add a payment method so your agent stays active after your free
+                month. Cancel anytime.
+              </p>
+            </div>
           ) : (
           <p className="text-base sm:hidden" style={{ color: "#666666", textWrap: "balance" }}>
             An AI that never sleeps, never forgets, and gets smarter every day - working{" "}

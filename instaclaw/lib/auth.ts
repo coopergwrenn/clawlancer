@@ -10,6 +10,7 @@ import {
   EDGE_VERIFIED_COOKIE_NAME,
 } from "./edge-verified-cookie";
 import { verifySignupToken } from "./openai-signup-token";
+import { verifyEdgeOtpToken } from "./edge-otp-token";
 import authConfig from "./auth.config";
 
 /**
@@ -20,6 +21,23 @@ import authConfig from "./auth.config";
  * without a hardcoded string drifting between callsites.
  */
 export const OPENAI_DEVICE_CODE_PROVIDER_ID = "openai-device-code";
+
+/**
+ * NextAuth provider id for the Edge email-OTP Credentials bridge.
+ *
+ * Exported so /edge/claim's State E (OTP entry) can call
+ * `signIn(EDGE_EMAIL_OTP_PROVIDER_ID, { otpToken })` after
+ * /api/edge/verify-otp returns the one-shot HMAC token.
+ *
+ * This provider is ONLY usable by users who passed:
+ *   1. /api/edge/verify-ticket (silent /citizens check) → edge_verified cookie set
+ *   2. /api/edge/start-email-login (OTP fired)
+ *   3. /api/edge/verify-otp (code validated, user upserted, token minted)
+ *
+ * authorize() below verifies the HMAC token + does a defense-in-depth
+ * DB lookup before returning the user object to NextAuth.
+ */
+export const EDGE_EMAIL_OTP_PROVIDER_ID = "edge-email-otp";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   ...authConfig,
@@ -105,6 +123,67 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         };
       },
     }),
+    Credentials({
+      id: EDGE_EMAIL_OTP_PROVIDER_ID,
+      name: "Edge Email Code",
+      credentials: {
+        // One-shot HMAC-signed token minted by /api/edge/verify-otp on
+        // successful 6-digit-code validation. 60s exp. Contains the
+        // resolved instaclaw_users.id in the `sub` claim. Same shape as
+        // openai-signup-token but with `aud: "edge-otp"` for cross-
+        // purpose-reuse defense.
+        otpToken: { label: "Edge OTP Token", type: "text" },
+      },
+      async authorize(rawCredentials) {
+        const otpToken =
+          typeof rawCredentials?.otpToken === "string"
+            ? rawCredentials.otpToken
+            : null;
+        if (!otpToken) {
+          logger.warn("edge-email-otp authorize: missing otpToken");
+          return null;
+        }
+
+        // 1. Verify HMAC + exp + audience claim.
+        const verifyResult = verifyEdgeOtpToken(otpToken);
+        if (!verifyResult.ok || !verifyResult.userId) {
+          logger.warn("edge-email-otp authorize: token verification failed", {
+            reason: verifyResult.reason,
+            // Prefix only — token is session-equivalent (Rule 53)
+            tokenPrefix: otpToken.slice(0, 12),
+          });
+          return null;
+        }
+
+        // 2. Defense-in-depth DB lookup — confirm the user actually exists.
+        const supabase = getSupabase();
+        const { data: user, error } = await supabase
+          .from("instaclaw_users")
+          .select("id, email, name")
+          .eq("id", verifyResult.userId)
+          .maybeSingle();
+
+        if (error) {
+          logger.error("edge-email-otp authorize: user lookup failed", {
+            userId: verifyResult.userId,
+            error: error.message,
+          });
+          return null;
+        }
+        if (!user) {
+          logger.warn("edge-email-otp authorize: user not found in DB", {
+            userId: verifyResult.userId,
+          });
+          return null;
+        }
+
+        return {
+          id: user.id as string,
+          email: (user.email as string | null) ?? undefined,
+          name: (user.name as string | null) ?? undefined,
+        };
+      },
+    }),
   ],
   callbacks: {
     async signIn({ user, account }) {
@@ -124,6 +203,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // ─────────────────────────────────────────────────────────────────
       if (account?.provider === OPENAI_DEVICE_CODE_PROVIDER_ID) {
         logger.info("openai-device-code signIn: session established", {
+          userId: user.id,
+        });
+        return true;
+      }
+      if (account?.provider === EDGE_EMAIL_OTP_PROVIDER_ID) {
+        // The user was ALREADY upserted by /api/edge/verify-otp before the
+        // otpToken was minted. authorize() above verified the token + the
+        // DB lookup. Nothing further needed here — the edge_verified_email
+        // column, partner=edge_city tag, and ticket binding are all already
+        // written. Return true and let NextAuth build the session.
+        logger.info("edge-email-otp signIn: session established", {
           userId: user.id,
         });
         return true;
@@ -472,6 +562,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           // field because the session callback's existing Google path
           // doesn't read `sub` — co-existence with the existing path is
           // easier with a separate, explicit field.
+          if (user?.id) {
+            token.instaclawUserId = user.id;
+          }
+        } else if (account.provider === EDGE_EMAIL_OTP_PROVIDER_ID) {
+          // Same shape as the OpenAI Credentials path — store the
+          // instaclaw_users.id under the same key. The session callback
+          // already handles `token.instaclawUserId` for both Credentials
+          // providers via the shared `else if (token.instaclawUserId)`
+          // branch — no session-callback changes needed.
           if (user?.id) {
             token.instaclawUserId = user.id;
           }
