@@ -1,16 +1,16 @@
 # Changelog — generated 2026-05-22
 
-Window: `29c5f6687ab555270a4333b75f99e115c4526f69` → `HEAD` (HEAD = `7414d29a`)
+Window: `7414d29aa1c3d213fad762b0ba08fa24d3ab095b` → `HEAD` (HEAD = `a3eac95c`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 7414d29aa1c3d213fad762b0ba08fa24d3ab095b -->
+<!-- LAST_GENERATED_SHA: a3eac95cdec92532571d3faa710dc07247ad1983 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
-- **Feature (user-facing):** 0
+- **Infrastructure:** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,12 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-_None in this window._
+- `a3eac95c` 2026-05-22 — fix(plan): W2 polish — Continue button olive for Edge attendees [1 files] _(multi: [feature, edge]; ai-assisted)_
 
 ## What changed under the hood
 
-- `7414d29a` 2026-05-22 — fix(billing/checkout): Charlie #4 — Stripe back-button recovery (expire prior open sessions + clear deployment lock) [1 files] _(ai-assisted)_
-- `4d9438b8` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `b7a75fc3` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,13 +30,13 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
-
-- `7414d29a` 2026-05-22 — fix(billing/checkout): Charlie #4 — Stripe back-button recovery (expire prior open sessions + clear deployment lock) [1 files] _(ai-assisted)_
-
-### Feature (user-facing) (0)
+### Infrastructure (0)
 
 _(none)_
+
+### Feature (user-facing) (1)
+
+- `a3eac95c` 2026-05-22 — fix(plan): W2 polish — Continue button olive for Edge attendees [1 files] _(multi: [feature, edge]; ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,15 +44,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `4d9438b8` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `b7a75fc3` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `a3eac95c` 2026-05-22 — [feature, edge] — fix(plan): W2 polish — Continue button olive for Edge attendees
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `7414d29a` 2026-05-22 — fix(billing/checkout): Charlie #4 — Stripe back-button recovery (expire prior open sessions + clear deployment lock)
+- `a3eac95c` 2026-05-22 — fix(plan): W2 polish — Continue button olive for Edge attendees
 
 ## Appendix — every commit (chronological)
 
-- `4d9438b8` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `7414d29a` 2026-05-22 — fix(billing/checkout): Charlie #4 — Stripe back-button recovery (expire prior open sessions + clear deployment lock) [1 files] _(ai-assisted)_
+- `b7a75fc3` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `a3eac95c` 2026-05-22 — fix(plan): W2 polish — Continue button olive for Edge attendees [1 files] _(multi: [feature, edge]; ai-assisted)_
