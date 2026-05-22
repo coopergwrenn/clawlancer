@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-22
 
-Window: `4acc5280755206e255e30da7207267f9fdd51f5f` → `HEAD` (HEAD = `0377e01b`)
+Window: `0377e01bbcb0224b414b63c3c3478f90b4beccd3` → `HEAD` (HEAD = `85ed6f61`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 0377e01bbcb0224b414b63c3c3478f90b4beccd3 -->
+<!-- LAST_GENERATED_SHA: 85ed6f61a62175e2f362dd52ad70da15b1262012 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `0377e01b` 2026-05-22 — fix(vm/configure): cloud-init first-10-min protection guard (vm-1019 root-fix) [1 files] _(ai-assisted)_
-- `19e39157` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `85ed6f61` 2026-05-22 — fix(vm/configure): widen cloud-init protection window 10 → 15 min [1 files] _(ai-assisted)_
+- `da47d3c4` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `0377e01b` 2026-05-22 — fix(vm/configure): cloud-init first-10-min protection guard (vm-1019 root-fix) [1 files] _(ai-assisted)_
+- `85ed6f61` 2026-05-22 — fix(vm/configure): widen cloud-init protection window 10 → 15 min [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `19e39157` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `da47d3c4` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `0377e01b` 2026-05-22 — fix(vm/configure): cloud-init first-10-min protection guard (vm-1019 root-fix)
+- `85ed6f61` 2026-05-22 — fix(vm/configure): widen cloud-init protection window 10 → 15 min
 
 ## Appendix — every commit (chronological)
 
-- `19e39157` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `0377e01b` 2026-05-22 — fix(vm/configure): cloud-init first-10-min protection guard (vm-1019 root-fix) [1 files] _(ai-assisted)_
+- `da47d3c4` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `85ed6f61` 2026-05-22 — fix(vm/configure): widen cloud-init protection window 10 → 15 min [1 files] _(ai-assisted)_
