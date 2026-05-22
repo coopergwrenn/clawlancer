@@ -338,6 +338,35 @@ interface BooleanEnvSpec {
   rationale: string;
 }
 
+// Membership audit (Cooper deep-audit 2026-05-22, post-incident followup).
+//
+// Criterion: env vars whose code uses the `!== "true"` silent-skip gate
+// (the exact 2026-05-22 incident shape). Vars with positive `=== "true"`
+// gates have the SAME operator-side risk class (misconfigured value →
+// feature inactive) but are excluded here per Cooper's narrow criterion —
+// with one exception below.
+//
+//   IN — `!== "true"` silent-skip gates (exact bug shape Rule 61 covers):
+//     RECONCILE_SOUL_MIGRATION_ENABLED  lib/vm-reconcile.ts:8057
+//     GBRAIN_INSTALL_ENABLED            lib/vm-reconcile.ts:1932 + 8792 + 9067
+//     BANKR_TOKENIZE_ENABLED            app/api/bankr/* x 3 callsites
+//     GBRAIN_DEEP_CHECK_ENABLED         app/api/cron/gbrain-deep-check/route.ts:290
+//
+//   IN (exception) — `=== "true"` positive gate, surfaced here because the
+//        feature is currently intentionally OFF (pending Google CASA Tier 2)
+//        AND operator may flip it. Pre-bake-time check catches "Cooper meant
+//        to enable but got the syntax wrong" against the same risk class:
+//     GMAIL_PERSONALIZATION_ENABLED     app/api/vm/status/route.ts:169
+//
+//   OUT — `=== "true"` positive gate, equivalent risk class but excluded
+//        per Cooper's narrow criterion (only `!== "true"` callsites). If
+//        operator-side risk surfaces in production, reconsider:
+//     CLOUD_INIT_ONDEMAND_ENABLED       lib/createUserVM.ts:517
+//
+//   OUT — DIFFERENT shape: `=== "false"` (defaults-ON). Empty string or any
+//        value other than the literal "false" leaves the feature ON. Lower
+//        operator-side risk; no value-validation needed:
+//     INDEX_POLLER_ENABLED              app/api/cron/poll-index-opportunities/route.ts:271
 const BAKE_BOOLEAN_ENVS: BooleanEnvSpec[] = [
   {
     name: "RECONCILE_SOUL_MIGRATION_ENABLED",
@@ -355,7 +384,12 @@ const BAKE_BOOLEAN_ENVS: BooleanEnvSpec[] = [
   // value but don't block.
   { name: "BANKR_TOKENIZE_ENABLED", requiredOnForBake: false, rationale: "Bankr tokenize routes; may be off." },
   { name: "GBRAIN_DEEP_CHECK_ENABLED", requiredOnForBake: false, rationale: "Deep-check cron; may be off." },
-  { name: "CLOUD_INIT_ONDEMAND_ENABLED", requiredOnForBake: false, rationale: "On-demand cloud-init; may be off." },
+  {
+    name: "GMAIL_PERSONALIZATION_ENABLED",
+    requiredOnForBake: false,
+    rationale:
+      "Gmail personalization popup; intentionally OFF pending Google CASA Tier 2. Surfaced here so a future flip catches operator typos at pre-bake gate.",
+  },
 ];
 
 function checkBooleanEnvVarValues(): CheckResult[] {

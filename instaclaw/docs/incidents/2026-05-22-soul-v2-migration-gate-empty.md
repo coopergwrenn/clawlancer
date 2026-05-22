@@ -73,6 +73,23 @@ Shipped 2026-05-22:
 2. **CI grep gate.** A pre-commit / CI rule that fails the build if any new `if (process.env.X !== "true") return;` lands without a WARN log. Currently human-enforced via Rule 61.
 3. **Vercel-side value probe.** `_pre-bake-check.ts` validates LOCAL `.env.local`, not Vercel production. A `--check-vercel` flag that runs `vercel env pull` + re-validates would close the LOCAL-vs-VERCEL drift gap.
 4. **Q-C decisions tracker.** Document-flagged "Q-C decision pending" items should land in a tracked tickets list, not just in standalone markdown files. Otherwise they sit in audit docs while parallel work builds atop the assumption that they're resolved.
+5. **CLOUD_INIT_ONDEMAND_ENABLED `=== "true"` positive-gate inconsistency.** Deep-audit (2026-05-22) found that `CLOUD_INIT_ONDEMAND_ENABLED` (`lib/createUserVM.ts:517`) uses `=== "true"` positive-check instead of the `!== "true"` silent-skip pattern. Same operator-side risk class (empty-string → feature inactive) but excluded from `BAKE_BOOLEAN_ENVS` per the narrow criterion. Future operator-side risk would surface as a missed-flip on cloud-init fallback. Consider broadening the pre-bake check's `BAKE_BOOLEAN_ENVS` criterion to include positive-gate vars in a future PR.
+
+## Operational note — fleet convergence ETA
+
+**Correction to earlier estimate (2026-05-22 evening deep-audit):** initial deployment notes after v113 bump said "~30 min full fleet convergence." Actual observed rate after the bump was **~1 VM converging from cv=112 → cv=113 every ~5 min** (7 → 8 VMs converged across 5 min observation window).
+
+Math: 1 VM / 5 min × 145 cv=112 VMs ≈ **12 hours total wall-clock to fleet-wide cv=113**. Not 30 min.
+
+Root cause: `CONFIGURE_AUDIT_BATCH_SIZE` was reduced from default 3 to 1 in the 2026-05-14 secret-version starvation hotfix (`PER_VM_TIMEOUT_MS` bumped 120s → 220s alongside). The cron's per-tick budget allows only 1 VM at a time, not 3. The bottleneck is the batch size, not the cron cadence.
+
+**For future operators:** when a manifest bump lands, expect:
+- 30-min estimate: only valid if `CONFIGURE_AUDIT_BATCH_SIZE >= 3`
+- 12-hour estimate: realistic if `CONFIGURE_AUDIT_BATCH_SIZE = 1` (current value, post-2026-05-14 hotfix)
+
+The V2 migration was firing correctly on the converging VMs (verified via SSH probe on vm-837, vm-835, vm-788 — all 3 showed `<!-- INSTACLAW_SOUL_V2 -->` and `<!-- INSTACLAW_AGENTS_V2 -->` markers). Throughput-limited, not stuck.
+
+P2 followup (NOT blocking 2026-05-30 launch): revisit `CONFIGURE_AUDIT_BATCH_SIZE = 3` once the per-step deadline PR (reconcile-deadline §3.2) lands and makes 220s/VM safer at concurrency.
 
 ## Lessons
 
