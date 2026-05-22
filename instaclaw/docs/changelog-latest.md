@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-22
 
-Window: `7a50360810f973e732d4af54c391cda22eb25238` → `HEAD` (HEAD = `7ecf7769`)
+Window: `7ecf7769b6e9242d24422b902416a088e5a6a299` → `HEAD` (HEAD = `4f66783d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 7ecf7769b6e9242d24422b902416a088e5a6a299 -->
+<!-- LAST_GENERATED_SHA: 4f66783d721bbc2ae0726023d1ff38ad57485dcc -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `7ecf7769` 2026-05-22 — docs: Edge City terminal session summary — 2026-05-22 [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `4f66783d` 2026-05-22 — docs: onboarding terminal session summary — 2026-05-22 [1 files] _(multi: [edge, docs]; ai-assisted)_
 
 ## What changed under the hood
 
-- `a02a60cd` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `19b44850` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -40,25 +40,25 @@ _(none)_
 
 ### Edge City partner (1)
 
-- `7ecf7769` 2026-05-22 — docs: Edge City terminal session summary — 2026-05-22 [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `4f66783d` 2026-05-22 — docs: onboarding terminal session summary — 2026-05-22 [1 files] _(multi: [edge, docs]; ai-assisted)_
 
 ### Docs / PRD only (1)
 
-- `a02a60cd` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `19b44850` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `7ecf7769` 2026-05-22 — [edge, docs] — docs: Edge City terminal session summary — 2026-05-22
+- `4f66783d` 2026-05-22 — [edge, docs] — docs: onboarding terminal session summary — 2026-05-22
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `7ecf7769` 2026-05-22 — docs: Edge City terminal session summary — 2026-05-22
+- `4f66783d` 2026-05-22 — docs: onboarding terminal session summary — 2026-05-22
 
 ## Appendix — every commit (chronological)
 
-- `a02a60cd` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `7ecf7769` 2026-05-22 — docs: Edge City terminal session summary — 2026-05-22 [1 files] _(multi: [edge, docs]; ai-assisted)_
+- `19b44850` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `4f66783d` 2026-05-22 — docs: onboarding terminal session summary — 2026-05-22 [1 files] _(multi: [edge, docs]; ai-assisted)_
