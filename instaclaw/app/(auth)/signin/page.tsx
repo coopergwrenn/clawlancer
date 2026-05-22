@@ -7,6 +7,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { ChatGPTConnectModal } from "@/components/dashboard/chatgpt-connect-modal";
+import { SupportFooter } from "@/components/marketing/support-footer";
 
 function SignInContent() {
   // Honor `?callbackUrl=` URL param so partner-flow links like
@@ -130,6 +131,18 @@ function SignInContent() {
           >
             Use it here
           </Link>
+        </p>
+
+        {/* Support footer — F3 audit fix 2026-05-22. /signin was the
+            only auth surface with no escape hatch when something goes
+            wrong (OAuth fails, ChatGPT modal errors, network issue,
+            etc.). Small centered line, deferential opacity, inherits
+            the parent's muted gray color. */}
+        <p
+          className="text-[12px] text-center"
+          style={{ color: "#6b6b6b" }}
+        >
+          <SupportFooter />
         </p>
       </div>
 

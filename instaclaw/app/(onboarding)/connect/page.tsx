@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { EdgePartnerBanner, usePartnerCookie } from "@/components/marketing/edge-partner-banner";
+import { SupportFooter } from "@/components/marketing/support-footer";
 
 const TOKEN_RE = /^\d+:[A-Za-z0-9_-]+$/;
 
@@ -799,6 +800,17 @@ export default function ConnectPage() {
             Skip Telegram for now →
           </button>
         )}
+
+        {/* Support footer — F3 audit fix 2026-05-22. /connect previously
+            had no escape hatch when token verification failed or the
+            save-to-DB returned a 4xx/5xx. The error messages told users
+            to "try again" but there was no human-readable fallback. */}
+        <div
+          className="mt-6 text-center text-[12px]"
+          style={{ color: "#999" }}
+        >
+          <SupportFooter />
+        </div>
 
         {/* ── Advanced Settings ── */}
         <div className="mt-8">

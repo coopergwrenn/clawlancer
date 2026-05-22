@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { createMetadata } from "@/lib/seo";
 import { SetupClient } from "./setup-client";
+import { SupportFooter } from "@/components/marketing/support-footer";
 
 /**
  * /edge/setup — the Edge trial-terms interstitial.
@@ -107,13 +108,16 @@ export default function EdgeSetupPage() {
               InstaClaw
             </Link>
           </span>
-          <Link
-            href="/edge/claim"
-            className="underline-offset-4 hover:underline"
-            style={{ color: "var(--edge-ink)" }}
-          >
-            ← Back
-          </Link>
+          <div className="flex items-center gap-4 sm:gap-5">
+            <SupportFooter />
+            <Link
+              href="/edge/claim"
+              className="underline-offset-4 hover:underline"
+              style={{ color: "var(--edge-ink)" }}
+            >
+              ← Back
+            </Link>
+          </div>
         </div>
       </footer>
     </main>

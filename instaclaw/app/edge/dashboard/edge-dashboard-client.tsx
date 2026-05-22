@@ -6,6 +6,7 @@ import { ArrowLeft, ExternalLink, Save, Eye, EyeOff, Check, Loader2 } from "luci
 import { IntentSection } from "./intent-section";
 import { MatchHistorySection } from "./match-history-section";
 import type { CounterpartMatch, CurrentIntent } from "@/lib/edge-dashboard-data";
+import { SupportFooter } from "@/components/marketing/support-footer";
 
 type OverlayShape = {
   display_name: string | null;
@@ -605,6 +606,9 @@ export function EdgeDashboardClient({
           Index Network
         </a>
         . More features (Index match history, agent activity) ship before May 30.
+        <div style={{ marginTop: "12px" }}>
+          <SupportFooter />
+        </div>
       </footer>
     </div>
   );

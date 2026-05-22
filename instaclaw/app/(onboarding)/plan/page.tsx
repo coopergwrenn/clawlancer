@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { LenisProvider } from "@/components/landing/lenis-provider";
 import { EdgePartnerBanner } from "@/components/marketing/edge-partner-banner";
+import { SupportFooter } from "@/components/marketing/support-footer";
 
 const glassStyle = {
   background:
@@ -689,6 +690,18 @@ export default function PlanPage() {
             </span>
           ) : "Start Free Trial"}
         </button>
+
+        {/* Support footer — F3 audit fix 2026-05-22. /plan is where the
+            Stripe checkout creation can fail (network, deployment lock,
+            existing-sub edge case) and previously the only escape was
+            the inline error message. SupportFooter gives attendees a
+            persistent contact path. */}
+        <div
+          className="mt-6 text-center text-[12px]"
+          style={{ color: "#999" }}
+        >
+          <SupportFooter />
+        </div>
         </div>
       </div>
     </LenisProvider>

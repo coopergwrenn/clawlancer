@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { createMetadata } from "@/lib/seo";
 import { IntentsClient } from "./intents-client";
+import { SupportFooter } from "@/components/marketing/support-footer";
 
 /**
  * /edge/intents — the final step of the Edge Esmeralda onboarding.
@@ -124,7 +125,10 @@ export default async function EdgeIntentsPage() {
               InstaClaw
             </Link>
           </span>
-          <span>Final step</span>
+          <div className="flex items-center gap-4 sm:gap-5">
+            <SupportFooter />
+            <span>Final step</span>
+          </div>
         </div>
       </footer>
     </main>
