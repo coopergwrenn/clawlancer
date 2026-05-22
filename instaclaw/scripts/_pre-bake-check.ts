@@ -304,6 +304,114 @@ function checkEnvVarsPresent(): CheckResult {
   };
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// 2026-05-22 P0 incident response: env var VALUE validation
+//
+// `checkEnvVarsPresent` above only verifies that vars are SET. Per the
+// 2026-05-22 incident, RECONCILE_SOUL_MIGRATION_ENABLED was unset in Vercel
+// for 9 days while we kept building V2 templates thinking they'd ship.
+// The kill switch (`if (env !== "true") return;`) silently returned every
+// reconcile tick. Zero fleet VMs migrated.
+//
+// Same risk shape for any boolean env var our code gates behind `!== "true"`:
+//   GBRAIN_INSTALL_ENABLED
+//   RECONCILE_SOUL_MIGRATION_ENABLED
+//   BANKR_TOKENIZE_ENABLED
+//   GBRAIN_DEEP_CHECK_ENABLED
+//   CLOUD_INIT_ONDEMAND_ENABLED
+//   STRICT_RECONCILE_ENABLED (currently unused but defined)
+//
+// For the bake context specifically, the operator's LOCAL .env.local is
+// what drives the bake's reconcile run (which executes locally via
+// `_phase3-v2-migrate.ts`). The pre-bake-check validates LOCAL env. Vercel
+// env is a separate concern — if it diverges, production reconcile-fleet
+// can ship with the bug class even after a clean bake. Future enhancement:
+// add a `--check-vercel` flag that also probes `npx vercel env pull`.
+//
+// For each var: if set to anything other than "true", CRITICAL fail. Unset
+// is allowed (means "feature off" — only RECONCILE_SOUL_MIGRATION_ENABLED
+// is required-on for the bake context, others may be intentionally off).
+// ──────────────────────────────────────────────────────────────────────────────
+interface BooleanEnvSpec {
+  name: string;
+  requiredOnForBake: boolean;
+  rationale: string;
+}
+
+const BAKE_BOOLEAN_ENVS: BooleanEnvSpec[] = [
+  {
+    name: "RECONCILE_SOUL_MIGRATION_ENABLED",
+    requiredOnForBake: true,
+    rationale:
+      "stepMigrateSoulV2 ships V2 SOUL.md/AGENTS.md to the bake VM. Without this, the bake VM keeps V1 templates and the snapshot ships without the V2 agent-identity layer — the exact 2026-05-22 incident.",
+  },
+  {
+    name: "GBRAIN_INSTALL_ENABLED",
+    requiredOnForBake: true,
+    rationale:
+      "stepGbrain installs the gbrain HTTP sidecar. Without this, the bake VM doesn't get gbrain installed and the snapshot ships without per-VM memory.",
+  },
+  // These are gated-feature vars that MAY be off for a bake; surface their
+  // value but don't block.
+  { name: "BANKR_TOKENIZE_ENABLED", requiredOnForBake: false, rationale: "Bankr tokenize routes; may be off." },
+  { name: "GBRAIN_DEEP_CHECK_ENABLED", requiredOnForBake: false, rationale: "Deep-check cron; may be off." },
+  { name: "CLOUD_INIT_ONDEMAND_ENABLED", requiredOnForBake: false, rationale: "On-demand cloud-init; may be off." },
+];
+
+function checkBooleanEnvVarValues(): CheckResult[] {
+  return BAKE_BOOLEAN_ENVS.map(({ name, requiredOnForBake, rationale }) => {
+    const value = process.env[name];
+
+    // Unset case: only CRITICAL if requiredOnForBake. Otherwise INFO.
+    if (value === undefined || value === "") {
+      if (requiredOnForBake) {
+        return {
+          name: `${name} === "true" (value validation — Rule 61)`,
+          severity: "CRITICAL",
+          passed: false,
+          summary: value === undefined ? "UNSET" : "set to empty string",
+          details:
+            `${rationale}\n` +
+            `Fix: edit instaclaw/.env.local and set ${name}=true (no quotes, no whitespace).\n` +
+            `For Vercel: printf 'true' | npx vercel env add ${name} production\n` +
+            `2026-05-22 incident: this exact silent-skip bug class.`,
+        };
+      }
+      return {
+        name: `${name} (off)`,
+        severity: "INFO",
+        passed: true,
+        summary: value === undefined ? "unset (off)" : "empty (off)",
+      };
+    }
+
+    // Set but not "true" — always CRITICAL regardless of requiredOnForBake.
+    // If the operator typed something other than "true", they meant to enable
+    // it but got the syntax wrong. Silent-skip is the bug we're fixing.
+    if (value !== "true") {
+      return {
+        name: `${name} === "true" (value validation — Rule 61)`,
+        severity: "CRITICAL",
+        passed: false,
+        summary: `${JSON.stringify(value)} (expected "true")`,
+        details:
+          `${name} is set but not "true". Boolean env vars must be the literal string "true".\n` +
+          `Common mistakes: "True", "TRUE", "1", "yes", whitespace, accidental empty-string from echo "" | vercel env add.\n` +
+          `Fix: edit instaclaw/.env.local and set ${name}=true (no quotes, no whitespace).\n` +
+          `For Vercel: printf 'true' | npx vercel env add ${name} production\n` +
+          `2026-05-22 incident: empty-string passed previous "presence" check, silent-skipped 9 days of fleet migration.`,
+      };
+    }
+
+    return {
+      name: `${name} === "true" (value validation — Rule 61)`,
+      severity: requiredOnForBake ? "CRITICAL" : "INFO",
+      passed: true,
+      summary: `"${value}" ✓`,
+    };
+  });
+}
+
 function checkManifestVersion(): CheckResult {
   // Read VM_MANIFEST.version from lib/vm-manifest.ts. Info-level — surfaces
   // what version the bake will deliver. Compare to optional
@@ -890,6 +998,8 @@ async function main(): Promise<number> {
   push(checkHeadAlignedWithMain());
   push(checkIntegrityFixLanded());
   push(checkEnvVarsPresent());
+  // 2026-05-22 incident response: value validation, not just presence.
+  for (const r of checkBooleanEnvVarValues()) push(r);
   push(checkLinodeSnapshotMatch());
 
   const manifestCheck = checkManifestVersion();
