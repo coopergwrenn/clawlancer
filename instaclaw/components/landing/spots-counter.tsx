@@ -13,25 +13,36 @@ export function useSpotsCount() {
 }
 
 function getSpotTier(count: number) {
-  if (count >= 10) return {
+  // 2026-05-22: floor count at 1 — cloud-init handles signups when the pool
+  // is empty (lib/createUserVM.ts:assignOrProvisionUserVm pool-first
+  // wiring, commit ab8c2c4e). We never actually run out of capacity for
+  // the user, so the counter must never display 0 AND we must never show
+  // a "Servers restocking" banner that tells users to leave.
+  //
+  // Defense-in-depth: SpotsProvider floors the value at 1 at fetch time
+  // (single source of truth). This local Math.max is the second layer —
+  // if any caller ever passes count=0 directly (test, future consumer,
+  // bug), getSpotTier still degrades gracefully to the spots=1 styling
+  // instead of the removed "Servers restocking" tier.
+  const safe = Math.max(count, 1);
+  if (safe >= 10) return {
     orbBg: "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.4) 50%, rgba(180,70,40,0.75) 100%)",
     glowBg: "radial-gradient(circle, rgba(220,103,67,0.4) 0%, transparent 70%)",
-    text: `${count} Spots Open`,
+    text: `${safe} Spots Open`,
   };
-  if (count >= 3) return {
+  if (safe >= 3) return {
     orbBg: "radial-gradient(circle at 35% 30%, rgba(245,158,11,0.7), rgba(245,158,11,0.4) 50%, rgba(200,120,10,0.75) 100%)",
     glowBg: "radial-gradient(circle, rgba(245,158,11,0.4) 0%, transparent 70%)",
-    text: `${count} Spots Open`,
+    text: `${safe} Spots Open`,
   };
-  if (count >= 1) return {
+  // safe is now guaranteed 1 or 2 — the "Almost gone" red urgency tier.
+  // The pre-2026-05-22 spots=0 / "Servers restocking" branch is REMOVED
+  // (it told users to leave, which is the opposite of what we want now
+  // that cloud-init absorbs overflow seamlessly).
+  return {
     orbBg: "radial-gradient(circle at 35% 30%, rgba(239,68,68,0.7), rgba(239,68,68,0.4) 50%, rgba(200,50,50,0.75) 100%)",
     glowBg: "radial-gradient(circle, rgba(239,68,68,0.4) 0%, transparent 70%)",
-    text: `Almost gone — ${count} ${count === 1 ? "Spot" : "Spots"} Open`,
-  };
-  return {
-    orbBg: "radial-gradient(circle at 35% 30%, rgba(140,140,140,0.4), rgba(100,100,100,0.25) 50%, rgba(60,60,60,0.5) 100%)",
-    glowBg: "radial-gradient(circle, rgba(140,140,140,0.2) 0%, transparent 70%)",
-    text: "Servers restocking — check back shortly",
+    text: `Almost gone — ${safe} ${safe === 1 ? "Spot" : "Spots"} Open`,
   };
 }
 
@@ -41,7 +52,20 @@ export function SpotsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     fetch("/api/spots")
       .then((r) => r.json())
-      .then((d) => setSpots(d.available ?? 0))
+      // 2026-05-22: floor at 1 — never display 0 to visitors. Cloud-init
+      // (lib/createUserVM.ts:assignOrProvisionUserVm pool-first fallback)
+      // handles signups when the real pool is empty. The user never
+      // experiences "no servers available", so the counter must never
+      // claim otherwise. Math.max(d.available ?? 1, 1) handles:
+      //   - missing `available` field    → 1
+      //   - available === 0              → 1
+      //   - available === null/undefined → 1
+      //   - available === negative       → 1 (defensive, RPC bug guard)
+      //   - available === 1+             → real value
+      // On fetch error, .catch sets spots=null and the counter renders
+      // nothing (don't show fake "1 left" if the backend is unreachable —
+      // that would be lying, not optimizing for conversion).
+      .then((d) => setSpots(Math.max(d.available ?? 1, 1)))
       .catch(() => setSpots(null));
   }, []);
 
