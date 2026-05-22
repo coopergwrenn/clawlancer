@@ -741,11 +741,18 @@ function DeployingPageContent() {
                 <div key={step.num} className="flex items-center">
                   <div className="flex flex-col items-center">
                     {step.num === 3 ? (
-                      /* Active step — glowing glass orb */
+                      /* Active step — glowing glass orb. Palette swap
+                         for Edge attendees (W3): same shape, same
+                         shimmer + glass-highlight + breathing-glow
+                         layers, only the underlying radial-gradient
+                         RGBs swap to the Edge-olive palette. Matches
+                         /connect's PALETTE_OLIVE definition. */
                       <span
                         className="relative flex items-center justify-center w-10 h-10 rounded-full overflow-hidden shrink-0"
                         style={{
-                          background: "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.4) 50%, rgba(180,70,40,0.75) 100%)",
+                          background: isEdge
+                            ? "radial-gradient(circle at 35% 30%, rgba(74,87,53,0.9), rgba(41,49,30,0.75) 50%, rgba(20,28,12,0.9) 100%)"
+                            : "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.4) 50%, rgba(180,70,40,0.75) 100%)",
                           boxShadow: `
                             inset 0 -2px 4px rgba(0,0,0,0.3),
                             inset 0 2px 4px rgba(255,255,255,0.5),
@@ -771,7 +778,9 @@ function DeployingPageContent() {
                         <span
                           className="absolute inset-[-3px] rounded-full"
                           style={{
-                            background: "radial-gradient(circle, rgba(220,103,67,0.4) 0%, transparent 70%)",
+                            background: isEdge
+                              ? "radial-gradient(circle, rgba(41,49,30,0.5) 0%, transparent 70%)"
+                              : "radial-gradient(circle, rgba(220,103,67,0.4) 0%, transparent 70%)",
                             animation: "globe-glow 4s ease-in-out infinite",
                           }}
                         />
@@ -857,7 +866,17 @@ function DeployingPageContent() {
                   className="h-full rounded-full transition-all duration-700 ease-out"
                   style={{
                     width: `${progress}%`,
-                    background: "linear-gradient(90deg, #c75a34, #DC6743, #e8845e)",
+                    /* Palette swap for Edge attendees (W3 audit fix
+                       2026-05-22). Orange gradient is brand-correct
+                       for the default InstaClaw onboarding but
+                       conflicts with the dark-olive EdgePartnerBanner
+                       above on Edge sessions. Olive gradient mirrors
+                       the same darker→medium→lighter pattern using the
+                       Edge palette's olive shades — visually balanced
+                       on the same shape, no other layout change. */
+                    background: isEdge
+                      ? "linear-gradient(90deg, #29311E, #4A5733, #6A7A4D)"
+                      : "linear-gradient(90deg, #c75a34, #DC6743, #e8845e)",
                     animation:
                       progress > 0 && progress < 100
                         ? "bar-glow 2s ease-in-out infinite"
@@ -928,8 +947,20 @@ function DeployingPageContent() {
                       <span
                         className="relative flex items-center justify-center w-7 h-7 rounded-full overflow-hidden active-dot"
                         style={{
-                          background: "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.4) 50%, rgba(180,70,40,0.75) 100%)",
-                          boxShadow: "rgba(220,103,67,0.3) 0px 2px 6px 0px, rgba(255,255,255,0.25) 0px -1px 1px 0px inset",
+                          /* Edge palette swap for the active step orb
+                             (W3). Olive radial mirrors the orange
+                             radial pattern (radial-gradient at 35% 30%,
+                             three stops), using the same Edge-olive
+                             RGBs that /connect's PALETTE_OLIVE already
+                             ships. Same orb shape + glass highlight +
+                             pulse animation; only the underlying
+                             radial colors swap. */
+                          background: isEdge
+                            ? "radial-gradient(circle at 35% 30%, rgba(74,87,53,0.9), rgba(41,49,30,0.75) 50%, rgba(20,28,12,0.9) 100%)"
+                            : "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.7), rgba(220,103,67,0.4) 50%, rgba(180,70,40,0.75) 100%)",
+                          boxShadow: isEdge
+                            ? "rgba(41,49,30,0.4) 0px 2px 6px 0px, rgba(255,255,255,0.25) 0px -1px 1px 0px inset"
+                            : "rgba(220,103,67,0.3) 0px 2px 6px 0px, rgba(255,255,255,0.25) 0px -1px 1px 0px inset",
                         }}
                       >
                         <span
