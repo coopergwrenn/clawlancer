@@ -18,7 +18,6 @@ export const maxDuration = 120;
  * Schedule: every 2 minutes via Vercel cron or external cron service.
  */
 export async function GET(req: NextRequest) {
-  if (true as boolean) return NextResponse.json({ paused: true, marker: "CLOUDINIT_E2E_PAUSE_2026_05_22" }); // CLOUDINIT_E2E_PAUSE_2026_05_22 — remove this entire line to re-enable
   const authHeader = req.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

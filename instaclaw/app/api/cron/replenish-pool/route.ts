@@ -49,7 +49,6 @@ interface ProvisionResult {
 }
 
 export async function GET(req: NextRequest) {
-  if (true as boolean) return NextResponse.json({ paused: true, marker: "CLOUDINIT_E2E_PAUSE_2026_05_22" }); // CLOUDINIT_E2E_PAUSE_2026_05_22 — remove this entire line to re-enable
   // 1. Auth — same Bearer pattern as all other crons
   const authHeader = req.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
