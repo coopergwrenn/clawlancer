@@ -4,6 +4,11 @@ import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, AlertCircle, RotateCcw } from "lucide-react";
 import { EdgePartnerBanner, usePartnerCookie } from "@/components/marketing/edge-partner-banner";
+import {
+  DeployingPhaseAccordion,
+  POOL_PHASES,
+  CLOUD_INIT_PHASES,
+} from "@/components/onboarding/deploying-phase-accordion";
 
 type StepStatus = "pending" | "active" | "done" | "error";
 
@@ -195,6 +200,23 @@ function DeployingPageContent() {
   // and skip the auto-retry-configure (which would clobber setup.sh's
   // in-progress writes — see /api/vm/retry-configure's cloud-init guard).
   const isCloudInitRef = useRef(false);
+  // 2026-05-22: live VM state for the DeployingPhaseAccordion. Only tracks the
+  // fields the accordion needs (status, healthStatus, gatewayUrl, telegram
+  // bot username). Updated on every poll tick that returns vm data — kept
+  // shallow so React only re-renders the accordion when something changed.
+  const [vmAccordionState, setVmAccordionState] = useState<{
+    status: string | null;
+    healthStatus: string | null;
+    gatewayUrl: string | null;
+    telegramBotUsername: string | null;
+    createdVia: string | null;
+  }>({
+    status: null,
+    healthStatus: null,
+    gatewayUrl: null,
+    telegramBotUsername: null,
+    createdVia: null,
+  });
   const [softTimeout, setSoftTimeout] = useState(false);
   const [recoveryChecking, setRecoveryChecking] = useState(false);
   const [showCheckAnyway, setShowCheckAnyway] = useState(false);
@@ -383,6 +405,33 @@ function DeployingPageContent() {
             )
           );
           return;
+        }
+
+        // 2026-05-22: keep the accordion's vm state fresh on every poll
+        // (fires regardless of status — accordion needs to see the createdVia
+        // hint even at status='pending' to render the right phase list).
+        if (data.vm) {
+          setVmAccordionState((prev) => {
+            const next = {
+              status: data.status ?? null,
+              healthStatus: data.vm.healthStatus ?? null,
+              gatewayUrl: data.vm.gatewayUrl ?? null,
+              telegramBotUsername: data.vm.telegramBotUsername ?? null,
+              createdVia: data.vm.createdVia ?? null,
+            };
+            // Only re-set state when something actually changed — prevents
+            // unnecessary accordion re-renders.
+            if (
+              prev.status === next.status &&
+              prev.healthStatus === next.healthStatus &&
+              prev.gatewayUrl === next.gatewayUrl &&
+              prev.telegramBotUsername === next.telegramBotUsername &&
+              prev.createdVia === next.createdVia
+            ) {
+              return prev;
+            }
+            return next;
+          });
         }
 
         if (data.status === "assigned" && data.vm) {
@@ -818,6 +867,30 @@ function DeployingPageContent() {
               </div>
             </div>
 
+            {/* 2026-05-22 — cloud-init premium banner. Renders ONLY for
+                created_via='on_demand'. Pool path is fast enough that the
+                extra context would just be noise. Tone: premium and
+                intentional — frames cloud-init as a feature, not a fallback.
+                Spec-approved copy + design choices in commit body. */}
+            {vmAccordionState.createdVia === "on_demand" && (
+              <div
+                className="mb-6 px-5 py-3.5 rounded-lg"
+                style={{
+                  ...glassStyle,
+                  background:
+                    "linear-gradient(to right, rgba(220,103,67,0.05), rgba(220,103,67,0.025))",
+                  border: "1px solid rgba(220,103,67,0.15)",
+                }}
+              >
+                <p
+                  className="text-sm leading-relaxed"
+                  style={{ color: "#555555" }}
+                >
+                  Carving out a server just for you — takes a touch longer, but it&apos;s yours alone.
+                </p>
+              </div>
+            )}
+
             {/* Steps */}
             <div className="space-y-7">
               {steps.map((step) => (
@@ -901,6 +974,28 @@ function DeployingPageContent() {
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* 2026-05-22 — "What's happening right now?" expandable accordion.
+                Shown on BOTH paths (different content per createdVia). Default
+                collapsed — user opts in. Friendly phase descriptions so the
+                wait feels productive instead of opaque. Spec details + design
+                rationale in components/onboarding/deploying-phase-accordion.tsx. */}
+            <div className="mt-6 flex justify-center">
+              <DeployingPhaseAccordion
+                phases={
+                  vmAccordionState.createdVia === "on_demand"
+                    ? CLOUD_INIT_PHASES
+                    : POOL_PHASES
+                }
+                state={{
+                  status: vmAccordionState.status,
+                  healthStatus: vmAccordionState.healthStatus,
+                  gatewayUrl: vmAccordionState.gatewayUrl,
+                  telegramBotUsername: vmAccordionState.telegramBotUsername,
+                  pollCount,
+                }}
+              />
             </div>
           </div>
 
