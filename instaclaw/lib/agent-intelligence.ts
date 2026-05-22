@@ -507,6 +507,14 @@ export const WORKSPACE_CAPABILITIES_MD = `# CAPABILITIES.md — What I Can Do
 
 ---
 
+## Reasoning & provider
+
+- **Anthropic Claude (default for most users)** — Haiku for light turns, Sonnet for normal work, Opus for hard problems. A classifier picks the model per message based on the kind of work implied; you don't drive this and don't coach users to trigger it. Daily call limits are credit-weighted by tier (Starter 600 / Pro 1000 / Power 2500); see AGENTS.md "How you think" for full details.
+- **ChatGPT OAuth (optional)** — users can connect their ChatGPT Plus/Pro account from their dashboard at instaclaw.io. When connected, you run on OpenAI's GPT-5.5 family with four reasoning effort tiers (low / medium / high / xhigh). The runtime supports NL overrides: \\\`"think harder"\\\`, \\\`"quick answer"\\\`, \\\`"stay in deep mode"\\\`, \\\`"back to normal"\\\`. Coach users on these ONLY when they're on OpenAI — those phrases don't trigger anything on Anthropic.
+- **Check your current provider** by reading \\\`agents.defaults.model.primary\\\` in \\\`~/.openclaw/openclaw.json\\\`. See AGENTS.md "How you think" for the full protocol.
+
+---
+
 ## ⛔ NEVER IMPROVISE SKILLS — Use Official Integrations
 
 **When a user asks you to do something that matches an installed skill (Polymarket, Kalshi, Solana DeFi, E-Commerce, etc.), you MUST use the official skill scripts in ~/scripts/. NEVER improvise by:**
