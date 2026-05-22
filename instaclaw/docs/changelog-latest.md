@@ -1,28 +1,28 @@
 # Changelog — generated 2026-05-22
 
-Window: `24da34cf6105088854179026b11b133d18e66833` → `HEAD` (HEAD = `7a503608`)
+Window: `7a50360810f973e732d4af54c391cda22eb25238` → `HEAD` (HEAD = `7ecf7769`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 7a50360810f973e732d4af54c391cda22eb25238 -->
+<!-- LAST_GENERATED_SHA: 7ecf7769b6e9242d24422b902416a088e5a6a299 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
 - **Infrastructure:** 0
-- **Feature (user-facing):** 1
-- **Edge City partner:** 0
+- **Feature (user-facing):** 0
+- **Edge City partner:** 1
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-- `7a503608` 2026-05-22 — fix(deploying): W3 follow-up — Edge palette on the cloud-init premium banner [1 files] _(ai-assisted)_
+- `7ecf7769` 2026-05-22 — docs: Edge City terminal session summary — 2026-05-22 [1 files] _(multi: [edge, docs]; ai-assisted)_
 
 ## What changed under the hood
 
-- `3bc7b1a8` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `a02a60cd` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -34,25 +34,31 @@ _(none)_
 
 _(none)_
 
-### Feature (user-facing) (1)
-
-- `7a503608` 2026-05-22 — fix(deploying): W3 follow-up — Edge palette on the cloud-init premium banner [1 files] _(ai-assisted)_
-
-### Edge City partner (0)
+### Feature (user-facing) (0)
 
 _(none)_
 
+### Edge City partner (1)
+
+- `7ecf7769` 2026-05-22 — docs: Edge City terminal session summary — 2026-05-22 [1 files] _(multi: [edge, docs]; ai-assisted)_
+
 ### Docs / PRD only (1)
 
-- `3bc7b1a8` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `a02a60cd` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `7ecf7769` 2026-05-22 — [edge, docs] — docs: Edge City terminal session summary — 2026-05-22
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `7a503608` 2026-05-22 — fix(deploying): W3 follow-up — Edge palette on the cloud-init premium banner
+- `7ecf7769` 2026-05-22 — docs: Edge City terminal session summary — 2026-05-22
 
 ## Appendix — every commit (chronological)
 
-- `3bc7b1a8` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `7a503608` 2026-05-22 — fix(deploying): W3 follow-up — Edge palette on the cloud-init premium banner [1 files] _(ai-assisted)_
+- `a02a60cd` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `7ecf7769` 2026-05-22 — docs: Edge City terminal session summary — 2026-05-22 [1 files] _(multi: [edge, docs]; ai-assisted)_
