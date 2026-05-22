@@ -3420,7 +3420,8 @@ async function deployFileEntry(
 }
 
 /**
- * Step 2b: Clean up bootstrap on VMs that have already bootstrapped.
+ * Step 2b: Clean up bootstrap on VMs that have already had a REAL first
+ * conversation.
  *
  * The agent is supposed to delete BOOTSTRAP.md after the first conversation,
  * but it's unreliable. If BOOTSTRAP.md still exists, the agent reads it on
@@ -3428,9 +3429,41 @@ async function deployFileEntry(
  * .bootstrap_consumed sentinel in SOUL.md is a rule the agent SHOULD follow
  * but doesn't reliably check before reading BOOTSTRAP.md directly.
  *
- * Fix: delete BOOTSTRAP.md AND create .bootstrap_consumed on VMs where the
- * agent has already been used (session files exist). New VMs (no sessions)
- * are left alone so the first-run bootstrap works normally.
+ * == 2026-05-22 vm-1019 quirky-greeting regression ==
+ *
+ * The pre-fix signal "any *.jsonl in sessions/" was too coarse. The gateway
+ * creates session jsonl at startup (heartbeat init, telegram channel
+ * handshake) BEFORE any user→agent exchange. On cloud-init VMs, the
+ * reconciler ran within ~3 min of provision, saw a session file existed,
+ * deleted BOOTSTRAP.md, created .bootstrap_consumed. When the user sent
+ * their first message, the agent had no BOOTSTRAP.md to follow → fell
+ * back to the generic "Hey {user}, I'm {bot} — what can I help you with?"
+ * greeting from SOUL.md. The quirky "just came alive — first moment
+ * awake, who should I be?" awakening NEVER PLAYED for cloud-init users.
+ *
+ * Cooper directive (2026-05-22): restore the quirky first-message
+ * greeting. Root fix: stop the reconciler from prematurely treating
+ * bootstrap as consumed.
+ *
+ * == Fix ==
+ *
+ * Delete BOOTSTRAP.md + create .bootstrap_consumed ONLY when the agent
+ * has demonstrably had a real conversation. "Real conversation" is
+ * defined narrowly: at least one assistant message in a session jsonl
+ * with ≥100 chars of substantive text content. New VMs whose session
+ * files only contain gateway-init events, telegram-handshake events,
+ * or empty/aborted assistant replies (like vm-1019's `message: None`
+ * events) are LEFT ALONE so the first-run quirky bootstrap fires.
+ *
+ * The Python check below walks each *.jsonl (skipping trajectory +
+ * checkpoint sidecars), parses each event, and exits early as soon as
+ * it finds ONE substantive assistant reply (no need to scan all events).
+ *
+ * Output contract:
+ *   "USED"      → at least one substantive assistant reply found
+ *   "NOT_USED"  → only init events / empty replies / no sessions
+ *   anything else / non-zero exit → fail-safe: treated as NOT_USED
+ *     (keep BOOTSTRAP.md if we can't prove it should be deleted)
  */
 async function stepBootstrapConsumed(
   ssh: SSHConnection,
@@ -3451,18 +3484,58 @@ async function stepBootstrapConsumed(
     return;
   }
 
-  // BOOTSTRAP.md exists — check if agent has already been used
-  const sessionCheck = await ssh.execCommand(
-    `ls ~/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | head -1 | grep -q . && echo HAS_SESSIONS || echo NO_SESSIONS`
+  // BOOTSTRAP.md exists — only delete if the agent has had a REAL
+  // conversation (substantive assistant reply, not just gateway-init
+  // events). See block comment above for vm-1019 regression context.
+  const realConvoCheck = await ssh.execCommand(
+    `python3 - <<'BOOTSTRAP_CHECK_PY'
+import json, os, glob
+sessions_dir = os.path.expanduser('~/.openclaw/agents/main/sessions')
+for f in glob.glob(os.path.join(sessions_dir, '*.jsonl')):
+    if 'trajectory' in f or 'checkpoint' in f:
+        continue
+    try:
+        with open(f) as fh:
+            for line in fh:
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
+                msg = e.get('message') or {}
+                if not isinstance(msg, dict):
+                    continue
+                if msg.get('role') != 'assistant':
+                    continue
+                content = msg.get('content')
+                if isinstance(content, str):
+                    text = content
+                elif isinstance(content, list):
+                    parts = []
+                    for b in content:
+                        if isinstance(b, dict) and b.get('type') == 'text':
+                            t = b.get('text')
+                            if isinstance(t, str):
+                                parts.append(t)
+                    text = ''.join(parts)
+                else:
+                    text = ''
+                if len(text.strip()) > 100:
+                    print('USED')
+                    raise SystemExit(0)
+    except (OSError, IOError):
+        continue
+print('NOT_USED')
+BOOTSTRAP_CHECK_PY`
   );
 
-  if (sessionCheck.stdout.trim() !== 'HAS_SESSIONS') {
-    // New VM — agent hasn't been used yet, leave BOOTSTRAP.md for first-run
-    result.alreadyCorrect.push('bootstrap (new VM, keeping BOOTSTRAP.md)');
+  if (realConvoCheck.stdout.trim() !== 'USED') {
+    result.alreadyCorrect.push(
+      'bootstrap (no substantive conversation yet, keeping BOOTSTRAP.md)',
+    );
     return;
   }
 
-  // Agent has sessions — BOOTSTRAP.md should have been deleted after first conversation
+  // Real conversation confirmed — safe to clean up.
   if (dryRun) {
     result.fixed.push('[dry-run] delete BOOTSTRAP.md + create .bootstrap_consumed');
     return;
