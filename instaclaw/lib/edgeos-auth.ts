@@ -88,6 +88,20 @@ export type EdgeOSEnv = {
    * configureOpenClaw flow where total time is bounded.
    */
   timeoutMs?: number;
+  /**
+   * EdgeOS X-Third-Party-Api-Key header value, used by
+   * `requestThirdPartyLogin` to verify attendee/pass-holder status against
+   * the popup attendee directory. Defaults to
+   * `process.env.EDGEOS_THIRD_PARTY_API_KEY`. Tests inject explicitly.
+   *
+   * Cooper's tenant key (Edge Esmeralda 2026 admin) from Tule 2026-05-22:
+   *   nFrMSSPjeWLFOlBxZ2HJbqVSjuURq2JGRKpCYVDaDzs
+   *
+   * DIFFERENT from `tenantId` (the X-Tenant-Id header used by directory
+   * + events endpoints). Don't confuse them. EdgeOS has two parallel auth
+   * surfaces and we use both for different read/write patterns.
+   */
+  thirdPartyApiKey?: string;
 };
 
 // ─── requestOTP ───────────────────────────────────────────────────────────
@@ -178,6 +192,179 @@ export async function requestOTP(
     return { ok: false, status: "rate_limited", httpStatus: res.status, raw: bodyText.slice(0, 500) };
   }
   return { ok: false, status: "unknown", httpStatus: res.status, raw: bodyText.slice(0, 500) };
+}
+
+// ─── requestThirdPartyLogin ───────────────────────────────────────────────
+//
+// 2026-05-22 P0 fix: the CORRECT primitive for "is this email a ticket /
+// pass holder?" verification. requestOTP (above) calls
+// /api/v1/auth/user/login which checks for an existing EdgeOS USER ACCOUNT
+// — a separate system from the popup ATTENDEE/PASS-HOLDER directory.
+// Production attendees who never manually logged into EdgeOS standalone
+// (~80% of Edge Esmeralda's 1000 tickets) returned 404 even though their
+// pass was valid. Timour worked because he, as an Edge team member, had
+// already created an EdgeOS user account at some prior point.
+//
+// The third-party-login endpoint authenticates against the popup
+// attendee directory using a tenant-level API key in the
+// X-Third-Party-Api-Key header. Empirically verified 2026-05-22 vs
+// api.edgeos.world:
+//
+//   coopergrantwrenn@gmail.com  (real ticket, no user account)  → 200 ✓
+//   timour.kosters@gmail.com    (real ticket, has user account) → 200 ✓
+//   throwaway-non-attendee@...  (no ticket)                     → 401 ✗
+//
+// Side effect on 200: EdgeOS sends an OTP email to the attendee. We don't
+// need them to use the code (we treat 200 as "verified" and proceed). The
+// /edge/claim verified state shows soft copy telling the user the email
+// is harmless. Tule confirmed this is the intended verification primitive
+// for third-party integrations (2026-05-22).
+//
+// 401 mapping: EdgeOS returns 401 "Authentication failed" for BOTH "bad
+// api key" AND "email not in directory". Since we know our key works for
+// known-good emails, we can safely interpret 401 → "not_attendee" in this
+// codepath. If the api key is ever invalidated, EVERY verification will
+// return 401 → operators will see a flood of "not_attendee" reasons and
+// know to rotate. There's no per-request distinction; this is fine.
+//
+// Failure-mode semantics in lib/edgeos.ts:verifyAttendeeByEmail:
+//   - 200                                → { verified: true }
+//   - 401                                → { verified: false, reason: not_found }
+//   - 422                                → { verified: false, reason: invalid_email }
+//   - 429                                → { verified: false, reason: rate_limited }
+//   - 5xx / network / config_error       → { verified: true, degraded: true }
+//     (fail-open per Cooper directive 2026-05-22: blocking 1000 attendees
+//     on a Tule API hiccup is worse than letting through a few non-attendees)
+
+export type RequestThirdPartyLoginSuccess = {
+  ok: true;
+  email: string;
+  expiresInMinutes: number | null;
+  message: string | null;
+};
+
+export type RequestThirdPartyLoginFailureStatus =
+  | "not_attendee" // 401 — email isn't in the popup attendee directory
+  | "validation_error" // 422 — bad email format
+  | "rate_limited" // 429
+  | "config_error" // EDGEOS_THIRD_PARTY_API_KEY not set
+  | "network" // fetch threw / timed out
+  | "unknown"; // anything else, surfaced with httpStatus + raw
+
+export type RequestThirdPartyLoginFailure = {
+  ok: false;
+  status: RequestThirdPartyLoginFailureStatus;
+  httpStatus?: number;
+  raw?: string;
+};
+
+export type RequestThirdPartyLoginResult =
+  | RequestThirdPartyLoginSuccess
+  | RequestThirdPartyLoginFailure;
+
+export async function requestThirdPartyLogin(
+  email: string,
+  env: EdgeOSEnv = {},
+): Promise<RequestThirdPartyLoginResult> {
+  const apiBase = env.apiBase ?? DEFAULT_API_BASE;
+  const tenantKey =
+    env.thirdPartyApiKey ?? process.env.EDGEOS_THIRD_PARTY_API_KEY;
+
+  if (!tenantKey) {
+    return {
+      ok: false,
+      status: "config_error",
+      raw: "EDGEOS_THIRD_PARTY_API_KEY not set in environment",
+    };
+  }
+
+  const trimmed = email.trim().toLowerCase();
+  if (!trimmed || !trimmed.includes("@")) {
+    return {
+      ok: false,
+      status: "validation_error",
+      raw: "email is empty or missing @",
+    };
+  }
+
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(
+      `${apiBase}/api/v1/auth/human/third-party/login`,
+      {
+        method: "POST",
+        headers: {
+          "X-Third-Party-Api-Key": tenantKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: trimmed }),
+        timeoutMs: env.timeoutMs,
+      },
+    );
+  } catch (err) {
+    return {
+      ok: false,
+      status: "network",
+      raw: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  const bodyText = await res.text().catch(() => "");
+
+  if (res.ok) {
+    let parsed: {
+      message?: string;
+      email?: string;
+      expires_in_minutes?: number;
+    } = {};
+    try {
+      parsed = bodyText ? JSON.parse(bodyText) : {};
+    } catch {
+      return {
+        ok: false,
+        status: "unknown",
+        httpStatus: res.status,
+        raw: bodyText.slice(0, 500),
+      };
+    }
+    return {
+      ok: true,
+      email: parsed.email ?? trimmed,
+      expiresInMinutes: parsed.expires_in_minutes ?? null,
+      message: parsed.message ?? null,
+    };
+  }
+
+  if (res.status === 401) {
+    return {
+      ok: false,
+      status: "not_attendee",
+      httpStatus: res.status,
+      raw: bodyText.slice(0, 500),
+    };
+  }
+  if (res.status === 422) {
+    return {
+      ok: false,
+      status: "validation_error",
+      httpStatus: res.status,
+      raw: bodyText.slice(0, 500),
+    };
+  }
+  if (res.status === 429) {
+    return {
+      ok: false,
+      status: "rate_limited",
+      httpStatus: res.status,
+      raw: bodyText.slice(0, 500),
+    };
+  }
+  return {
+    ok: false,
+    status: "unknown",
+    httpStatus: res.status,
+    raw: bodyText.slice(0, 500),
+  };
 }
 
 // ─── authenticateOTP ──────────────────────────────────────────────────────

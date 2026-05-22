@@ -62,6 +62,12 @@ function assert(label: string, cond: boolean, detail?: string) {
 }
 
 async function run() {
+  // 2026-05-22: verifyAttendeeByEmail now uses requestThirdPartyLogin which
+  // requires EDGEOS_THIRD_PARTY_API_KEY. Set a test value so the function
+  // doesn't short-circuit with config_error → degraded fail-open (which
+  // would make Test 2/3 falsely pass as verified:true).
+  process.env.EDGEOS_THIRD_PARTY_API_KEY = "test-tenant-key-do-not-use-in-prod";
+
   console.log("Test 1: verified attendee (200 OK)");
   stubFetch(async () =>
     makeResponse(200, {
@@ -76,18 +82,27 @@ async function run() {
   assert("not degraded", !r.degraded);
   restoreFetch();
 
-  console.log("Test 2: 404 user not found");
-  stubFetch(async () => makeResponse(404, { detail: "User not found" }));
+  // 2026-05-22 P0 fix: switched from user/login (which returned 404 for
+  // non-attendees) to third-party/login (which returns 401 for both bad-api-key
+  // AND not-an-attendee). The 401 mapping is now the PRIMARY not_attendee
+  // signal. 404 is no longer a documented response shape — if EdgeOS ever
+  // returns 404 it falls through to api_error.
+  console.log("Test 2: 401 not-an-attendee (EdgeOS collapses 'not in directory' into 401)");
+  stubFetch(async () => makeResponse(401, { detail: "Authentication failed" }));
   r = await verifyAttendeeByEmail("ghost@example.com");
   assert("verified=false", r.verified === false);
   assert("reason=not_found", r.reason === "not_found");
   restoreFetch();
 
-  console.log("Test 3: 401 unauthenticated (treat as not_found per audit)");
-  stubFetch(async () => makeResponse(401, { detail: "Unauthorized" }));
+  console.log("Test 3: 404 undocumented status → degraded fail-open (treated as unknown)");
+  // The new third-party endpoint doesn't return 404 in documented cases — 401
+  // is the "not in directory" signal. If EdgeOS ever DOES return 404 (e.g.,
+  // routing change), our code treats it as "unknown" → degraded fail-open
+  // per Cooper directive 2026-05-22 (better to let through than block).
+  stubFetch(async () => makeResponse(404, { detail: "Not Found" }));
   r = await verifyAttendeeByEmail("blocked@example.com");
-  assert("verified=false", r.verified === false);
-  assert("reason=not_found (401 → no_account per audit)", r.reason === "not_found");
+  assert("verified=true (degraded fail-open on undocumented 404)", r.verified === true);
+  assert("degraded=true", r.degraded === true);
   restoreFetch();
 
   console.log("Test 4: 422 validation error");
@@ -193,12 +208,14 @@ async function run() {
   restoreFetch();
   delete process.env.EDGE_VERIFIED_OVERRIDE_EMAILS;
 
-  console.log("Test 14: override unset → real path taken");
+  console.log("Test 14: override unset → real path taken (uses 401 — the documented not-attendee status)");
   delete process.env.EDGE_VERIFIED_OVERRIDE_EMAILS;
   fetchCalled = false;
   stubFetch(async () => {
     fetchCalled = true;
-    return makeResponse(404, { detail: "User not found" });
+    // 2026-05-22: switched from 404 to 401 to match the new third-party
+    // endpoint's documented "not in directory" response shape.
+    return makeResponse(401, { detail: "Authentication failed" });
   });
   r = await verifyAttendeeByEmail("real-attendee-not-in-overrides@example.com");
   assert("API was called", fetchCalled);

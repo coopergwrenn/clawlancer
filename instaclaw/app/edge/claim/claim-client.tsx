@@ -317,6 +317,23 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
                     Sign in with this same email on the next page so we can
                     link your account.
                   </p>
+                  {/* 2026-05-22 P0 fix soft-disclosure: the new
+                      third-party-login primitive (which is the CORRECT way
+                      to verify pass-holders against EdgeOS's attendee
+                      directory) sends an OTP email as a side effect of
+                      checking attendee status. The user doesn't need to use
+                      that code — we treat the 200 response as verification
+                      itself. Soft note here so users see the EdgeOS email
+                      in their inbox and don't think something's broken.
+                      Suppressed in the degraded branch (no OTP sent if
+                      EdgeOS was unreachable). */}
+                  <p
+                    className="mt-2 italic"
+                    style={{ opacity: 0.75 }}
+                  >
+                    EdgeOS may have emailed you a verification code — you
+                    can ignore it. This step is complete.
+                  </p>
                 </>
               )}
             </div>

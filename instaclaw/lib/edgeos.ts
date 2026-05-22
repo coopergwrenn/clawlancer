@@ -1,23 +1,31 @@
 /**
  * EdgeOS attendee verification — thin wrapper used by the /edge/claim
  * ticket gate. Maps the categorized failure modes from
- * `lib/edgeos-auth.ts:requestOTP` into a uniform shape the gate route
- * can act on.
+ * `lib/edgeos-auth.ts:requestThirdPartyLogin` into a uniform shape the
+ * gate route can act on.
  *
- * Underlying primitive: POST `/api/v1/auth/user/login` on EdgeOS
- * (`api.edgeos.world` prod). EdgeOS returns:
- *   - 200 OK if the email is registered for any Edge popup → verified
- *   - 404 "User not found" if not registered → not_found
+ * Underlying primitive: POST `/api/v1/auth/human/third-party/login` on
+ * EdgeOS (`api.edgeos.world` prod), with `X-Third-Party-Api-Key` header
+ * (tenant-level API key). EdgeOS returns:
+ *   - 200 OK if the email is in the popup attendee directory → verified
+ *   - 401 "Authentication failed" if email is not a pass-holder → not_found
  *   - 422 if email is malformed → invalid_email
  *   - 429 if we hammer them → rate_limited
- *   - 5xx / network → degraded (caller decides whether to let through)
+ *   - 5xx / network / missing api key → degraded fail-open
  *
- * Side-effect on 200: EdgeOS sends an OTP email to the user. They don't
- * have to use the code — our gate exchanges the 200 response for a signed
- * cookie + the user proceeds via Google/OpenAI OAuth on /connect — but
- * they'll see "Verify your EdgeOS sign-in" in their inbox. Treat that as
- * a soft confirmation: it's literally EdgeOS confirming the email is
- * registered. Acceptable UX for V1.
+ * 2026-05-22 P0 fix: previously called `requestOTP` which hit
+ * /api/v1/auth/user/login — that checks EdgeOS USER ACCOUNTS (a separate
+ * system from the popup attendee directory). It returned 404 for any
+ * email that hadn't manually created an EdgeOS account, blocking ~80%
+ * of Edge Esmeralda attendees (most have tickets but never logged into
+ * EdgeOS standalone). Switched to requestThirdPartyLogin which checks
+ * the directory directly via tenant api key. See full incident write-up
+ * in lib/edgeos-auth.ts:requestThirdPartyLogin block comment.
+ *
+ * Side-effect on 200: EdgeOS sends an OTP email to the user (third-party
+ * login is OTP-based). We don't need the user to enter the code — the
+ * 200 status code is sufficient verification. Our /edge/claim verified
+ * state shows soft copy telling users to ignore the email.
  *
  * Why we can't return the attendee's name in V1: the `/auth/user/login`
  * response only has `{message, email, expires_in_minutes}`. The
@@ -34,7 +42,7 @@
  * call. Used for hand-validated cases (Tule, sponsors, Cooper's test
  * accounts, etc.).
  */
-import { requestOTP } from "./edgeos-auth";
+import { requestThirdPartyLogin } from "./edgeos-auth";
 import { logger } from "./logger";
 
 export interface VerifyAttendeeResult {
@@ -109,25 +117,47 @@ export async function verifyAttendeeByEmail(
     return { verified: true };
   }
 
-  // Hit EdgeOS via the audited OTP-login primitive. requestOTP handles:
-  //   - HTTPS to api.edgeos.world
-  //   - 15s default timeout
-  //   - Network error categorization
-  //   - 422/404/429 categorization
-  const result = await requestOTP(trimmed);
+  // 2026-05-22 P0 FIX: switched from requestOTP (which checks EdgeOS USER
+  // ACCOUNTS via /api/v1/auth/user/login — wrong system for ticket
+  // verification) to requestThirdPartyLogin (which checks the popup
+  // ATTENDEE/PASS-HOLDER directory via /api/v1/auth/human/third-party/login
+  // with X-Third-Party-Api-Key). See lib/edgeos-auth.ts requestThirdPartyLogin
+  // block comment for the full incident write-up.
+  //
+  // Side effect on success: EdgeOS sends an OTP email to the attendee. The
+  // /edge/claim verified-state UI surfaces this with soft copy so users
+  // know to ignore it.
+  const result = await requestThirdPartyLogin(trimmed);
 
   if (result.ok) {
     return { verified: true };
   }
 
-  // Map requestOTP's failure statuses into our verification shape.
+  // Map requestThirdPartyLogin's failure statuses into our verification
+  // shape. Mapping invariants:
+  //   - not_attendee → not_found (UI-friendly term; we don't expose the
+  //     internal "directory miss" distinction to the user)
+  //   - config_error → degraded fail-open (don't block 1000 attendees on
+  //     a missing env var; loud-log instead)
+  //   - network / unknown → degraded fail-open per Cooper directive
+  //     2026-05-22: better to let through a few non-attendees during an
+  //     EdgeOS outage than to block every real attendee
   switch (result.status) {
-    case "no_account":
+    case "not_attendee":
       return { verified: false, reason: "not_found" };
     case "validation_error":
       return { verified: false, reason: "invalid_email" };
     case "rate_limited":
       return { verified: false, reason: "rate_limited" };
+    case "config_error":
+      // EDGEOS_THIRD_PARTY_API_KEY missing — operator misconfiguration.
+      // Fail-open so launch isn't blocked, but log at ERROR so we see it
+      // in Sentry / Vercel logs immediately.
+      logger.error("edgeos.verifyAttendeeByEmail: EDGEOS_THIRD_PARTY_API_KEY not set — failing open", {
+        route: "lib/edgeos",
+        emailDomain: trimmed.split("@")[1] ?? "?",
+      });
+      return { verified: true, degraded: true };
     case "network":
     case "unknown":
       // EdgeOS is down or returning unexpected shapes. Let the user
