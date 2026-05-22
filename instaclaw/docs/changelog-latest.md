@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-22
 
-Window: `010981600e0820544f28cae935e263722866bb9f` → `HEAD` (HEAD = `48f458d1`)
+Window: `48f458d16429c7ef4db204cf784386ca70db3ebb` → `HEAD` (HEAD = `60979082`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 48f458d16429c7ef4db204cf784386ca70db3ebb -->
+<!-- LAST_GENERATED_SHA: 60979082ec69644291c96883d2b4acbc1603186b -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
+- **Reconciler / manifest:** 1
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `6a29c672` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `48f458d1` 2026-05-22 — docs(CLAUDE.md): add Rule 60 — migration files MUST be self-contained; never rely on the Supabase Studio "Run and enable RLS" prompt [1 files] _(ai-assisted)_
+- `60979082` 2026-05-22 — feat(reconcile): stepTelegramBotDescription — POOL coverage gap fix (TASK 4-sub extension) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `62cc8f3b` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
 
-_(none)_
+- `60979082` 2026-05-22 — feat(reconcile): stepTelegramBotDescription — POOL coverage gap fix (TASK 4-sub extension) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -43,18 +43,23 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `6a29c672` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `48f458d1` 2026-05-22 — docs(CLAUDE.md): add Rule 60 — migration files MUST be self-contained; never rely on the Supabase Studio "Run and enable RLS" prompt [1 files] _(ai-assisted)_
+- `62cc8f3b` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `60979082` 2026-05-22 — [reconciler, infrastructure, edge] — feat(reconcile): stepTelegramBotDescription — POOL coverage gap fix (TASK 4-sub extension)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `48f458d1` 2026-05-22 — docs(CLAUDE.md): add Rule 60 — migration files MUST be self-contained; never rely on the Supabase Studio "Run and enable RLS" prompt
+- `60979082` 2026-05-22 — feat(reconcile): stepTelegramBotDescription — POOL coverage gap fix (TASK 4-sub extension)
 
 ## Appendix — every commit (chronological)
 
-- `6a29c672` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `48f458d1` 2026-05-22 — docs(CLAUDE.md): add Rule 60 — migration files MUST be self-contained; never rely on the Supabase Studio "Run and enable RLS" prompt [1 files] _(ai-assisted)_
+- `62cc8f3b` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `60979082` 2026-05-22 — feat(reconcile): stepTelegramBotDescription — POOL coverage gap fix (TASK 4-sub extension) [1 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
