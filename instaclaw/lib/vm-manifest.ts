@@ -1655,8 +1655,25 @@ export const VM_MANIFEST = {
    *  Design doc: instaclaw/docs/prd/chatgpt-oauth-reasoning-routing-design-2026-05-20.md
    *  Rollback: revert this commit; backup files at .pre-router.bak on each
    *  VM. Per-VM rollback command in the design doc §rollback section.
+   *
+   * v113 (2026-05-22): force-reconcile bump. stepTelegramBotDescription
+   * (commit 60979082) was added as a NEW reconciler step AFTER v112 landed
+   * (ed32e3e3) but without bumping the manifest version. The cron's
+   * `lt(config_version, VM_MANIFEST.version)` filter excluded all 156
+   * already-current cv=112 VMs from re-reconciliation, leaving the new
+   * step silently dead on the existing fleet. Per Rule 47, new reconciler
+   * steps require a cv bump OR a one-shot fleet push. Bumping v112→v113
+   * forces every healthy+assigned VM back into the candidate queue so
+   * stepTelegramBotDescription fires on the next reconcile-fleet tick.
+   *
+   * No code change beyond this version field — the underlying step,
+   * configSettings, files[], and cronJobs are byte-identical to v112.
+   * Fleet should converge to cv=113 within ~30 min at default cron cadence.
+   *
+   * IMPORTANT for snapshot bake: the bake VM should reconcile to v113,
+   * not v112 — Cooper notified snapshot terminal at bump time.
    */
-  version: 112,
+  version: 113,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

@@ -2002,6 +2002,62 @@ Single source of truth for what each `VM_MANIFEST.version` bump contains. Used f
 
 **Pairing with Rule 47 (file-drift cron)**: a template change that doesn't bump the manifest version still needs to reach existing caught-up VMs. The file-drift cron at `app/api/cron/file-drift/route.ts` runs `stepFiles` continuously (no version gate) so any `files[]` content change propagates within ~3-5 minutes regardless. The version bump is what locks the change to a cv — "cv=N means this file content" — and what blocks new VMs at older snapshots from regressing the change.
 
+### v113 — 2026-05-22 (force-reconcile to pick up stepTelegramBotDescription from 60979082)
+
+- **Manifest change**: `VM_MANIFEST.version` bumped 112 → 113. **NO new
+  reconciler step, NO config change, NO file content change.** This is a
+  pure force-reconcile bump. The underlying steps, configSettings,
+  files[], and cronJobs are byte-identical to v112.
+- **Why**: commit `60979082` (2026-05-22, "stepTelegramBotDescription —
+  POOL coverage gap fix") added a brand-new reconciler step to
+  `lib/vm-reconcile.ts:reconcileVM`'s orchestrator chain AFTER `ed32e3e3`
+  (the v112 manifest bump) had already landed. The PR did not bump the
+  manifest version. The reconcile-fleet cron filters candidates with
+  `lt(config_version, VM_MANIFEST.version)` = `lt(cv, 112)`. With the
+  fleet at cv=112 across 156/156 healthy+assigned VMs, the cron's
+  candidate set was empty — `reconcileVM` never ran — so the new step
+  was silently dead on the existing fleet. Cloud-init VMs were covered
+  (setup.sh §1.34 sets the description directly). Pool VMs assigned
+  pre-60979082 were NOT covered (assigned before the step existed, no
+  re-reconcile path to make it fire).
+- **Rule 47 violation**: this is exactly the class of bug Rule 47 covers
+  — "new reconciler steps require either a manifest bump OR a one-shot
+  fleet push." `stepTelegramBotDescription` is SSH+curl (not a file
+  deploy), so the file-drift cron can't help. Manifest bump is the
+  correct fix. Caught by Cooper during end-of-day audit when he asked
+  "are there any commits on main that added new reconciler steps AFTER
+  v112 was set?"
+- **What v113 actually does**: bumps cv to 113, which forces every
+  cv=112 VM back into the reconcile-fleet candidate query. Each VM hits
+  `reconcileVM` on its next cron tick (within ~3 min at default cadence).
+  `stepTelegramBotDescription` runs once per VM — for each pool VM in
+  the affected cohort, it (a) reads the bot token from `.env`, (b) calls
+  Telegram `getMyDescription` + `getMyShortDescription` as idempotency
+  gates, (c) POSTs `setMyDescription` + `setMyShortDescription` only
+  when the current text differs from expected. Steady-state: ~150 GET
+  calls per tick across the fleet (one per bot), <150 POST calls total
+  across the entire rollout (one per VM that's out of date), then
+  alreadyCorrect forever after. Telegram bot-API limit is 30 calls/sec
+  per bot token; we're orders of magnitude under.
+- **Fleet rollout window**: ~30 min for all 156 VMs to reach cv=113 at
+  `CONFIGURE_AUDIT_BATCH_SIZE=3` and 3-min cron cadence. Caught-up VMs
+  hit alreadyCorrect on the description-step and skip-cost zero.
+- **Snapshot bake interaction**: announced to snapshot terminal at
+  bump time so the bake VM reconciles to cv=113, not the now-stale
+  cv=112. Without this notice the bake would have produced a v112-cohort
+  snapshot that immediately needs to re-reconcile to v113 on every
+  fresh provision — wasteful but not broken.
+- **Detection note**: future post-bump audit query — any commit message
+  matching `feat\(reconcile\): step[A-Z]` that landed AFTER the most-
+  recent `feat\(v\d+\)` commit and BEFORE the next one is a Rule 47
+  candidate.
+- **Rollback**: revert this commit. Fleet sticks at cv=112; the
+  `stepTelegramBotDescription` step continues to fire only on
+  pool-assignment + freshly-cv-reset VMs. Cloud-init VMs are covered by
+  setup.sh §1.34 either way. No data is lost; the worst case is a
+  population of pool VMs whose bot profiles never get the "i take a
+  moment to wake up..." description set (cosmetic, not load-bearing).
+
 ### v111 — 2026-05-20 (stepEdgeOSApiKey — per-VM eos_live_* key for Edge Esmeralda 2026 calendar)
 
 - **Manifest change**: `VM_MANIFEST.version` bumped 110 → 111. New reconciler step `stepEdgeOSApiKey` (called as Step 1e, immediately after `stepIndexProvision`) mints a per-VM `eos_live_*` API key against EdgeOS for `events:read` scope, persists it to the new `instaclaw_vms.edgeos_api_key` column, and deploys it to `~/.openclaw/.env:EDGEOS_API_KEY`. Partner-gated to `edge_city`. Companion column migration shipped earlier in `supabase/migrations/20260520190000_vm_edgeos_api_key.sql`. Companion configureOpenClaw wiring landed in `lib/ssh.ts` for fresh provisioning; this step backfills the 9 existing edge VMs.
