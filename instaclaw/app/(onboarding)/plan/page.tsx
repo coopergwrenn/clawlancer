@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { LenisProvider } from "@/components/landing/lenis-provider";
-import { EdgePartnerBanner } from "@/components/marketing/edge-partner-banner";
+import { EdgePartnerBanner, usePartnerCookie } from "@/components/marketing/edge-partner-banner";
 import { SupportFooter } from "@/components/marketing/support-footer";
 
 const glassStyle = {
@@ -83,6 +83,19 @@ const tiers = [
 
 export default function PlanPage() {
   const router = useRouter();
+  // Edge attendees get a different headline + body on this page. The
+  // animated orange marketing copy ("never sleeps, never forgets...")
+  // is non-Edge brand voice and doesn't acknowledge that Edge attendees
+  // are sponsor-funded through June 30 — for them, the framing is
+  // "your Pro plan is already selected and covered," not "choose among
+  // these tiers." usePartnerCookie reads instaclaw_partner client-side
+  // (set by /edge/claim's verify-ticket success); resolves to
+  // "edge_city" for Edge attendees, null otherwise. SSR renders the
+  // non-Edge variant to avoid hydration flash, then swaps for the 1% of
+  // visitors who came through Edge.
+  const partner = usePartnerCookie();
+  const isEdge = partner === "edge_city";
+
   const [selectedTier, setSelectedTier] = useState<string>("pro");
   const [apiMode, setApiMode] = useState<"all_inclusive" | "byok">(
     "all_inclusive"
@@ -352,12 +365,25 @@ export default function PlanPage() {
             className="text-4xl font-normal mb-4"
             style={{
               fontFamily: "var(--font-serif)",
-              color: "#333334",
+              color: isEdge ? "#29311E" : "#333334",
             }}
           >
-            Choose Your Plan
+            {isEdge ? "Your plan." : "Choose Your Plan"}
           </h1>
-          {/* Mobile: just the highlight */}
+          {/* Mobile: just the highlight. Edge attendees get a tight
+              two-sentence framing: Pro is pre-selected and explained,
+              cancel anytime is reiterated for trust. No animated
+              squiggles/circles/highlighter (those are non-Edge brand
+              voice — orange, kinetic, marketing). */}
+          {isEdge ? (
+            <p
+              className="text-base"
+              style={{ color: "#5a6240", textWrap: "balance" }}
+            >
+              Pro is selected and sponsor-funded through June 30. Cancel
+              anytime.
+            </p>
+          ) : (
           <p className="text-base sm:hidden" style={{ color: "#666666", textWrap: "balance" }}>
             An AI that never sleeps, never forgets, and gets smarter every day - working{" "}
             <span className="relative inline-block">
@@ -366,7 +392,16 @@ export default function PlanPage() {
             </span>
             .
           </p>
-          {/* Desktop: all three effects with sequential animation */}
+          )}
+          {/* Desktop: all three effects with sequential animation.
+              Hidden for Edge attendees — they get the tight mobile-style
+              two-sentence body above instead. The squiggle/circle/highlighter
+              animations + "An AI that never sleeps..." marketing language
+              don't fit the Edge brand voice, and the Edge attendee has
+              already heard the agent value-prop from /edge/marketing
+              + /edge/setup. By /plan they need plan-tier facts, not
+              another value-prop pitch. */}
+          {!isEdge && (
           <p className="text-base hidden sm:block" style={{ color: "#666666" }}>
             An AI that{" "}
             <span className="relative inline-block">
@@ -430,6 +465,7 @@ export default function PlanPage() {
             </span>
             .
           </p>
+          )}
 
           {/* BYOK toggle */}
           <div
