@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-22
 
-Window: `fe9f2195de253faea54f898a355c370b6d944bba` → `HEAD` (HEAD = `1422c3f9`)
+Window: `1422c3f921b3d73f06f9589b12ecc8ae0ec51a3a` → `HEAD` (HEAD = `01098160`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 1422c3f921b3d73f06f9589b12ecc8ae0ec51a3a -->
+<!-- LAST_GENERATED_SHA: 010981600e0820544f28cae935e263722866bb9f -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `1422c3f9` 2026-05-22 — chore(db): add ENABLE RLS to chatgpt_oauth migration file — device_flows audit (2026-05-22) [1 files] _(ai-assisted)_
-- `f00a9c0b` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `01098160` 2026-05-22 — feat(cloud-init): §1.34 set Telegram bot description on first-touch (UX expectation) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `263d2b6e` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `01098160` 2026-05-22 — feat(cloud-init): §1.34 set Telegram bot description on first-touch (UX expectation) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `1422c3f9` 2026-05-22 — chore(db): add ENABLE RLS to chatgpt_oauth migration file — device_flows audit (2026-05-22) [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `f00a9c0b` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `263d2b6e` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `01098160` 2026-05-22 — [reconciler, infrastructure] — feat(cloud-init): §1.34 set Telegram bot description on first-touch (UX expectation)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `1422c3f9` 2026-05-22 — chore(db): add ENABLE RLS to chatgpt_oauth migration file — device_flows audit (2026-05-22)
+- `01098160` 2026-05-22 — feat(cloud-init): §1.34 set Telegram bot description on first-touch (UX expectation)
 
 ## Appendix — every commit (chronological)
 
-- `f00a9c0b` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `1422c3f9` 2026-05-22 — chore(db): add ENABLE RLS to chatgpt_oauth migration file — device_flows audit (2026-05-22) [1 files] _(ai-assisted)_
+- `263d2b6e` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `01098160` 2026-05-22 — feat(cloud-init): §1.34 set Telegram bot description on first-touch (UX expectation) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
