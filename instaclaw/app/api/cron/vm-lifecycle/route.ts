@@ -13,7 +13,14 @@ import {
   listAllLinodes,
   deleteLinodeInstance,
   readLifecycleSettings,
-  sshHasRecentActivity,
+  // sshHasRecentActivity: deprecated in Pass -1 per 2026-05-22 fix —
+  // produces false-positive "SSH activity" on dead-DB orphans because
+  // platform crons (strip-thinking.py, file-drift, reconciler) touch
+  // workspace .md + sessions .jsonl on every healthy or sleeping VM.
+  // See Rule 50 (CLAUDE.md). Replaced with userHasRecentActivity (DB
+  // column based) for assigned VMs + skip-entirely for no-assignee
+  // orphans (no user to protect → SSH-check is overcaution).
+  userHasRecentActivity,
   userHasLiveSubscription,
   vmHasCredits,
   logOrphan,
@@ -201,7 +208,11 @@ export async function GET(req: NextRequest) {
       const { data: allVms } = await supabase
         .from("instaclaw_vms")
         .select(
-          "id, name, ip_address, provider_server_id, status, health_status, assigned_to, credit_balance, lifecycle_locked_at"
+          // last_user_activity_at: added 2026-05-22 for the Rule 50 user-
+          // activity check that replaces the broken sshHasRecentActivity
+          // (which produced false-positives on dead-DB orphans due to
+          // platform crons touching workspace files).
+          "id, name, ip_address, provider_server_id, status, health_status, assigned_to, credit_balance, lifecycle_locked_at, last_user_activity_at"
         )
         .eq("provider", "linode");
 
@@ -330,20 +341,63 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // ── Safety check: SSH activity (last-line defense) ──
-        // Even pure orphans get SSH-checked. If anything's been modified
-        // recently, somebody's using this VM and we DO NOT delete.
-        const ip = l.ipv4?.[0];
-        const activity = ip
-          ? await sshHasRecentActivity(ip)
-          : { active: false, reason: "no-ipv4" };
+        // ── Safety check: user activity (Rule 50 — 2026-05-22 fix) ──
+        //
+        // Previously this used sshHasRecentActivity (`find -mtime -N` on
+        // workspace .md + sessions .jsonl). That's the Rule 50 anti-pattern:
+        // platform crons (strip-thinking.py per-min, reconcile-fleet,
+        // file-drift) touch the SAME files on every VM regardless of user
+        // activity. False-positive "SSH activity detected" on dead-DB
+        // orphans whose gateway is still running.
+        //
+        // The incident: 7 status='failed' + no-assignee Linodes accumulated
+        // (~$203/mo waste) because Pass -1 kept marking them skip_safety on
+        // the broken SSH check. Cooper terminated them manually on
+        // 2026-05-21 ~23:55 UTC. This fix prevents recurrence.
+        //
+        // New logic — three cases:
+        //   (a) No DB row at all: nothing to protect. Skip activity check.
+        //   (b) DB row but assigned_to IS NULL (the dead-DB orphan case —
+        //       status='failed', 'terminated', 'destroyed' post-release):
+        //       no current user. Skip activity check entirely. The Rule 50
+        //       fail-closed semantics protect ACTIVE users; orphans with no
+        //       assignee have no user to protect, so the check is overcaution.
+        //   (c) DB row WITH assigned_to (rare for status=failed per Rule 41,
+        //       but defensive): use Rule 50's userHasRecentActivity. Reads
+        //       instaclaw_vms.last_user_activity_at (only touched by genuine
+        //       user-initiated proxy calls, NOT platform crons). Fail-closed
+        //       on NULL (protect uncertain users from accidental deletion).
+        //
+        // Type-cast note: dbRow's TypeScript type comes from supabase-js's
+        // schema inference. last_user_activity_at was added to the SELECT
+        // above so it's present at runtime; the explicit cast handles the
+        // schema-generator lag for VMActivityFields compatibility.
+        let activity: { active: boolean; reason: string };
+        if (!dbRow) {
+          // Case (a) — no DB row, no user, no platform data. Safe to delete.
+          activity = { active: false, reason: "no-db-row (no user to protect)" };
+        } else if (!dbRow.assigned_to) {
+          // Case (b) — dead-DB orphan with no assignee. The 2026-05-22 fix
+          // target. Skip activity check — there's no user, just a forgotten
+          // Linode bill. The Stripe-sub check above already returned (skipped)
+          // for assigned_to=NULL since `if (dbRow?.assigned_to)` guarded it.
+          activity = { active: false, reason: "db-row-no-assignee (orphan, no user)" };
+        } else {
+          // Case (c) — dead-DB row WITH a stale assignee. Could happen if
+          // status flipped to 'failed' before assigned_to was cleared.
+          // Use Rule 50's user-activity check (NOT sshHasRecentActivity).
+          const userAct = userHasRecentActivity(
+            dbRow as { last_user_activity_at: string | null },
+          );
+          activity = { active: userAct.active, reason: `user-activity: ${userAct.reason}` };
+        }
         if (activity.active) {
           orphanReport.skipped_safety++;
           await logOrphan(supabase, {
             linodeId: l.id, vmLabel: l.label, vmDbId: dbRow?.id ?? null,
             userId: dbRow?.assigned_to ?? null, userEmail: null,
             action: "skip_safety",
-            reason: `SSH activity detected: ${activity.reason}`,
+            reason: `User activity detected: ${activity.reason}`,
             linodeCreatedAt: l.created, linodeTags: l.tags, linodeType: l.type,
             monthlyCostUsd: linodeCost(l.type), runId, dryRun,
           });
@@ -1225,7 +1279,7 @@ export async function GET(req: NextRequest) {
         `Deleted (not-in-DB orphan): ${orphanReport.deleted_no_db}`,
         `Skipped (live subscription): ${orphanReport.skipped_active}`,
         `Skipped (paid credits remain): ${orphanReport.skipped_credits}`,
-        `Skipped (SSH activity): ${orphanReport.skipped_safety}`,
+        `Skipped (user activity, Rule 50): ${orphanReport.skipped_safety}`,
         `Skipped (too young, anti-race): ${orphanReport.skipped_too_young}`,
         `Skipped (unparseable created date): ${orphanReport.skipped_bad_date}`,
         `Skipped (protected infra): ${orphanReport.skipped_infra}`,
