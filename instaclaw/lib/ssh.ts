@@ -2463,6 +2463,13 @@ DISK_AGGRESSIVE_PCT = 90
 MAX_CHROME_PROCS = 6
 MAX_CHROME_RSS_MB = 1500
 GATEWAY_FAIL_THRESHOLD = 3
+# Skip /health-fail counting during initial cold-boot. 2026-05-22 post-v113-test
+# observation: 8-plugin cold-boot takes ~110s to reach /health=200 (loading
+# acpx + bonjour + browser + device-pair + memory-core + phone-control +
+# talk-voice + telegram). Without this grace, cron ticks at T+60s and T+120s
+# both see /health=000, trigger restart_gateway() on fresh VMs, and add ~2 min
+# to time-to-ready. 120s with 10s margin over the empirical 110s.
+GATEWAY_STARTUP_GRACE_SEC = 120
 GATEWAY_MAX_UPTIME_SEC = 48 * 3600  # 48 hours — restart to prevent memory bloat
 AGENT_STALE_MINUTES = 15  # Agent considered stuck if no session update in this many minutes (30min effective via 2x consecutive checks; bumped 2026-05-20 for ChatGPT OAuth reasoning per v112)
 AGENT_STALE_RESTARTS = 2  # Number of consecutive stale checks before restarting
@@ -3113,6 +3120,14 @@ def main():
     # --- Gateway health check ---
     fail_count = get_health_fail_count()
     if gateway_healthy:
+        if fail_count > 0:
+            set_health_fail_count(0)
+    elif gateway_uptime < GATEWAY_STARTUP_GRACE_SEC:
+        # Startup grace: 8-plugin cold-boot reaches /health=200 around T+110s.
+        # Don't false-restart during initial boot — gateway is loading channels
+        # and sidecars, not stuck. Reset stale counter so we start fresh once
+        # the grace window passes. (gateway_uptime returns 0 on parse failure;
+        # treated as in-grace = safe-default skip restart, will resolve on next tick.)
         if fail_count > 0:
             set_health_fail_count(0)
     else:
