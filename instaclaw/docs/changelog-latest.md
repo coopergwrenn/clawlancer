@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-22
 
-Window: `49e2862ac041ca131b42eb9e27eff2ad481273d4` → `HEAD` (HEAD = `5193f1a2`)
+Window: `5193f1a2ce972a7514c463b3664cce4ff5edb325` → `HEAD` (HEAD = `c9d3c5b1`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 5193f1a2ce972a7514c463b3664cce4ff5edb325 -->
+<!-- LAST_GENERATED_SHA: c9d3c5b17186d7d3e536e7d6c66b5e6998e0b421 -->
 
 ## Summary
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `5193f1a2` 2026-05-22 — fix(_pre-bake-check): BAKE_BOOLEAN_ENVS audit followup — add GMAIL_PERSONALIZATION, drop CLOUD_INIT_ONDEMAND, document INDEX_POLLER [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `1d41d413` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `c9d3c5b1` 2026-05-22 — feat(gbrain): EnvironmentFile architecture — eliminate bake-time ANTHROPIC_API_KEY staleness [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `8abe57db` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `5193f1a2` 2026-05-22 — fix(_pre-bake-check): BAKE_BOOLEAN_ENVS audit followup — add GMAIL_PERSONALIZATION, drop CLOUD_INIT_ONDEMAND, document INDEX_POLLER [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `c9d3c5b1` 2026-05-22 — feat(gbrain): EnvironmentFile architecture — eliminate bake-time ANTHROPIC_API_KEY staleness [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `1d41d413` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `8abe57db` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `5193f1a2` 2026-05-22 — [reconciler, infrastructure, docs] — fix(_pre-bake-check): BAKE_BOOLEAN_ENVS audit followup — add GMAIL_PERSONALIZATION, drop CLOUD_INIT_ONDEMAND, document INDEX_POLLER
+- `c9d3c5b1` 2026-05-22 — [reconciler, infrastructure] — feat(gbrain): EnvironmentFile architecture — eliminate bake-time ANTHROPIC_API_KEY staleness
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `5193f1a2` 2026-05-22 — fix(_pre-bake-check): BAKE_BOOLEAN_ENVS audit followup — add GMAIL_PERSONALIZATION, drop CLOUD_INIT_ONDEMAND, document INDEX_POLLER
+- `c9d3c5b1` 2026-05-22 — feat(gbrain): EnvironmentFile architecture — eliminate bake-time ANTHROPIC_API_KEY staleness
 
 ## Appendix — every commit (chronological)
 
-- `1d41d413` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
-- `5193f1a2` 2026-05-22 — fix(_pre-bake-check): BAKE_BOOLEAN_ENVS audit followup — add GMAIL_PERSONALIZATION, drop CLOUD_INIT_ONDEMAND, document INDEX_POLLER [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `8abe57db` 2026-05-22 — chore(changelog): auto-update [skip ci] [2 files]
+- `c9d3c5b1` 2026-05-22 — feat(gbrain): EnvironmentFile architecture — eliminate bake-time ANTHROPIC_API_KEY staleness [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
