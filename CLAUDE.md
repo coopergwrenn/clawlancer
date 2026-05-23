@@ -3389,6 +3389,93 @@ For any operator running `vercel env add` on a boolean env var:
 - **Rule 39** (distinguish critical-step failures from optional-sidecar failures): Rule 61's `result.warnings.push(...)` lands here — feature flags are optional; misconfig is observable; cv-bump still proceeds.
 - **Rule 49** (partner secrets actively verified): same principle for cross-API tokens — never trust "set" alone; verify the actual value works.
 
+### Rule 62 — Bonjour mDNS must be disabled on every cloud VM via BOTH gates (config key AND env var); single-gate fixes are partial
+
+Every cloud VM in the fleet — pool, cloud-init, snapshot bake, manual SSH-provisioned — MUST have bonjour disabled via BOTH of these gates simultaneously:
+
+1. **`discovery.mdns.mode=off` in `openclaw.json`** — disables OpenClaw's mDNS DISCOVERY listener (the client that scans for peer gateways).
+2. **`OPENCLAW_DISABLE_BONJOUR=true` env var** in the systemd unit — disables the bonjour PLUGIN ADVERTISER (the announcer that broadcasts the gateway's own presence).
+
+**These are TWO independent code paths in `dist/extensions/bonjour/index.js`.** Setting only one is a partial fix that looks complete but isn't. The runtime error message even says `set discovery.mdns.mode="off" or OPENCLAW_DISABLE_BONJOUR=1 to disable mDNS discovery` — empirically misleading: the discovery key alone does NOT stop the advertiser.
+
+#### Why this rule exists — the 3-week saga
+
+- **2026-04-30 (v71, commit `5ff04ba5`)** — Added `discovery.mdns.mode=off` to manifest configSettings after CIAO crashes on vm-435 (YouthWork) + vm-729 (Textmaxmax) during SIGTERM races. Partial fix: discovery client disabled, advertiser still running. Looked complete at the time because we weren't measuring first-message latency, only crash counts.
+- **2026-05-22 (commit `4acc5280`, cloud-init only)** — vm-1019 startup bottleneck investigation revealed the advertiser was a dominant 55-90s wedge during gateway startup. Added `Environment=OPENCLAW_DISABLE_BONJOUR=true` + `daemon-reload` to cloud-init's `setup.sh §1.0.7`. The commit's own comment filed "snapshot-bake followup" so pool VMs would also get the env var. **That followup was never done.** Cloud-init VMs were protected; pool VMs (the dominant Edge-attendee provisioning path) were not.
+- **2026-05-23 (v115, this commit)** — vm-1019 e2e under Cooper exposed the gap end-to-end. **Cooper's 6-minute first-message latency was 100% bonjour event-loop blockage.** The actual gpt-5.5 LLM call responded in 6.6 seconds with prompt cache hit. Telegram messages queued for 4-7 minutes because the bonjour ADVERTISER kept trying to advertise `localhost (OpenClaw)._openclaw-gw._tcp.local.` on a cloud VM with no LAN peers. It self-disables after 5 failed restart attempts (~7 min total) — by which point the user has churned. v115 adds the env var to BOTH `manifest.systemdOverrides.Environment` (covers existing assigned VMs via reconciler) AND `configureOpenClaw` (covers fresh pool VM configures immediately).
+
+#### What breaks if removed / un-set
+
+- First-message latency: <30 seconds → **5-7 minutes** on every fresh VM.
+- `/health` response time: <10ms → **100+ seconds** (event loop blocked).
+- Gateway appears healthy from every probe: `systemctl is-active` returns `active`, `openclaw_gateway_up` metric is 1, no alert fires.
+- Telegram messages queue silently in memory — `[diagnostic] stuck session: state=processing age=Ns` fires only after 60+ seconds and isn't surfaced as an alert.
+- User sees the agent unresponsive. Assumes the product is broken. Churn risk especially high during onboarding when the first message defines the impression.
+
+#### Where it MUST be set (all three locations required)
+
+1. **`lib/vm-manifest.ts:systemdOverrides.Environment`** — currently a multi-line string `"PARTNER_ID=INSTACLAW\nEnvironment=OPENCLAW_DISABLE_BONJOUR=true"` because `Record<string,string>` can't have two `Environment` keys; the `\n` is rendered verbatim by `stepSystemdUnit`'s `lines.push(${key}=${value})` and produces two physical lines after `lines.join("\n")`. Reconciler pushes this to every assigned VM on the next tick after a manifest version bump.
+2. **`lib/vm-manifest.ts:configSettings["discovery.mdns.mode"] = "off"`** — covers the discovery client gate. Reconciler's `stepConfigSettings` enforces drift.
+3. **`lib/ssh.ts:configureOpenClaw`** — writes `~/.config/systemd/user/openclaw-gateway.service.d/99-disable-bonjour.conf` + `daemon-reload` at configure time. Without this, fresh pool VMs would wedge on first message during the 3-minute window between `configureOpenClaw` completion and the next `reconcile-fleet` cron tick.
+4. **(P1 followup)** Snapshot bake recipe — bake the drop-in into the base image so even before reconciler/configureOpenClaw runs, fresh provisions have the env var. Tracked separately.
+
+#### Verification (do this on every snapshot bake AND after every manifest bump that touches systemdOverrides)
+
+SSH into a freshly-provisioned VM and run:
+
+```bash
+# Gate 1: config key on disk
+openclaw config get discovery.mdns.mode
+# Expected: off
+
+# Gate 2: env var in the running gateway process
+GW_PID=$(pgrep -f openclaw-gateway | head -1)
+cat /proc/$GW_PID/environ | tr '\0' '\n' | grep OPENCLAW_DISABLE_BONJOUR
+# Expected: OPENCLAW_DISABLE_BONJOUR=true
+
+# Gate 3: drop-in file exists
+cat ~/.config/systemd/user/openclaw-gateway.service.d/99-disable-bonjour.conf
+# Expected: contains Environment=OPENCLAW_DISABLE_BONJOUR=true
+
+# Gate 4: journal is silent on bonjour AFTER gateway start
+journalctl --user -u openclaw-gateway --since "5 min ago" | grep -iE "bonjour|ciao|advertiser|unannounced"
+# Expected: ZERO matches. The "8 plugins: ... bonjour ..." line is fine
+# (plugin is LOADED but not active); any "advertise", "unannounced",
+# "restarting advertiser", or "watchdog detected" lines are bug regressions.
+
+# Gate 5: /health is responsive
+curl -sf -o /dev/null -w "%{http_code} %{time_total}s\n" --max-time 5 localhost:18789/health
+# Expected: 200 in <100ms. If you see 5+ second responses, bonjour is wedging.
+```
+
+All five gates passing is the only acceptable state. Any one failing means a partial fix slipped through.
+
+#### Banned patterns
+
+- Setting only `discovery.mdns.mode=off` in a new VM provisioning path and claiming bonjour is "disabled." It is NOT — the advertiser is independent.
+- Setting only the env var without the config key. Both gates exist for defense in depth; one without the other works today but a future OpenClaw version might tighten/relax either path.
+- Trusting `systemctl is-active` or `openclaw_gateway_up` metrics to detect bonjour wedge. They CAN'T see event-loop blockage. The only reliable signal is `/health` response time (<100ms healthy; 5+ seconds = wedging) or journal grep for advertiser activity.
+- "Snapshot-bake followup" as the documented fix when the operational path is still broken. Filing a followup is necessary but not sufficient — the user-facing path must also be patched immediately. The 2026-05-22 commit `4acc5280` filed the followup correctly, but the operational fix only landed in cloud-init; 3 weeks of pool VMs wedged before someone (Cooper, 2026-05-23) noticed end-to-end.
+- Trusting OpenClaw's own log message `set discovery.mdns.mode="off" or OPENCLAW_DISABLE_BONJOUR=1 to disable mDNS discovery` as if either gate alone is sufficient. **Empirically wrong** for the advertiser path. The error message is misleading — both gates are required for full coverage.
+
+#### Detection rule (PR review)
+
+Any PR that:
+- Adds a new VM provisioning code path (cloud-init, snapshot bake, manual SSH script, alternative configure) → MUST include both gates (config key + env var drop-in).
+- Modifies `lib/vm-manifest.ts:systemdOverrides.Environment` → MUST preserve the `OPENCLAW_DISABLE_BONJOUR=true` line.
+- Modifies `lib/ssh.ts:configureOpenClaw` → MUST preserve the `99-disable-bonjour.conf` drop-in write + `daemon-reload`.
+- Modifies `lib/cloud-init-setup-sh.ts:§1.0.7` → MUST preserve the same.
+- Modifies the snapshot bake recipe in CLAUDE.md → MUST include both gates in the 15-point verification checklist.
+
+If any of these are missing, the PR is incomplete. The cost of writing the verification is two SSH commands; the cost of NOT writing it is another 3-week saga.
+
+#### Related rules
+
+- **Rule 6** (no trailing newlines in env vars): the lower-level mechanism for setting env vars cleanly via `printf`. Bonjour env var must be set with `printf 'true' | ...` if ever rotated via `vercel env add` (though this lives in systemd unit, not Vercel).
+- **Rule 32** (`openclaw config set` exit-0 ≠ runtime applied): same "verify after write" discipline. After setting `discovery.mdns.mode`, run `openclaw config get discovery.mdns.mode` to confirm. After setting the env var drop-in, `cat /proc/$PID/environ` to confirm.
+- **Rule 34** (DB↔disk drift): same "the value in one place doesn't match the value in another" pattern. Here it's manifest vs systemd vs running process — three layers, all must agree.
+- **Rule 49** (partner secrets actively verified): same defense-in-depth principle. Two independent gates so a single misconfiguration doesn't bring down the system.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
