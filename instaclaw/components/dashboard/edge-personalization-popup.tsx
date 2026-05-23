@@ -203,12 +203,30 @@ export function EdgePersonalizationPopup({
   // re-firing if React re-renders during the animation).
   const animationStartedRef = useRef(false);
 
+  // 🟧 POPUP_DEBUG (2026-05-23 deep diagnostic) — mount + state trace
+  if (typeof window !== "undefined") {
+    // eslint-disable-next-line no-console
+    console.error("🟧 POPUP_INSIDE render", {
+      personalizationDismissed,
+      visible,
+      phase,
+      dataTruthy: !!data,
+      animationStarted: animationStartedRef.current,
+      activeStepIdx,
+      completedStepIdx,
+    });
+  }
+
   // ── Decide whether to render at all ─────────────────────────────────
   //
   // Same trigger semantics as the Gmail popup: render only if the user
   // hasn't dismissed already. Once dismissed (in DB), don't show again
   // on subsequent dashboard visits.
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      // eslint-disable-next-line no-console
+      console.error("🟧 POPUP_INSIDE useEffect[211] visible-decider", { personalizationDismissed, currentVisible: visible });
+    }
     if (!personalizationDismissed) {
       setVisible(true);
     }
