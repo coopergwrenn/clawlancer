@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-23
 
-Window: `c759935300b36229e7c5a9f973825faa8d39f0a3` → `HEAD` (HEAD = `971668de`)
+Window: `971668def0572bfdf23fe6e7a9bf49d2fc132a2d` → `HEAD` (HEAD = `1b0932e5`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 971668def0572bfdf23fe6e7a9bf49d2fc132a2d -->
+<!-- LAST_GENERATED_SHA: 1b0932e5f369912cb5d20ca03d32439e1ba6d8bf -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `971668de` 2026-05-23 — fix(edge/dashboard): stronger popup gate — block mount during configure to stop mount/unmount loop [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `1b0932e5` 2026-05-23 — fix(edge/dashboard): break /edge/intents ↔ /dashboard redirect loop via live-DB intent check [2 files] _(multi: [feature, edge]; ai-assisted)_
 
 ## What changed under the hood
 
-- `f5b45689` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `2c7bf472` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `971668de` 2026-05-23 — fix(edge/dashboard): stronger popup gate — block mount during configure to stop mount/unmount loop [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `1b0932e5` 2026-05-23 — fix(edge/dashboard): break /edge/intents ↔ /dashboard redirect loop via live-DB intent check [2 files] _(multi: [feature, edge]; ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,21 +44,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `f5b45689` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `2c7bf472` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `971668de` 2026-05-23 — [feature, edge] — fix(edge/dashboard): stronger popup gate — block mount during configure to stop mount/unmount loop
+- `1b0932e5` 2026-05-23 — [feature, edge] — fix(edge/dashboard): break /edge/intents ↔ /dashboard redirect loop via live-DB intent check
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `971668de` 2026-05-23 — fix(edge/dashboard): stronger popup gate — block mount during configure to stop mount/unmount loop
+- `1b0932e5` 2026-05-23 — fix(edge/dashboard): break /edge/intents ↔ /dashboard redirect loop via live-DB intent check
 
 ## Appendix — every commit (chronological)
 
-- `f5b45689` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
-- `971668de` 2026-05-23 — fix(edge/dashboard): stronger popup gate — block mount during configure to stop mount/unmount loop [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `2c7bf472` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `1b0932e5` 2026-05-23 — fix(edge/dashboard): break /edge/intents ↔ /dashboard redirect loop via live-DB intent check [2 files] _(multi: [feature, edge]; ai-assisted)_
