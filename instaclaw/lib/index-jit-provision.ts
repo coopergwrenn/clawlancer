@@ -40,6 +40,7 @@ import {
   callIndexSignup,
   IndexSignupError,
 } from "./index-network-client";
+import { buildEnrichedSignupBody } from "./index-signup-enrich";
 
 export interface JitProvisionResult {
   /** True if the user has valid Index credentials at the end of this
@@ -148,11 +149,21 @@ export async function ensureIndexCredentials(
   }
 
   // 4. Load user profile for the signup body. Email is required by Index;
-  //    name + telegram_handle are optional enrichment that helps their
-  //    discovery graph.
+  //    edge_verified_email is preferred when set (Edge identity, the one
+  //    attendees recognize each other by); name + telegram_handle are
+  //    fallbacks for the /citizens enrichment helper.
+  //
+  //    2026-05-23 — Cooper-Yanek discovery: Yanek's intent-extraction
+  //    NLP rejects intents whose user profile is too thin ("No actionable
+  //    intent was extracted"). Pre-fix we sent only `{email, name}`. The
+  //    buildEnrichedSignupBody helper now re-fetches the user's SimpleFi
+  //    /citizens profile and enriches the body with bio (role +
+  //    organization), socials (telegram + x_user), and the proper
+  //    edge_verified_email. Yanek's profile builder has real signal to
+  //    work against.
   const { data: user, error: userErr } = await supabase
     .from("instaclaw_users")
-    .select("email, name, telegram_handle")
+    .select("email, name, telegram_handle, edge_verified_email")
     .eq("id", userId)
     .single();
 
@@ -168,14 +179,24 @@ export async function ensureIndexCredentials(
     };
   }
 
-  const socials: Array<{ label: string; value: string }> = [];
-  if (
-    user.telegram_handle &&
-    typeof user.telegram_handle === "string" &&
-    user.telegram_handle.trim().length > 0
-  ) {
-    socials.push({ label: "telegram", value: user.telegram_handle.trim() });
-  }
+  // Build the enriched body. Always returns a valid signup request —
+  // never throws. /citizens enrichment is best-effort with 5s timeout;
+  // on failure the body falls through to {email, name} as before.
+  //
+  // Future P1 (per Cooper 2026-05-23): configureOpenClaw will ALSO
+  // fetch /citizens at VM-configure time to personalize USER.md (the
+  // agent's "About Your Human" file). To avoid a double-fetch, that
+  // path will either (a) cache /citizens on the user row in a JSON
+  // column, or (b) pass the prefetched profile here via
+  // `prefetchedCitizen`. The helper already accepts that arg — no
+  // refactor needed when the cache lands.
+  const signupBody = await buildEnrichedSignupBody({
+    email: user.email,
+    edgeVerifiedEmail: (user.edge_verified_email as string | null) ?? null,
+    name: (user.name as string | null) ?? null,
+    telegramHandle: (user.telegram_handle as string | null) ?? null,
+    userIdPrefix: userId.slice(0, 8),
+  });
 
   // 5. Call Index /signup. Mirrors stepIndexProvision's pattern with one
   //    retry on transient 5xx (rare but real during Index's pre-event
@@ -183,26 +204,13 @@ export async function ensureIndexCredentials(
   //    surrender and let the user see the friendly fallback.
   let signupResp;
   try {
-    signupResp = await callIndexSignup(
-      {
-        email: user.email,
-        name: user.name ?? undefined,
-        socials: socials.length > 0 ? socials : undefined,
-      },
-      { networkId, masterKey },
-    );
+    signupResp = await callIndexSignup(signupBody, { networkId, masterKey });
   } catch (err) {
     if (err instanceof IndexSignupError && err.retryable) {
       await new Promise((r) => setTimeout(r, 2_000));
       try {
-        signupResp = await callIndexSignup(
-          {
-            email: user.email,
-            name: user.name ?? undefined,
-            socials: socials.length > 0 ? socials : undefined,
-          },
-          { networkId, masterKey },
-        );
+        // Reuse the same enriched body on retry — don't re-fetch /citizens.
+        signupResp = await callIndexSignup(signupBody, { networkId, masterKey });
       } catch (err2) {
         logger.warn("[index-jit] signup retry failed", {
           userIdPrefix: userId.slice(0, 8),

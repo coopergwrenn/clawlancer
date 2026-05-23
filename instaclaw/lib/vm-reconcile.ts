@@ -60,10 +60,16 @@ import { TIER_DISPLAY_LIMITS } from "./credit-constants";
 import { wrapSSHForEnospcDetection, isEnospcDetectedError } from "./enospc-guard";
 import {
   callIndexSignup,
+  // 2026-05-23 helper: re-fetches SimpleFi /citizens at signup time and
+  // composes a name/bio/socials-enriched body. Shared with JIT path
+  // (lib/index-jit-provision.ts). Both paths produce identical Index
+  // Network users regardless of which fires first.
+  // (Import inserted via the index-network-client block below.)
   buildIndexMcpConfig,
   getIndexEnv,
   IndexSignupError,
 } from "./index-network-client";
+import { buildEnrichedSignupBody } from "./index-signup-enrich";
 import { mintOrReuseApiKey } from "./edgeos-mint";
 import { EDGEOS_TENANT_EDGECITY_PROD } from "./edgeos-auth";
 import * as fs from "fs";
@@ -2466,10 +2472,15 @@ async function stepIndexProvision(
   }
 
   // ── Load owner profile for the signup body ──
+  //
+  // edge_verified_email is the Edge ticket identity (preferred as the
+  // /signup primary email — that's the identity attendees recognize each
+  // other by). The OAuth user.email is the fallback when no Edge identity
+  // is set (rare for partner=edge_city VMs, but defensive).
   const sb = getSupabase();
   const { data: user, error: userErr } = await sb
     .from("instaclaw_users")
-    .select("email, name, telegram_handle")
+    .select("email, name, telegram_handle, edge_verified_email")
     .eq("id", vm.assigned_to)
     .maybeSingle();
 
@@ -2497,36 +2508,36 @@ async function stepIndexProvision(
       indexUserIdPrefix: indexUserId.slice(0, 8),
     });
   } else {
-    // Build socials defensively. Telegram is the only social we store.
-    const socials: Array<{ label: string; value: string }> = [];
-    if (user.telegram_handle && typeof user.telegram_handle === "string") {
-      socials.push({ label: "telegram", value: user.telegram_handle });
-    }
+    // Build the enriched signup body via the shared helper. Re-fetches
+    // SimpleFi /citizens to pull bio (role + organization) + socials
+    // (telegram + x_user). Yanek's intent-extraction NLP needs this
+    // profile signal to avoid the "No actionable intent extracted"
+    // rejection that hit us 2026-05-23 (see lib/index-signup-enrich.ts
+    // header for the full incident write-up).
+    //
+    // Mirrors the JIT path in lib/index-jit-provision.ts. Both code
+    // paths produce the same Index Network user shape regardless of
+    // which one runs first (JIT during the user's first intent submit,
+    // OR the reconciler during the next 3-min cron tick).
+    const signupBody = await buildEnrichedSignupBody({
+      email: user.email,
+      edgeVerifiedEmail: (user.edge_verified_email as string | null) ?? null,
+      name: (user.name as string | null) ?? null,
+      telegramHandle: (user.telegram_handle as string | null) ?? null,
+      userIdPrefix: vm.assigned_to.slice(0, 8),
+    });
 
     let signupResp;
     try {
-      signupResp = await callIndexSignup(
-        {
-          email: user.email,
-          name: user.name ?? undefined,
-          socials: socials.length > 0 ? socials : undefined,
-        },
-        indexEnv,
-      );
+      signupResp = await callIndexSignup(signupBody, indexEnv);
     } catch (err: unknown) {
       if (err instanceof IndexSignupError && err.retryable) {
         // One retry with 2s backoff. Index 5xx is rare but the platform IS
-        // bursty during pre-event onboarding waves.
+        // bursty during pre-event onboarding waves. Reuse the same
+        // signupBody on retry — don't re-fetch /citizens.
         await new Promise((r) => setTimeout(r, 2000));
         try {
-          signupResp = await callIndexSignup(
-            {
-              email: user.email,
-              name: user.name ?? undefined,
-              socials: socials.length > 0 ? socials : undefined,
-            },
-            indexEnv,
-          );
+          signupResp = await callIndexSignup(signupBody, indexEnv);
         } catch (err2: unknown) {
           recordHealWarning(
             result,
