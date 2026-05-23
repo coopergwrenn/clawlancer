@@ -29,6 +29,30 @@ export async function getEdgeUserState(): Promise<EdgeUserState> {
   const session = await auth();
   if (!session?.user?.id) return { kind: "logged_out" };
 
+  // Defensive: treat non-Edge-tagged authenticated users as logged_out
+  // for /edge's CTA derivation.
+  //
+  // The 2026-05-22 Cooper-shelpinc-incognito case: a non-Edge InstaClaw
+  // user (shelpinc, partner=null) opened /edge in a "fresh" incognito
+  // that still had a stale NextAuth session from earlier testing. The
+  // page showed "COMPLETE SETUP" pointing at /connect — wrong CTA for
+  // a user who isn't actually mid-Edge-onboarding. They're either (a)
+  // a real InstaClaw user curious about Edge, in which case "Claim
+  // your agent" inviting them into the Edge flow is right, or (b) a
+  // truly logged-out visitor whose browser is leaking, in which case
+  // same CTA still works.
+  //
+  // For partner=edge_city users (the actual Edge cohort), this check
+  // falls through to the existing VM/pending logic — they get "Complete
+  // setup" or "Open agent" as appropriate.
+  //
+  // Their existing non-Edge onboarding remains reachable via /dashboard.
+  // We're only changing what /edge specifically shows them. Per Cooper's
+  // directive: "treat as logged_out for CTA derivation."
+  if (session.user.partner !== "edge_city") {
+    return { kind: "logged_out" };
+  }
+
   const supabase = getSupabase();
 
   // Most recent assigned VM. Multi-VM users (rare — typically internal/test)
