@@ -47,6 +47,7 @@ import { logger } from "@/lib/logger";
 import { createIndexIntent } from "@/lib/index-intent-creator";
 import type { CreateIndexIntentResult } from "@/lib/index-intent-creator";
 import { ensureIndexCredentials } from "@/lib/index-jit-provision";
+import { queueIntentForBackfill } from "@/lib/index-intent-queue";
 
 export const dynamic = "force-dynamic";
 // createIndexIntent can take 1-15s (MCP initialize + tools/call +
@@ -362,44 +363,92 @@ export async function POST(req: NextRequest) {
 
   // 6. SUCCESS → claim stays in place (already set by step 4). No
   //    further UPDATE needed.
-  // 6a. FAILURE → CAS revert to allow immediate retry. Restoring to
-  //    the ORIGINAL value (not NULL) preserves any prior successful
-  //    submission's rate-limit anchor — important if the user had a
-  //    successful submission 3 min ago and this one failed: the
-  //    original-3-min-old anchor stays, so they still need to wait 2
-  //    more min vs being able to retry immediately.
-  //    CAS WHERE notified-side equivalent: only revert IF our claim
-  //    is still in place. If someone else has claimed since (shouldn't
-  //    happen given the 5-min window, but defense in depth), we don't
-  //    clobber.
-  if (result.status === "error" || result.status === "skipped") {
+  // 6a. VALIDATION FAILURE → CAS revert so user can retry without
+  //    burning their 5-min rate-limit budget. ONLY applies to the
+  //    validation case (user typed something the lib's
+  //    defensive guard rejected — should be rare since we validate
+  //    description length upstream at line 213-231).
+  // 6b. INDEX NETWORK FAILURE → optimistic-accept (Cooper directive
+  //    2026-05-23). Yanek's MCP `create_intent` tool is broken on his
+  //    side ("Forbidden" / write-tool bug); his /signup is fixed but
+  //    intent creation isn't. Instead of surfacing the error to the
+  //    user (who just walked through 7 onboarding screens), we:
+  //      - Keep the rate-limit claim in place (the gate IS satisfied)
+  //      - Log the intent text for back-fill via index-intent-queue
+  //      - Return 200 with status="created" so the UI shows success
+  //    A back-fill replay script runs once Yanek's create_intent is
+  //    restored — grep "[index-intent-queued]" in Vercel logs +
+  //    replay each through createIndexIntent.
+  const isValidationFailure =
+    result.status === "skipped" && result.reason === "missing_description";
+
+  if (isValidationFailure) {
+    // Revert the claim — user should retry without rate-limit cost.
     const { error: revertErr } = await supabase
       .from("instaclaw_users")
       .update({ index_last_intent_at: originalLastIntentAt })
       .eq("id", session.user.id)
       .eq("index_last_intent_at", claimedAt);
     if (revertErr) {
-      // Claim remains set; user has to wait 5 min before retry. Log
-      // loudly so the operator notices (rare path).
-      logger.error("[express-intent] claim revert failed; user rate-limited until window expires", {
-        userIdPrefix: session.user.id.slice(0, 8),
-        claimedAt,
-        resultStatus: result.status,
-        revertError: revertErr.message,
-      });
+      logger.error(
+        "[express-intent] claim revert failed; user rate-limited until window expires",
+        {
+          userIdPrefix: session.user.id.slice(0, 8),
+          claimedAt,
+          resultStatus: result.status,
+          revertError: revertErr.message,
+        },
+      );
     }
+    const mapped = mapCreateIntentResultToResponse(result);
+    return NextResponse.json(mapped.body, { status: mapped.status });
   }
 
-  if (result.status === "error") {
-    // Log for operator forensics — the user sees the friendly
-    // "coming online soon" message via mapCreateIntentResultToResponse.
-    logger.warn("[express-intent] createIndexIntent error", {
-      userIdPrefix: session.user.id.slice(0, 8),
-      reason: result.reason,
-      detail: result.detail?.slice(0, 200),
+  // ── Optimistic-accept branch ──
+  // Any non-success, non-validation result lands here. Queue + return
+  // success.
+  if (result.status === "error" || result.status === "skipped") {
+    const reasonForQueue =
+      result.status === "error"
+        ? "mcp_create_intent_error"
+        : "mcp_create_intent_skipped";
+    const detail =
+      result.status === "error"
+        ? result.detail?.slice(0, 200)
+        : `skipped reason: ${result.reason}`;
+
+    logger.warn(
+      "[express-intent] createIndexIntent failed — optimistic-accept fallback",
+      {
+        userIdPrefix: session.user.id.slice(0, 8),
+        resultStatus: result.status,
+        reason: result.status === "error" ? result.reason : result.reason,
+        detail,
+      },
+    );
+
+    // Queue the intent text + ensure the gate write is in place.
+    // The rate-limit claim from step 4 already set index_last_intent_at;
+    // queueIntentForBackfill re-asserts it (no-op DB-wise, but ensures
+    // the helper is the single source of truth for the gate write).
+    await queueIntentForBackfill({
+      userId: session.user.id,
+      description,
+      reason: reasonForQueue,
+      detail,
+      supabase,
     });
+
+    return NextResponse.json<IntentResponseBody>(
+      {
+        status: "created",
+        message: "your intent is registered. it's live in the directory.",
+      },
+      { status: 200 },
+    );
   }
 
+  // True success path (createIndexIntent returned "created").
   const mapped = mapCreateIntentResultToResponse(result);
   return NextResponse.json(mapped.body, { status: mapped.status });
 }
