@@ -304,6 +304,31 @@ STALE_FLAG = os.path.join(SESSIONS_DIR, ".memory-stale-notified")
 DEGRADED_FLAG = os.path.join(SESSIONS_DIR, ".session-degraded")
 CIRCUIT_BREAKER_FLAG = os.path.join(SESSIONS_DIR, ".circuit-breaker-tripped")
 
+def _is_session_file(path):
+    """Return True only for actual session .jsonl files.
+
+    The \`*.jsonl\` glob matches .trajectory.jsonl + .checkpoint.*.jsonl too,
+    but those are 300K-2MB forensic blobs (per-LLM-call traces), not real
+    session files. Walking them through size-threshold checks triggers
+    MEM_URGENT injection on every cron tick because every trajectory file
+    exceeds MEMORY_WARN_BYTES (160KB).
+    Original incident (2026-05-23 vm-1019): .memory-write-pending was being
+    re-created every minute despite the agent dutifully clearing it; the
+    agent burned 2 minutes per user message doing fake "session rotation
+    imminent" housekeeping (warning text claimed 80% capacity on a 4%
+    session). Cooper saw 3-minute first-message latency where the real
+    LLM call only took 16 seconds.
+    Filter at every glob site that should iterate real sessions only.
+    """
+    if not path.endswith(".jsonl"):
+        return False
+    base = os.path.basename(path)
+    if base.endswith(".trajectory.jsonl"):
+        return False
+    if ".checkpoint." in base:
+        return False
+    return True
+
 # Session quality thresholds
 EMPTY_RESPONSE_THRESHOLD = 3
 ERROR_LOOP_THRESHOLD = 5
@@ -1158,9 +1183,13 @@ def log_telemetry(msg):
     except Exception:
         pass
 
-# Collect session sizes before processing for telemetry
+# Collect session sizes before processing for telemetry.
+# v116 (2026-05-23): filter via _is_session_file — trajectory + checkpoint
+# files are NOT real sessions and including them poisons threshold checks.
 session_sizes_before = {}
 for _sf in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
+    if not _is_session_file(_sf):
+        continue
     session_sizes_before[_sf] = os.path.getsize(_sf)
 
 # ═══════════════════════════════════════════════════════════
@@ -2007,7 +2036,50 @@ try:
         except Exception:
             pass
 
+    # ── v116 (2026-05-23): stale MEMORY_FLAG cleanup ──
+    # Run BEFORE the main session loop. If .memory-write-pending exists but
+    # no REAL session is over MEMORY_WARN_BYTES, the flag is stale (either
+    # from a prior gateway lifecycle OR from the old glob bug where
+    # trajectory files were misidentified as sessions). Clean it up + remove
+    # MEM_URGENT from MEMORY.md so the next agent message doesn't waste an
+    # LLM turn on fake housekeeping. Defense in depth even after the glob
+    # filter fix: any stale flag of unknown origin self-cleans within one
+    # cron tick. Legitimate-large-session path is preserved (flag stays if
+    # any real session is genuinely over the threshold).
+    # Original incident: 2026-05-23 vm-1019 — Cooper's first message took
+    # 3 minutes; 2 of those were the agent obeying a stale MEM_URGENT
+    # warning on a 4%-capacity session.
+    if os.path.exists(MEMORY_FLAG):
+        _has_real_large_session = False
+        try:
+            for _f in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
+                if not _is_session_file(_f):
+                    continue
+                try:
+                    if os.path.getsize(_f) > MEMORY_WARN_BYTES:
+                        _has_real_large_session = True
+                        break
+                except OSError:
+                    continue
+        except Exception as _scan_err:
+            _has_real_large_session = True  # err on safe side, leave flag alone
+            print(f"STALE_MEMORY_FLAG_CLEANUP: scan failed, preserving flag: {_scan_err}")
+        if not _has_real_large_session:
+            try:
+                os.remove(MEMORY_FLAG)
+            except Exception as _rm_err:
+                print(f"STALE_MEMORY_FLAG_CLEANUP: flag remove failed: {_rm_err}")
+            try:
+                remove_memory_section(MEMORY_MD, MEM_URGENT_START, MEM_URGENT_END)
+            except Exception as _rs_err:
+                print(f"STALE_MEMORY_FLAG_CLEANUP: section remove failed: {_rs_err}")
+            print(f"STALE_MEMORY_FLAG_CLEANUP: removed .memory-write-pending + MEM_URGENT section (no real session > {MEMORY_WARN_BYTES} bytes; fake-housekeeping prevention)")
+
     for jsonl_file in glob.glob(os.path.join(SESSIONS_DIR, "*.jsonl")):
+        # v116 (2026-05-23): skip trajectory + checkpoint files.
+        # See _is_session_file() for full rationale + vm-1019 incident.
+        if not _is_session_file(jsonl_file):
+            continue
         file_size = os.path.getsize(jsonl_file)
         session_id = os.path.basename(jsonl_file).replace(".jsonl", "")
 
@@ -8347,6 +8419,55 @@ export async function configureOpenClaw(
       '# 2026-05-22 commit 4acc5280). XDG_RUNTIME_DIR per DBUS workaround.',
       'export XDG_RUNTIME_DIR="/run/user/$(id -u)" 2>/dev/null || true',
       'systemctl --user daemon-reload 2>/dev/null || true',
+      '',
+      '# v116 (2026-05-23) — MEMORY.md MEM_URGENT + stale-flag cleanup.',
+      '#',
+      '# Mirrors the bonjour cleanup above (clean ghost state before',
+      '# gateway start). The .memory-write-pending flag + MEM_URGENT',
+      '# section in MEMORY.md are transient state created by the',
+      '# strip-thinking.py cron when a session crosses size thresholds.',
+      '# They should NEVER survive a reconfigure — a fresh agent that',
+      '# inherits a stale "SESSION ROTATION IMMINENT — WRITE YOUR MEMORIES',
+      '# NOW" warning (claiming 80% capacity on a 4%-capacity session)',
+      '# spends a full LLM turn doing fake housekeeping before responding',
+      '# to the user.',
+      '#',
+      '# Original incident: 2026-05-23 vm-1019 — Cooper saw 3-minute',
+      '# first-message latency where the actual LLM call only took 16s.',
+      '# Root cause: strip-thinking.py glob("*.jsonl") matched trajectory',
+      '# files (300K-2MB each) which all exceeded MEMORY_WARN_BYTES (160KB),',
+      '# triggering MEM_URGENT injection every cron tick. The agent obeyed',
+      '# the warning, edited MEMORY.md, then the cron re-injected on next',
+      '# tick — infinite loop. v116 fixes the glob filter; this block is',
+      '# the IMMEDIATE clean-slate guarantee at configure-time so first',
+      '# message benefits even before the cron sees the new code.',
+      '#',
+      '# Safe on reconfigure: even if a user genuinely had MEM_URGENT for',
+      '# a real >160KB session, the cron re-injects on next tick (60s) if',
+      '# the condition still holds. Worst case = 60s without a warning the',
+      '# user has been ignoring anyway.',
+      'rm -f "$HOME/.openclaw/agents/main/sessions/.memory-write-pending" 2>/dev/null || true',
+      'if [ -f "$HOME/.openclaw/workspace/MEMORY.md" ]; then',
+      "  python3 - << 'MEMURGEOF'",
+      'import re',
+      'p = "/home/openclaw/.openclaw/workspace/MEMORY.md"',
+      'try:',
+      '  with open(p) as f: before = f.read()',
+      '  after = re.sub(',
+      '    r"\\s*<!-- INSTACLAW:MEMORY_WRITE_URGENT:START -->.*?<!-- INSTACLAW:MEMORY_WRITE_URGENT:END -->\\s*",',
+      '    "\\n",',
+      '    before,',
+      '    flags=re.DOTALL,',
+      '  ).rstrip() + "\\n"',
+      '  if after != before:',
+      '    with open(p, "w") as f: f.write(after)',
+      '    print(f"CONFIGURE_MEM_URGENT_CLEANUP: stripped MEM_URGENT block ({len(before)-len(after)} bytes saved)")',
+      '  else:',
+      '    print("CONFIGURE_MEM_URGENT_CLEANUP: already clean (no MEM_URGENT block)")',
+      'except Exception as _e:',
+      '  print(f"CONFIGURE_MEM_URGENT_CLEANUP: error: {_e}")',
+      'MEMURGEOF',
+      'fi',
       '',
       '# Patch systemd unit: KillMode=mixed (kill Chrome children on stop),',
       '# crash-loop circuit breaker, and Chrome cleanup on start',

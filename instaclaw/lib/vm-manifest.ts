@@ -1673,7 +1673,7 @@ export const VM_MANIFEST = {
    * IMPORTANT for snapshot bake: the bake VM should reconcile to v113,
    * not v112 — Cooper notified snapshot terminal at bump time.
    */
-  version: 115,
+  version: 116,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -2135,6 +2135,20 @@ export const VM_MANIFEST = {
       //     backed up. Original incident: vm-050 2026-05-14 00:01:34 UTC
       //     "Something went wrong, use /new" after gateway SIGTERM
       //     during mid-tool-call gbrain MCP hang.
+      //   _is_session_file / STALE_MEMORY_FLAG_CLEANUP:
+      //     The 2026-05-23 v116 ship — fixes the 3-week-open bug where
+      //     glob("*.jsonl") matched .trajectory.jsonl + .checkpoint.*.jsonl
+      //     forensic blobs (300K-2MB each), every one of which exceeded
+      //     MEMORY_WARN_BYTES (160KB). Every cron tick triggered MEM_URGENT
+      //     injection. Every fresh agent's first message wasted a full
+      //     LLM turn (2 min) on fake housekeeping ("SESSION ROTATION
+      //     IMMINENT — WRITE YOUR MEMORIES NOW" on a 4%-capacity session).
+      //     _is_session_file filters trajectory + checkpoint at every glob
+      //     site. STALE_MEMORY_FLAG_CLEANUP runs before main loop and
+      //     self-cleans the flag + MEMORY.md MEM_URGENT block if no real
+      //     session is over threshold. Original incident: 2026-05-23
+      //     vm-1019 — Cooper's first message took 3 min where the actual
+      //     LLM call only took 16s.
       requiredSentinels: [
         "def trim_failed_turns",
         "SESSION TRIMMED:",
@@ -2148,6 +2162,8 @@ export const VM_MANIFEST = {
         "LAYER3_EXTRACTED:",
         "def run_startup_orphan_repair",
         "ORPHAN_REPAIR:",
+        "def _is_session_file",
+        "STALE_MEMORY_FLAG_CLEANUP:",
       ],
     },
     {
