@@ -144,10 +144,13 @@ export async function GET() {
         };
       }
 
-      // Fetch World ID verification status + Gmail connection status
+      // Fetch World ID verification status + Gmail connection status +
+      // index_last_intent_at (used by the dashboard layout's Edge intent gate
+      // for live-DB verification — see the 2026-05-23 fix to layout.tsx
+      // for why the gate can't trust session.user.indexLastIntentAt alone).
       const { data: userProfile } = await supabase
         .from("instaclaw_users")
-        .select("world_id_verified, world_id_verification_level, world_id_verified_at, gmail_connected, gmail_popup_dismissed")
+        .select("world_id_verified, world_id_verification_level, world_id_verified_at, gmail_connected, gmail_popup_dismissed, index_last_intent_at")
         .eq("id", session.user.id)
         .single();
 
@@ -170,6 +173,16 @@ export async function GET() {
 
       return NextResponse.json({
         status: "assigned",
+        // 2026-05-23: top-level `user` payload for live-DB verification of
+        // session-cached fields. The dashboard layout's Edge intent gate
+        // reads `user.indexLastIntentAt` to bypass stale session state
+        // after `/edge/intents` submission — without this, the gate
+        // bounces the user back to /edge/intents (whose server component
+        // then redirects back to /dashboard since intent IS set in DB)
+        // in an infinite loop. See layout.tsx intent-gate useEffect.
+        user: {
+          indexLastIntentAt: userProfile?.index_last_intent_at ?? null,
+        },
         vm: {
           id: vm.id,
           gatewayUrl: vm.gateway_url,

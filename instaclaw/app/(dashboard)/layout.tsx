@@ -163,33 +163,82 @@ export default function DashboardLayout({
   // set by /edge/intents's service-degraded fallback when Yanek's MCP is
   // down. Honors the flag so users aren't locked out by a partner outage;
   // re-prompts after 30 min so the network still gets seeded post-recovery.
-  const needsEdgeIntent =
-    status !== "loading" &&
-    session?.user?.id &&
-    session.user.partner === "edge_city" &&
-    !session.user.indexLastIntentAt;
-
+  // 2026-05-23 redirect-loop fix: the prior implementation read
+  // `session.user.indexLastIntentAt` directly. NextAuth's SessionProvider
+  // caches session state across SPA navigations — when a user submits an
+  // intent on /edge/intents and clicks Continue (router.push("/dashboard")),
+  // the SPA navigation does NOT trigger a session refetch. The dashboard
+  // layout mounts with the stale snapshot (intentAt still null from
+  // /edge/intents's initial server render), fires
+  // router.replace("/edge/intents"), and the /edge/intents server component
+  // reads LIVE DB (intent IS set), fires `redirect("/dashboard")` → loop.
+  //
+  // The fix: when session reports intentAt is null AND user is edge_city,
+  // verify against live DB via /api/vm/status before redirecting. Mirrors
+  // the data-driven pattern the needsOnboarding gate already uses
+  // (which is loop-free precisely because it lives-fetches via /api/vm/
+  // status before deciding where to redirect).
+  //
+  // True positives (intent really is null): live DB also returns null →
+  //   redirect. Correct.
+  // False positives (intent set in DB but null in session — the loop
+  //   trigger): live DB returns set → skip redirect. Loop broken.
+  // Session already says set: short-circuit, no fetch needed.
   useEffect(() => {
-    if (!needsEdgeIntent) return;
-    // Check localStorage escape flag — Yanek-MCP-down service degradation.
-    try {
-      const skipTs = parseInt(
-        localStorage.getItem("edge_intent_skipped_at") ?? "0",
-        10,
-      );
-      if (
-        Number.isFinite(skipTs) &&
-        skipTs > 0 &&
-        Date.now() - skipTs < 30 * 60 * 1000
-      ) {
-        // Within the 30-min grace window — let them through.
-        return;
+    if (status === "loading") return;
+    if (!session?.user?.id) return;
+    if (session.user.partner !== "edge_city") return;
+    if (session.user.indexLastIntentAt) return; // session knows for sure
+
+    let cancelled = false;
+    (async () => {
+      // Live-DB verify before redirecting. The stale-session loop happens
+      // here — without this fetch, we'd bounce to /edge/intents which
+      // would server-redirect right back.
+      try {
+        const res = await fetch("/api/vm/status");
+        if (cancelled) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user?.indexLastIntentAt) return; // set in DB, skip redirect
+        }
+      } catch {
+        // Network failure — fall through to localStorage check + redirect.
+        // This preserves the previous fail-safe behavior of "if we can't
+        // verify, assume the user needs to submit intent." Worst case is
+        // a redirect that resolves on the next page load.
       }
-    } catch {
-      // localStorage unavailable (SSR, private mode) — proceed with gate.
-    }
-    router.replace("/edge/intents");
-  }, [needsEdgeIntent, router]);
+      if (cancelled) return;
+
+      // Check localStorage escape flag — Yanek-MCP-down service degradation.
+      try {
+        const skipTs = parseInt(
+          localStorage.getItem("edge_intent_skipped_at") ?? "0",
+          10,
+        );
+        if (
+          Number.isFinite(skipTs) &&
+          skipTs > 0 &&
+          Date.now() - skipTs < 30 * 60 * 1000
+        ) {
+          // Within the 30-min grace window — let them through.
+          return;
+        }
+      } catch {
+        // localStorage unavailable (SSR, private mode) — proceed with gate.
+      }
+      router.replace("/edge/intents");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    status,
+    session?.user?.id,
+    session?.user?.partner,
+    session?.user?.indexLastIntentAt,
+    router,
+  ]);
 
   // Close dropdown when clicking outside (suppressed when tour controls it)
   useEffect(() => {
