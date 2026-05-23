@@ -46,6 +46,7 @@ import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { createIndexIntent } from "@/lib/index-intent-creator";
 import type { CreateIndexIntentResult } from "@/lib/index-intent-creator";
+import { ensureIndexCredentials } from "@/lib/index-jit-provision";
 
 export const dynamic = "force-dynamic";
 // createIndexIntent can take 1-15s (MCP initialize + tools/call +
@@ -312,8 +313,48 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // 4.5. JIT-provision Index Network credentials if missing.
+  //
+  // Closes the post-onboarding race against the reconciler. A fresh
+  // Edge attendee completing /deploying + landing on /edge/intents in
+  // <90 s reliably arrives BEFORE the reconciler's stepIndexProvision
+  // (every ~3 min) fires to mint their index_api_key. Pre-fix, they
+  // saw "your edge city setup isn't fully online yet" and had to wait
+  // + retry manually — terrible UX after 7 screens of onboarding.
+  //
+  // ensureIndexCredentials is idempotent: it's a no-op DB lookup when
+  // the key is already populated (typical for repeat submissions or
+  // when the reconciler beat us), and a one-shot Index /signup +
+  // DB write (~2-5 s) when missing. On failure, we still fall through
+  // to createIndexIntent which surfaces the existing "coming online
+  // soon" fallback — so the only behavior change is eliminating the
+  // false-positive "setup not online" copy for the race-condition
+  // case. True Index outages still get the right message.
+  //
+  // We do this AFTER the rate-limit claim (step 4) so a JIT-provision
+  // attempt also consumes the user's intent budget — prevents an
+  // attacker from racing /signup with multiple intent submissions.
+  const jitResult = await ensureIndexCredentials(session.user.id);
+  if (!jitResult.ok) {
+    // Log the JIT failure reason but don't return yet — let
+    // createIndexIntent run + give its own friendly fallback. The user
+    // sees one coherent error rather than two different ones depending
+    // on which layer failed.
+    logger.warn("[express-intent] JIT provision failed; falling through", {
+      userIdPrefix: session.user.id.slice(0, 8),
+      reason: jitResult.reason,
+      detail: jitResult.detail,
+    });
+  } else if (jitResult.minted) {
+    logger.info("[express-intent] JIT provisioned Index creds inline", {
+      userIdPrefix: session.user.id.slice(0, 8),
+      indexUserIdPrefix: jitResult.indexUserId?.slice(0, 8),
+    });
+  }
+
   // 5. We own the claim. Call createIndexIntent — does MCP create_intent
   //    via the canonical IndexMcpClient with the burst-retry wrapper.
+  //    Re-reads the (now-populated) credentials from DB.
   const result = await createIndexIntent({
     userId: session.user.id,
     description,
