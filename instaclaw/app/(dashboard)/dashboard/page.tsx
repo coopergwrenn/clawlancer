@@ -167,6 +167,31 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // ── Popup latch (2026-05-23 race-fix v2) ──
+  //
+  // Once the popup gate evaluates true, latch it so the popup STAYS
+  // mounted through its 3-5s animation even if vmStatus subsequently
+  // flips (transient unhealthy from a health-check probe, or any other
+  // reshuffle). See render-site comment for why this matters.
+  //
+  // Implementation: useState (not useRef) so the render conditional
+  // re-evaluates when the latch flips. Once true, never flips back —
+  // the popup component itself handles the "already dismissed" case
+  // via personalizationDismissed prop.
+  const [popupGateLatched, setPopupGateLatched] = useState(false);
+  useEffect(() => {
+    if (popupGateLatched) return;
+    const vm = vmStatus?.vm;
+    if (
+      vmStatus?.status === "assigned" &&
+      vm &&
+      vm.healthStatus === "healthy" &&
+      vm.telegramBotUsername
+    ) {
+      setPopupGateLatched(true);
+    }
+  }, [vmStatus, popupGateLatched]);
+
   // Auto-expand credit packs when ?buy=credits is in URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1423,30 +1448,30 @@ export default function DashboardPage() {
         * once a user has seen ANY personalization moment, they don't
         * see another on subsequent dashboard visits.
         */}
-      {/* Render gate (2026-05-23 race-fix): the prior gate of
-        * `vmStatus?.status === "assigned" && vm` evaluated TRUE the
-        * instant a pool VM was assigned, BEFORE configureOpenClaw had
-        * finished. The dashboard layout's redirect to /deploying when
-        * gatewayUrl is null then cycles this component mount/unmount,
-        * each cycle re-mounting the popup, restarting its animation,
-        * firing POST /api/edge/personalize-agent, and never reaching
-        * the auto-dismiss path. Net result: visible "shaking" of the
-        * dashboard during configure + the popup never completes, so
-        * `gmail_popup_dismissed` stays false and the popup also never
-        * appears cleanly post-configure (animation gets killed by
-        * subsequent re-renders).
+      {/* Render gate (2026-05-23 race-fix v2): the gate uses a LATCH so
+        * once the popup mounts, it stays mounted until it self-dismisses
+        * — even if vmStatus subsequently flips (transient unhealthy from
+        * a health-check probe during the 3-5s animation, or any other
+        * vmStatus reshuffle). Without the latch, a vmStatus change
+        * mid-animation unmounts the popup, killing the dismiss POST
+        * (line 277 of edge-personalization-popup.tsx) and leaving
+        * gmail_popup_dismissed=false forever (so the popup keeps
+        * re-mounting on every subsequent visit, infinitely).
         *
-        * The fix: gate on VM being TRULY ready, not just assigned.
-        * `healthStatus === "healthy"` confirms /health returned 200
-        * (configureOpenClaw's verified-restart Step from Rule 5).
-        * `telegramBotUsername` set confirms the supplemental update
-        * landed (Rule 33's "fully onboarded" invariant). Once both
-        * hold, the VM is stable and the popup can mount once.
+        * The latch (popupGateLatched useState) flips TRUE the first
+        * tick the gate evaluates true. Once latched, the conditional
+        * stays true regardless of subsequent vmStatus changes, so the
+        * popup's own internal animation/dismiss logic runs to
+        * completion. The popup component itself handles the
+        * "already dismissed → return null" case via the
+        * personalizationDismissed prop (line 212 of the popup) so
+        * no re-render risk after the popup self-dismisses.
+        *
+        * Original gate: vmStatus?.status === "assigned" && vm &&
+        * vm.healthStatus === "healthy" && vm.telegramBotUsername.
+        * Now evaluated INSIDE the useEffect to decide latch flip.
         */}
-      {vmStatus?.status === "assigned" &&
-        vm &&
-        vm.healthStatus === "healthy" &&
-        vm.telegramBotUsername && (
+      {popupGateLatched && vm && (
           isEdgeCity ? (
             <EdgePersonalizationPopup
               personalizationDismissed={vm.gmailPopupDismissed}
