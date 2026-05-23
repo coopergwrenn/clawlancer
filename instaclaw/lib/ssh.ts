@@ -5225,6 +5225,11 @@ export function buildAuthProfilesJson(
   apiKey: string,
   proxyBaseUrl: string,
   openaiKey?: string | null,
+  openaiCodexProfile?: {
+    access: string;
+    expires: number;
+    accountId?: string | null;
+  } | null,
 ): string {
   const authProfileData: Record<string, unknown> = {
     type: "api_key",
@@ -5247,6 +5252,25 @@ export function buildAuthProfilesJson(
       provider: "openai",
       key: openaiKey,
     };
+  }
+  // 2026-05-23: optional openai-codex:default OAuth profile. When the user
+  // has connected ChatGPT (instaclaw_users.openai_oauth_access_token set
+  // and non-expired), configureOpenClaw decrypts the token, builds this
+  // profile, and passes it here so the very first gateway start has the
+  // right credentials. Without this, the reconciler's stepChatGPTOAuthToken
+  // races against the user's first message — for a 0-3min window the agent
+  // serves from Sonnet (default) until the next reconcile tick rewrites
+  // both the profile and model.primary, then needs another restart.
+  // Shape mirrors applyConnectedState in vm-reconcile.ts:9909-9921.
+  if (openaiCodexProfile) {
+    const desired: Record<string, unknown> = {
+      type: "oauth",
+      provider: "openai-codex",
+      access: openaiCodexProfile.access,
+      expires: openaiCodexProfile.expires,
+    };
+    if (openaiCodexProfile.accountId) desired.accountId = openaiCodexProfile.accountId;
+    profiles["openai-codex:default"] = desired;
   }
   return JSON.stringify({ profiles });
 }
@@ -5713,6 +5737,104 @@ export async function configureOpenClaw(
       resolvedModel = "claude-sonnet-4-6";
     }
 
+    // ── ChatGPT OAuth pre-configure (2026-05-23 model-race fix) ──
+    //
+    // If the user has connected ChatGPT, set model.primary to openai-codex/
+    // gpt-5.5 AND seed auth-profiles.json's openai-codex:default profile in
+    // the same atomic config write as everything else. Without this, the
+    // first 0-3 min after configure runs Sonnet (the buildOpenClawConfig
+    // default) until the next reconciler tick lands stepChatGPTOAuthToken
+    // — by which time the user has likely sent their first message and
+    // burned credits on the wrong model with the wrong context handling.
+    //
+    // Defense-in-depth: stepChatGPTOAuthToken still runs every reconcile
+    // cycle (handles token rotations, account swaps, expiry); this just
+    // closes the cold-start window. Idempotent — re-running configure
+    // with valid OAuth tokens produces the same auth-profiles.json bytes
+    // the reconciler would.
+    let openaiCodexProfile: {
+      access: string;
+      expires: number;
+      accountId?: string | null;
+    } | null = null;
+    if (vm.assigned_to && config.apiMode !== "byok") {
+      try {
+        const { data: userRow } = await getSupabase()
+          .from("instaclaw_users")
+          .select("openai_oauth_access_token, openai_oauth_expires_at, openai_oauth_account_id")
+          .eq("id", vm.assigned_to)
+          .single();
+        const encrypted = userRow?.openai_oauth_access_token as string | null | undefined;
+        if (encrypted) {
+          const { decryptSecret } = await import("./openai-oauth-encryption");
+          let accessToken: string;
+          try {
+            accessToken = decryptSecret(encrypted, vm.assigned_to);
+          } catch (decryptErr) {
+            recordFailure("chatgpt-oauth-decrypt", decryptErr, false);
+            accessToken = "";
+          }
+          if (accessToken.length > 0) {
+            // Resolve expires_ms (DB ISO first, JWT exp fallback) — mirrors
+            // stepChatGPTOAuthToken's expiry resolution to stay shape-
+            // compatible with pi-ai's hasUsableOAuthCredential check.
+            let expiresMs: number | null = null;
+            const isoExpires = userRow?.openai_oauth_expires_at as string | null | undefined;
+            if (isoExpires) {
+              const parsed = new Date(isoExpires).getTime();
+              if (Number.isFinite(parsed) && parsed > 0) expiresMs = parsed;
+            }
+            if (expiresMs === null) {
+              // JWT exp fallback — same parser as vm-reconcile.ts:9845
+              const parts = accessToken.split(".");
+              if (parts.length === 3) {
+                try {
+                  const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as { exp?: unknown };
+                  const exp = payload?.exp;
+                  if (typeof exp === "number" && Number.isFinite(exp) && exp > 0) {
+                    expiresMs = Math.trunc(exp) * 1000;
+                  } else if (typeof exp === "string" && /^\d+$/.test(exp.trim())) {
+                    expiresMs = Number.parseInt(exp.trim(), 10) * 1000;
+                  }
+                } catch {
+                  // unparseable JWT — fall through to null
+                }
+              }
+            }
+            // Only proceed if (a) we have a valid expires AND (b) token is
+            // not yet expired. Expired tokens get refreshed by the OAuth
+            // refresh cron; we don't push stale credentials and we don't
+            // switch the model — the user keeps Sonnet until they refresh.
+            if (expiresMs !== null && expiresMs > Date.now()) {
+              openaiCodexProfile = {
+                access: accessToken,
+                expires: expiresMs,
+                accountId: (userRow?.openai_oauth_account_id as string | null | undefined) ?? null,
+              };
+              resolvedModel = "openai-codex/gpt-5.5";
+              logger.info("configureOpenClaw: chatgpt_oauth pre-configure — setting model.primary + auth-profiles atomically", {
+                route: "lib/ssh",
+                vmId: vm.id,
+                userId: vm.assigned_to.slice(0, 8),
+                expiresAt: new Date(expiresMs).toISOString(),
+              });
+            } else {
+              logger.info("configureOpenClaw: chatgpt_oauth token expired or invalid — leaving Sonnet default; refresh cron will retry", {
+                route: "lib/ssh",
+                vmId: vm.id,
+                userId: vm.assigned_to.slice(0, 8),
+                hasExpiresMs: expiresMs !== null,
+              });
+            }
+          }
+        }
+      } catch (lookupErr) {
+        // Non-fatal: if the lookup fails we just keep the default model and
+        // let the reconciler tick close the loop a few minutes later.
+        recordFailure("chatgpt-oauth-lookup", lookupErr, false);
+      }
+    }
+
     const openclawModel = toOpenClawModel(resolvedModel);
     assertSafeShellArg(openclawModel, "model");
 
@@ -5809,7 +5931,12 @@ export async function configureOpenClaw(
     // 2026-05-14: builder extracted to exported buildAuthProfilesJson()
     // so the cloud-init tarball builder produces byte-identical output.
     {
-      const authProfile = buildAuthProfilesJson(apiKey, proxyBaseUrl, process.env.OPENAI_API_KEY);
+      const authProfile = buildAuthProfilesJson(
+        apiKey,
+        proxyBaseUrl,
+        process.env.OPENAI_API_KEY,
+        openaiCodexProfile,
+      );
       const authB64 = Buffer.from(authProfile, "utf-8").toString("base64");
       scriptParts.push(
         '# Write auth profile (API key for Anthropic)',
