@@ -5261,6 +5261,75 @@ async function stepCronJobs(
   result: ReconcileResult,
   dryRun: boolean,
 ): Promise<void> {
+  // ── PHASE 1: REMOVE entries listed in cronJobsRemove[] ──
+  // (v114, 2026-05-23 — Cooper outage debug)
+  //
+  // Runs FIRST so we don't accidentally add a new entry only to
+  // remove it on the same tick. Idempotent: re-reads crontab,
+  // filters out lines matching any remove-marker, rewrites only
+  // if changes detected, verify-after-write per Rule 23.
+  //
+  // Field is typed as `string[]` so an empty array short-circuits
+  // cleanly without breaking older VMs that don't have any
+  // removed-cron lines.
+  const removeMarkers = manifest.cronJobsRemove ?? [];
+  if (removeMarkers.length > 0) {
+    const beforeRes = await ssh.execCommand(
+      `crontab -l 2>/dev/null`,
+    );
+    const beforeLines = beforeRes.stdout.split("\n");
+    const afterLines = beforeLines.filter(
+      (line: string) => !removeMarkers.some((m: string) => line.includes(m)),
+    );
+    const removedCount = beforeLines.length - afterLines.length;
+    if (removedCount > 0) {
+      if (dryRun) {
+        result.fixed.push(
+          `[dry-run] cronJobsRemove: would remove ${removedCount} line(s)`,
+        );
+      } else {
+        // crontab REQUIRES trailing newline before EOF or it rejects
+        // the install — bug Cooper hit on 2026-05-23 fleet-push.
+        const newCrontab = afterLines.join("\n").replace(/\n*$/, "\n");
+        // Use stdin redirection via a here-doc through ssh.execCommand.
+        // node-ssh's execCommand accepts `stdin` option for this.
+        const installRes = await ssh.execCommand("crontab -", {
+          stdin: newCrontab,
+        });
+        if (installRes.code !== 0) {
+          result.errors.push(
+            `cronJobsRemove install failed: ${installRes.stderr.slice(0, 200)}`,
+          );
+          // Don't continue — if we can't remove, we shouldn't add either
+          // (might re-add removed entries in PHASE 2 below).
+          return;
+        }
+        // Verify per Rule 23: re-read crontab, confirm no remove-marker
+        // line survived. Treat any survival as an error (cv-bump gate).
+        const verifyRes = await ssh.execCommand(`crontab -l 2>/dev/null`);
+        const survivors = removeMarkers.filter((m) =>
+          verifyRes.stdout.includes(m),
+        );
+        if (survivors.length > 0) {
+          result.errors.push(
+            `cronJobsRemove verify FAILED — still present: ${survivors.join(
+              ",",
+            )}`,
+          );
+          return;
+        }
+        result.fixed.push(
+          `cronJobsRemove: removed ${removedCount} line(s) (${removeMarkers.join(",")})`,
+        );
+      }
+    } else {
+      result.alreadyCorrect.push(
+        `cronJobsRemove: clean (${removeMarkers.length} markers checked)`,
+      );
+    }
+  }
+
+  // ── PHASE 2: ADD entries listed in cronJobs[] ── (existing behavior)
   for (const job of manifest.cronJobs) {
     const check = await ssh.execCommand(
       `crontab -l 2>/dev/null | grep -qF "${job.marker}" && echo PRESENT || echo ABSENT`

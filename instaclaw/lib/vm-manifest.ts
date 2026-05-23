@@ -1673,7 +1673,7 @@ export const VM_MANIFEST = {
    * IMPORTANT for snapshot bake: the bake VM should reconcile to v113,
    * not v112 — Cooper notified snapshot terminal at bump time.
    */
-  version: 113,
+  version: 114,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -2460,37 +2460,35 @@ export const VM_MANIFEST = {
       marker: "auto-approve-pairing.py",
     },
     // v76: vm-watchdog.py + silence-watchdog.py REMOVED from cron schedule.
+    // v112 (2026-05-20): vm-watchdog.py RE-ENABLED with AGENT_STALE_MINUTES=15.
     //
-    // The 5-min stale-session-jsonl heuristic in vm-watchdog.py was actively
-    // killing working agents that were just SLOW (we measured p99 chat
-    // completion at 69s and max 182s on 2026-05-01; tool-call cycles can run
-    // for many minutes). Multiple paying users had their gateways restarted
-    // every ~6 minutes, which dropped Telegram polling for ~5s per restart
-    // and made messages disappear into the gap.
+    // ── v114 (2026-05-23): vm-watchdog.py REMOVED AGAIN + actively scrubbed via cronJobsRemove ──
     //
-    // ── v112 (2026-05-20): vm-watchdog.py RE-ENABLED with AGENT_STALE_MINUTES=15 ──
+    // Today's "agent reacts emoji but never text-responds" cascade traced to
+    // vm-watchdog.py + openclaw-config-watchdog (and silence-watchdog.py
+    // stragglers per P1-10) firing restart_gateway() while gpt-5.5 was
+    // mid-cold-start. With 41 skills loaded into upfront context, gpt-5.5's
+    // first turn takes ~3 minutes. The v112 AGENT_STALE_MINUTES=15 (30 min
+    // effective) bound was supposedly safe, but in practice the watchdogs
+    // were still killing in-flight processing — debugged via Cooper's
+    // 30-min outage on vm-1016 on 2026-05-23.
     //
-    // Per Cooper 2026-05-20: "re-enable vm-watchdog at 15min: yes. agents
-    // shouldn't be able to sit stuck forever with no recovery. 15 min
-    // effective (30 min with the 2x) is plenty of headroom for any
-    // reasoning response while still catching genuinely dead agents."
+    // For now: kill ALL in-VM watchdogs. The Vercel-side cron/watchdog +
+    // cron/health-check still provide platform-level safety nets (with
+    // ssh_fail_count + watchdog_consecutive_failures counters in DB and
+    // 5-min lock coordination). cron/watchdog has a real-billing-status
+    // verifier (Rule 14) and an active-user-debounce (5min user-activity
+    // gate per Rule 17) that the in-VM watchdogs lack — those gates
+    // prevent the destructive restart-during-cold-start pattern.
     //
-    // The threshold change addresses concern #1 from the v76 disable
-    // (jsonl-mtime heuristic was too aggressive at 5 min). The 2x consecutive
-    // checks gate (AGENT_STALE_RESTARTS=2) gives 30 min effective stale time
-    // before restart — comfortably above OpenAI's documented 10-min server
-    // max for gpt-5.5-pro foreground reasoning. The v76 concern #2 (real
-    // liveness check via outbound API conn) is a Phase 3 improvement tracked
-    // in docs/prd/chatgpt-oauth-reasoning-routing-design-2026-05-20.md §3.1
-    // (in-flight request manifest).
+    // The cronJobsRemove[] field below actively REMOVES any stale cron
+    // entries on existing VMs. New pool VMs from a fresh snapshot also
+    // get scrubbed on first reconcile.
     //
-    // silence-watchdog.py REMAINS REMOVED — the in-flight manifest design
-    // (Phase 3) replaces it with a smarter SSE-event-aware liveness check.
-    {
-      schedule: "* * * * *",
-      command: "python3 ~/.openclaw/scripts/vm-watchdog.py > /dev/null 2>&1",
-      marker: "vm-watchdog.py",
-    },
+    // P1 followup (post-Edge launch): rebuild in-VM watchdog with
+    // OpenClaw's SSE-event liveness signal instead of /health-or-mtime
+    // heuristics. Tracked in docs/prd/chatgpt-oauth-reasoning-routing-
+    // design-2026-05-20.md §3.1.
     {
       // Rule 24 self-healing skill cron. Hourly at :17 to avoid colliding
       // with the existing :00 SHM_CLEANUP / push-heartbeat / memory-index burst.
@@ -2577,6 +2575,39 @@ export const VM_MANIFEST = {
       marker: "ack-watchdog.py",
     },
   ] as ManifestCronJob[],
+
+  // ── Cron entries to ACTIVELY REMOVE from every VM ──
+  // (v114, 2026-05-23 — Cooper outage debug)
+  //
+  // stepCronJobs (lib/vm-reconcile.ts) scans `crontab -l` on each VM
+  // for lines containing any of these strings; if any match, the
+  // crontab is rewritten without them. Idempotent: no-op when already
+  // clean. Verify-after-write per Rule 23.
+  //
+  // Why: cronJobs[] above only ENFORCES PRESENCE of intended entries.
+  // It does NOT remove entries that drifted in (from snapshot bake,
+  // manual operator edits, or prior manifest versions). Today's outage
+  // was caused exactly by this gap — vm-watchdog.py + openclaw-config-
+  // watchdog persisted on existing VMs even after the v112 manifest
+  // changed and after Cooper's 2026-05-01 fleet-wide SSH disable push
+  // (which missed several stragglers, per P1-10).
+  //
+  // Three markers tonight, all gateway-restart-causing crons:
+  //   - silence-watchdog.py: 60s threshold, kills gpt-5.5 cold-start
+  //   - vm-watchdog.py: agent-stale restart, also kills cold-start
+  //   - openclaw-config-watchdog: restart-on-corruption (also baked
+  //     into the snapshot via install-time root cron; user-crontab
+  //     copy is the one we can scrub here without root)
+  //
+  // 2026-05-23 fleet-push: scripts/_fleet-disable-watchdogs.ts already
+  // removed these from 156 VMs (367 lines removed). This manifest
+  // entry is the steady-state contract — reconciler keeps them removed
+  // on every cycle.
+  cronJobsRemove: [
+    "silence-watchdog.py",
+    "vm-watchdog.py",
+    "openclaw-config-watchdog",
+  ] as string[],
 
   // ── System packages (installed via sudo apt-get) ──
   systemPackages: ["ffmpeg", "jq", "build-essential"],

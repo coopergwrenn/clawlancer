@@ -351,6 +351,26 @@ async function provisionVMs(
       }
 
       // Insert into DB as "provisioning" — cloud-init-poll will flip to "ready"
+      //
+      // 2026-05-23 (Cooper outage debug): also stamp `config_version` +
+      // `secret_version` from env vars so the reconciler doesn't churn on a
+      // snapshot that's already at the manifest version.
+      //
+      // Without this, a fresh pool VM whose snapshot has v113 ON DISK still
+      // has cv=0 in the DB (column default). The reconciler then "catches
+      // up" cv=0 → cv=manifest, running every restart-required step from
+      // v1 → manifest version. Each restart-required step triggers a
+      // gateway restart. Net: every assigned user's first ~15 min has
+      // the gateway thrashing through redundant catch-up work.
+      //
+      // Operator contract: when baking a new snapshot, ALSO update
+      // LINODE_SNAPSHOT_CV (and optionally LINODE_SNAPSHOT_SECRET_VERSION)
+      // in Vercel env. Default 0 if unset — preserves prior behavior for
+      // any environment that hasn't migrated.
+      const snapshotCv = Number(process.env.LINODE_SNAPSHOT_CV ?? 0);
+      const snapshotSecretVer = Number(
+        process.env.LINODE_SNAPSHOT_SECRET_VERSION ?? 0,
+      );
       const { error: insertError } = await supabase
         .from("instaclaw_vms")
         .insert({
@@ -363,6 +383,12 @@ async function provisionVMs(
           status: "provisioning",
           region: created.region,
           server_type: created.serverType,
+          // Initialize from snapshot bake state so the reconciler doesn't
+          // churn redundant catch-up work on a fresh pool VM.
+          config_version: Number.isFinite(snapshotCv) ? snapshotCv : 0,
+          secret_version: Number.isFinite(snapshotSecretVer)
+            ? snapshotSecretVer
+            : 0,
         });
 
       if (insertError) {
