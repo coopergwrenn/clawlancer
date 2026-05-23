@@ -1,16 +1,16 @@
 # Changelog — generated 2026-05-23
 
-Window: `26b4b33c59e6bc7ca15df72c2e78c5b9ea187408` → `HEAD` (HEAD = `5d4c1796`)
+Window: `5d4c179617a1da4e3731a2963ae8d61222164ead` → `HEAD` (HEAD = `4b2dc233`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 5d4c179617a1da4e3731a2963ae8d61222164ead -->
+<!-- LAST_GENERATED_SHA: 4b2dc2338cf8122e2313e1dfefbd873506f440c1 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
+- **Reconciler / manifest:** 1
 - **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,25 +18,26 @@ Total commits: 2
 
 ## What changed for users
 
-- `5d4c1796` 2026-05-23 — debug(edge/popup): temporary console.error instrumentation to diagnose missing-popup [1 files] _(multi: [feature, edge]; ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `e8037d5e` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `4b2dc233` 2026-05-23 — fix(configure): preserve cv=SNAPSHOT_CV instead of resetting to 0 (root cascade fix) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `d58625a9` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
 
-_(none)_
+- `4b2dc233` 2026-05-23 — fix(configure): preserve cv=SNAPSHOT_CV instead of resetting to 0 (root cascade fix) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
 _(none)_
 
-### Feature (user-facing) (1)
+### Feature (user-facing) (0)
 
-- `5d4c1796` 2026-05-23 — debug(edge/popup): temporary console.error instrumentation to diagnose missing-popup [1 files] _(multi: [feature, edge]; ai-assisted)_
+_(none)_
 
 ### Edge City partner (0)
 
@@ -44,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `e8037d5e` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `d58625a9` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `5d4c1796` 2026-05-23 — [feature, edge] — debug(edge/popup): temporary console.error instrumentation to diagnose missing-popup
+- `4b2dc233` 2026-05-23 — [reconciler, infrastructure] — fix(configure): preserve cv=SNAPSHOT_CV instead of resetting to 0 (root cascade fix)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `5d4c1796` 2026-05-23 — debug(edge/popup): temporary console.error instrumentation to diagnose missing-popup
+- `4b2dc233` 2026-05-23 — fix(configure): preserve cv=SNAPSHOT_CV instead of resetting to 0 (root cascade fix)
 
 ## Appendix — every commit (chronological)
 
-- `e8037d5e` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
-- `5d4c1796` 2026-05-23 — debug(edge/popup): temporary console.error instrumentation to diagnose missing-popup [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `d58625a9` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `4b2dc233` 2026-05-23 — fix(configure): preserve cv=SNAPSHOT_CV instead of resetting to 0 (root cascade fix) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
