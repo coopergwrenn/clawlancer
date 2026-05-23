@@ -171,6 +171,21 @@ export async function GET() {
       const gmailPersonalizationEnabled =
         process.env.GMAIL_PERSONALIZATION_ENABLED === "true";
 
+      // 🟧 SMOKING-GUN (2026-05-23) — capture EXACT server-side computation
+      // of gmailPopupDismissed for Cooper's debug. Logs to Vercel function logs.
+      const gmailPopupDismissedComputed = gmailPopupKilled
+        ? true
+        : (userProfile?.gmail_popup_dismissed ?? false);
+      console.log("🟧 STATUS_ROUTE_GMAIL_DISMISSED", {
+        userId: session.user.id?.slice(0, 8),
+        rawDbValue: userProfile?.gmail_popup_dismissed,
+        rawDbType: typeof userProfile?.gmail_popup_dismissed,
+        envKillSwitchRaw: JSON.stringify(process.env.GMAIL_POPUP_DISABLED),
+        gmailPopupKilled,
+        computedReturn: gmailPopupDismissedComputed,
+        ts: new Date().toISOString(),
+      });
+
       return NextResponse.json({
         status: "assigned",
         // 2026-05-23: top-level `user` payload for live-DB verification of

@@ -144,6 +144,17 @@ export default function DashboardPage() {
     try {
       const res = await fetch("/api/vm/status");
       const data = await res.json();
+      // 🟧 SMOKING-GUN (2026-05-23) — capture EXACT wire response for gmailPopupDismissed
+      if (typeof window !== "undefined") {
+        // eslint-disable-next-line no-console
+        console.error("🟧 FETCH_STATUS_WIRE", {
+          status: data?.status,
+          vmGmailPopupDismissed: data?.vm?.gmailPopupDismissed,
+          vmGmailPopupDismissedType: typeof data?.vm?.gmailPopupDismissed,
+          vmHealthStatus: data?.vm?.healthStatus,
+          ts: new Date().toISOString(),
+        });
+      }
       setVmStatus(data);
     } catch {
       // Silently handle
