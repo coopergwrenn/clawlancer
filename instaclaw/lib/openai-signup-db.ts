@@ -243,21 +243,64 @@ export async function resolveSignupUser(
     throw new Error("resolveSignupUser: claims.email is missing — cannot create user");
   }
 
-  // 2. Validate the edge_verified cookie. Same logic as lib/auth.ts:39-60.
-  //    Cookie must (a) sign-verify, (b) be unexpired, (c) match claims.email.
+  // 2. Validate the edge_verified cookie INDEPENDENTLY of claims.email.
+  //
+  // The cookie is HMAC-signed by /api/edge/verify-ticket — it proves the
+  // user passed the SimpleFi /citizens silent verification for Edge
+  // attendance. The cookie's email is the EDGE-ATTENDEE-IDENTITY email
+  // (the email they registered for Edge Esmeralda 2026 with at EdgeOS).
+  //
+  // claims.email is the OPENAI-OAUTH-IDENTITY email — the email on the
+  // user's ChatGPT account. These are TWO DIFFERENT pieces of trusted
+  // identity that BOTH belong on the SAME user record:
+  //
+  //   - claims.email → which user.email row this OAuth account belongs to
+  //     (and which user gets the openai_oauth_* tokens stored)
+  //   - cookie.email → edge_verified_email column value (which event /
+  //     attendee identity this user holds)
+  //
+  // The 2026-05-22 Cooper-shelpinc incident:
+  //   Cooper's Edge ticket: coopergrantwrenn@gmail.com (cookie value)
+  //   Cooper's ChatGPT Plus: shelpinc@gmail.com (claims.email)
+  //   These are different emails on the same human. Pre-fix, the strict
+  //   `cookie.email === claims.email` check dropped the cookie, so the
+  //   resulting user record had partner=null and no edge_verified_email
+  //   binding. Cooper got the OAuth linked but lost the Edge attribution.
+  //
+  // This pattern WILL hit real Edge attendees: people commonly register
+  // for events with one email and have ChatGPT under another. The fix
+  // is to trust the signed cookie INDEPENDENTLY — both signed identities
+  // are authoritative for their respective fields.
+  //
+  // Defense in depth: the cookie is still HMAC-signed (cryptographic
+  // integrity) + un-expired (15-min TTL from /api/edge/verify-ticket).
+  // The relaxation is ONLY removing the strict email-equality with
+  // claims.email — we still require the cookie itself to be valid.
+  //
+  // The downstream `or(edge_verified_email.is.null,...)` OR-guard on the
+  // UPDATE still prevents overwriting an OTHER user's already-claimed
+  // edge_verified_email value if the same cookie email was previously
+  // claimed by a different row (rare race / dual-account edge case).
   const edgeVerifiedResult = verifyEdgeVerifiedCookie(cookies.edgeVerifiedCookieRaw);
   const edgeVerifiedEmail =
-    edgeVerifiedResult.ok &&
-    edgeVerifiedResult.email &&
-    edgeVerifiedResult.email === email
+    edgeVerifiedResult.ok && edgeVerifiedResult.email
       ? edgeVerifiedResult.email
       : null;
   if (cookies.edgeVerifiedCookieRaw && !edgeVerifiedEmail) {
-    logger.warn("resolveSignupUser: edge_verified cookie present but rejected", {
+    logger.warn("resolveSignupUser: edge_verified cookie present but invalid", {
       route: "auth/openai/signup",
       reason: edgeVerifiedResult.reason,
-      cookieEmail: edgeVerifiedResult.email,
-      claimsEmail: email,
+    });
+  }
+  // Diagnostic — surface the cross-identity case so we can monitor how
+  // often the mismatch fires in production. Useful signal for Edge
+  // attendee-vs-ChatGPT-account email patterns. Domain-only logging
+  // preserves privacy (no full email in the structured log).
+  if (edgeVerifiedEmail && edgeVerifiedEmail !== email) {
+    logger.info("resolveSignupUser: edge_verified_email ≠ claims.email — honoring both", {
+      route: "auth/openai/signup",
+      edgeVerifiedEmailDomain: edgeVerifiedEmail.split("@")[1] ?? "?",
+      claimsEmailDomain: email.split("@")[1] ?? "?",
     });
   }
 

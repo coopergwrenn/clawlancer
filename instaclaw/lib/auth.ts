@@ -235,31 +235,53 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
       // Edge verification cookie (signed HMAC-SHA256, 15-min TTL). Set by
       // POST /api/edge/verify-ticket after a successful EdgeOS attendee
-      // lookup. Only honored if (a) signature is valid, (b) not expired,
-      // and (c) the verified email matches the user's signin email — we
-      // refuse to claim a verified-as-X cookie for a signed-in-as-Y user.
-      // Both null-equality cases (no cookie, expired) fall through silently
-      // and the user takes the normal non-Edge signup path.
+      // lookup. The cookie's email is the EDGE-ATTENDEE-IDENTITY email
+      // (the email registered with EdgeOS for Edge Esmeralda 2026).
+      // The Google OAuth signin email is the GOOGLE-ACCOUNT-IDENTITY
+      // email. These are two trusted identities that BOTH belong on the
+      // same user record:
+      //
+      //   - Google email → user.email + user.google_id
+      //   - Cookie email → user.edge_verified_email
+      //
+      // Pre-2026-05-22 the code required `cookie.email === signinEmail`
+      // which dropped the cookie for any Edge attendee whose Google
+      // account was registered under a different email than their Edge
+      // ticket — a very common pattern (event email vs personal Gmail).
+      // Mirror of the same fix shipped to resolveSignupUser today for
+      // the OpenAI device-code path. The 2026-05-22 Cooper-shelpinc
+      // incident exposed this on the OpenAI path; the same bug shape
+      // lurks here on the Google path until this fix.
+      //
+      // Defense in depth preserved: the cookie is still HMAC-signed and
+      // un-expired (15-min TTL). The downstream UPDATE's OR-guard on
+      // edge_verified_email (`is.null,eq.<value>`) prevents overwriting
+      // a different user's already-claimed value.
       const edgeVerifiedCookieRaw =
         cookieStore.get(EDGE_VERIFIED_COOKIE_NAME)?.value ?? null;
       const edgeVerifiedResult = verifyEdgeVerifiedCookie(edgeVerifiedCookieRaw);
       const signinEmail = user.email?.trim().toLowerCase() ?? null;
       const edgeVerifiedEmail =
-        edgeVerifiedResult.ok &&
-        edgeVerifiedResult.email &&
-        signinEmail &&
-        edgeVerifiedResult.email === signinEmail
+        edgeVerifiedResult.ok && edgeVerifiedResult.email
           ? edgeVerifiedResult.email
           : null;
       if (edgeVerifiedCookieRaw && !edgeVerifiedEmail) {
-        // Cookie was set but didn't validate / didn't match. Log once for
-        // monitoring — if this fires frequently, the gate's cookie minting
-        // and the signin email-normalization are diverging.
-        logger.warn("signIn: edge_verified cookie present but rejected", {
+        // Cookie was set but didn't validate (bad signature or expired).
+        // Log for monitoring — if this fires frequently, the gate's cookie
+        // minting is diverging from the verification step.
+        logger.warn("signIn: edge_verified cookie present but invalid", {
           route: "auth/signIn",
           reason: edgeVerifiedResult.reason,
-          cookieEmail: edgeVerifiedResult.email,
-          signinEmail,
+        });
+      }
+      // Diagnostic — surface cross-identity case so we can monitor how
+      // often Edge-attendee-email differs from Google-account-email in
+      // production. Domain-only for privacy.
+      if (edgeVerifiedEmail && signinEmail && edgeVerifiedEmail !== signinEmail) {
+        logger.info("signIn: edge_verified_email ≠ google signin email — honoring both", {
+          route: "auth/signIn",
+          edgeVerifiedEmailDomain: edgeVerifiedEmail.split("@")[1] ?? "?",
+          signinEmailDomain: signinEmail.split("@")[1] ?? "?",
         });
       }
 
