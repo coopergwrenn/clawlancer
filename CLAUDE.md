@@ -3476,7 +3476,24 @@ If any of these are missing, the PR is incomplete. The cost of writing the verif
 - **Rule 34** (DB↔disk drift): same "the value in one place doesn't match the value in another" pattern. Here it's manifest vs systemd vs running process — three layers, all must agree.
 - **Rule 49** (partner secrets actively verified): same defense-in-depth principle. Two independent gates so a single misconfiguration doesn't bring down the system.
 
-### Rule 63 — Typing-keepalive patch to bot-msflwCEW.js must be re-applied after every OpenClaw install
+### Rule 63 — [PARKED 2026-05-23] Typing-keepalive patch was attempted, broke vm-1019, suspended pending further research
+
+> **STATUS: PARKED / SUSPENDED.** The patch described below was shipped in v118 (commit `554cc581`), broke vm-1019 during E2E testing (gateway entered a SIGTERM-restart loop, Cooper's messages went unanswered for ~15 minutes), was reverted on vm-1019 from backup, and the manifest was rolled back to v119 (commit `503bf35f`) with `messages.statusReactions.enabled=false`. The `configureOpenClaw` patch block was removed from `lib/ssh.ts` in a follow-up commit. **Do NOT re-add a typing-keepalive patch without (a) Cooper's explicit approval per Rule 64, (b) a passing end-to-end test on vm-1019 that proves typing-stops-cleanly AND gateway-doesn't-crash, (c) a tested fleet-push script that handles existing VMs that lack the patch, (d) a rollback plan if the patch fails on any single VM in the fleet.**
+>
+> The rule body below is preserved as historical reference — it describes the patch as it was *intended* to work. The actual problem we hit, and why the work is parked:
+>
+> 1. **Symptom on vm-1019**: after the patch was applied + statusReactions re-enabled, Cooper sent "interesting, i think i fixed it for ya now" at 4:50 PM. The bot went silent. The gateway entered a SIGTERM-restart loop driven by `process-pending` Pass 2 retries on `health_status='configure_failed'` (separate root cause — vm.health was momentarily unhealthy and the reconciler over-corrected). The patch's `console.log` debug instrumentation was added but `TK_DEBUG_*` never appeared in the journal — every gateway-start during the loop was killed before Telegram processed a message.
+> 2. **Likely deeper issue not yet validated**: the `info.kind === "final"` hook fires when the FINAL delivery completes, but other delivery paths in `bot-msflwCEW.js` (multi-chunk replies, edit-message paths, error replies) may not pass through the same hook. So even if the simple-text path clears the interval, edge cases would leak. Need to map every delivery path before re-attempting.
+> 3. **What we don't know**: whether the SIGTERM-loop was caused by the patch directly, or was unrelated reconciler thrashing that happened to overlap. The patch was reverted before we could test on a stable gateway.
+> 4. **Fleet exposure during the v118 window (~45 min)**: the v118 manifest re-enabled `statusReactions.enabled=true` fleet-wide, but the keepalive patch was ONLY ever applied to vm-1019 (via `configureOpenClaw` which runs at provisioning/Pass-2 retry, NOT via stepConfigSettings). So existing fleet VMs got the choppy-UX feature re-enabled WITHOUT the keepalive — strictly worse. v119 reverted statusReactions to false, restoring the v117 safe state for the fleet.
+>
+> **The mechanism in OpenClaw is real** (`bot-msflwCEW.js:186302` `typing: { start: sendTyping }`) and a keepalive remains the right direction. But the path forward is: (a) reproduce the choppy UX on a controlled test rig, (b) build a patch + harness that proves typing-stops-cleanly across all delivery paths, (c) prove the patch survives an openclaw reinstall + reconciler-triggered configureOpenClaw cycle, (d) only then re-introduce. None of those exist today.
+>
+> The lazy-Chromium-service approach (Rule 35 pattern applied to browser plugin) is a more architecturally robust alternative — it eliminates the 60s Chromium launch entirely without monkey-patching bot internals. Likely the better investment for v120+.
+
+---
+
+**[HISTORICAL — the rule as originally written, preserved for context. Do not act on this without re-validating per the PARKED note above.]**
 
 OpenClaw 2026.4.26's telegram adapter (`dist/extensions/telegram/bot-msflwCEW.js`) wires the typing indicator as `typing: { start: sendTyping }` with NO `repeat`/`interval` field — `sendTyping` fires exactly once at turn start. Telegram's `sendChatAction("typing")` has a 5-second TTL. Any LLM call >5s therefore produces dead-typing-air: indicator dies, agent goes silent on the user, status reactions (👀→🤔→✍️→✅) on the user's message look like "weird stuff happening" instead of progress.
 
