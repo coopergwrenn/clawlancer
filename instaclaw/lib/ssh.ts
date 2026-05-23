@@ -24,6 +24,10 @@ import {
   SOUL_STUB_CONSENSUS,
   EDGE_INSTACLAW_OVERLAY_MD,
 } from "./partner-content";
+import {
+  fetchCitizenProfile,
+  type CitizenProfile,
+} from "./index-signup-enrich";
 import { mintOrReuseApiKey } from "./edgeos-mint";
 import { EDGEOS_TENANT_EDGECITY_PROD } from "./edgeos-auth";
 import { injectGbrainSoulRoutingV1 } from "./workspace-templates-v2";
@@ -6705,31 +6709,219 @@ export async function configureOpenClaw(
 
       // Only write USER.md if Gmail branch didn't already write it
       if (!config.gmailProfileSummary) {
-        const userMd = [
-          "# USER.md - About Your Human",
-          "",
-          `- **Name:** ${fullName}`,
-          `- **What to call them:** ${firstName}`,
-          `- **Timezone:** ${timezone}`,
-          `- **Email:** ${email}`,
-          "- **Platform:** InstaClaw (instaclaw.io)",
-          "",
-          "## Context",
-          "",
-          `${firstName} is your human. They set you up on InstaClaw and you work for them.`,
-          "You're their AI agent — help them with whatever they need.",
-          "",
-          "---",
-          "",
-          `Update this as you learn more about ${firstName}.`,
-        ].join("\n");
+        // ── Edge personalization branch ──
+        // For partner=edge_city users, fetch the SimpleFi /citizens profile
+        // (best-effort, 5s timeout) and build an enriched USER.md so the agent
+        // knows the user's real-world role, organization, and socials. This
+        // is the DATA layer behind /api/edge/personalize-agent — without
+        // this, the popup says "you are a founder at Wild West Bots" and
+        // then the agent says "hello, what's your name?" The popup is the
+        // UX layer; this is the data layer; both must ship together to keep
+        // the promise.
+        //
+        // Failure mode: any error (network timeout, /citizens 404, partial
+        // data) falls through to the default USER.md below. The agent still
+        // gets a working USER.md, just without the Edge enrichment — same as
+        // any non-Edge user. We never block configureOpenClaw on /citizens.
+        let edgeUserMdWritten = false;
+        if (config.partner === "edge_city") {
+          try {
+            // Load edge_verified_email from DB — UserConfig doesn't carry it
+            // and we don't want to expand the type just for this branch.
+            // Best-effort: any error here just falls through to /citizens
+            // fetch with config.userEmail (which is OAuth email — usually
+            // works for the demo cohort but Edge identity is the right one
+            // when present).
+            //
+            // Defensive: vm.assigned_to is `?: string` on VMRecord. By the
+            // time configureOpenClaw runs, the ownership guard at line
+            // 5635 has verified the VM IS assigned, so assigned_to should
+            // be set — but a strict eq on `undefined` would PostgREST-serialize
+            // to id=eq.undefined and silently return no rows. Skip the
+            // lookup if undefined; we still get OAuth-email-based /citizens
+            // fetch.
+            let edgeIdentityEmail: string = email;
+            if (vm.assigned_to) {
+              try {
+                const { data: userRow } = await getSupabase()
+                  .from("instaclaw_users")
+                  .select("edge_verified_email")
+                  .eq("id", vm.assigned_to)
+                  .single();
+                const ev = userRow?.edge_verified_email as string | null | undefined;
+                if (ev && typeof ev === "string" && ev.trim().length > 0) {
+                  edgeIdentityEmail = ev.trim();
+                }
+              } catch {
+                /* fall through with OAuth email — defensive */
+              }
+            }
 
-        const userB64 = Buffer.from(userMd, "utf-8").toString("base64");
-        scriptParts.push(
-          "# Deploy USER.md — user profile (Gmail was skipped, using DB info)",
-          `echo '${userB64}' | base64 -d > "${workspaceDir}/USER.md"`,
-          ""
-        );
+            // Skip /citizens fetch entirely if we don't have a real email to
+            // look up by. config.userEmail defaults to "unknown" when not
+            // passed; fetching /citizens for "unknown" is wasted latency.
+            // Without a usable email, fall through to default USER.md.
+            const haveUsableEmail =
+              edgeIdentityEmail &&
+              edgeIdentityEmail !== "unknown" &&
+              edgeIdentityEmail.includes("@");
+
+            // 5s timeout, null-on-failure, same helper /api/edge/personalize-agent uses
+            const citizen: CitizenProfile | null = haveUsableEmail
+              ? await fetchCitizenProfile(
+                  edgeIdentityEmail,
+                  vm.id.slice(0, 8),
+                )
+              : null;
+
+            if (citizen) {
+              // Pull display-ready fields. Mirror the personalize-agent
+              // endpoint's normalization so the USER.md content matches what
+              // the popup showed the user — same first name, same role, etc.
+              //
+              // Name precedence: prefer the /citizens first_name+last_name
+              // ONLY when first_name is present. Otherwise fall back to the
+              // DB/OAuth name — never construct a "Name: Doe" by promoting
+              // a lone last_name as identity (a real edge case in the SimpleFi
+              // export: some attendees registered with just a surname or just
+              // their handle as first_name).
+              const citizenFirst = citizen.first_name?.trim() ?? "";
+              const citizenLast = citizen.last_name?.trim() ?? "";
+              const displayFirstName = citizenFirst || firstName;
+              const displayFullName = citizenFirst
+                ? [citizenFirst, citizenLast].filter((s) => s.length > 0).join(" ")
+                : fullName;
+              const role = citizen.role?.trim() || null;
+              const organization = citizen.organization?.trim() || null;
+              const telegramHandle = citizen.telegram?.trim().replace(/^@/, "") || null;
+              const xHandle = citizen.x_user?.trim().replace(/^@/, "") || null;
+              const work = role && organization
+                ? `${role} at ${organization}`
+                : role
+                ? role
+                : organization
+                ? organization
+                : null;
+
+              // Compose Edge USER.md. Sections:
+              //  - Identity (name + Edge email + OAuth email + timezone)
+              //  - Their work (role + org from /citizens)
+              //  - Their socials (telegram + x handles)
+              //  - Context block telling the agent they're at Edge Esmeralda
+              //    2026 and how to greet them
+              const lines: string[] = [
+                "# USER.md - About Your Human",
+                "",
+                `- **Name:** ${displayFullName}`,
+                `- **What to call them:** ${displayFirstName}`,
+                `- **Timezone:** ${timezone}`,
+                `- **Edge identity email:** ${edgeIdentityEmail}`,
+              ];
+              if (edgeIdentityEmail !== email) {
+                lines.push(`- **OAuth email:** ${email}`);
+              }
+              lines.push("- **Platform:** InstaClaw (instaclaw.io)");
+              lines.push("- **Event:** Edge Esmeralda 2026 (edge_city partner)");
+              lines.push("");
+
+              if (work || telegramHandle || xHandle) {
+                lines.push("## What you already know about them");
+                lines.push("");
+                lines.push(
+                  "Pulled from the Edge City /citizens directory at signup. " +
+                  "Use this naturally — don't ask them to introduce themselves " +
+                  "or re-state things you already know.",
+                );
+                lines.push("");
+                if (work) {
+                  lines.push(`- **Work:** ${work}`);
+                }
+                if (telegramHandle) {
+                  lines.push(`- **Telegram:** @${telegramHandle}`);
+                }
+                if (xHandle) {
+                  lines.push(`- **X / Twitter:** @${xHandle}`);
+                }
+                lines.push("");
+              }
+
+              lines.push("## Context");
+              lines.push("");
+              lines.push(
+                `${displayFirstName} signed up through Edge City and is an attendee ` +
+                "at Edge Esmeralda 2026. They came to you through the /edge portal — " +
+                "they already know what Instaclaw is and what you're for. " +
+                "Don't pitch the platform back at them.",
+              );
+              lines.push("");
+              lines.push(
+                `When you first hear from ${displayFirstName} on Telegram, greet them ` +
+                "warmly by name. You already know who they are. Skip the " +
+                "\"what's your name\" / \"tell me about yourself\" small-talk — " +
+                "use the context above. If they submitted an intent on /edge/intents " +
+                "during signup, the village router has it and may bring matched " +
+                "opportunities your way; surface those when they arrive.",
+              );
+              lines.push("");
+              lines.push("---");
+              lines.push("");
+              lines.push(`Update this as you learn more about ${displayFirstName}.`);
+
+              const edgeUserMd = lines.join("\n");
+              const userB64 = Buffer.from(edgeUserMd, "utf-8").toString("base64");
+              scriptParts.push(
+                "# Deploy USER.md — Edge City enriched (data layer behind personalization popup)",
+                `echo '${userB64}' | base64 -d > "${workspaceDir}/USER.md"`,
+                ""
+              );
+              edgeUserMdWritten = true;
+              logger.info("configureOpenClaw: wrote Edge-enriched USER.md", {
+                route: "lib/ssh",
+                vmId: vm.id,
+                hasName: Boolean(citizenFirst),
+                hasWork: Boolean(work),
+                hasSocial: Boolean(telegramHandle || xHandle),
+              });
+            } else {
+              logger.info("configureOpenClaw: edge_city user but no /citizens profile — falling back to default USER.md", {
+                route: "lib/ssh",
+                vmId: vm.id,
+              });
+            }
+          } catch (err) {
+            // /citizens fetch threw — non-fatal. Log + fall through.
+            recordFailure("user_md_edge_personalization", err, false);
+          }
+        }
+
+        // Default USER.md (non-Edge users, or Edge users where /citizens failed)
+        if (!edgeUserMdWritten) {
+          const userMd = [
+            "# USER.md - About Your Human",
+            "",
+            `- **Name:** ${fullName}`,
+            `- **What to call them:** ${firstName}`,
+            `- **Timezone:** ${timezone}`,
+            `- **Email:** ${email}`,
+            "- **Platform:** InstaClaw (instaclaw.io)",
+            "",
+            "## Context",
+            "",
+            `${firstName} is your human. They set you up on InstaClaw and you work for them.`,
+            "You're their AI agent — help them with whatever they need.",
+            "",
+            "---",
+            "",
+            `Update this as you learn more about ${firstName}.`,
+          ].join("\n");
+
+          const userB64 = Buffer.from(userMd, "utf-8").toString("base64");
+          scriptParts.push(
+            "# Deploy USER.md — user profile (Gmail was skipped, using DB info)",
+            `echo '${userB64}' | base64 -d > "${workspaceDir}/USER.md"`,
+            ""
+          );
+        }
       }
     }
 
