@@ -1,14 +1,14 @@
 # Changelog — generated 2026-05-23
 
-Window: `0617b660353790d56297876650de4b9f6de85e4a` → `HEAD` (HEAD = `1fab31fa`)
+Window: `1fab31fa73b1b2ad98594198c5895db38f7d1881` → `HEAD` (HEAD = `1bd15951`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 1fab31fa73b1b2ad98594198c5895db38f7d1881 -->
+<!-- LAST_GENERATED_SHA: 1bd15951d76ed0d729db11236190d56145c28cc8 -->
 
 ## Summary
 
 - **Manifest version bumps:** 1
-  - Range: v116 → v116
+  - Range: v117 → v117
 - **Reconciler / manifest:** 1
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
@@ -19,16 +19,14 @@ Total commits: 2
 
 ## Manifest version timeline
 
-### v116 — 2026-05-23 — `1fab31fa`
+### v117 — 2026-05-23 — `1bd15951`
 
-fix(v116): MEM_URGENT stale-flag root cause — exclude trajectory files from glob + clean-slate at configure
+fix(v117): disable statusReactions — fixes choppy typing UX on every message
 
-> THE 3-WEEK-OPEN BUG (vm-1019 e2e 2026-05-23):
-> Cooper's first message took 3 minutes. The actual gpt-5.5 LLM call only
-> took 16 seconds. 2 of those 3 minutes were the agent obeying a stale
-> "SESSION ROTATION IMMINENT — WRITE YOUR MEMORIES NOW" warning that
-> claimed 80% capacity on a 4%-capacity session. Bonjour fix (v115) freed
-> the event loop; this v116 fix eliminates the fake-housekeeping turn.
+> Cooper sees on EVERY telegram message (even plain-text replies with zero
+> tool use): type → silence → emoji on user msg → silence → type → reply.
+> Bot looks broken/confused. The agent itself confirmed it's not using
+> tools, so this is a delivery-layer issue, not LLM behavior.
 
 ## What changed for users
 
@@ -36,14 +34,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `1fab31fa` 2026-05-23 — fix(v116): MEM_URGENT stale-flag root cause — exclude trajectory files from glob + clean-slate at configure [3 files] _(**MANIFEST v116**; multi: [reconciler, infrastructure]; ai-assisted)_
-- `d717625d` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `1bd15951` 2026-05-23 — fix(v117): disable statusReactions — fixes choppy typing UX on every message [2 files] _(**MANIFEST v117**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `be0acf76` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `1fab31fa` 2026-05-23 — fix(v116): MEM_URGENT stale-flag root cause — exclude trajectory files from glob + clean-slate at configure [3 files] _(**MANIFEST v116**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `1bd15951` 2026-05-23 — fix(v117): disable statusReactions — fixes choppy typing UX on every message [2 files] _(**MANIFEST v117**; multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -59,21 +57,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `d717625d` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `be0acf76` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `1fab31fa` 2026-05-23 — [reconciler, infrastructure] — fix(v116): MEM_URGENT stale-flag root cause — exclude trajectory files from glob + clean-slate at configure
+- `1bd15951` 2026-05-23 — [reconciler, infrastructure] — fix(v117): disable statusReactions — fixes choppy typing UX on every message
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `1fab31fa` 2026-05-23 — fix(v116): MEM_URGENT stale-flag root cause — exclude trajectory files from glob + clean-slate at configure
+- `1bd15951` 2026-05-23 — fix(v117): disable statusReactions — fixes choppy typing UX on every message
 
 ## Appendix — every commit (chronological)
 
-- `d717625d` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
-- `1fab31fa` 2026-05-23 — fix(v116): MEM_URGENT stale-flag root cause — exclude trajectory files from glob + clean-slate at configure [3 files] _(**MANIFEST v116**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `be0acf76` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `1bd15951` 2026-05-23 — fix(v117): disable statusReactions — fixes choppy typing UX on every message [2 files] _(**MANIFEST v117**; multi: [reconciler, infrastructure]; ai-assisted)_
