@@ -29,6 +29,7 @@ import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
 import { BankrWalletCard } from "@/components/dashboard/bankr-wallet-card";
 import { AgentWalletFundingCard } from "@/components/dashboard/agent-wallet-funding-card";
 import { GmailConnectPopup } from "@/components/dashboard/gmail-connect-popup";
+import { EdgePersonalizationPopup } from "@/components/dashboard/edge-personalization-popup";
 import { ChatGPTConnectModal } from "@/components/dashboard/chatgpt-connect-modal";
 import { DesktopThumbnail } from "@/components/dashboard/desktop-thumbnail";
 import { EdgeCityCard } from "@/components/dashboard/edge-city-card";
@@ -1403,16 +1404,41 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Personalization popup (Gmail + ChatGPT dual-option, TASK 9) */}
+      {/* Personalization popup — partner-gated split (2026-05-23).
+        *
+        * Edge attendees (partner === "edge_city") see the
+        * EdgePersonalizationPopup — a cream/olive progress moment that
+        * pulls their /citizens profile + reveals real personal data
+        * ("Hey Cooper. Founder at Wild West Bots. @cooperwrenn. your
+        * agent is ready in telegram."). Auto-dismisses after the final
+        * reveal. Replaces the generic Gmail-connect popup for this
+        * cohort — the Edge data is richer + already captured during
+        * onboarding, no need to prompt for Gmail.
+        *
+        * Non-Edge users see the existing GmailConnectPopup unchanged
+        * (Gmail + ChatGPT dual-option, TASK 9). Zero behavior change
+        * for the broader fleet.
+        *
+        * Both popups share the same `gmail_popup_dismissed` DB flag —
+        * once a user has seen ANY personalization moment, they don't
+        * see another on subsequent dashboard visits.
+        */}
       {vmStatus?.status === "assigned" && vm && (
-        <GmailConnectPopup
-          gmailConnected={vm.gmailConnected}
-          gmailPopupDismissed={vm.gmailPopupDismissed}
-          gmailPersonalizationEnabled={vm.gmailPersonalizationEnabled}
-          onOpenChatGPT={() => setChatGptModalOpen(true)}
-          onClose={() => fetchStatus()}
-          onConnected={() => fetchStatus()}
-        />
+        isEdgeCity ? (
+          <EdgePersonalizationPopup
+            personalizationDismissed={vm.gmailPopupDismissed}
+            onComplete={() => fetchStatus()}
+          />
+        ) : (
+          <GmailConnectPopup
+            gmailConnected={vm.gmailConnected}
+            gmailPopupDismissed={vm.gmailPopupDismissed}
+            gmailPersonalizationEnabled={vm.gmailPersonalizationEnabled}
+            onOpenChatGPT={() => setChatGptModalOpen(true)}
+            onClose={() => fetchStatus()}
+            onConnected={() => fetchStatus()}
+          />
+        )
       )}
 
       {/* ChatGPT connect modal — triggered from the personalization popup's
