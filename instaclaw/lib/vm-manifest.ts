@@ -1673,7 +1673,7 @@ export const VM_MANIFEST = {
    * IMPORTANT for snapshot bake: the bake VM should reconcile to v113,
    * not v112 — Cooper notified snapshot terminal at bump time.
    */
-  version: 117,
+  version: 118,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -1809,30 +1809,26 @@ export const VM_MANIFEST = {
     "messages.ackReaction": "👀",
     // Keep the reaction visible after the bot replies (permanent trace).
     "messages.removeAckAfterReply": "false",
-    // v117 (2026-05-23): DISABLED. statusReactionController fires 3-4
-    // setMessageReaction calls per turn (setQueued → setThinking →
-    // setTool/setCompacting → setDone) — each is a separate Telegram
-    // API call. Combined with sendTyping's lack of keepalive (5s TTL,
-    // no refresh — see bot-msflwCEW.js line 186302 typing: { start:
-    // sendTyping } with no repeat config), this produced Cooper's
-    // "type → silence → emoji on user msg → silence → type → reply"
-    // choppy UX on EVERY message, even plain-text turns with zero
-    // tool use. Bot looked broken/confused.
-    // Source trace (vm-1019 2026-05-23):
-    //   - bot-msflwCEW.js:138415 — statusReactionsEnabled gate
-    //   - bot-msflwCEW.js:139115 — createStatusReactionController call
-    //     (returns null if statusReactionsEnabled === false)
-    //   - 8 method-call sites: setQueued/setThinking/setDone/setTool/
-    //     setCompacting/restoreInitial/setError/cancelPending
-    //   - ackReactionPromise fallback (line 3514): even with controller
-    //     null, single initial 👀 still fires via reactionApi direct
-    // So users keep the "I see you" 👀 signal but no mid-turn pulses.
-    // Per Rule 32: messages.* keys are closure-captured at telegram-
-    // channel-init. Reconciler's stepGatewayRestart auto-fires via
-    // RESTART_REQUIRED_CONFIG_PREFIXES = ["messages."]. cv-bump 116→117.
-    // To re-enable later (when typing-keepalive lands upstream OR when
-    // user feedback shows reactions are missed), flip back to "true".
-    "messages.statusReactions.enabled": "false",
+    // v118 (2026-05-23): RE-ENABLED (was disabled in v117 as workaround).
+    // The choppy UX in v117 was not caused by reactions — it was caused
+    // by sendTyping having NO keepalive (Telegram's 5s typing TTL kills
+    // the indicator during any LLM call >5s). Cooper observed reactions
+    // appearing during dead-typing-air, looked like "weird stuff on my
+    // message" instead of progress.
+    //
+    // v118 fixes the ROOT CAUSE: configureOpenClaw applies a typing-
+    // keepalive patch to bot-msflwCEW.js that refreshes sendChatAction
+    // every 4s during the turn and clears when deliver fires with
+    // info.kind==="final". With typing now persistent throughout the
+    // turn, the status emojis (👀→🤔→✍️→✅) layer cleanly ON TOP of
+    // solid typing instead of replacing it with dead air.
+    // End-state UX: user sends msg → 👀 reaction lands → typing solid
+    // for the entire turn → 🤔/✍️/✅ cycle on top → response arrives.
+    //
+    // See CLAUDE.md Rule 63 (typing keepalive patch survival) for the
+    // full spec + survival path across openclaw upgrades. See lib/ssh.ts
+    // configureOpenClaw for the patch script (idempotent via sentinel).
+    "messages.statusReactions.enabled": "true",
     // v71: OpenClaw's default discovery.mdns.mode is "minimal" (per
     // runtime-schema-TpYHXgGk.js: `cfg.discovery?.mdns?.mode ?? "minimal"`).
     // Bonjour mDNS broadcast triggers a CIAO-library shutdown race when the
