@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-23
 
-Window: `971668def0572bfdf23fe6e7a9bf49d2fc132a2d` → `HEAD` (HEAD = `1b0932e5`)
+Window: `1b0932e5f369912cb5d20ca03d32439e1ba6d8bf` → `HEAD` (HEAD = `90e1a817`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 1b0932e5f369912cb5d20ca03d32439e1ba6d8bf -->
+<!-- LAST_GENERATED_SHA: 90e1a817bf22e592fdd34a102ee270d5b20203bc -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `1b0932e5` 2026-05-23 — fix(edge/dashboard): break /edge/intents ↔ /dashboard redirect loop via live-DB intent check [2 files] _(multi: [feature, edge]; ai-assisted)_
+- `90e1a817` 2026-05-23 — fix(edge/dashboard): popup z-index + wizard-restart event — unblock visibility on Edge [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `2c7bf472` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `9baa7e37` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `1b0932e5` 2026-05-23 — fix(edge/dashboard): break /edge/intents ↔ /dashboard redirect loop via live-DB intent check [2 files] _(multi: [feature, edge]; ai-assisted)_
+- `90e1a817` 2026-05-23 — fix(edge/dashboard): popup z-index + wizard-restart event — unblock visibility on Edge [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,21 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `2c7bf472` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `1b0932e5` 2026-05-23 — [feature, edge] — fix(edge/dashboard): break /edge/intents ↔ /dashboard redirect loop via live-DB intent check
+- `9baa7e37` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `1b0932e5` 2026-05-23 — fix(edge/dashboard): break /edge/intents ↔ /dashboard redirect loop via live-DB intent check
+- `90e1a817` 2026-05-23 — fix(edge/dashboard): popup z-index + wizard-restart event — unblock visibility on Edge
 
 ## Appendix — every commit (chronological)
 
-- `2c7bf472` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
-- `1b0932e5` 2026-05-23 — fix(edge/dashboard): break /edge/intents ↔ /dashboard redirect loop via live-DB intent check [2 files] _(multi: [feature, edge]; ai-assisted)_
+- `9baa7e37` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `90e1a817` 2026-05-23 — fix(edge/dashboard): popup z-index + wizard-restart event — unblock visibility on Edge [1 files] _(ai-assisted)_
