@@ -1471,6 +1471,41 @@ export default function DashboardPage() {
         * vm.healthStatus === "healthy" && vm.telegramBotUsername.
         * Now evaluated INSIDE the useEffect to decide latch flip.
         */}
+      {/* 🟧 POPUP_DEBUG (2026-05-23): temporary diagnostic — popup has
+       * never visibly mounted in 6+ test runs across 8 hours despite
+       * shipping multiple "fixes." Time to actually see browser-side
+       * state instead of guessing. Open DevTools console while landing
+       * on /dashboard — every render fires a POPUP_DEBUG line showing
+       * exactly which conditional fails. Remove after diagnosis.
+       *
+       * The conditional below is: popupGateLatched && vm && (isEdgeCity ?
+       * EdgePersonalizationPopup : GmailConnectPopup). If popupGateLatched
+       * is false, popup never mounts. If vm is null/undefined, popup never
+       * mounts. If isEdgeCity is false on an Edge user, the wrong popup
+       * (GmailConnectPopup, z-50) renders under the wizard at z-9999 —
+       * invisible. This log surfaces all of those.
+       */}
+      {(() => {
+        if (typeof window !== "undefined") {
+          // eslint-disable-next-line no-console
+          console.error("🟧 POPUP_DEBUG", {
+            popupGateLatched,
+            vmTruthy: !!vm,
+            vmStatusStatus: vmStatus?.status,
+            isEdgeCity,
+            sessionPartner: session?.user?.partner,
+            sessionUserId: session?.user?.id?.slice(0, 8),
+            sessionStatus: session?.user ? "loaded" : "no-session",
+            vmGmailPopupDismissed: vm?.gmailPopupDismissed,
+            vmHealthStatus: vm?.healthStatus,
+            vmTelegramBotUsername: vm?.telegramBotUsername,
+            userIndexLastIntentAt:
+              (vmStatus as unknown as { user?: { indexLastIntentAt?: string } } | null)
+                ?.user?.indexLastIntentAt ?? null,
+          });
+        }
+        return null;
+      })()}
       {popupGateLatched && vm && (
           isEdgeCity ? (
             <EdgePersonalizationPopup
