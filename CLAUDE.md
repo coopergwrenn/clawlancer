@@ -3476,6 +3476,65 @@ If any of these are missing, the PR is incomplete. The cost of writing the verif
 - **Rule 34** (DB↔disk drift): same "the value in one place doesn't match the value in another" pattern. Here it's manifest vs systemd vs running process — three layers, all must agree.
 - **Rule 49** (partner secrets actively verified): same defense-in-depth principle. Two independent gates so a single misconfiguration doesn't bring down the system.
 
+### Rule 63 — Typing-keepalive patch to bot-msflwCEW.js must be re-applied after every OpenClaw install
+
+OpenClaw 2026.4.26's telegram adapter (`dist/extensions/telegram/bot-msflwCEW.js`) wires the typing indicator as `typing: { start: sendTyping }` with NO `repeat`/`interval` field — `sendTyping` fires exactly once at turn start. Telegram's `sendChatAction("typing")` has a 5-second TTL. Any LLM call >5s therefore produces dead-typing-air: indicator dies, agent goes silent on the user, status reactions (👀→🤔→✍️→✅) on the user's message look like "weird stuff happening" instead of progress.
+
+InstaClaw patches `bot-msflwCEW.js` to add a per-turn `setInterval(sendTyping, 4000)` keepalive that fires every 4 seconds, cleared when `deliver` fires with `info.kind === "final"`, with a 90-second safety timeout. End-state UX: typing stays solid through the entire turn, status emojis layer cleanly on top, response arrives, typing stops cleanly. **This patch MUST be re-applied any time OpenClaw is installed or upgraded on a VM, OR the choppy UX returns silently.**
+
+#### Where the patch is applied
+
+- **`configureOpenClaw` (`lib/ssh.ts`)** runs the patch as a bash block during configure (idempotent via sentinel grep, atomic via `.tmp.js + node --check + mv`, safe via `.pre-typing-keepalive-bak` backup). This covers fresh VM provisioning, reconfigures, and any flow that runs configureOpenClaw.
+- **(P1 followup, to be filed)** `stepNpmPinDrift` in the reconciler should re-apply after any openclaw version bump — otherwise existing VMs that get an openclaw upgrade lose the patch until the next configureOpenClaw run (could be days).
+- **Snapshot bake checklist** — bake the patch into the base image so even zero-warm pool VMs start with it. Add to the 15-point verification checklist (per Snapshot Creation Process docs).
+
+#### Verification — the sentinel `INSTACLAW v118 typing-keepalive shim`
+
+After ANY of: openclaw install/upgrade, fresh provision, snapshot bake, reconfigure — verify the patch with:
+
+```bash
+TARGET=~/.nvm/versions/node/v22.22.2/lib/node_modules/openclaw/dist/extensions/telegram/bot-msflwCEW.js
+
+# Sentinel must be present exactly once
+grep -c "INSTACLAW v118 typing-keepalive shim" "$TARGET"   # → 1
+
+# Helper functions wired (TKStart: 2 occurrences, TKStop: 3)
+grep -c "__instaclawTKStart" "$TARGET"                       # → 2
+grep -c "__instaclawTKStop" "$TARGET"                        # → 3
+
+# Backup exists (proof patch was applied at least once)
+ls -la "$TARGET.pre-typing-keepalive-bak"
+```
+
+All four checks passing is the only acceptable state. **End-to-end smoke test:** send a Telegram message to the bot, observe typing indicator stays SOLID through the entire LLM call (no 5-second drops, no dead-air gaps). If typing drops, the patch is missing or broken.
+
+#### Why this happens
+
+OpenClaw upstream considers typing-indicator behavior the channel adapter's responsibility, not the dispatcher's. The dispatcher takes a `typing.start: () => Promise<void>` callback and calls it once per turn — no repeat semantics. Filing an upstream PR is on the wishlist (would close this rule), but until then the patch is our responsibility on every install.
+
+#### Banned patterns
+
+- Calling `npm install -g openclaw@<version>` manually on a VM and considering the upgrade "done." It wipes `bot-msflwCEW.js`, deletes the patch, silently regresses typing UX. Always follow with the patch re-apply.
+- Snapshot bakes that don't verify the sentinel in step 15. The whole point of a snapshot is zero-warm latency — but if first-message UX is choppy, the warm-from-snapshot benefit is lost.
+- Patch script changes (e.g., 4s → 3s interval) without also bumping the sentinel string. Idempotent grep skips the re-apply, the old patch keeps running, the change never lands.
+- Disabling `messages.statusReactions.enabled` as a workaround for choppy typing. v117 was that mistake — disables a good feature instead of fixing the underlying typing-keepalive. Reverted in v118. If reactions feel weird in the future, check the keepalive first (sentinel present? typing stays solid in a fresh test?). The reactions are not the problem.
+
+#### Detection rule
+
+For any PR that:
+- Calls `npm install` / `npm upgrade` on openclaw (anywhere in lib/ or scripts/)
+- Modifies `installPinnedOpenclaw` / `upgradeOpenClaw` / `stepNpmPinDrift`
+- Touches snapshot bake recipe
+- Adds a new VM provisioning path
+
+…the PR description must answer: "Does this path re-apply the typing-keepalive patch after the openclaw install? If no, name the existing path that does." Missing answer = PR incomplete. The cost is one bash block (~20 lines, mirrored from configureOpenClaw); the cost of NOT applying it is every paying customer's first impression of "the bot looks broken" when typing dies mid-turn.
+
+#### Related rules
+
+- **Rule 23** (sentinel-grep required templates): same "verify the in-memory/in-file content matches expected" discipline applied to a file we patch in node_modules.
+- **Rule 32** (`openclaw config set` exit-0 ≠ runtime applied): the typing-keepalive lives in JS, not config, so config-level verification doesn't catch its absence. Sentinel grep is the equivalent for code patches.
+- **Rule 62** (bonjour mDNS dual-gate): same "ghost state from upstream defaults harms UX" pattern. The bonjour gate is at install time; this is at use time. Both required on every fresh install.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
