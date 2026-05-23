@@ -163,11 +163,15 @@ export default function DashboardLayout({
   // set by /edge/intents's service-degraded fallback when Yanek's MCP is
   // down. Honors the flag so users aren't locked out by a partner outage;
   // re-prompts after 30 min so the network still gets seeded post-recovery.
-  const needsEdgeIntent =
-    status !== "loading" &&
-    session?.user?.id &&
-    session.user.partner === "edge_city" &&
-    !session.user.indexLastIntentAt;
+  // 2026-05-22 hotfix: temporarily disable the mandatory-intent gate
+  // while Index Network /signup is returning 403 (Yanek-side outage).
+  // Setting to `false` short-circuits the useEffect below so no Edge
+  // user is bounced to /edge/intents. Flip back to the real predicate
+  // when Yanek restores the API. The /edge/intents page + skip
+  // endpoint + JIT provision code all stay live — only the gate is
+  // disabled. Pair with the deploy-success destination override in
+  // app/(onboarding)/deploying/page.tsx.
+  const needsEdgeIntent = false;
 
   useEffect(() => {
     if (!needsEdgeIntent) return;
