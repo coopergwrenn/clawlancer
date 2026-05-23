@@ -58,7 +58,19 @@ type SubmitState = "idle" | "submitting" | "success" | "error";
  */
 interface IntentFormProps {
   onSuccess?: (intentId: string) => void;
-  onError?: (errorStatus: string) => void;
+  /**
+   * Called when /api/edge/express-intent returns a failure status.
+   *
+   * The `description` arg is the text the user typed (trimmed). Useful
+   * for callers that want to queue the intent for back-fill via the
+   * /api/edge/intents/skip escape hatch — preserves the user's words
+   * across the failure so a future retry surfaces what they meant.
+   *
+   * Passed unconditionally on every error (network, validation,
+   * not_eligible, service_unavailable, etc.). Caller decides what to
+   * do with it.
+   */
+  onError?: (errorStatus: string, description: string) => void;
 }
 
 export function IntentForm({ onSuccess, onError }: IntentFormProps = {}) {
@@ -108,7 +120,7 @@ export function IntentForm({ onSuccess, onError }: IntentFormProps = {}) {
         // caller can branch on service_unavailable (Yanek MCP down → reveal
         // skip-link escape hatch on /edge/intents).
         if (onError && data.status) {
-          onError(data.status);
+          onError(data.status, trimmed);
           // Fall through to set internal error state too — caller chooses
           // whether to reveal anything UI-side or hide it; we want the
           // default form-internal error UI to still appear so the user
@@ -121,7 +133,7 @@ export function IntentForm({ onSuccess, onError }: IntentFormProps = {}) {
         );
       }
     } catch {
-      if (onError) onError("network");
+      if (onError) onError("network", trimmed);
       setState("error");
       setMessage("couldn't reach the server. check your connection and try again.");
     }

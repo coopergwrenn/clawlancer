@@ -34,15 +34,46 @@ export function IntentsClient() {
   const router = useRouter();
   const [gateState, setGateState] = useState<GateState>({ kind: "initial" });
   const [serviceUnavailable, setServiceUnavailable] = useState(false);
+  // Capture the description the user typed on any failed submit so the
+  // escape-hatch skip endpoint can queue it for back-fill. Persisted in
+  // component state (not localStorage) — the IntentForm is mounted in
+  // the parent's "initial" branch, so the state survives as long as the
+  // user is on this page.
+  const [queuedDescription, setQueuedDescription] = useState<string>("");
+  const [skipping, setSkipping] = useState(false);
 
   function handleSubmitted() {
     setGateState({ kind: "submitted" });
   }
 
-  function handleError(errorStatus: string) {
-    if (errorStatus === "service_unavailable") {
+  /**
+   * Reveal the escape-hatch panel for ANY failure that means the user
+   * cannot complete the intent submission right now — not just the
+   * narrow "service_unavailable" case shipped originally. 2026-05-22
+   * Cooper hit Index Network /signup returning 403 Forbidden (Yanek-
+   * side outage). The express-intent route's JIT-provision path catches
+   * the 403 and returns `not_eligible` (matched downstream by
+   * `mapCreateIntentResultToResponse`). Pre-fix, "not_eligible" did NOT
+   * trigger the escape hatch — the user saw a hard error with no way out.
+   *
+   * Now: every non-rate-limit failure reveals the escape hatch. Hard
+   * rate-limited responses still surface the form-internal error UI
+   * (the user retries in a few minutes; the gate doesn't need lifting).
+   */
+  function handleError(errorStatus: string, description: string) {
+    setQueuedDescription(description);
+    const escapeHatchStatuses = [
+      "service_unavailable",
+      "not_eligible",
+      "error",
+      "network",
+      "server_error",
+    ];
+    if (escapeHatchStatuses.includes(errorStatus)) {
       setServiceUnavailable(true);
     }
+    // For "rate_limited" + "validation_error" we deliberately do NOT
+    // show the escape hatch — those are user-actionable, not API-down.
   }
 
   function handleContinue() {
@@ -60,17 +91,52 @@ export function IntentsClient() {
   // gate. Localstorage (not cookie) because this is purely a client-side
   // UX concern; the DB state (index_last_intent_at) stays the source of
   // truth.
-  function handleContinueDegraded() {
+  /**
+   * Server-side skip: queue the user's intent text (if any) for back-fill,
+   * mark `index_last_intent_at` so the dashboard layout's gate lets them
+   * through to /dashboard. Replaces the prior localStorage-only escape
+   * hatch — that gave a 30-min grace but left the user's text on the
+   * floor and pinned the gate-skip to one specific browser.
+   *
+   * 2026-05-22 Cooper hotfix: when Index Network /signup returns 403,
+   * the user should never be hard-blocked from /dashboard. The intent
+   * text they typed gets persisted via structured logger.info in the
+   * skip endpoint (greppable for replay when Index is restored). The
+   * gate write means the user can navigate freely afterward — no
+   * 30-min cliff, no per-browser pinning.
+   *
+   * Localstorage write is preserved as a belt-and-suspenders safety —
+   * if the API call fails for any reason (network blip on top of the
+   * Index outage), the existing 30-min grace still applies.
+   */
+  async function handleContinueDegraded() {
+    setSkipping(true);
+    // Fire-and-await the skip endpoint. We want the DB write to land
+    // before the redirect — otherwise the dashboard layout would see
+    // index_last_intent_at=null and bounce the user right back to
+    // /edge/intents.
+    try {
+      await fetch("/api/edge/intents/skip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: queuedDescription,
+          reason: "index_network_degraded",
+        }),
+      });
+    } catch {
+      // Network blip on the skip endpoint itself. Fall through — the
+      // localStorage grace below still gives 30 min of access. The
+      // user lands on /dashboard either way.
+    }
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem("edge_intent_skipped_at", Date.now().toString());
       } catch {
-        // Localstorage can fail in private-browsing or quota-exceeded
-        // modes. Acceptable: the user just won't have the 30-min grace
-        // and will be re-redirected to this page immediately. Not great
-        // UX in that edge case but not a security or data issue.
+        // Same private-browsing/quota tolerance as before.
       }
     }
+    setSkipping(false);
     router.push("/dashboard");
   }
 
@@ -180,22 +246,30 @@ export function IntentsClient() {
                 }}
               >
                 <p className="text-[13px] leading-[1.6]">
-                  Intent registration is briefly unavailable. We&apos;re
-                  working with the Index team to bring it back online. You can
-                  continue to your dashboard and try again from there in a few
-                  minutes.
+                  Intent registration is briefly unavailable. We&apos;ve saved
+                  what you wrote and will queue it as soon as the matching
+                  service comes back online. Continue to your dashboard —
+                  nothing else is blocked.
                 </p>
                 <button
                   type="button"
                   onClick={handleContinueDegraded}
-                  className="mt-4 px-5 py-2.5 rounded-full text-[12px] uppercase tracking-[0.14em] font-medium transition-colors hover:bg-[var(--edge-olive-hover)] inline-flex items-center gap-2"
+                  disabled={skipping}
+                  aria-busy={skipping}
+                  className="mt-4 px-5 py-2.5 rounded-full text-[12px] uppercase tracking-[0.14em] font-medium transition-colors hover:bg-[var(--edge-olive-hover)] inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{
                     background: "var(--edge-olive)",
                     color: "#FFFFFF",
                     letterSpacing: "0.12em",
                   }}
                 >
-                  Continue to dashboard <span aria-hidden>→</span>
+                  {skipping ? (
+                    <>Saving…</>
+                  ) : (
+                    <>
+                      Continue to dashboard <span aria-hidden>→</span>
+                    </>
+                  )}
                 </button>
               </div>
             )}
