@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import type { EdgeUserState } from "../edge-user-state";
+import { ChatGPTConnectModal } from "@/components/dashboard/chatgpt-connect-modal";
 
 /**
  * /edge/claim — three-auth-paths gate (2026-05-22 Timour refactor).
@@ -147,6 +148,16 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
   const [email, setEmail] = useState("");
   const [gateState, setGateState] = useState<GateState>({ kind: "email_entry" });
 
+  // ChatGPT device-code modal — opened inline when the user picks the
+  // ChatGPT auth path. Mirrors the /signin pattern (signin-client.tsx:165)
+  // so we don't redirect users to /signin where they'd see the SAME
+  // chooser they just picked from. The modal owns the full device-code
+  // lifecycle: start → polling UI → completion → signIn() → /connect.
+  // The edge_verified_email signed cookie set by /api/edge/verify-ticket
+  // is already in place by the time this opens, so the OAuth callback in
+  // lib/auth.ts honors it and tags the user as partner=edge_city.
+  const [chatgptModalOpen, setChatgptModalOpen] = useState(false);
+
   // Surface ?error=... inline on first render.
   useEffect(() => {
     const err = searchParams.get("error");
@@ -249,19 +260,30 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
   }, [userState.kind]);
 
   /**
-   * ChatGPT path — invoke /signin with the callback set to /connect.
-   * The existing /signin page presents both Google + ChatGPT; since the
-   * Edge user already picked ChatGPT here, /signin's secondary Google
-   * button is acceptable (operator-grade safety net). The edge_verified
-   * cookie chain is already set; /signin's OAuth callback honors it.
+   * ChatGPT path — open the device-code modal INLINE on this page.
+   *
+   * Why inline (vs. routing to /signin): ChatGPT is a multi-step device-
+   * code flow (start → user_code display → polling → signupToken →
+   * signIn(OPENAI_DEVICE_CODE_PROVIDER_ID)). The /signin page wraps the
+   * same ChatGPTConnectModal but presents the Google + ChatGPT chooser
+   * BEFORE opening it. Routing Edge users to /signin shows them the
+   * chooser they just made a choice from — exactly the double-screen UX
+   * Timour flagged on the 2026-05-22 call.
+   *
+   * Mounting the modal here means the user clicks "Continue with
+   * ChatGPT" → sees the device-code instructions immediately → no
+   * intermediate chooser screen. On success the modal's internal
+   * signIn() honors our edge_verified cookie chain and lands on /connect.
+   *
+   * We don't transition gateState to `oauth_redirecting` because the
+   * modal owns its own loading UI. Setting that state would hide the
+   * auth_choice screen behind the modal, looking odd if the user
+   * dismisses the modal (we want them back at the auth_choice screen
+   * with all three options visible).
    */
   const handleSignInChatGPT = useCallback(() => {
-    setGateState({ kind: "oauth_redirecting", provider: "chatgpt" });
-    // /signin recognizes the edge_verified cookie + routes through the
-    // ChatGPT device-code flow if the user picks it there. We add a
-    // hint param /signin can optionally read for default-focus.
-    router.push("/signin?callbackUrl=%2Fconnect&prefer=chatgpt");
-  }, [router]);
+    setChatgptModalOpen(true);
+  }, []);
 
   /**
    * Google path — direct signIn() invocation. NextAuth handles the
@@ -494,6 +516,7 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
   })();
 
   return (
+    <>
     <section className="relative z-10 flex-1 px-4 sm:px-8 pt-12 sm:pt-20 pb-16 sm:pb-24">
       <div className="max-w-[680px] mx-auto">
         {/* ─── Eyebrow ─── */}
@@ -905,6 +928,24 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
         }
       `}</style>
     </section>
+
+    {/* ChatGPT signup-mode modal — mounted inline so the device-code flow
+        runs without redirecting users to /signin (which would re-show the
+        Google + ChatGPT chooser they just made a choice from — exactly the
+        double-screen UX Timour flagged 2026-05-22). The modal owns its own
+        backdrop + focus trap; closing returns the user to the auth_choice
+        screen with all three buttons still visible.
+        On success the modal calls signIn(OPENAI_DEVICE_CODE_PROVIDER_ID,
+        {signupToken, callbackUrl: "/connect"}). The edge_verified_email
+        signed cookie set by /api/edge/verify-ticket is honored by the
+        OAuth callback in lib/auth.ts. */}
+    <ChatGPTConnectModal
+      isOpen={chatgptModalOpen}
+      onClose={() => setChatgptModalOpen(false)}
+      mode="signup"
+      signupCallbackUrl="/connect"
+    />
+    </>
   );
 }
 
