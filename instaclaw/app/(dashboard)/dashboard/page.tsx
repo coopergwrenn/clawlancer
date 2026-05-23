@@ -1423,23 +1423,46 @@ export default function DashboardPage() {
         * once a user has seen ANY personalization moment, they don't
         * see another on subsequent dashboard visits.
         */}
-      {vmStatus?.status === "assigned" && vm && (
-        isEdgeCity ? (
-          <EdgePersonalizationPopup
-            personalizationDismissed={vm.gmailPopupDismissed}
-            onComplete={() => fetchStatus()}
-          />
-        ) : (
-          <GmailConnectPopup
-            gmailConnected={vm.gmailConnected}
-            gmailPopupDismissed={vm.gmailPopupDismissed}
-            gmailPersonalizationEnabled={vm.gmailPersonalizationEnabled}
-            onOpenChatGPT={() => setChatGptModalOpen(true)}
-            onClose={() => fetchStatus()}
-            onConnected={() => fetchStatus()}
-          />
-        )
-      )}
+      {/* Render gate (2026-05-23 race-fix): the prior gate of
+        * `vmStatus?.status === "assigned" && vm` evaluated TRUE the
+        * instant a pool VM was assigned, BEFORE configureOpenClaw had
+        * finished. The dashboard layout's redirect to /deploying when
+        * gatewayUrl is null then cycles this component mount/unmount,
+        * each cycle re-mounting the popup, restarting its animation,
+        * firing POST /api/edge/personalize-agent, and never reaching
+        * the auto-dismiss path. Net result: visible "shaking" of the
+        * dashboard during configure + the popup never completes, so
+        * `gmail_popup_dismissed` stays false and the popup also never
+        * appears cleanly post-configure (animation gets killed by
+        * subsequent re-renders).
+        *
+        * The fix: gate on VM being TRULY ready, not just assigned.
+        * `healthStatus === "healthy"` confirms /health returned 200
+        * (configureOpenClaw's verified-restart Step from Rule 5).
+        * `telegramBotUsername` set confirms the supplemental update
+        * landed (Rule 33's "fully onboarded" invariant). Once both
+        * hold, the VM is stable and the popup can mount once.
+        */}
+      {vmStatus?.status === "assigned" &&
+        vm &&
+        vm.healthStatus === "healthy" &&
+        vm.telegramBotUsername && (
+          isEdgeCity ? (
+            <EdgePersonalizationPopup
+              personalizationDismissed={vm.gmailPopupDismissed}
+              onComplete={() => fetchStatus()}
+            />
+          ) : (
+            <GmailConnectPopup
+              gmailConnected={vm.gmailConnected}
+              gmailPopupDismissed={vm.gmailPopupDismissed}
+              gmailPersonalizationEnabled={vm.gmailPersonalizationEnabled}
+              onOpenChatGPT={() => setChatGptModalOpen(true)}
+              onClose={() => fetchStatus()}
+              onConnected={() => fetchStatus()}
+            />
+          )
+        )}
 
       {/* ChatGPT connect modal — triggered from the personalization popup's
           "Connect ChatGPT" card. Parent owns the modal state so multiple
