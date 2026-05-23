@@ -149,19 +149,124 @@ interface ChatGPTConnectModalProps {
    */
   signupCallbackUrl?: string;
   /**
+   * Visual theme. Default `"dark"` preserves the existing /settings +
+   * /signin appearance (black surfaces, brand-orange accents). Pass
+   * `"edge"` from /edge/claim so the modal renders against the Edge
+   * cream + olive palette without visually breaking the page behind it.
+   *
+   * See THEME_TOKENS at the top of this file for the palette. Adding a
+   * future partner theme is one new object in that record.
+   */
+  theme?: ChatGPTConnectModalTheme;
+  /**
    * Dev-only: bypass API calls and render the modal in this state.
    * The component refuses to honor this in production (NODE_ENV check).
    */
   __devForceState?: ModalState;
 }
 
-// ─── Brand tokens ────────────────────────────────────────────────────────
+// ─── Theme tokens ────────────────────────────────────────────────────────
+//
+// 2026-05-22 — added `edge` theme variant alongside the original `dark`.
+// Edge attendees on /edge/claim open this modal inline against a
+// cream/olive page; the default dark theme (black surfaces, brand-orange
+// accents) reads as visually broken against that backdrop.
+//
+// Architecture: one palette object per theme. Components read tokens via
+// `useThemeTokens(theme)` and pass through to style props. The dark
+// palette is byte-identical to the pre-2026-05-22 constants — no behavior
+// change for /settings or any other consumer that doesn't pass `theme`.
+//
+// Why CSS-var overrides at the outer wrapper: the modal references
+// var(--card), var(--border), var(--muted), var(--foreground) in 20+
+// places (success/error/connected sub-views, info rows, etc.). Overriding
+// these at the modal-scope inside an `edge`-themed CSSProperties payload
+// resolves them all without touching every callsite. Brand-orange
+// hardcodes (BRAND, BRAND_GRADIENT, rgba(220,103,67,*)) still need
+// per-token swaps because they bypass the CSS-var system. Semantic
+// status colors (green=success, yellow=warning, red=danger) stay the
+// same in both themes — they convey meaning, not brand.
+//
+// To add a future partner theme (e.g., Consensus): add a third object
+// to THEME_TOKENS with that partner's palette + cssVarOverrides. Zero
+// other code changes required.
 
-const BRAND = "#DC6743";
-const BRAND_GRADIENT =
-  "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)";
-const BRAND_BUTTON_SHADOW =
-  "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(255,255,255,0.3) 0px -1px 1px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px";
+export type ChatGPTConnectModalTheme = "dark" | "edge";
+
+interface ThemeTokens {
+  /** Primary brand color — solid (used for icon glyphs, accent text). */
+  brand: string;
+  /** Brand gradient — primary CTA fill (e.g., the device-code URL button). */
+  brandGradient: string;
+  /** Drop shadow on primary CTA — kept in-token because it carries brand
+   *  color in its glow. */
+  brandButtonShadow: string;
+  /** Brand-tinted surface: very subtle (code-display background). */
+  brandSurfaceWeak: string;
+  /** Brand-tinted surface: medium (numbered-step circle background). */
+  brandSurfaceMed: string;
+  /** Brand-tinted border: subtle (code-display border, info-pill border). */
+  brandBorderWeak: string;
+  /** Brand-tinted border: medium (info-pill stronger). */
+  brandBorderMed: string;
+  /** CSS-variable overrides applied at the outer-wrapper scope. Resolves
+   *  every var(--card), var(--border), var(--muted), var(--foreground)
+   *  reference inside the modal to the theme's palette. */
+  cssVarOverrides?: React.CSSProperties;
+}
+
+const THEME_TOKENS: Record<ChatGPTConnectModalTheme, ThemeTokens> = {
+  dark: {
+    brand: "#DC6743",
+    brandGradient:
+      "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+    brandButtonShadow:
+      "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(255,255,255,0.3) 0px -1px 1px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px",
+    brandSurfaceWeak: "rgba(220,103,67,0.06)",
+    brandSurfaceMed: "rgba(220,103,67,0.12)",
+    brandBorderWeak: "rgba(220,103,67,0.15)",
+    brandBorderMed: "rgba(220,103,67,0.2)",
+    // cssVarOverrides intentionally undefined — dark theme inherits the
+    // page's existing --card / --border / --muted / --foreground.
+  },
+  edge: {
+    // Edge olive (#0f1a12 → #4a5a2b range — same palette claim-client.tsx
+    // and lib/partner-content.ts use). Slightly lighter than the deepest
+    // Edge ink so the gradient surfaces stay readable on cream.
+    brand: "#4a5a2b",
+    brandGradient: "linear-gradient(135deg, #4a5a2b 0%, #5a6a3b 100%)",
+    brandButtonShadow:
+      "rgba(255,255,255,0.18) 0px -1px 1px 0px inset, rgba(74,90,43,0.35) 0px 4px 16px 0px",
+    brandSurfaceWeak: "rgba(74,90,43,0.05)",
+    brandSurfaceMed: "rgba(74,90,43,0.12)",
+    brandBorderWeak: "rgba(74,90,43,0.18)",
+    brandBorderMed: "rgba(74,90,43,0.28)",
+    cssVarOverrides: {
+      // CSS custom properties accepted by React when typed as a CSS-vars
+      // object. The `as React.CSSProperties` cast lets TS accept the
+      // non-standard property names without complaint.
+      ["--card" as string]: "#FDFAF5",
+      ["--border" as string]: "#e8e3d8",
+      ["--muted" as string]: "#5a6240",
+      ["--foreground" as string]: "#0f1a12",
+      // Modal-scope text color so any unstyled text inherits Edge ink.
+      color: "#0f1a12",
+    } as React.CSSProperties,
+  },
+};
+
+// Dark-theme aliases for sub-views that haven't been threaded with the
+// `tokens` prop yet. ViewPolling (the only state Edge attendees see — the
+// device-code entry screen) is fully tokenized. ViewConnected /
+// ViewCodexNotEnabled / ViewFeatureDisabled etc. are dashboard-only or
+// post-success states that Edge users never reach inline, so they keep
+// the dark palette via these aliases. Threading `tokens` through them is
+// a clean follow-up when an Edge-context "modal stays open longer" use
+// case justifies it.
+const BRAND = THEME_TOKENS.dark.brand;
+const BRAND_GRADIENT = THEME_TOKENS.dark.brandGradient;
+const BRAND_BUTTON_SHADOW = THEME_TOKENS.dark.brandButtonShadow;
+
 const DANGER_BG = "rgba(239,68,68,0.1)";
 const DANGER_TEXT = "#ef4444";
 const DANGER_BORDER = "rgba(239,68,68,0.3)";
@@ -222,8 +327,13 @@ export function ChatGPTConnectModal({
   onDisconnected,
   mode = "connect",
   signupCallbackUrl,
+  theme = "dark",
   __devForceState,
 }: ChatGPTConnectModalProps) {
+  // Pull the active palette once per render. Cheap reference — no useMemo
+  // needed (THEME_TOKENS is a module-level frozen object). Pass `tokens`
+  // through to StateView via prop so child sub-views also resolve theme.
+  const tokens = THEME_TOKENS[theme];
   // Endpoint URLs are mode-dependent. In signup mode the routes are
   // session-less and the cookie-set side effect on /signup/start sets the
   // anonymous_session_id used by /signup/poll. Connect mode uses the
@@ -717,10 +827,20 @@ export function ChatGPTConnectModal({
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         transition={{ duration: 0.3 }}
         className="relative w-full max-w-lg rounded-2xl overflow-hidden"
+        // Spread the theme's CSS-var overrides FIRST so they apply to the
+        // modal scope, then the visual properties below (background, border,
+        // boxShadow) — which read the overridden vars — resolve to the
+        // edge palette automatically when theme="edge". The pattern is:
+        // (1) override vars, (2) reference them. var(--card) inside this
+        // modal will be Edge cream if edge, dark card if dark.
         style={{
+          ...(tokens.cssVarOverrides ?? {}),
           background: "var(--card)",
           border: "1px solid var(--border)",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.2)",
+          boxShadow:
+            theme === "edge"
+              ? "0 24px 64px rgba(15,26,18,0.18)"
+              : "0 24px 64px rgba(0,0,0,0.2)",
         }}
       >
         {/* Close button — always visible except during success auto-close countdown */}
@@ -744,6 +864,7 @@ export function ChatGPTConnectModal({
               onDisconnect={handleDisconnect}
               onClose={onClose}
               disconnecting={disconnecting}
+              tokens={tokens}
             />
           </AnimatePresence>
         </div>
@@ -760,18 +881,20 @@ function StateView({
   onDisconnect,
   onClose,
   disconnecting,
+  tokens,
 }: {
   state: ModalState;
   onRetry: () => void;
   onDisconnect: () => void;
   onClose: () => void;
   disconnecting: boolean;
+  tokens: ThemeTokens;
 }) {
   switch (state.kind) {
     case "initial-loading":
       return <ViewInitialLoading />;
     case "polling":
-      return <ViewPolling flow={state.flow} />;
+      return <ViewPolling flow={state.flow} tokens={tokens} />;
     case "connected":
       return (
         <ViewConnected
@@ -833,7 +956,7 @@ function ViewInitialLoading() {
 
 type CopyState = "idle" | "copied" | "fallback";
 
-function ViewPolling({ flow }: { flow: FlowData }) {
+function ViewPolling({ flow, tokens }: { flow: FlowData; tokens: ThemeTokens }) {
   // P1-G: three-state copy. "idle" → "copied" on Clipboard API success;
   // "idle" → "fallback" when writeText throws (HTTP, denied permission,
   // in-app webview, etc.). Both non-idle states show user-visible
@@ -897,12 +1020,12 @@ function ViewPolling({ flow }: { flow: FlowData }) {
         <div
           className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
           style={{
-            background: "linear-gradient(135deg, rgba(220,103,67,0.1), rgba(220,103,67,0.2))",
-            border: "1px solid rgba(220,103,67,0.15)",
+            background: `linear-gradient(135deg, ${tokens.brandSurfaceWeak}, ${tokens.brandSurfaceMed})`,
+            border: `1px solid ${tokens.brandBorderWeak}`,
           }}
           aria-hidden="true"
         >
-          <Sparkles className="w-6 h-6" style={{ color: BRAND }} />
+          <Sparkles className="w-6 h-6" style={{ color: tokens.brand }} />
         </div>
         <h2
           id={MODAL_TITLE_ID}
@@ -924,8 +1047,8 @@ function ViewPolling({ flow }: { flow: FlowData }) {
       <div
         className="rounded-2xl p-5 mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
         style={{
-          background: "rgba(220,103,67,0.06)",
-          border: `1px solid rgba(220,103,67,0.2)`,
+          background: tokens.brandSurfaceWeak,
+          border: `1px solid ${tokens.brandBorderMed}`,
         }}
         aria-live="polite"
       >
@@ -1000,7 +1123,7 @@ function ViewPolling({ flow }: { flow: FlowData }) {
         <li className="flex items-start gap-3">
           <span
             className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold"
-            style={{ background: "rgba(220,103,67,0.12)", color: BRAND }}
+            style={{ background: tokens.brandSurfaceMed, color: tokens.brand }}
           >
             1
           </span>
@@ -1012,8 +1135,8 @@ function ViewPolling({ flow }: { flow: FlowData }) {
               rel="noopener noreferrer"
               className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer ${FOCUS_RING}`}
               style={{
-                background: BRAND_GRADIENT,
-                boxShadow: BRAND_BUTTON_SHADOW,
+                background: tokens.brandGradient,
+                boxShadow: tokens.brandButtonShadow,
                 color: "#fff",
               }}
             >
@@ -1025,7 +1148,7 @@ function ViewPolling({ flow }: { flow: FlowData }) {
         <li className="flex items-start gap-3">
           <span
             className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold"
-            style={{ background: "rgba(220,103,67,0.12)", color: BRAND }}
+            style={{ background: tokens.brandSurfaceMed, color: tokens.brand }}
           >
             2
           </span>
@@ -1036,7 +1159,7 @@ function ViewPolling({ flow }: { flow: FlowData }) {
         <li className="flex items-start gap-3">
           <span
             className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold"
-            style={{ background: "rgba(220,103,67,0.12)", color: BRAND }}
+            style={{ background: tokens.brandSurfaceMed, color: tokens.brand }}
           >
             3
           </span>
@@ -1055,7 +1178,7 @@ function ViewPolling({ flow }: { flow: FlowData }) {
         style={{ background: "rgba(0,0,0,0.03)", border: "1px solid var(--border)" }}
       >
         <span className="flex items-center gap-2" style={{ color: "var(--muted)" }}>
-          <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: BRAND }} aria-hidden="true" />
+          <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: tokens.brand }} aria-hidden="true" />
           Waiting for authorization…
         </span>
         <span

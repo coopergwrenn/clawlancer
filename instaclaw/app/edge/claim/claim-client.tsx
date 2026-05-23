@@ -944,6 +944,11 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
       onClose={() => setChatgptModalOpen(false)}
       mode="signup"
       signupCallbackUrl="/connect"
+      // 2026-05-22 — Edge theme. Swaps the modal's black + brand-orange
+      // palette for Edge cream + olive so it doesn't visually clash with
+      // the "Unlocked. Welcome back, Cooper." page behind it. See
+      // THEME_TOKENS in components/dashboard/chatgpt-connect-modal.tsx.
+      theme="edge"
     />
     </>
   );
