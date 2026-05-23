@@ -1673,7 +1673,7 @@ export const VM_MANIFEST = {
    * IMPORTANT for snapshot bake: the bake VM should reconcile to v113,
    * not v112 — Cooper notified snapshot terminal at bump time.
    */
-  version: 118,
+  version: 119,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -1809,26 +1809,27 @@ export const VM_MANIFEST = {
     "messages.ackReaction": "👀",
     // Keep the reaction visible after the bot replies (permanent trace).
     "messages.removeAckAfterReply": "false",
-    // v118 (2026-05-23): RE-ENABLED (was disabled in v117 as workaround).
-    // The choppy UX in v117 was not caused by reactions — it was caused
-    // by sendTyping having NO keepalive (Telegram's 5s typing TTL kills
-    // the indicator during any LLM call >5s). Cooper observed reactions
-    // appearing during dead-typing-air, looked like "weird stuff on my
-    // message" instead of progress.
+    // v119 (2026-05-23): RE-DISABLED — emergency fleet revert.
     //
-    // v118 fixes the ROOT CAUSE: configureOpenClaw applies a typing-
-    // keepalive patch to bot-msflwCEW.js that refreshes sendChatAction
-    // every 4s during the turn and clears when deliver fires with
-    // info.kind==="final". With typing now persistent throughout the
-    // turn, the status emojis (👀→🤔→✍️→✅) layer cleanly ON TOP of
-    // solid typing instead of replacing it with dead air.
-    // End-state UX: user sends msg → 👀 reaction lands → typing solid
-    // for the entire turn → 🤔/✍️/✅ cycle on top → response arrives.
+    // v118 re-enabled this on the bet that configureOpenClaw's typing-
+    // keepalive patch (commit 554cc581) would land fleet-wide and prevent
+    // the choppy "type → silence → emoji → silence → type" UX. The bet
+    // was wrong: the patch only ever ran on vm-1019 (manually applied),
+    // because configureOpenClaw doesn't run on every existing assigned
+    // VM — it runs at provisioning and on certain reconcile flows.
+    // Existing fleet VMs got statusReactions back via stepConfigSettings
+    // (per Rule 32 messages.* auto-restart), but WITHOUT the keepalive
+    // patch on their dist/extensions/telegram/bot-msflwCEW.js. Every
+    // paying user on those VMs immediately saw the choppy UX regression.
     //
-    // See CLAUDE.md Rule 63 (typing keepalive patch survival) for the
-    // full spec + survival path across openclaw upgrades. See lib/ssh.ts
-    // configureOpenClaw for the patch script (idempotent via sentinel).
-    "messages.statusReactions.enabled": "true",
+    // Reverted to "false" to keep the fleet clean. Typing-keepalive work
+    // continues as a SEPARATE research project on vm-1019 only (per
+    // CLAUDE.md Rule 64). The keepalive patch must be (a) proven on a
+    // fresh test VM end-to-end including all dispatcher paths, AND (b)
+    // shipped via a tested fleet-push script that touches every assigned
+    // VM, BEFORE this flag flips back to "true" — and only with Cooper's
+    // explicit approval per Rule 64.
+    "messages.statusReactions.enabled": "false",
     // v71: OpenClaw's default discovery.mdns.mode is "minimal" (per
     // runtime-schema-TpYHXgGk.js: `cfg.discovery?.mdns?.mode ?? "minimal"`).
     // Bonjour mDNS broadcast triggers a CIAO-library shutdown race when the

@@ -3535,6 +3535,100 @@ For any PR that:
 - **Rule 32** (`openclaw config set` exit-0 ≠ runtime applied): the typing-keepalive lives in JS, not config, so config-level verification doesn't catch its absence. Sentinel grep is the equivalent for code patches.
 - **Rule 62** (bonjour mDNS dual-gate): same "ghost state from upstream defaults harms UX" pattern. The bonjour gate is at install time; this is at use time. Both required on every fresh install.
 
+### Rule 64 — Manifest version bumps require explicit Cooper approval; test on vm-1019 first via `openclaw config set`
+
+`VM_MANIFEST.version` is a PRODUCTION deployment trigger. The reconciler picks up cv<MANIFEST.version VMs and pushes every change (config keys, file content, systemd units, etc.) fleet-wide within ~30 minutes. **Every paying user is exposed to every bump.** Manifest bumps are NOT a sandbox for testing — they are the publish step for verified, Cooper-approved changes.
+
+#### The 2026-05-23 incident (4 manifest bumps in one session, v118 regressed the fleet)
+
+Session 22-23 of the Edge Esmeralda sprint shipped manifest bumps 115 → 116 → 117 → 118 within a few hours. v118 re-enabled `messages.statusReactions.enabled=true` on the bet that the configureOpenClaw typing-keepalive patch would carry the keepalive fix fleet-wide. The bet was wrong — configureOpenClaw runs at provisioning/specific reconcile flows, NOT on every existing assigned VM. Existing fleet VMs got `statusReactions=true` via `stepConfigSettings` (which auto-fires gateway restart per Rule 32) but WITHOUT the keepalive patch on their bot-msflwCEW.js. Every paying user on those VMs immediately saw the choppy "type → silence → reaction → silence → type" UX regression.
+
+v119 was an emergency revert. ~30 minutes of degraded UX for every paying user before the revert reached the fleet via reconciler.
+
+#### Mandatory pattern going forward
+
+1. **All experimental config and code changes get tested on vm-1019 FIRST via `openclaw config set <key> <value>` + restart**, NEVER via a manifest bump. vm-1019 is the canary; the manifest is the publish.
+2. **Verify with Cooper on Telegram** that the change behaves as expected end-to-end.
+3. **Only after Cooper explicitly says "ship it" / "approved" / "push to fleet"** do you bump `VM_MANIFEST.version` and push.
+4. **The approval must be specific to the manifest bump** — a "yes, that looks good" on a vm-1019 canary is NOT approval to ship fleet-wide. The phrase must be unambiguous and recent.
+5. **One change per manifest bump** (where reasonable). Bundling multiple experimental changes into a single bump amplifies blast radius when one of them regresses.
+6. **Emergency reverts are the EXCEPTION** to step 3 — if a recently-shipped manifest version has regressed paying users, revert immediately. But document the revert in the PR/commit, and the next bump that "tries again" requires re-approval per step 3.
+
+#### What "test on vm-1019 first" actually means
+
+For a config key like `messages.statusReactions.enabled`:
+```bash
+# On vm-1019:
+openclaw config set messages.statusReactions.enabled false
+systemctl --user restart openclaw-gateway   # Rule 32: messages.* require restart
+# Verify with Cooper on Telegram
+```
+
+For a file change like a patched script or template:
+```bash
+# scp the new file to vm-1019
+scp -i /tmp/ic_ssh_key new-script.py openclaw@<vm-1019-ip>:~/.openclaw/scripts/
+# Verify behavior
+# Have Cooper test end-to-end
+```
+
+For a systemd unit or env var change:
+```bash
+# Edit the drop-in directly on vm-1019
+# systemctl --user daemon-reload
+# systemctl --user restart openclaw-gateway
+# Verify
+```
+
+The fleet manifest only sees the change after Cooper's "ship it" — and only then via a single targeted PR with the smallest possible diff.
+
+#### What "Cooper approval" looks like
+
+Acceptable approval phrases (in chat, recent, unambiguous):
+- "ship it"
+- "push to fleet"
+- "approved, push"
+- "yes, bump the manifest"
+- "fleet-deploy this"
+
+NOT acceptable:
+- "yeah that's better" (could be praise without ship approval)
+- "good work" (praise without deploy intent)
+- silence after vm-1019 test (silence ≠ approval)
+- "this looks good on vm-1019" (vm-1019 verification ≠ fleet ship approval)
+- A previous session's approval (must be in the current session/context, since fleet state may have changed)
+
+When unsure, **ASK**: "vm-1019 verified. Push to fleet?" Wait for the explicit yes.
+
+#### Banned patterns
+
+- Bumping `VM_MANIFEST.version` immediately after editing a config key, file, or template without explicit approval. The reconciler will pick up the change within minutes and you have no path to safely revert without another bump + 30-minute fleet propagation delay.
+- "Just bumping the version while I'm here" — every bump touches every paying user. There is no such thing as a free bump.
+- Multiple version bumps in a single session without approval at each (today's session shipped 4 in a row, one regressed the fleet).
+- Bundling experimental changes with proven changes into one bump (the proven change can't be shipped without also shipping the experimental change).
+- Treating `cv` bumps as "just a number" or "cosmetic" — the reconciler's `lt(config_version, VM_MANIFEST.version)` filter is binary, and a bump moves the cutoff for every healthy assigned VM in the fleet.
+
+#### Detection rule
+
+For any PR diff that touches `lib/vm-manifest.ts:version`:
+1. Was vm-1019 explicitly tested with the change first via `openclaw config set` or equivalent file edit?
+2. Did Cooper explicitly say "ship it" / "push to fleet" / equivalent in the current session AFTER the vm-1019 test?
+3. Is the diff a SINGLE coherent change (config key, manifest field, sentinel addition) rather than a batch?
+4. Does the commit message document the vm-1019 test result + the approval phrase + timestamp?
+
+If any answer is no → the manifest bump is unauthorized. Revert.
+
+#### Companion: the "test on vm-1019" muscle
+
+vm-1019 is Cooper's canary VM. It is the ONLY safe place to land experimental changes without paying-user blast radius. Every config experiment, every patch trial, every "let me see if this works" — all go on vm-1019 first via local `openclaw config set` / scp / SSH edits. The manifest only sees changes that have already proven themselves end-to-end on vm-1019 AND received Cooper's specific ship approval.
+
+#### Related rules
+
+- **Rule 10** (verify every config set; no `|| true`-suppress): same "loud-on-failure" discipline applied to operator habits. Push-without-approval is the manifest-bump equivalent of `|| true`.
+- **Rule 32** (`openclaw config set` exit-0 ≠ runtime applied): the reason "test on vm-1019" requires a gateway restart for `messages.*` keys — otherwise the local test result isn't reliable.
+- **Rule 47** (continuous reconciliation, not version-gated): the reason a manifest bump propagates to every VM — there is no opt-out for paying users.
+- **Rule 49** (partner secrets actively verified): same principle (verify the actual value works) applied to manifest config changes. "It compiles" is not "it works on a real VM."
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
