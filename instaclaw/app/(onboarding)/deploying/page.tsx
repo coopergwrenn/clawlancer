@@ -174,14 +174,7 @@ function DeployingPageContent() {
   // emergency). The dashboard layout's useEffect re-enforces the gate
   // if the user dodges this redirect (refresh, direct nav, etc.).
   // Non-Edge users keep the unchanged /dashboard destination.
-  // 2026-05-22 hotfix: temporarily skip /edge/intents while Index Network
-  // /signup is returning 403 (Yanek-side outage). Edge users land on
-  // /dashboard directly. Flip back to "/edge/intents" when Yanek
-  // restores the API. The /edge/intents page + skip endpoint + JIT
-  // provision code all stay in place — only the routing is short-
-  // circuited. Pair with the gate disable in app/(dashboard)/layout.tsx.
-  const deploySuccessDestination = "/dashboard";
-  void isEdge;
+  const deploySuccessDestination = isEdge ? "/edge/intents" : "/dashboard";
   const [steps, setSteps] = useState<DeployStep[]>([
     { id: "payment", label: "Payment confirmed", status: "done" },
     { id: "assign", label: "Assigning server", status: "active" },

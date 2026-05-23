@@ -71,9 +71,20 @@ interface IntentFormProps {
    * do with it.
    */
   onError?: (errorStatus: string, description: string) => void;
+  /**
+   * Called on every textarea change with the current (untrimmed) value.
+   * Caller stores it so a sibling "skip for now" link can persist
+   * whatever the user typed without needing the form to submit first.
+   * 2026-05-22 added for the always-visible skip-link UX.
+   */
+  onDescriptionChange?: (description: string) => void;
 }
 
-export function IntentForm({ onSuccess, onError }: IntentFormProps = {}) {
+export function IntentForm({
+  onSuccess,
+  onError,
+  onDescriptionChange,
+}: IntentFormProps = {}) {
   const [description, setDescription] = useState<string>("");
   const [state, setState] = useState<SubmitState>("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -190,6 +201,11 @@ export function IntentForm({ onSuccess, onError }: IntentFormProps = {}) {
           value={description}
           onChange={(e) => {
             setDescription(e.target.value);
+            // Surface live edits to the parent so a sibling "skip for now"
+            // link can preserve whatever the user typed even before they
+            // submit. Fire-and-forget — pass the raw (untrimmed) value;
+            // parent trims as needed.
+            if (onDescriptionChange) onDescriptionChange(e.target.value);
             // Clear stale success/error message once the user starts editing
             if (state === "success" || state === "error") {
               setState("idle");

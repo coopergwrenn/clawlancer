@@ -121,7 +121,11 @@ export function IntentsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           description: queuedDescription,
-          reason: "index_network_degraded",
+          // Distinguish the two skip contexts in logs so operator
+          // triage can tell user-initiated-skip from API-down-escape.
+          reason: serviceUnavailable
+            ? "index_network_degraded"
+            : "user_skipped_voluntarily",
         }),
       });
     } catch {
@@ -232,7 +236,53 @@ export function IntentsClient() {
           <>
             {/* ─── Initial: IntentForm (caller-owned success/error) ─── */}
             <div className="max-w-md mb-7">
-              <IntentForm onSuccess={handleSubmitted} onError={handleError} />
+              <IntentForm
+                onSuccess={handleSubmitted}
+                onError={handleError}
+                // Track every keystroke so the always-visible "skip for now"
+                // link below can persist whatever the user typed via the
+                // /api/edge/intents/skip endpoint — even if they never
+                // hit Send it.
+                onDescriptionChange={setQueuedDescription}
+              />
+            </div>
+
+            {/* ─── Always-visible "skip for now" link ───
+              *
+              * Subtle text link below the form (not a button) — primary
+              * action is still "Send it", but no user is ever blocked
+              * from reaching /dashboard. Three reasons someone clicks
+              * this:
+              *   1. Index Network /signup is down (Yanek's 403) — JIT
+              *      fails, "Send it" surfaces the escape-hatch panel
+              *      AND this link keeps working
+              *   2. User hasn't thought of an intent yet — wants to
+              *      noodle on it from /dashboard rather than at the
+              *      gate
+              *   3. User just wants to skip — that's fine, they can
+              *      always express intents later from the dashboard
+              *
+              * Routes through the same /api/edge/intents/skip endpoint
+              * as the error-state escape hatch:
+              *   - persists whatever they typed via structured logger
+              *   - sets index_last_intent_at = NOW() so the dashboard
+              *     layout's mandatory-intent gate lets them through
+              *   - redirects to /dashboard
+              */}
+            <div className="max-w-md mb-7 -mt-2">
+              <button
+                type="button"
+                onClick={handleContinueDegraded}
+                disabled={skipping}
+                aria-busy={skipping}
+                className="text-[12px] underline underline-offset-2 transition-opacity hover:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  color: "var(--edge-ink-soft)",
+                  opacity: 0.75,
+                }}
+              >
+                {skipping ? "saving…" : "skip for now, i'll do this later"}
+              </button>
             </div>
 
             {/* ─── Service-degradation escape hatch ─── */}
