@@ -1,16 +1,16 @@
 # Changelog — generated 2026-05-23
 
-Window: `4b2dc2338cf8122e2313e1dfefbd873506f440c1` → `HEAD` (HEAD = `105bd1e3`)
+Window: `105bd1e313112a0738dbf5b8e41ba30225536463` → `HEAD` (HEAD = `e71f81ed`)
 Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 105bd1e313112a0738dbf5b8e41ba30225536463 -->
+<!-- LAST_GENERATED_SHA: e71f81edc1890734fa4a69297f45f6d7f68f7be7 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 0
-- **Feature (user-facing):** 2
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 2
@@ -18,27 +18,27 @@ Total commits: 3
 
 ## What changed for users
 
-- `760a4f64` 2026-05-23 — debug(edge/popup): add internal state-trace console.error inside the popup component [1 files] _(multi: [feature, edge]; ai-assisted)_
-- `105bd1e3` 2026-05-23 — debug(popup): smoking-gun logs for personalizationDismissed=true mystery [2 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `7ec3899f` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `e71f81ed` 2026-05-23 — fix(configure): atomic OAuth + model.primary write for chatgpt_oauth users [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `40f39571` 2026-05-23 — chore: trigger redeploy after removing stale GMAIL_POPUP_DISABLED env var [0 files] _(ai-assisted)_
+- `fa0450ae` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `e71f81ed` 2026-05-23 — fix(configure): atomic OAuth + model.primary write for chatgpt_oauth users [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+
+### Infrastructure (1)
+
+- `40f39571` 2026-05-23 — chore: trigger redeploy after removing stale GMAIL_POPUP_DISABLED env var [0 files] _(ai-assisted)_
+
+### Feature (user-facing) (0)
 
 _(none)_
-
-### Infrastructure (0)
-
-_(none)_
-
-### Feature (user-facing) (2)
-
-- `760a4f64` 2026-05-23 — debug(edge/popup): add internal state-trace console.error inside the popup component [1 files] _(multi: [feature, edge]; ai-assisted)_
-- `105bd1e3` 2026-05-23 — debug(popup): smoking-gun logs for personalizationDismissed=true mystery [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -46,23 +46,23 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `7ec3899f` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `fa0450ae` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `760a4f64` 2026-05-23 — [feature, edge] — debug(edge/popup): add internal state-trace console.error inside the popup component
+- `e71f81ed` 2026-05-23 — [reconciler, infrastructure] — fix(configure): atomic OAuth + model.primary write for chatgpt_oauth users
 
 ## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `760a4f64` 2026-05-23 — debug(edge/popup): add internal state-trace console.error inside the popup component
-- `105bd1e3` 2026-05-23 — debug(popup): smoking-gun logs for personalizationDismissed=true mystery
+- `40f39571` 2026-05-23 — chore: trigger redeploy after removing stale GMAIL_POPUP_DISABLED env var
+- `e71f81ed` 2026-05-23 — fix(configure): atomic OAuth + model.primary write for chatgpt_oauth users
 
 ## Appendix — every commit (chronological)
 
-- `7ec3899f` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
-- `760a4f64` 2026-05-23 — debug(edge/popup): add internal state-trace console.error inside the popup component [1 files] _(multi: [feature, edge]; ai-assisted)_
-- `105bd1e3` 2026-05-23 — debug(popup): smoking-gun logs for personalizationDismissed=true mystery [2 files] _(ai-assisted)_
+- `fa0450ae` 2026-05-23 — chore(changelog): auto-update [skip ci] [2 files]
+- `40f39571` 2026-05-23 — chore: trigger redeploy after removing stale GMAIL_POPUP_DISABLED env var [0 files] _(ai-assisted)_
+- `e71f81ed` 2026-05-23 — fix(configure): atomic OAuth + model.primary write for chatgpt_oauth users [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
