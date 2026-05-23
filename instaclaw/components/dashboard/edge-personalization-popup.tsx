@@ -274,7 +274,26 @@ export function EdgePersonalizationPopup({
           // Best-effort dismiss-write to DB so future dashboard visits
           // don't re-show. Fire-and-forget; the local state has already
           // moved on regardless of whether the write succeeds.
+          // Persist dismissed flag + notify the OnboardingWizard
+          // (components/onboarding-wizard/OnboardingWizard.tsx:154 listens
+          // for this event). Without dispatch, the wizard's `gmailPopup-
+          // Active` gate stays true from its initial fetch and the wizard
+          // never re-runs to discover the popup has completed — meaning
+          // Edge users never see the wizard tour after their personalization
+          // moment. The wizard's existing event-driven re-fetch path
+          // (gmailDismissedRef → setRestartTrigger) handles the rest.
+          //
+          // Order matters: fire the dismiss POST first so the DB flag is
+          // (eventually) consistent, then dispatch the event. The wizard's
+          // re-fetch will read fresh `gmailPopupDismissed=true` and
+          // proceed cleanly.
           fetch("/api/gmail/dismiss", { method: "POST" }).catch(() => {});
+          try {
+            window.dispatchEvent(new Event("instaclaw:gmail-popup-closed"));
+          } catch {
+            // SSR / no-window — wizard won't auto-restart, will pick up
+            // on next page navigation. Non-fatal.
+          }
           setTimeout(() => {
             setVisible(false);
             onComplete();
@@ -310,7 +329,7 @@ export function EdgePersonalizationPopup({
     <AnimatePresence>
       {phase !== "dismissing" && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          className="fixed inset-0 z-[10000] flex items-center justify-center px-4"
           style={EDGE_CSS_VARS}
         >
           {/* ── Backdrop — warm cream tint, not pure black ──
