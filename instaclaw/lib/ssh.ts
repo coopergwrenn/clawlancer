@@ -8503,23 +8503,52 @@ export async function configureOpenClaw(
       last_health_check: new Date().toISOString(),
       ssh_fail_count: 0,
       health_fail_count: 0,
-      // 2026-05-11 P1-1 fix: was `VM_MANIFEST.version`. configureOpenClaw runs
-      // its own pile of SSH steps (separate from the reconciler's step* funcs
-      // in lib/vm-reconcile.ts). If any of those steps silently failed, the cv
-      // bump still recorded the VM as fully reconciled to vN — producing the
-      // SCHEMA_ZERO_LIE shape (TasksMax=4666 with no override.conf) and
-      // setting up TOTAL_LIE (TasksMax=75 frozen because reconciler skipped
-      // the override-write step thinking it was already correct per cv).
+      // 2026-05-23 (Cooper outage debug): refines the 2026-05-11 P1-1
+      // defense. The P1-1 fix (commit 1fb249d5) replaced
+      // `config_version: VM_MANIFEST.version` with `config_version: 0` so
+      // reconcile-fleet would pick up every newly-provisioned VM and
+      // re-verify all step* functions (catching SCHEMA_ZERO_LIE shapes
+      // where configureOpenClaw silently failed but cv was still bumped
+      // to manifest).
       //
-      // Setting cv=0 forces the reconcile-fleet cron to pick up every newly
-      // provisioned VM on its next tick (oldest-cv-first ordering puts them
-      // at the head of the queue) and re-run all step* functions. Most will
-      // hit `alreadyCorrect` (configureOpenClaw already landed them); the
-      // ones that silently failed will be re-attempted with the reconciler's
-      // (improved) verify-after-write discipline. Net cost: +1 reconcile
-      // cycle per provision (~30-60s, much less than the 5-min cron interval).
-      // Net win: SCHEMA_ZERO_LIE goes to zero by construction.
-      config_version: 0,
+      // The P1-1 estimate was "+1 reconcile cycle per provision (~30-60s)."
+      // Empirically that's WRONG. Today's debugging shows cv=0 → cv=current
+      // takes 3-15 minutes of work, fires multiple gateway restarts as
+      // restart-required steps run (per Rule 32's RESTART_REQUIRED_CONFIG_
+      // PREFIXES), and overlaps with the user's first-message window —
+      // every Edge attendee's first message hits an unstable gateway.
+      // Direct cause of today's 6-min response delay on vm-1017.
+      //
+      // KEY INSIGHT: re-verification doesn't require cv=0. The reconciler's
+      // step* functions are NOT version-gated — when reconcileVM is called
+      // (any cv < MANIFEST.version), ALL step* functions run. So setting
+      // cv = LINODE_SNAPSHOT_CV (e.g., 113) instead of 0 still triggers a
+      // reconcile tick (because 113 < MANIFEST.version = 114), still runs
+      // every step* function with verify-after-write discipline, still
+      // catches lying-DB shapes. But only does the v(SNAPSHOT_CV+1)→
+      // vMANIFEST DELTA of work instead of v1→vMANIFEST from scratch.
+      //
+      // Concretely for tonight: cv=113 → reconcile runs cronJobsRemove
+      // (the only v114 change), which is a crontab edit, NOT a config-set.
+      // No gateway restart. ~5 seconds of work. User's first message lands
+      // on a stable gateway with correct model.primary already set (via
+      // stepChatGPTOAuthToken which now runs from the SNAPSHOT_CV state).
+      //
+      // OPERATIONAL CONTRACT: LINODE_SNAPSHOT_CV must always be <
+      // VM_MANIFEST.version. When baking a new snapshot, also bump the
+      // manifest version (even just a changelog entry) so SNAPSHOT_CV
+      // is at least 1 behind. This guarantees the reconciler runs at
+      // least once post-configure, preserving the lying-DB defense.
+      //
+      // SAFETY: defaults to 0 if env unset OR not a positive integer —
+      // preserves the prior P1-1 behavior in any environment that hasn't
+      // migrated. (For repair-configure on an already-reconciled VM, this
+      // does downgrade cv → forces re-reconcile, which is the desired
+      // "repair" semantics.)
+      config_version: (() => {
+        const raw = Number(process.env.LINODE_SNAPSHOT_CV ?? 0);
+        return Number.isFinite(raw) && raw > 0 ? raw : 0;
+      })(),
       last_gateway_restart: new Date().toISOString(),
       // Preserve old token for grace period during rotation (prevents 401s
       // if health cron resyncs before the gateway picks up the new token)
