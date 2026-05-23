@@ -1673,7 +1673,7 @@ export const VM_MANIFEST = {
    * IMPORTANT for snapshot bake: the bake VM should reconcile to v113,
    * not v112 — Cooper notified snapshot terminal at bump time.
    */
-  version: 114,
+  version: 115,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -2697,7 +2697,35 @@ export const VM_MANIFEST = {
     // Virtuals Protocol partner attribution — ensures ALL child processes (agent tools,
     // npx acp, dgclaw.sh) inherit PARTNER_ID regardless of working directory or dotenv.
     // Confirmed by Mira @ Virtuals 2026-03-30: "inject PARTNER_ID=INSTACLAW to process.env"
-    "Environment": "PARTNER_ID=INSTACLAW",
+    //
+    // v115 (2026-05-23): added OPENCLAW_DISABLE_BONJOUR=true on a SECOND
+    // Environment= line. Closes the 3-week-open pool-VM bonjour gap.
+    // Background:
+    //   - v71 (2026-04-30) added discovery.mdns.mode=off to configSettings.
+    //     That disables OpenClaw's mDNS DISCOVERY listener (client) but NOT
+    //     the bonjour PLUGIN's ADVERTISER (announcer). Different code paths.
+    //   - Cloud-init team rediscovered this 2026-05-22 (commit 4acc5280),
+    //     added Environment=OPENCLAW_DISABLE_BONJOUR=true to setup.sh §1.0.7
+    //     for cloud-init VMs only. Filed snapshot-bake followup, never done.
+    //   - Pool path (the dominant code path — Cooper's E2E tests provision
+    //     via /api/vm/configure → stepSystemdUnit, NOT cloud-init) never
+    //     got the env var. Every pool-VM first message was wedged 4-7 min
+    //     while the bonjour advertiser blocked the event loop trying to
+    //     advertise localhost.local on a cloud VM with no LAN peers.
+    //   - vm-1019 2026-05-23 e2e confirmed: gpt-5.5 LLM call itself took
+    //     6.6s; the user-perceived 6-min latency was 100% bonjour event-
+    //     loop blockage. After 5 failed advertiser restarts the plugin
+    //     self-disables and the telegram queue drains — but by then the
+    //     user already churned waiting.
+    // The env var path uses bonjour/index.js:readBonjourDisableOverride
+    // which checks process.env.OPENCLAW_DISABLE_BONJOUR via isTruthyEnvValue
+    // — accepts true/yes/1/on. We use "true" for clarity.
+    // Multi-line value because systemdOverrides is Record<string,string>
+    // (one key per Environment= line not supported by Object.entries which
+    // dedups keys). stepSystemdUnit's render loop just emits the value
+    // as-is, so embedding "\nEnvironment=" produces two physical lines in
+    // the override.conf after the join. Verified safe.
+    "Environment": "PARTNER_ID=INSTACLAW\nEnvironment=OPENCLAW_DISABLE_BONJOUR=true",
   } as Record<string, string>,
 
   // ── Session thresholds ──
