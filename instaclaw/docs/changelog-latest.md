@@ -1,42 +1,43 @@
 # Changelog — generated 2026-05-24
 
-Window: `cf9f3c0ae0499a36951004d66d89bc2a4c76ab5a` → `HEAD` (HEAD = `a07d6877`)
+Window: `a07d6877a764bf837c8cb89f3dd450625350690c` → `HEAD` (HEAD = `888d154c`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: a07d6877a764bf837c8cb89f3dd450625350690c -->
+<!-- LAST_GENERATED_SHA: 888d154cfc19cbf9769c2bde847d10b0dc543d19 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
+- **Reconciler / manifest:** 1
 - **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
 
-- `a07d6877` 2026-05-24 — comparison: serif font for the "Skip the setup" shimmer line [1 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `b1a51e51` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `888d154c` 2026-05-24 — feat(cdp): restore Coinbase CDP backup wallet provisioning for every agent [17 files] _(multi: [reconciler, infrastructure, docs])_
+- `c11d5fb6` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
 
-_(none)_
+- `888d154c` 2026-05-24 — feat(cdp): restore Coinbase CDP backup wallet provisioning for every agent [17 files] _(multi: [reconciler, infrastructure, docs])_
 
 ### Infrastructure (0)
 
 _(none)_
 
-### Feature (user-facing) (1)
+### Feature (user-facing) (0)
 
-- `a07d6877` 2026-05-24 — comparison: serif font for the "Skip the setup" shimmer line [1 files] _(ai-assisted)_
+_(none)_
 
 ### Edge City partner (0)
 
@@ -44,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `b1a51e51` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `c11d5fb6` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (1)
+## Multi-category commits (1)
 
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+These touch more than one category root and are listed in every applicable section above.
 
-- `a07d6877` 2026-05-24 — comparison: serif font for the "Skip the setup" shimmer line
+- `888d154c` 2026-05-24 — [reconciler, infrastructure, docs] — feat(cdp): restore Coinbase CDP backup wallet provisioning for every agent
 
 ## Appendix — every commit (chronological)
 
-- `b1a51e51` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
-- `a07d6877` 2026-05-24 — comparison: serif font for the "Skip the setup" shimmer line [1 files] _(ai-assisted)_
+- `c11d5fb6` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `888d154c` 2026-05-24 — feat(cdp): restore Coinbase CDP backup wallet provisioning for every agent [17 files] _(multi: [reconciler, infrastructure, docs])_
