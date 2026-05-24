@@ -265,8 +265,10 @@ visual language for "this object is in front of the page."
 
 ## 3. The class system
 
-Five glass shapes ship today. Each is independent CSS — none inherit from
-the others. **Tweaking one does not affect the others, by design.**
+Four glass shapes ship in use today, plus one defined-but-unused class
+reserved for future content containers. Each is independent CSS — none
+inherit from the others. **Tweaking one does not affect the others, by
+design.**
 
 ### `.liquid-glass-btn` — Hero CTA ("Claim My Agent")
 
@@ -302,18 +304,15 @@ the others. **Tweaking one does not affect the others, by design.**
 - **Wrapping:** Required — root + surface + shadow. The nav Links are the surfaces.
 - **Locked in:** `globals.css` lines 741-925.
 
-### `.liquid-glass-card` — Testimonial cards (and future content containers)
+### `.liquid-glass-card` — DEFINED BUT NOT CURRENTLY USED
 
-- **Dimensions:** Width set externally via tailwind (currently `w-[320px]`). Height pinned via `min-height: 240px` + `flex: 1` on the surface so all cards in a marquee row render uniformly regardless of content length.
+- **Status:** Class definition lives in `globals.css` (root + surface + shadow with two scale-tuned values vs pill: substrate `-4px / 0.08`, shadow proxy `-20px / blur(3px)` with `::after top:26 / left:18`). It is **not consumed by any component** as of 2026-05-24.
+- **History:** Shipped briefly on the testimonial cards in "What People Are Saying" (commit `9c8c1af3`, reverted in the next commit). Cooper preferred the lighter inline-styled cards over the full wabi recipe at card scale — the full recipe (heavy halo + masked-ring shadow + rim) read as too dense on the 320×240 rectangles. The equal-height fix also disrupted the section's vertical rhythm.
+- **Preserved why:** Kept in `globals.css` because the class itself is well-tuned and may be appropriate for a future content container where the full glass recipe is desired (e.g., a modal, a feature card with darker imagery behind it, a dashboard panel).
+- **Before reusing:** Test on the actual page background — large flat-cream rectangles tend to amplify the substrate's halo into something that reads as "muddy," which is what bit the testimonial revert. If the page has photo/dark/textured content behind the card, the substrate has something to refract and the recipe holds.
+- **Dimensions for reference:** Width set externally via tailwind. Height pinned via `min-height: 240px` + `flex: 1` on the surface for equal-height rows.
 - **Shape:** Rounded square (`border-radius: 12px`)
-- **Substrate inset:** `-4px` with `rgba(0,0,0,0.08)` core alpha (vs pill's `-3px / 0.10`). **Tuned at card scale.** Cooper's 2026-05-24 "anti-muddy" callout: lower alpha avoids the large rectangle reading as a darker patch against cream.
-- **Shadow proxy inset:** `-20px`, `filter: blur(3px)` (vs pill's `-10px / blur(2px)`). Shadow `::after` offset `top: 26px / left: 18px` (vs pill `14 / 10`). **Tuned at card scale.** Proportionally larger to match the card's bigger visual weight — matches the btn's `top:24 / left:18` ratio at hero-CTA scale.
-- **Surface positioning:** `display: block; width: 100%; flex: 1` so the surface fills the stretched root height.
-- **Root display:** `flex; flex-direction: column` so `flex: 1` on the surface works.
-- **No hover state.** Cards are decorative.
-- **Wrapping:** Required — root + surface + shadow.
-- **Used by:** `components/landing/testimonials.tsx` (the "What People Are Saying" marquee — 5 testimonials × 4 marquee duplicates × 2 rows = 40 card instances).
-- **Locked in:** `globals.css` lines 741-872 (between `.liquid-glass-orb` and `.liquid-glass-nav-btn`).
+- **Locked in:** `globals.css` (look for the `─── Liquid Glass CARD ───` comment block).
 
 ### `.liquid-glass-orb` — Numbered step circles in "How It Works"
 
@@ -348,7 +347,7 @@ All four classes share, identically:
 | `.liquid-glass-pill` | stadium 9999px | 40px | 12px/500 | 20px | -3px | -10px | 14px / 10px |
 | `.liquid-glass-nav-btn` | rounded 0.5rem | 36px | 14px/500 | 16px | -2px | -8px | 12px / 8px |
 | `.liquid-glass-orb` | circle 50% | parent-sized | parent-sized | n/a | -3px | -10px | 14px / 10px |
-| `.liquid-glass-card` | rounded 12px | min 240px | 14px (content) | 20px | -4px | -20px | 26px / 18px |
+| `.liquid-glass-card` *(defined, unused)* | rounded 12px | min 240px | 14px (content) | 20px | -4px | -20px | 26px / 18px |
 
 Surface dimensions scale roughly linearly with substrate / shadow offsets.
 A future variant should follow this scaling pattern (e.g., a 100px hero

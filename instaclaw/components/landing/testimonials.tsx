@@ -257,6 +257,19 @@ const testimonials = {
   ],
 };
 
+const glassStyle = {
+  background:
+    "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
+  backdropFilter: "blur(2px)",
+  WebkitBackdropFilter: "blur(2px)",
+  boxShadow: `
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
+    rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
+  `,
+};
+
 function TestimonialCard({
   quote,
   name,
@@ -268,60 +281,60 @@ function TestimonialCard({
   role: string;
   initials: string;
 }) {
-  // 3-element liquid-glass architecture (root + surface + sibling shadow div).
-  // .liquid-glass-card recipe defined in globals.css — same wabi 5 ingredients
-  // as the pill / btn / orb / nav-btn with two scale adjustments documented in
-  // the rule comment above the class block: substrate alpha lowered (anti-
-  // muddy at card scale) and shadow proxy proportions enlarged (-20px inset,
-  // blur(3px), top:26/left:18). The reference doc at
-  // instaclaw/docs/liquid-glass-ui-reference.md explains why each ingredient
-  // matters and which values are LOCKED. Avatar block keeps its own sphere-
-  // illusion CSS — that's intentional (avatar marble, not the main glass).
+  // Reverted from the .liquid-glass-card class system on 2026-05-24 —
+  // Cooper preferred the lighter inline styling on these large cards.
+  // The full wabi recipe (root + surface + shadow + conic rim + halo
+  // substrate) reads as too heavy at card scale, and the equal-height
+  // fix needed for the 3-element architecture changed the marquee row
+  // padding in ways that disrupted the section's vertical rhythm.
+  // The .liquid-glass-card class definition is preserved in globals.css
+  // for potential future use on a different element where the full
+  // recipe is desired.
   return (
-    <div className="liquid-glass-card-root w-[320px] shrink-0">
-      <div className="liquid-glass-card p-5">
-        <div className="flex items-center gap-3 mb-3">
+    <div
+      className="w-[320px] shrink-0 rounded-xl p-5"
+      style={glassStyle}
+    >
+      <div className="flex items-center gap-3 mb-3">
+        <div
+          className="w-11 h-11 rounded-full shrink-0 relative flex items-center justify-center"
+          style={{
+            background: `radial-gradient(circle at 35% 35%, ${pixelAvatars[initials]?.bg ?? "#ddd"}dd, ${pixelAvatars[initials]?.bg ?? "#ddd"}88 40%, rgba(0,0,0,0.3) 100%)`,
+            boxShadow: `
+              inset 0 -3px 6px rgba(0,0,0,0.25),
+              inset 0 3px 6px rgba(255,255,255,0.4),
+              inset 0 0 4px rgba(0,0,0,0.15),
+              0 2px 8px rgba(0,0,0,0.2),
+              0 1px 3px rgba(0,0,0,0.15)
+            `,
+          }}
+        >
+          {/* Glass highlight reflection */}
           <div
-            className="w-11 h-11 rounded-full shrink-0 relative flex items-center justify-center"
+            className="absolute top-[3px] left-[6px] w-[18px] h-[10px] rounded-full pointer-events-none z-10"
             style={{
-              background: `radial-gradient(circle at 35% 35%, ${pixelAvatars[initials]?.bg ?? "#ddd"}dd, ${pixelAvatars[initials]?.bg ?? "#ddd"}88 40%, rgba(0,0,0,0.3) 100%)`,
-              boxShadow: `
-                inset 0 -3px 6px rgba(0,0,0,0.25),
-                inset 0 3px 6px rgba(255,255,255,0.4),
-                inset 0 0 4px rgba(0,0,0,0.15),
-                0 2px 8px rgba(0,0,0,0.2),
-                0 1px 3px rgba(0,0,0,0.15)
-              `,
+              background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 100%)",
             }}
-          >
-            {/* Glass highlight reflection */}
-            <div
-              className="absolute top-[3px] left-[6px] w-[18px] h-[10px] rounded-full pointer-events-none z-10"
-              style={{
-                background: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 100%)",
-              }}
-            />
-            <div className="w-8 h-8 rounded-full overflow-hidden relative z-[1]">
-              <PixelAvatar initials={initials} />
-            </div>
-          </div>
-          <div>
-            <p className="font-medium text-sm" style={{ color: "var(--foreground)" }}>
-              {name}
-            </p>
-            <p className="text-sm" style={{ color: "var(--muted)" }}>
-              {role}
-            </p>
+          />
+          <div className="w-8 h-8 rounded-full overflow-hidden relative z-[1]">
+            <PixelAvatar initials={initials} />
           </div>
         </div>
-        <p
-          className="text-sm leading-relaxed"
-          style={{ color: "var(--foreground)" }}
-        >
-          &ldquo;{quote}&rdquo;
-        </p>
+        <div>
+          <p className="font-medium text-sm" style={{ color: "var(--foreground)" }}>
+            {name}
+          </p>
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            {role}
+          </p>
+        </div>
       </div>
-      <div aria-hidden="true" className="liquid-glass-card-shadow"></div>
+      <p
+        className="text-sm leading-relaxed"
+        style={{ color: "var(--foreground)" }}
+      >
+        &ldquo;{quote}&rdquo;
+      </p>
     </div>
   );
 }
@@ -339,11 +352,8 @@ function MarqueeRow({
   const repeated = [...items, ...items, ...items, ...items];
 
   return (
-    <div className="overflow-hidden w-full py-6">
-      {/* align-items:stretch (default but made explicit) — combined with
-          min-height:240 on .liquid-glass-card-root, makes every card in
-          the row render at the same height regardless of quote length. */}
-      <div className={`flex items-stretch gap-4 w-max ${animClass}`}>
+    <div className="overflow-hidden w-full py-2">
+      <div className={`flex gap-4 w-max ${animClass}`}>
         {repeated.map((item, i) => (
           <TestimonialCard key={`${item.name}-${i}`} {...item} />
         ))}
