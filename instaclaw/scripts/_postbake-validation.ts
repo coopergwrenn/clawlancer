@@ -1055,6 +1055,72 @@ async function run() {
     record("NVM default alias points at v22.22.2", "P1", ["bake", "test"],
       /^v?22\.22\.2$/.test(nvmDefault) || /^22\.22\.2/.test(nvmDefault), `alias=${nvmDefault}`);
 
+    // 27j.1 — crontab Node-path drift detection (silent-failure class — discovered
+    // 2026-05-24 ultrathink sweep). The `openclaw memory index` cron entry was
+    // installed with a HARDCODED Node binary path at the time of provision.
+    // When NODE_PINNED_VERSION bumped from v22.22.0 → v22.22.2, NOTHING rewrites
+    // the crontab. The cron silently runs `/.../v22.22.0/bin/openclaw memory
+    // index` every 4 AM, the binary doesn't exist, cron exits non-zero into
+    // /tmp/memory-index.log, agent's memory index never updates.
+    // Confirmed silent failure on vm-1035 (pool VM from v113 snapshot) 2026-05-24.
+    // Validator gates: the cron line MUST reference the current Node version.
+    const memoryIndexCron = (await exec(c, `crontab -l 2>/dev/null | grep "openclaw memory index"`)).stdout.trim();
+    if (memoryIndexCron.length > 0) {
+      const cronNodeVerMatch = memoryIndexCron.match(/nvm\/versions\/node\/v([\d.]+)\/bin/);
+      const cronNodeVer = cronNodeVerMatch ? cronNodeVerMatch[1] : "";
+      const cronNodeMatchesCurrent = cronNodeVer === nodeV.replace(/^v/, "");
+      record("crontab `openclaw memory index` Node path matches current Node version",
+        "P0", ["bake", "test"], cronNodeMatchesCurrent,
+        cronNodeMatchesCurrent ? "" :
+          `cron uses v${cronNodeVer || "?"} but current Node is ${nodeV} — daily 4AM memory index silently fails`);
+    } else {
+      record("crontab `openclaw memory index` entry present", "P1", ["bake", "test"],
+        false, "no openclaw memory index entry in crontab");
+    }
+
+    // 27j.2 — /etc/sudoers.d/openclaw — passwordless sudo for the openclaw user.
+    // Load-bearing for many reconciler steps: stepUfwRules (sudo ufw allow),
+    // stepNodeExporter (sudo systemctl restart, sudo tee drop-in), apt operations,
+    // /var/lib/node_exporter writes. NOT in vm-manifest:files[]. NOT written by
+    // configureOpenClaw. Provisioned during cloud-init / bake recipe.
+    // If absent → every sudo-requiring reconciler step silently fails.
+    const sudoersHas = (await exec(c, `sudo -n test -f /etc/sudoers.d/openclaw && echo Y || echo N`)).stdout.trim();
+    record("/etc/sudoers.d/openclaw present (passwordless sudo for openclaw user)",
+      "P0", ["bake", "test"], sudoersHas === "Y",
+      sudoersHas === "Y" ? "" : "/etc/sudoers.d/openclaw missing — sudo-requiring reconciler steps will silently fail");
+
+    // 27j.3 — ufw rule 22/tcp (SSH). The 9100/tcp + 8765/tcp gates exist
+    // (stepUfwRules + ensureUfwAllow) but the SSH-22 rule is set during the
+    // bake recipe and never re-applied. If the snapshot encodes a ufw config
+    // that ALLOWS by default and 22/tcp is missing → first ufw enforcement
+    // tick kicks the operator out of SSH → unreachable VM. P0 — catastrophic.
+    const ufw22 = (await exec(c, `sudo -n ufw status 2>/dev/null | grep -cE "^22/tcp"`)).stdout.trim();
+    record("ufw 22/tcp (SSH) rule present (snapshot-only — no reconciler heal)",
+      "P0", ["bake", "test"], parseInt(ufw22, 10) >= 1,
+      ufw22 === "0" ? "ufw 22/tcp ALLOW rule MISSING — first ufw enforcement tick will block SSH forever" : "");
+
+    // 27j.4 — /usr/local/bin/chromium-browser executable. Custom Chromium binary
+    // installed during bake. NOT in apt, NOT in manifest, NOT in configureOpenClaw.
+    // Required for the browser plugin + dispatch flow. Verified version
+    // (Google Chrome for Testing 148.x or compatible).
+    const chromiumVer = (await exec(c, `/usr/local/bin/chromium-browser --version 2>&1 | head -1`)).stdout.trim();
+    record("/usr/local/bin/chromium-browser executable (snapshot-only — bake recipe install)",
+      "P0", ["bake", "test"],
+      /Chrome|Chromium/.test(chromiumVer) && /\d+\.\d+/.test(chromiumVer),
+      chromiumVer || "chromium-browser missing or non-executable");
+
+    // 27j.5 — /usr/local/bin/openclaw-config-merge + openclaw-config-watchdog.
+    // Custom shell scripts written at provision time (cloud-init / setup.sh)
+    // or at configure time. Used by openclaw-config-watchdog cron entry
+    // (every 5 min via sudo). If missing → config-watchdog cron entry calls
+    // a missing binary → silent cron failure.
+    for (const bin of ["openclaw-config-merge", "openclaw-config-watchdog"]) {
+      const binProbe = (await exec(c, `test -x /usr/local/bin/${bin} && echo Y || echo N`)).stdout.trim();
+      record(`/usr/local/bin/${bin} present + executable`,
+        "P1", ["bake", "test"], binProbe === "Y",
+        binProbe === "Y" ? "" : `/usr/local/bin/${bin} missing — referenced by cron / reconciler paths`);
+    }
+
     // 27k — Rule 23 sentinels for additional scripts (inventory §3)
     // Per the inventory, these scripts have load-bearing sentinels too. The strip-thinking
     // sentinels are checked above (line ~357); these are the other safety-critical ones.
