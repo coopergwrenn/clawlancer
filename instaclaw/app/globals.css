@@ -473,6 +473,198 @@ html.lenis body {
   }
 }
 
+/* ─── Liquid Glass PILL (.liquid-glass-pill) ─────────────────────────
+   Scaled-down sibling of .liquid-glass-btn for the SpotsCounter.
+   Same 3-element architecture, same recipe, smaller dimensions.
+   Independent class — does NOT inherit from .liquid-glass-btn. */
+
+.liquid-glass-pill-root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  z-index: 2;
+  isolation: isolate;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.1px;
+  line-height: 16px;
+  color: var(--foreground);
+}
+
+.liquid-glass-pill-root::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    ellipse at 50% 60%,
+    rgba(0, 0, 0, 0.10) 0%,
+    rgba(0, 0, 0, 0.03) 50%,
+    transparent 80%
+  );
+  z-index: -1;
+  pointer-events: none;
+}
+
+.liquid-glass-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 20px;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: linear-gradient(-75deg,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.20),
+    rgba(255, 255, 255, 0.05));
+  -webkit-backdrop-filter: blur(2px);
+          backdrop-filter: blur(2px);
+  border: 0;
+  border-radius: 9999px;
+  box-shadow:
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.2) 0px 4px 2px -2px,
+    rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.liquid-glass-pill::after {
+  content: '';
+  position: absolute;
+  inset: -0.5px 0 0 -0.5px;
+  width: calc(100% + 1px);
+  height: calc(100% + 1px);
+  padding: 1px;
+  background-image:
+    conic-gradient(from -75deg at 50% 50%,
+      rgba(0, 0, 0, 0.5),
+      rgba(0, 0, 0, 0) 5%,
+      rgba(0, 0, 0, 0) 40%,
+      rgba(0, 0, 0, 0.5) 50%,
+      rgba(0, 0, 0, 0) 60%,
+      rgba(0, 0, 0, 0) 95%,
+      rgba(0, 0, 0, 0.5)),
+    linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  box-shadow: rgba(255, 255, 255, 0.5) 0px 0px 0px 0.5px inset;
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.liquid-glass-pill > * {
+  position: relative;
+  z-index: 2;
+}
+
+.liquid-glass-pill-shadow {
+  position: absolute;
+  inset: -10px;
+  filter: blur(2px);
+  pointer-events: none;
+  overflow: visible;
+}
+
+.liquid-glass-pill-shadow::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  left: 10px;
+  right: 0;
+  bottom: 0;
+  width: calc(100% - 20px);
+  height: calc(100% - 20px);
+  padding: 2px;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.1));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  border-radius: 9999px;
+  pointer-events: none;
+}
+
+/* ─── Liquid Glass NAV button (.liquid-glass-nav-btn) ────────────────
+   Subtler glass treatment for secondary CTAs in the navbar.
+   Single-element only — NO shadow proxy, NO refraction substrate.
+   Alphas reduced ~65% from .liquid-glass-btn so it doesn't compete
+   with the hero CTA. Reads as "glass chip on navbar", not "floating
+   3D object". Independent class — does NOT inherit from .liquid-glass-btn. */
+
+.liquid-glass-nav-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 16px;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: linear-gradient(-75deg,
+    rgba(255, 255, 255, 0.035),
+    rgba(255, 255, 255, 0.14),
+    rgba(255, 255, 255, 0.035));
+  -webkit-backdrop-filter: blur(2px);
+          backdrop-filter: blur(2px);
+  border: 0;
+  border-radius: 0.5rem;
+  box-shadow:
+    rgba(0, 0, 0, 0.04) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.35) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.13) 0px 4px 2px -2px,
+    rgba(255, 255, 255, 0.14) 0px 0px 1.6px 4px inset;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.1px;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.liquid-glass-nav-btn:hover {
+  background-color: rgba(240, 240, 240, 0.30);
+  box-shadow:
+    rgba(0, 0, 0, 0.04) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.45) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.17) 0px 2.4px 0.8px -1.6px,
+    rgba(255, 255, 255, 0.30) 0px 0px 0.8px 1.6px inset;
+}
+
+.liquid-glass-nav-btn:active {
+  transform: translateY(0.5px);
+  transition-duration: 0.1s;
+}
+
+.liquid-glass-nav-btn:focus-visible {
+  outline: 2px solid rgba(220, 103, 67, 0.6);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-glass-pill,
+  .liquid-glass-pill::after,
+  .liquid-glass-pill-shadow,
+  .liquid-glass-pill-shadow::after,
+  .liquid-glass-nav-btn {
+    transition: none;
+  }
+}
+
 /* Claude Code shimmer — orange base with golden highlight sweep */
 .shimmer-text {
   color: transparent;

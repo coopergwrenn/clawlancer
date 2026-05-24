@@ -51,13 +51,10 @@ function HeroInner() {
         </Link>
       </motion.div>
 
-      {/* Top-right Sign In / Dashboard */}
-      <motion.div
-        className="absolute top-6 right-6 z-20 flex items-center gap-1"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.3, duration: 0.5, ease: SNAPPY }}
-      >
+      {/* Top-right Sign In / Dashboard — plain div, NOT motion.div.
+          Contains `.liquid-glass-nav-btn` whose backdrop-filter would
+          snap if an ancestor's opacity animated through < 1. */}
+      <div className="absolute top-6 right-6 z-20 flex items-center gap-1">
         <Link
           href="/blog"
           className="px-4 py-2 text-sm font-medium transition-opacity hover:opacity-70"
@@ -66,22 +63,7 @@ function HeroInner() {
           Blog
         </Link>
         {session ? (
-          <Link
-            href="/dashboard"
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
-            style={{
-              background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
-              backdropFilter: "blur(2px)",
-              WebkitBackdropFilter: "blur(2px)",
-              boxShadow: `
-                rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
-                rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
-                rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
-                rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
-              `,
-              color: "var(--foreground)",
-            }}
-          >
+          <Link href="/dashboard" className="liquid-glass-nav-btn">
             Dashboard
           </Link>
         ) : (
@@ -96,27 +78,12 @@ function HeroInner() {
             >
               Sign In
             </Link>
-            <Link
-              href="/signup"
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
-              style={{
-                background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
-                backdropFilter: "blur(2px)",
-                WebkitBackdropFilter: "blur(2px)",
-                boxShadow: `
-                  rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
-                  rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
-                  rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
-                  rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
-                `,
-                color: "var(--foreground)",
-              }}
-            >
+            <Link href="/signup" className="liquid-glass-nav-btn">
               Get Started
             </Link>
           </div>
         )}
-      </motion.div>
+      </div>
 
       {/* Outer hero wrapper — deliberately a plain div, NOT motion.div.
           Any ancestor of `.liquid-glass-btn` that animates opacity or
@@ -125,14 +92,14 @@ function HeroInner() {
           when the animation settles. Individual children (spots counter,
           headline, subhead, button wrapper) keep their own motion entrances. */}
       <div className="relative z-10 max-w-3xl w-full text-center space-y-8">
-        {/* Live spots counter */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.2, duration: 0.5, ease: SNAPPY }}
-        >
+        {/* Live spots counter — wrapper is plain div, not motion.div.
+            Both opacity and scale (transform) on an ancestor of the
+            .liquid-glass-pill surface create stacking contexts that
+            affect backdrop-filter rendering, causing a visible snap
+            when entrance animations settle. */}
+        <div>
           <SpotsCounter />
-        </motion.div>
+        </div>
 
         {/* Headline */}
         <motion.h1
