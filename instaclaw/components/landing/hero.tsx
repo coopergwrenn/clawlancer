@@ -118,12 +118,13 @@ function HeroInner() {
         )}
       </motion.div>
 
-      <motion.div
-        className="relative z-10 max-w-3xl w-full text-center space-y-8"
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: SNAPPY }}
-      >
+      {/* Outer hero wrapper — deliberately a plain div, NOT motion.div.
+          Any ancestor of `.liquid-glass-btn` that animates opacity or
+          transform creates a stacking context that breaks backdrop-filter
+          rendering on the button, producing a visible darker→lighter snap
+          when the animation settles. Individual children (spots counter,
+          headline, subhead, button wrapper) keep their own motion entrances. */}
+      <div className="relative z-10 max-w-3xl w-full text-center space-y-8">
         {/* Live spots counter */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
@@ -207,13 +208,12 @@ function HeroInner() {
           minutes. No technical experience required.
         </motion.p>
 
-        {/* CTA — switches between waitlist form and direct signup */}
-        <motion.div
-          className="flex flex-col items-center gap-4"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7, duration: 0.7, ease: SNAPPY }}
-        >
+        {/* CTA — plain div, NOT motion.div. Both opacity AND transform on an
+            ancestor of the glass button create stacking contexts that affect
+            backdrop-filter rendering, causing a visible snap when animations
+            settle. The button appears statically; ScarcityLine still has its
+            own motion entrance below. */}
+        <div className="flex flex-col items-center gap-4">
           {WAITLIST_MODE ? (
             <WaitlistForm />
           ) : (
@@ -234,9 +234,9 @@ function HeroInner() {
               <ScarcityLine />
             </>
           )}
-        </motion.div>
+        </div>
 
-      </motion.div>
+      </div>
     </section>
   );
 }
