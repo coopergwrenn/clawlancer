@@ -1002,12 +1002,27 @@ function generateReport(): BakeStep {
       // Cooper-action commands
       const cooperActions: string[] = [];
       cooperActions.push("# Update Vercel production env (per Rule 6: use printf, NOT <<< or echo)");
+      cooperActions.push("# BOTH env vars must be updated atomically — see lib/ssh.ts:8920 operational contract.");
       cooperActions.push(`printf '${s.new_snapshot.image_id}' | npx vercel env add LINODE_SNAPSHOT_ID production`);
-      cooperActions.push("# Optional: verify");
-      cooperActions.push("npx vercel env ls production | grep LINODE_SNAPSHOT_ID");
+      // CV-init protection per Cooper's 2026-05-24 CRITICAL ADDITIONAL CHECK
+      // (and the v113 cv-init bug forensics at lib/ssh.ts:8889-8930). Without
+      // updating LINODE_SNAPSHOT_CV in parallel with LINODE_SNAPSHOT_ID, every
+      // fresh-from-snapshot VM starts at the OLD baked cv (or 0 if unset) and
+      // does the full v(OLD)→v(MANIFEST) reconcile delta on first message —
+      // 3-15 min of work overlapping the user's first turn, multiple gateway
+      // restarts mid-conversation, customer-down for Edge attendees.
+      cooperActions.push(`printf '${s.source_pins.manifest_version}' | npx vercel env add LINODE_SNAPSHOT_CV production  # ← REQUIRED: prevents cv=0 reconcile-storm`);
+      cooperActions.push("# Verify BOTH landed:");
+      cooperActions.push("npx vercel env ls production | grep -E 'LINODE_SNAPSHOT_(ID|CV)'");
       cooperActions.push("");
-      cooperActions.push("# Rollback (if needed): revert to previous snapshot");
+      cooperActions.push(`# Bump VM_MANIFEST.version to ${s.source_pins.manifest_version + 1} in a follow-up commit so`);
+      cooperActions.push(`# the reconciler's lt(cv, manifest) filter still includes new VMs and runs at`);
+      cooperActions.push(`# least one cycle per provision (preserves Rule 23 lying-DB defense). Otherwise`);
+      cooperActions.push(`# new VMs at cv=${s.source_pins.manifest_version} are excluded by lt(${s.source_pins.manifest_version}, ${s.source_pins.manifest_version})=false.`);
+      cooperActions.push("");
+      cooperActions.push("# Rollback (if needed): revert BOTH env vars to previous snapshot's values");
       cooperActions.push(`printf '${s.source_snapshot_id}' | npx vercel env add LINODE_SNAPSHOT_ID production`);
+      cooperActions.push(`printf '<previous-LINODE_SNAPSHOT_CV>' | npx vercel env add LINODE_SNAPSHOT_CV production  # ← look up via 'vercel env pull' before cutover so you have the old value`);
       cooperActions.push("");
       cooperActions.push("# Delete bake VM (auto-deletes after successful imagize; this is defensive)");
       cooperActions.push(`curl -X DELETE -H "Authorization: Bearer $LINODE_API_TOKEN" https://api.linode.com/v4/linode/instances/${s.bake_vm.linode_id}`);

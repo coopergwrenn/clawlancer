@@ -176,6 +176,72 @@ async function run() {
   }
 
   try {
+    // ─── 0. Operator-environment / cv-init protection (Cooper 2026-05-24) ──
+    // The v113 cv-init bug Cooper remembers: LINODE_SNAPSHOT_CV defaults to
+    // 0 in lib/ssh.ts:8931 if unset, which means configureOpenClaw sets
+    // vm.config_version=0 on every fresh-from-snapshot VM. The reconciler
+    // then runs the full v0→vMANIFEST delta on first message (3-15 min per
+    // the post-mortem comment at lib/ssh.ts:8897-8903) — every Edge attendee's
+    // first message overlaps with multiple gateway restarts. The fix shipped
+    // 2026-05-23 in commit 1fb249d5 reads LINODE_SNAPSHOT_CV env var to
+    // pre-set cv to the snapshot's encoded version.
+    //
+    // But operator cutover guidance in lib/bake/steps.ts only printed the
+    // LINODE_SNAPSHOT_ID update line — operator can forget to update
+    // LINODE_SNAPSHOT_CV in parallel, regressing to the cv=0 bug. This gate
+    // enforces the operational contract from lib/ssh.ts:8920:
+    //
+    //   LINODE_SNAPSHOT_CV must be set, positive, and STRICTLY LESS THAN
+    //   VM_MANIFEST.version (so reconciler's lt(cv, manifest) filter still
+    //   includes new VMs and runs at least one cycle — preserves the
+    //   lying-DB defense per Rule 23 / Rule 10).
+    //
+    // The validator inherits operator's local .env.local; that's the value
+    // that NEW production VMs will get post-cutover. Run this BEFORE any
+    // on-VM checks so a cv-misconfig fails the bake fast.
+    let manifestVersion = 0;
+    try {
+      const manifestSrc = readFileSync(resolve(repoInstaclaw, "lib/vm-manifest.ts"), "utf-8");
+      // Same regex as lib/bake/source-of-truth.ts:extractManifestVersion
+      const startMatch = manifestSrc.match(/export\s+const\s+VM_MANIFEST\s*=\s*\{/);
+      if (startMatch) {
+        const after = manifestSrc.slice((startMatch.index ?? 0) + startMatch[0].length);
+        const verMatch = after.match(/^[ \t]+version:\s*(\d+)\s*,/m);
+        if (verMatch) manifestVersion = parseInt(verMatch[1], 10);
+      }
+    } catch {}
+    const cvEnvRaw = process.env.LINODE_SNAPSHOT_CV;
+    const cvEnvNum = cvEnvRaw === undefined ? NaN : Number(cvEnvRaw);
+    const cvEnvSet = cvEnvRaw !== undefined && cvEnvRaw.trim() !== "";
+    const cvEnvPositive = Number.isFinite(cvEnvNum) && cvEnvNum > 0;
+    record("LINODE_SNAPSHOT_CV env var SET (prevents cv=0 → full reconcile on first message)",
+      "P0", ["bake", "test"], cvEnvSet,
+      cvEnvSet ? `set to '${cvEnvRaw}'` : "LINODE_SNAPSHOT_CV unset → configureOpenClaw fallback sets vm.cv=0 → every fresh VM does full v0→vMANIFEST delta (3-15 min)");
+    record("LINODE_SNAPSHOT_CV is a positive integer",
+      "P0", ["bake", "test"], cvEnvPositive,
+      cvEnvPositive ? `cv=${cvEnvNum}` : `value='${cvEnvRaw}' not parseable as positive integer`);
+    if (manifestVersion > 0 && cvEnvPositive) {
+      // STRICT less-than per lib/ssh.ts:8920 operational contract.
+      // cv === manifest is a soft regression: reconciler's lt() filter
+      // excludes the new VMs until manifest bumps again. So we WARN at
+      // equal (P1) and FAIL at greater (P0 — snapshot encodes a future
+      // state the reconciler can't repair forward).
+      record(`LINODE_SNAPSHOT_CV (${cvEnvNum}) < VM_MANIFEST.version (${manifestVersion}) — operational contract (strict)`,
+        cvEnvNum >= manifestVersion ? (cvEnvNum > manifestVersion ? "P0" : "P1") : "P0",
+        ["bake", "test"], cvEnvNum < manifestVersion,
+        cvEnvNum > manifestVersion
+          ? `cv=${cvEnvNum} > manifest=${manifestVersion} — reconciler will SKIP every new VM forever (cv filter is lt-manifest)`
+          : cvEnvNum === manifestVersion
+            ? `cv === manifest === ${cvEnvNum} — new VMs reconcile-skip until next manifest bump (bump VM_MANIFEST.version in same commit as bake cutover)`
+            : "");
+    }
+    if (manifestVersion === 0) {
+      record("VM_MANIFEST.version readable from lib/vm-manifest.ts",
+        "P0", ["bake", "test"], false,
+        "couldn't parse VM_MANIFEST.version — validator can't enforce cv operational contract");
+    }
+    console.log(`  Manifest version: ${manifestVersion}  |  LINODE_SNAPSHOT_CV env: ${cvEnvRaw ?? "<unset>"}\n`);
+
     // ─── 1. Machine identity (test-mode: must differ from bake) ─────────────
     const hostKeyFp = (await exec(c, `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null | awk '{print $2}'`)).stdout.trim();
     const machineId = (await exec(c, `cat /etc/machine-id`)).stdout.trim();
@@ -221,7 +287,15 @@ async function run() {
 
     // ─── 3. systemd override (TasksMax, MemoryMax, ExecStartPre/Post) ──────
     const override = (await exec(c, `cat ~/.config/systemd/user/openclaw-gateway.service.d/override.conf 2>/dev/null`)).stdout;
-    record("TasksMax=120 in override (v86)", "P0", ["bake", "test"], /TasksMax\s*=\s*120/.test(override), "");
+    // v120 (2026-05-24, commit 5450513a): TasksMax raised from 120 → infinity.
+    // The artificial 120 cap was OURS — Ubuntu user.slice defaults to "infinity".
+    // TasksMax counts THREADS not processes; a single Chromium headless session
+    // uses 100+ threads, blowing past 120 during normal Chromium MCP burst.
+    // Runaway protection still in place via MemoryMax=3500M cgroup kill +
+    // OOMScoreAdjust=500 + prctl-subreaper. See CLAUDE.md Rule 65.
+    record("TasksMax=infinity in override (v120 — removed artificial cap that throttled Chromium MCP)",
+      "P0", ["bake", "test"], /TasksMax\s*=\s*infinity/i.test(override),
+      override.match(/TasksMax\s*=\s*\S+/i)?.[0] ?? "TasksMax not set in override");
     record("MemoryMax=3500M", "P1", ["bake", "test"], /MemoryMax\s*=\s*3500M/.test(override), "");
     record("OOMScoreAdjust=500 in override", "P1", ["bake", "test"], /OOMScoreAdjust\s*=\s*500/.test(override), "");
     record("KillMode=mixed in override", "P1", ["bake", "test"], /KillMode\s*=\s*mixed/.test(override), "");
@@ -233,6 +307,17 @@ async function run() {
     record("v100: RuntimeRandomizedExtraSec REMOVED from override", "P1", ["bake", "test"],
       !/RuntimeRandomizedExtraSec/.test(override), "RuntimeRandomizedExtraSec still present in override.conf");
     record("Environment=PARTNER_ID=INSTACLAW in override", "P2", ["bake", "test"], /PARTNER_ID=INSTACLAW/.test(override), "");
+    // v115/v118 (2026-05-23): OPENCLAW_DISABLE_BONJOUR=true env var added
+    // as SECOND gate against bonjour/mDNS discovery spawning ciao + racing
+    // the gateway with SIGTERM (original v71 CIAO incident). First gate was
+    // discovery.mdns.mode=off (in configSettings) — but cloud-init team
+    // rediscovered 2026-05-22 (commit 4acc5280) that some upstream path
+    // still spawned ciao despite the config-set. The env var gate is read
+    // by OpenClaw via isTruthyEnvValue. Without this, gpt-5.5 reasoning
+    // can be interrupted by ciao-spawned SIGTERM mid-call.
+    record("Environment=OPENCLAW_DISABLE_BONJOUR=true in override (v115/v118 dual-gate)",
+      "P0", ["bake", "test"], /Environment\s*=\s*OPENCLAW_DISABLE_BONJOUR\s*=\s*true/.test(override),
+      override.match(/OPENCLAW_DISABLE_BONJOUR\s*=\s*\S+/)?.[0] ?? "OPENCLAW_DISABLE_BONJOUR not set — bonjour/ciao can spawn and SIGTERM-race the gateway (v71 incident)");
     // Memory-snapshot integration (v73): ExecStartPre restore + ExecStopPost pre-stop.
     // If missing, MEMORY.md is not preserved across gateway restarts — user-data loss.
     record("override: ExecStartPre calls memory-snapshot.sh restore", "P0", ["bake", "test"],
@@ -483,20 +568,26 @@ async function run() {
     const eclipseCount = (cron.match(/skills\/eclipse/g) || []).length;
     record("no eclipse cron entries", "P0", ["bake"], eclipseCount === 0, `${eclipseCount} entries`);
 
-    // v112 (2026-05-21): vm-watchdog RE-ENABLED at AGENT_STALE_MINUTES=15.
-    // Removed in v76 (2026-05-01 "demo-stabilize") because the original
-    // 5-min threshold killed slow-but-working agents. Re-added in v112 with
-    // a 15-min threshold per Cooper's call: "agents shouldn't be able to
-    // sit stuck forever with no recovery." Polarity inverted from the
-    // earlier "MUST NOT be in cron" check. silence-watchdog stays removed
-    // (Phase 3 in-flight manifest replaces it).
-    // Source: lib/vm-manifest.ts:1629 (v112 changelog) + :2474 (cronJobs entry).
-    const vmWatchdogInCron = / vm-watchdog\.py/.test(cron);
-    record("v112 cron: vm-watchdog.py PRESENT in cron", "P0", ["bake", "test"], vmWatchdogInCron,
-      vmWatchdogInCron ? "" : "vm-watchdog.py MISSING from cron (v112 re-enable not applied)");
-    const silenceWatchdogInCron = / silence-watchdog\.py/.test(cron);
-    record("v76 prune: NO silence-watchdog.py in cron", "P0", ["bake", "test"], !silenceWatchdogInCron,
-      silenceWatchdogInCron ? "silence-watchdog.py STILL in cron (v76 prune missing — stays removed per v112)" : "");
+    // v114 (2026-05-23, commit a0f6b8a4): vm-watchdog REMOVED AGAIN +
+    // actively scrubbed via cronJobsRemove[] (manifest line 2667-2668).
+    // Background: v112 (2026-05-21) re-enabled vm-watchdog at AGENT_STALE_
+    // MINUTES=15, but that produced a 30-min outage on vm-1016 on 2026-05-23
+    // (watchdog killed a gateway mid-customer-flow). Cooper ordered second
+    // removal, this time via cronJobsRemove which actively scrubs the entry
+    // from existing crontabs (not just absent from cronJobs additions list).
+    // Polarity inverted from v112 — now mirrors silence-watchdog: MUST be
+    // absent from active (non-commented) cron entries. Script may still be
+    // on disk (files[] still ships it for forensic compatibility); only the
+    // cron wiring is gone.
+    // Use ^[^#\n]*pattern/m to match only ACTIVE (non-commented) cron lines.
+    const vmWatchdogActive = /^[^#\n]*vm-watchdog\.py/m.test(cron);
+    record("v114 cron: vm-watchdog.py ABSENT from active cron (cronJobsRemove[])",
+      "P0", ["bake", "test"], !vmWatchdogActive,
+      vmWatchdogActive ? "vm-watchdog.py STILL active in cron (v114 cronJobsRemove not applied — caused 30-min vm-1016 outage on 2026-05-23)" : "");
+    const silenceWatchdogActive = /^[^#\n]*silence-watchdog\.py/m.test(cron);
+    record("v76 prune: silence-watchdog.py ABSENT from active cron",
+      "P0", ["bake", "test"], !silenceWatchdogActive,
+      silenceWatchdogActive ? "silence-watchdog.py STILL active in cron (v76 prune missing — stays removed per v112 + v114)" : "");
 
     // Required cron markers per map §8.
     const expectedCronMarkers: Array<{ pattern: RegExp; name: string; severity: Severity }> = [
@@ -505,10 +596,10 @@ async function run() {
       { pattern: /skill-integrity-check\.sh/, name: "skill-integrity-check.sh (Rule 24)", severity: "P0" },
       { pattern: /auto-approve-pairing\.py/, name: "auto-approve-pairing.py", severity: "P1" },
       { pattern: /push-heartbeat\.sh/, name: "push-heartbeat.sh", severity: "P1" },
-      // v112 cron: vm-watchdog.py RE-ENABLED (manifest line 2473-2476). 5-min
-      // schedule, AGENT_STALE_MINUTES=15. Pairs with the inverted-polarity
-      // check above. P0 because customer-down recovery depends on it.
-      { pattern: /vm-watchdog\.py/, name: "vm-watchdog.py (v112 re-enable)", severity: "P0" },
+      // v114 (2026-05-23): vm-watchdog REMOVED via cronJobsRemove[].
+      // Previous v112 entry that required it PRESENT in cron has been
+      // deleted — its absence is now enforced by the inverted-polarity
+      // check at the line ~494-496 block above. Don't re-add.
       // consensus_match_pipeline.py was COMMENTED OUT in manifest cronJobs
       // (lib/vm-manifest.ts:2538-2540) per Component-3-deferral. The script
       // still exists on disk (used by other components), but no cron should
@@ -617,6 +708,12 @@ async function run() {
       // Rule 45 (2026-05-14, commit eaf5617a): session-backup runaway fix
       "SESSION_BACKUP_COOLDOWN_SEC",
       "SESSION_BACKUP_MAX_PER_SESSION",
+      // v120 (2026-05-24): OpenClaw 2026.5.20 compat guard. Per CLAUDE.md
+      // Rule 65, we bake at OpenClaw 2026.4.26 (NOT 2026.5.20). This
+      // sentinel marks the strip-thinking template as 2026.5.20-aware so
+      // a future bake at 2026.5.20 picks up the compat fix automatically.
+      // Source: lib/vm-manifest.ts:2200-2209 — files[] requiredSentinels.
+      "STRIP_THINKING_v2026_5_20_COMPAT_v1",
     ];
     for (const sent of RULE23_SENTINELS) {
       const found = (await exec(c, `grep -c -F ${JSON.stringify(sent)} ~/.openclaw/scripts/strip-thinking.py 2>/dev/null`)).stdout.trim();
@@ -624,14 +721,37 @@ async function run() {
     }
 
     // ─── 19. gbrain present (binary + MCP entry + env vars) ────────────────
+    // gbrain installation contract:
+    //   - bake mode: §3.4 BAKE-ONLY GBRAIN INSTALL runs install-gbrain.sh
+    //     on the bake VM regardless of partner → gbrain MUST be installed.
+    //   - test mode (fresh-from-snapshot): inherits gbrain from snapshot →
+    //     gbrain MUST be installed.
+    //   - operator-audit mode (--mode=test against an existing fleet VM):
+    //     non-edge_city VMs may NOT have gbrain (stepGbrain in vm-reconcile.ts
+    //     gates on GBRAIN_PARTNER_ALLOWLIST). Don't false-fail those.
+    //
+    // Detection: if ~/.config/systemd/user/gbrain.service exists, gbrain is
+    // installed; if not, it isn't. Bake mode always P0 (contract is hard);
+    // test mode downgrades to P2 if gbrain isn't installed (acceptable on
+    // operator-audit against non-edge_city fleet VMs).
+    const gbrainInstalled = (await exec(c, `test -f ~/.config/systemd/user/gbrain.service && echo Y || echo N`)).stdout.trim() === "Y";
+    const gbrainGateSev: Severity = (MODE === "bake" || gbrainInstalled) ? "P0" : "P2";
+    const gbrainNoteSuffix = (MODE === "test" && !gbrainInstalled)
+      ? " (downgraded to P2 — gbrain not installed; acceptable on non-edge_city fleet VM)"
+      : "";
+
+    // bun is a gbrain prerequisite (install-gbrain.sh Phase B installs it).
+    // Partner-gate it the same as gbrain itself: bake mode always P0 (§3.4
+    // contract), test mode P0 if gbrain installed else P2 (acceptable on
+    // operator-audit against non-edge_city fleet VM that doesn't run gbrain).
     const bunVer = (await exec(c, `~/.bun/bin/bun --version 2>&1`)).stdout.trim();
-    record("bun installed", "P0", ["bake", "test"], /^1\./.test(bunVer), `bun=${bunVer}`);
+    record(`bun installed${gbrainNoteSuffix}`, gbrainGateSev, ["bake", "test"], /^1\./.test(bunVer), `bun=${bunVer}`);
 
     const gbrainSymlink = (await exec(c, `ls -la ~/.bun/bin/gbrain 2>&1`)).stdout;
-    record("gbrain binary symlink present", "P0", ["bake", "test"], gbrainSymlink.includes("gbrain"), gbrainSymlink.slice(0, 100));
+    record(`gbrain binary symlink present${gbrainNoteSuffix}`, gbrainGateSev, ["bake", "test"], gbrainSymlink.includes("gbrain"), gbrainSymlink.slice(0, 100));
 
     const mcpEntry = (await exec(c, `python3 -c "import json; d=json.load(open('$HOME/.openclaw/openclaw.json')); print('gbrain' in d.get('mcp',{}).get('servers',{}))"`)).stdout.trim();
-    record("gbrain MCP entry in openclaw.json", "P0", ["bake", "test"], mcpEntry === "True", "");
+    record(`gbrain MCP entry in openclaw.json${gbrainNoteSuffix}`, gbrainGateSev, ["bake", "test"], mcpEntry === "True", "");
 
     // ─── 20. Gateway operational state ─────────────────────────────────────
     if (MODE === "test") {
@@ -648,9 +768,10 @@ async function run() {
       const prctlLoaded = (await exec(c, `cat /proc/${pid}/environ 2>/dev/null | tr '\\0' '\\n' | grep -c 'NODE_OPTIONS=.*prctl-subreaper'`)).stdout.trim();
       record("prctl-subreaper loaded in running gateway", "P0", ["test"], prctlLoaded === "1", `pid=${pid}`);
 
-      // TasksMax applied at runtime
+      // TasksMax applied at runtime (v120: infinity, not 120)
       const tasksMaxRt = (await exec(c, `systemctl --user show openclaw-gateway -p TasksMax`)).stdout.trim();
-      record("TasksMax=120 applied at runtime", "P0", ["test"], /TasksMax=120/.test(tasksMaxRt), tasksMaxRt);
+      record("TasksMax=infinity applied at runtime (v120 — Chromium MCP burst protection)",
+        "P0", ["test"], /TasksMax=infinity/i.test(tasksMaxRt), tasksMaxRt);
     } else {
       // Gateway must be STOPPED on bake VM (we just stopped it during cleanup)
       const isActive = (await exec(c, `systemctl --user is-active openclaw-gateway 2>&1`)).stdout.trim();
@@ -694,9 +815,22 @@ async function run() {
       { key: "messages.ackReactionScope", want: "all", severity: "P0" },                 // v95 Layer 1
       { key: "messages.ackReaction", want: "👀", severity: "P0" },
       { key: "messages.removeAckAfterReply", want: "false", severity: "P0" },
-      { key: "messages.statusReactions.enabled", want: "true", severity: "P0" },
+      // v119 (2026-05-23): EMERGENCY REVERT — was "true" in v95 spec but
+      // upstream OpenClaw 2026.4.26 status-reaction emoji-rotation produced
+      // a fleet-visible reaction-storm (👀→🤔→🔍→✍️→✅ cycling rapidly on
+      // each turn). Disabled until upstream fix lands. The 👀 ack reaction
+      // (messages.ackReaction above) stays — that's a single static emoji.
+      { key: "messages.statusReactions.enabled", want: "false", severity: "P0" },
       { key: "session.reset.mode", want: "idle", severity: "P0" },                       // v41 — prevents 4 AM wipe
       { key: "session.reset.idleMinutes", want: "10080", severity: "P0" },               // 7-day idle
+      // v118 (2026-05-23): typing keepalive — fires signalRunStart at run-begin
+      // BEFORE the LLM call so Telegram shows "typing..." continuously while
+      // gpt-5.5 reasons (3-30 min latency). agents.defaults.* are closure-
+      // captured at agent-run init (Rule 32), so RESTART_REQUIRED_CONFIG_
+      // PREFIXES was extended in v120 to include "agents.defaults." —
+      // reconciler now restarts gateway when these change.
+      { key: "agents.defaults.typingMode", want: "instant", severity: "P0" },            // v118 typing keepalive
+      { key: "agents.defaults.typingIntervalSeconds", want: "3", severity: "P0" },       // v118 typing keepalive cadence
       // ── P1 — operational correctness ─────────────────────────────────────
       { key: "agents.defaults.compaction.memoryFlush.enabled", want: "true", severity: "P1" },
       { key: "agents.defaults.compaction.memoryFlush.softThresholdTokens", want: "8000", severity: "P1" },
@@ -1032,9 +1166,14 @@ async function run() {
     // any SIGKILL/OOM/reboot panics PGLite (mass-corruption risk per Rule 54).
     // The bake VM should have all three present so the snapshot ships with
     // the protection mechanism baked in.
+    // Partner-gate per Rule 54 / Gate 7 (2026-05-24): pglite-checkpoint is
+    // installed by install-gbrain.sh Phase I — only runs on edge_city VMs
+    // at fleet time, BUT runs on every bake VM via §3.4. So bake-mode is
+    // always P0; test-mode downgrades to P2 if gbrain absent (same rationale
+    // as the gbrainGateSev guard at §19).
     const checkpointScript = (await exec(c, `test -x ~/.openclaw/scripts/pglite-checkpoint.sh && echo Y || echo N`)).stdout.trim();
-    record("PGLite CHECKPOINT script present + executable (Rule 54)",
-      "P0", ["bake", "test"],
+    record(`PGLite CHECKPOINT script present + executable (Rule 54)${gbrainNoteSuffix}`,
+      gbrainGateSev, ["bake", "test"],
       checkpointScript === "Y",
       checkpointScript === "Y" ? "" : "~/.openclaw/scripts/pglite-checkpoint.sh missing or non-executable");
 
@@ -1042,15 +1181,15 @@ async function run() {
       (await exec(c, `crontab -l 2>/dev/null | grep -c "pglite-checkpoint.sh"`)).stdout.trim() || "0",
       10,
     );
-    record("PGLite CHECKPOINT cron entry installed (every 30 min, Rule 54)",
-      "P0", ["bake", "test"],
+    record(`PGLite CHECKPOINT cron entry installed (every 30 min, Rule 54)${gbrainNoteSuffix}`,
+      gbrainGateSev, ["bake", "test"],
       checkpointCron >= 1,
       `crontab matches: ${checkpointCron} (expected ≥1)`);
 
     const gbrainDropIns = (await exec(c, `cat ~/.config/systemd/user/gbrain.service.d/*.conf 2>/dev/null; cat ~/.config/systemd/user/gbrain.service 2>/dev/null`)).stdout;
     const execStopPresent = /ExecStop=.*pglite-checkpoint\.sh/.test(gbrainDropIns);
-    record("PGLite CHECKPOINT ExecStop hook installed in gbrain.service (Rule 54)",
-      "P0", ["bake", "test"],
+    record(`PGLite CHECKPOINT ExecStop hook installed in gbrain.service (Rule 54)${gbrainNoteSuffix}`,
+      gbrainGateSev, ["bake", "test"],
       execStopPresent,
       execStopPresent ? "" : "gbrain.service has no ExecStop=...pglite-checkpoint.sh hook — SIGKILL on reboot/OOM will leave stale pg_control");
 
