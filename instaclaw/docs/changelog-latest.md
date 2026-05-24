@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-24
 
-Window: `888d154cfc19cbf9769c2bde847d10b0dc543d19` → `HEAD` (HEAD = `706076dd`)
+Window: `706076dd3693eb9cacfc7f850056b1d18d154f49` → `HEAD` (HEAD = `b81a3e62`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 706076dd3693eb9cacfc7f850056b1d18d154f49 -->
+<!-- LAST_GENERATED_SHA: b81a3e62412b7efd9b53fbf927da01ba535ebe2a -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `706076dd` 2026-05-24 — fix(bake-validation): refresh 4 stale gates + add 4 new + CV-init protection [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `5c5c0096` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `72cb41b1` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `b81a3e62` 2026-05-24 — docs: add liquid-glass UI reference for the design language built 2026-05-24 [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `706076dd` 2026-05-24 — fix(bake-validation): refresh 4 stale gates + add 4 new + CV-init protection [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -43,23 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `5c5c0096` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `706076dd` 2026-05-24 — [infrastructure, edge] — fix(bake-validation): refresh 4 stale gates + add 4 new + CV-init protection
+- `72cb41b1` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `b81a3e62` 2026-05-24 — docs: add liquid-glass UI reference for the design language built 2026-05-24 [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `706076dd` 2026-05-24 — fix(bake-validation): refresh 4 stale gates + add 4 new + CV-init protection
+- `b81a3e62` 2026-05-24 — docs: add liquid-glass UI reference for the design language built 2026-05-24
 
 ## Appendix — every commit (chronological)
 
-- `5c5c0096` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
-- `706076dd` 2026-05-24 — fix(bake-validation): refresh 4 stale gates + add 4 new + CV-init protection [2 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `72cb41b1` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `b81a3e62` 2026-05-24 — docs: add liquid-glass UI reference for the design language built 2026-05-24 [1 files] _(ai-assisted)_
