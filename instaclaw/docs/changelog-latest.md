@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-24
 
-Window: `882575aa0876e7295e689184ac4e2f98fba5801c` → `HEAD` (HEAD = `f2d735aa`)
+Window: `f2d735aabd61141c823e7484fda4cf747b4e7d96` → `HEAD` (HEAD = `5b7f7e5d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: f2d735aabd61141c823e7484fda4cf747b4e7d96 -->
+<!-- LAST_GENERATED_SHA: 5b7f7e5d3e4074a5a2321fd2380b27cd12338c81 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `f2d735aa` 2026-05-24 — how-it-works: neutral liquid-glass circles for numbered steps [2 files] _(ai-assisted)_
+- `5b7f7e5d` 2026-05-24 — fix(bankr): render BankrWalletCard for ALL users incl. wallet-less [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `75b71e41` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `57ac91be` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `f2d735aa` 2026-05-24 — how-it-works: neutral liquid-glass circles for numbered steps [2 files] _(ai-assisted)_
+- `5b7f7e5d` 2026-05-24 — fix(bankr): render BankrWalletCard for ALL users incl. wallet-less [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `75b71e41` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `57ac91be` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `f2d735aa` 2026-05-24 — how-it-works: neutral liquid-glass circles for numbered steps
+- `5b7f7e5d` 2026-05-24 — fix(bankr): render BankrWalletCard for ALL users incl. wallet-less
 
 ## Appendix — every commit (chronological)
 
-- `75b71e41` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
-- `f2d735aa` 2026-05-24 — how-it-works: neutral liquid-glass circles for numbered steps [2 files] _(ai-assisted)_
+- `57ac91be` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `5b7f7e5d` 2026-05-24 — fix(bankr): render BankrWalletCard for ALL users incl. wallet-less [1 files] _(ai-assisted)_
