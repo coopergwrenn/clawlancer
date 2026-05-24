@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-24
 
-Window: `5b7f7e5d3e4074a5a2321fd2380b27cd12338c81` → `HEAD` (HEAD = `cf9f3c0a`)
+Window: `cf9f3c0ae0499a36951004d66d89bc2a4c76ab5a` → `HEAD` (HEAD = `a07d6877`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: cf9f3c0ae0499a36951004d66d89bc2a4c76ab5a -->
+<!-- LAST_GENERATED_SHA: a07d6877a764bf837c8cb89f3dd450625350690c -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `cf9f3c0a` 2026-05-24 — how-it-works orbs: port .liquid-glass-pill recipe verbatim, drop sphere-illusion attempt [2 files] _(ai-assisted)_
+- `a07d6877` 2026-05-24 — comparison: serif font for the "Skip the setup" shimmer line [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `757836aa` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `b1a51e51` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `cf9f3c0a` 2026-05-24 — how-it-works orbs: port .liquid-glass-pill recipe verbatim, drop sphere-illusion attempt [2 files] _(ai-assisted)_
+- `a07d6877` 2026-05-24 — comparison: serif font for the "Skip the setup" shimmer line [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `757836aa` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `b1a51e51` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `cf9f3c0a` 2026-05-24 — how-it-works orbs: port .liquid-glass-pill recipe verbatim, drop sphere-illusion attempt
+- `a07d6877` 2026-05-24 — comparison: serif font for the "Skip the setup" shimmer line
 
 ## Appendix — every commit (chronological)
 
-- `757836aa` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
-- `cf9f3c0a` 2026-05-24 — how-it-works orbs: port .liquid-glass-pill recipe verbatim, drop sphere-illusion attempt [2 files] _(ai-assisted)_
+- `b1a51e51` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `a07d6877` 2026-05-24 — comparison: serif font for the "Skip the setup" shimmer line [1 files] _(ai-assisted)_
