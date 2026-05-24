@@ -1,28 +1,28 @@
 # Changelog — generated 2026-05-24
 
-Window: `8e3cf3c82a8d89d7ef7f5c5ece83392b382305d7` → `HEAD` (HEAD = `6f2e4c3c`)
+Window: `6f2e4c3c859d5c2f931a53f5a76a3d27a043815a` → `HEAD` (HEAD = `12cdd587`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 6f2e4c3c859d5c2f931a53f5a76a3d27a043815a -->
+<!-- LAST_GENERATED_SHA: 12cdd587b5413645279389086aaa39ee62ea123e -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
 - **Infrastructure:** 0
-- **Feature (user-facing):** 1
-- **Edge City partner:** 0
+- **Feature (user-facing):** 0
+- **Edge City partner:** 1
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
 
-- `6f2e4c3c` 2026-05-24 — revert: testimonial cards back to inline glass; keep .liquid-glass-card CSS [2 files] _(multi: [feature, docs]; ai-assisted)_
+- `12cdd587` 2026-05-24 — feat: codify Rule 66 (CDP) + Rule 67 (Anthropic balance P0 alert) [3 files] _(multi: [edge, docs])_
 
 ## What changed under the hood
 
-- `f1ac4f5d` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `512a1e84` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -34,31 +34,25 @@ _(none)_
 
 _(none)_
 
-### Feature (user-facing) (1)
-
-- `6f2e4c3c` 2026-05-24 — revert: testimonial cards back to inline glass; keep .liquid-glass-card CSS [2 files] _(multi: [feature, docs]; ai-assisted)_
-
-### Edge City partner (0)
+### Feature (user-facing) (0)
 
 _(none)_
 
+### Edge City partner (1)
+
+- `12cdd587` 2026-05-24 — feat: codify Rule 66 (CDP) + Rule 67 (Anthropic balance P0 alert) [3 files] _(multi: [edge, docs])_
+
 ### Docs / PRD only (1)
 
-- `f1ac4f5d` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `512a1e84` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `6f2e4c3c` 2026-05-24 — [feature, docs] — revert: testimonial cards back to inline glass; keep .liquid-glass-card CSS
-
-## AI-assisted commits (1)
-
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
-
-- `6f2e4c3c` 2026-05-24 — revert: testimonial cards back to inline glass; keep .liquid-glass-card CSS
+- `12cdd587` 2026-05-24 — [edge, docs] — feat: codify Rule 66 (CDP) + Rule 67 (Anthropic balance P0 alert)
 
 ## Appendix — every commit (chronological)
 
-- `f1ac4f5d` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
-- `6f2e4c3c` 2026-05-24 — revert: testimonial cards back to inline glass; keep .liquid-glass-card CSS [2 files] _(multi: [feature, docs]; ai-assisted)_
+- `512a1e84` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `12cdd587` 2026-05-24 — feat: codify Rule 66 (CDP) + Rule 67 (Anthropic balance P0 alert) [3 files] _(multi: [edge, docs])_
