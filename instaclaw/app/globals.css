@@ -597,6 +597,126 @@ html.lenis body {
   pointer-events: none;
 }
 
+/* ─── Liquid Glass CIRCLE (.liquid-glass-circle) ─────────────────────
+   Round sibling of .liquid-glass-pill — same wabi recipe (refraction
+   substrate + sheen surface + conic rim + masked-ring shadow) with
+   border-radius:50%. Diameter is set by the parent (use w-N h-N
+   tailwind classes on .liquid-glass-circle-root), so this works at
+   any size from numbered step orbs (~48px) up to avatars (~80px).
+   Independent class — does NOT inherit from .liquid-glass-pill. */
+
+.liquid-glass-circle-root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  z-index: 2;
+  isolation: isolate;
+  color: var(--foreground);
+}
+
+.liquid-glass-circle-root::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at 50% 60%,
+    rgba(0, 0, 0, 0.10) 0%,
+    rgba(0, 0, 0, 0.03) 50%,
+    transparent 80%
+  );
+  z-index: -1;
+  pointer-events: none;
+}
+
+.liquid-glass-circle {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: linear-gradient(-75deg,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.20),
+    rgba(255, 255, 255, 0.05));
+  -webkit-backdrop-filter: blur(2px);
+          backdrop-filter: blur(2px);
+  border: 0;
+  border-radius: 50%;
+  box-shadow:
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.2) 0px 4px 2px -2px,
+    rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset;
+  color: inherit;
+  z-index: 2;
+}
+
+.liquid-glass-circle::after {
+  /* Conic-gradient rim — same recipe as .liquid-glass-pill::after. */
+  content: '';
+  position: absolute;
+  inset: -0.5px;
+  width: calc(100% + 1px);
+  height: calc(100% + 1px);
+  padding: 1px;
+  background-image:
+    conic-gradient(from -75deg at 50% 50%,
+      rgba(0, 0, 0, 0.5),
+      rgba(0, 0, 0, 0) 5%,
+      rgba(0, 0, 0, 0) 40%,
+      rgba(0, 0, 0, 0.5) 50%,
+      rgba(0, 0, 0, 0) 60%,
+      rgba(0, 0, 0, 0) 95%,
+      rgba(0, 0, 0, 0.5)),
+    linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  box-shadow: rgba(255, 255, 255, 0.5) 0px 0px 0px 0.5px inset;
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.liquid-glass-circle > * {
+  position: relative;
+  z-index: 2;
+}
+
+.liquid-glass-circle-shadow {
+  position: absolute;
+  inset: -10px;
+  filter: blur(2px);
+  pointer-events: none;
+  overflow: visible;
+}
+
+.liquid-glass-circle-shadow::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  left: 10px;
+  right: 0;
+  bottom: 0;
+  width: calc(100% - 20px);
+  height: calc(100% - 20px);
+  padding: 2px;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.1));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
 /* ─── Liquid Glass NAV button (.liquid-glass-nav-btn) ────────────────
    Full 3-element architecture mirroring .liquid-glass-btn, scaled down
    to navbar dimensions (36px tall, 16px h-padding, 14px font, 8px
@@ -779,6 +899,10 @@ html.lenis body {
   .liquid-glass-pill::after,
   .liquid-glass-pill-shadow,
   .liquid-glass-pill-shadow::after,
+  .liquid-glass-circle,
+  .liquid-glass-circle::after,
+  .liquid-glass-circle-shadow,
+  .liquid-glass-circle-shadow::after,
   .liquid-glass-nav-btn,
   .liquid-glass-nav-btn::after,
   .liquid-glass-nav-btn-shadow,

@@ -50,17 +50,15 @@ export function HowItWorks() {
           </h2>
         </motion.div>
 
-        {/* Clean-line vertical steps — no cards */}
+        {/* Clean-line vertical steps — no cards.
+            Per-step wrapper is a plain div (NOT motion.div). The hero work
+            (2026-05-24) established that opacity AND transform on an
+            ancestor of a backdrop-filter surface produce a visible darker→
+            lighter snap when the entrance animation settles. The numbered
+            orb here is a glass circle, so the wrapper can't animate either. */}
         <div className="space-y-0">
           {steps.map((step, i) => (
-            <motion.div
-              key={step.number}
-              className="relative"
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-80px" }}
-              transition={{ delay: i * 0.12, duration: 0.6, ease: SNAPPY }}
-            >
+            <div key={step.number} className="relative">
               {/* Top border line */}
               <div
                 className="h-px w-full"
@@ -68,36 +66,24 @@ export function HowItWorks() {
               />
 
               <div className="flex gap-6 sm:gap-10 py-10 sm:py-14 items-start">
-                {/* Step number in glass orb */}
-                <span
-                  className="shrink-0 mt-1 flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full relative overflow-hidden"
-                  style={{
-                    background: "radial-gradient(circle at 38% 32%, rgba(220,103,67,0.3), rgba(220,103,67,0.12) 55%, rgba(180,70,40,0.2) 100%)",
-                    boxShadow: `
-                      inset 0 2px 4px rgba(255,255,255,0.45),
-                      inset 0 -2px 4px rgba(0,0,0,0.12),
-                      inset 0 0 6px rgba(220,103,67,0.08),
-                      0 2px 6px rgba(220,103,67,0.1),
-                      0 1px 2px rgba(0,0,0,0.06)
-                    `,
-                  }}
-                >
-                  {/* Glass highlight */}
-                  <span
-                    className="absolute top-[3px] left-[5px] w-[16px] sm:w-[18px] h-[8px] sm:h-[9px] rounded-full pointer-events-none"
-                    style={{
-                      background: "linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0) 100%)",
-                    }}
-                  />
-                  <span
-                    className="relative text-xl sm:text-2xl font-medium tracking-[-0.5px]"
-                    style={{
-                      fontFamily: "var(--font-serif)",
-                      color: "var(--accent)",
-                    }}
-                  >
-                    {step.number}
+                {/* Step number in neutral liquid-glass circle.
+                    3-element architecture mirroring .liquid-glass-pill —
+                    root (refraction substrate + isolation) + surface
+                    (sheen + conic rim) + sibling shadow proxy. Diameter
+                    set by tailwind w-12 h-12 / sm:w-14 sm:h-14. */}
+                <span className="liquid-glass-circle-root shrink-0 mt-1 w-12 h-12 sm:w-14 sm:h-14">
+                  <span className="liquid-glass-circle">
+                    <span
+                      className="text-xl sm:text-2xl font-medium tracking-[-0.5px]"
+                      style={{
+                        fontFamily: "var(--font-serif)",
+                        color: "var(--foreground)",
+                      }}
+                    >
+                      {step.number}
+                    </span>
                   </span>
+                  <div aria-hidden="true" className="liquid-glass-circle-shadow"></div>
                 </span>
 
                 {/* Content */}
@@ -172,7 +158,7 @@ export function HowItWorks() {
                   style={{ background: "var(--border)" }}
                 />
               )}
-            </motion.div>
+            </div>
           ))}
         </div>
       </div>
