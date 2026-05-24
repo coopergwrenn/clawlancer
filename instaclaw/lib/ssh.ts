@@ -2080,6 +2080,34 @@ try:
         # See _is_session_file() for full rationale + vm-1019 incident.
         if not _is_session_file(jsonl_file):
             continue
+
+        # STRIP_THINKING_v2026_5_20_COMPAT_v1 — 2026-05-23 night canary findings.
+        # OpenClaw 2026.5.20 added EmbeddedAttemptSessionTakeoverError
+        # (selection-BmjEdnnA.js:7883). The runtime captures a session-file
+        # fingerprint when the embedded agent releases its prompt lock to call
+        # the model, then re-checks the fingerprint when re-acquiring. If the
+        # fingerprint changed AND the change doesn't look like agent-owned
+        # output, the entire turn fails with "Something went wrong" to the user.
+        # Our cron-driven modifications (compaction, trim, extract) ALWAYS look
+        # like external writes. Solution: skip sessions modified within the
+        # last ACTIVE_THRESHOLD_SEC — a strong proxy for "an agent turn is in
+        # flight." Idle sessions process normally; busy sessions get a 1-2 min
+        # deferral and are processed on the next cron tick when idle.
+        # No-op on 2026.4.26 (the error doesn't exist there), load-bearing on
+        # 2026.5.20+. See CLAUDE.md Rule 65 for the full incident.
+        STRIP_THINKING_ACTIVE_THRESHOLD_SEC = 120
+        try:
+            mtime_age_sec = time.time() - os.path.getmtime(jsonl_file)
+        except FileNotFoundError:
+            continue
+        if mtime_age_sec < STRIP_THINKING_ACTIVE_THRESHOLD_SEC:
+            # Log only when we'd have otherwise done meaningful work, to avoid
+            # filling the journal with skip-noise on truly idle fleets.
+            _sz_kb = os.path.getsize(jsonl_file) // 1024
+            if _sz_kb > 50:  # only log skips for non-trivial sessions
+                print(f"SKIP_ACTIVE_SESSION: {os.path.basename(jsonl_file)[:8]} mtime={mtime_age_sec:.0f}s size={_sz_kb}K (2026.5.20 takeover-safe)")
+            continue
+
         file_size = os.path.getsize(jsonl_file)
         session_id = os.path.basename(jsonl_file).replace(".jsonl", "")
 
@@ -8374,7 +8402,7 @@ export async function configureOpenClaw(
       'ExecStartPre=/bin/bash -c "pkill -9 -f \\"[c]hrome.*remote-debugging-port\\" 2>/dev/null || true"',
       'MemoryHigh=3G',
       'MemoryMax=3500M',
-      'TasksMax=75',
+      'TasksMax=infinity',  // v120 (2026-05-24): see vm-manifest.ts:systemdOverrides.TasksMax + CLAUDE.md Rule 65. Stays in sync with the manifest value.
       'OOMScoreAdjust=500',
       // Removed 2026-05-15: RuntimeMaxSec=86400 + RuntimeRandomizedExtraSec=3600.
       // The 24h forced restart caused mid-conversation SIGTERM with no drain

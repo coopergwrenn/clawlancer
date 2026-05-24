@@ -3646,6 +3646,206 @@ vm-1019 is Cooper's canary VM. It is the ONLY safe place to land experimental ch
 - **Rule 47** (continuous reconciliation, not version-gated): the reason a manifest bump propagates to every VM — there is no opt-out for paying users.
 - **Rule 49** (partner secrets actively verified): same principle (verify the actual value works) applied to manifest config changes. "It compiles" is not "it works on a real VM."
 
+### Rule 65 — [PARTIALLY SHIPPED 2026-05-24, manifest v120] OpenClaw 2026.5.20 readiness work — strip-thinking compatibility, TasksMax cap removed, typing keys codified; OPENCLAW_PINNED_VERSION bump deferred until snapshot bake
+
+**Status as of 2026-05-24 commit:** Three of four readiness fixes shipped via manifest v120 (commit pending). vm-1019 remains the only VM on `openclaw@2026.5.20`; the rest of the fleet stays on `2026.4.26`. `OPENCLAW_PINNED_VERSION` in `lib/ssh.ts` was DELIBERATELY NOT bumped — bumping it would have triggered `stepNpmPinDrift` to upgrade every healthy + assigned VM on the next reconcile cycle, forcing an unvalidated fleet-wide rollout. The version bump lands ONLY after Cooper bakes the next snapshot at 2026.5.20 (post-Edge Esmeralda, June 2+ per Rule 64 approval flow).
+
+**The decision Cooper made (Option A, 2026-05-24):** ship the strip-thinking patch + cgroup fix + typing keys to the manifest now, even though only one VM is currently on 2026.5.20. The patch is benign on 2026.4.26 (the lock-race it prevents doesn't exist there; the 120-second mtime skip just defers compaction during active edits — bounded by existing 4MB+ session safety nets). Pre-patching the fleet means future snapshot bakes inherit the compatibility automatically, and vm-1019 auto-recovers from the file-drift cron revert (see "File-drift bypassed quarantine" below).
+
+#### Why the canary mattered (original motivation, preserved)
+
+Issue [#79681](https://github.com/openclaw/openclaw/issues/79681) — *"Telegram typing indicator no longer stays visible during active agent work"* — is still open upstream. We diagnosed our exact symptom via diag patches (see task #161): `setInterval(3000)` for typing keepalive was firing 14.6s late and `sendTyping` HTTP responses were taking 71 seconds to complete during the Anthropic TTFB window. Root cause: single-threaded Node.js event loop starvation during agent prep. Three adjacent upstream issues — [#73428](https://github.com/openclaw/openclaw/issues/73428) (severe chat latency on 2026.4.26 specifically), [#75656](https://github.com/openclaw/openclaw/issues/75656) (synchronous transcript reads block event loop), [#75984](https://github.com/openclaw/openclaw/issues/75984) (90s event loop blocking during agent run startup) — are **CLOSED** in 2026.5.5+. Bumping to 2026.5.20 picks them up. Even though #79681 itself isn't fixed, the adjacent fixes reduce event-loop saturation enough that the keepalive ticks fire on schedule. Cooper's qualitative test ("super smooth") confirmed sub-minute warm-cache and no perceptible typing dead-air.
+
+#### Canary timeline (UTC)
+
+| Time | Event |
+|---|---|
+| 2026-05-23 11:18:38 | vm-1019 quarantined via `instaclaw_vms.reconcile_quarantined_at` (manual Supabase PATCH; **not** `_quarantine-vm.ts` which only sets `operator_quarantined_at`). Prevents `stepNpmPinDrift` from downgrading. |
+| 2026-05-23 23:20 | `npm install -g openclaw@2026.5.20` succeeds. Pre-existing backup at `/home/openclaw/openclaw-canary-backup-2026.4.26.tar.gz` (61MB, sha256 `682deb6ca8e2f8aa8d2d588762f7236b7140a07dccc4cc3809d3c1a1e4219eb5`) verified restorable via test-extract + `cmp` byte-identical against live. |
+| 2026-05-23 23:22 | Gateway `[gateway] ready`, /health=200. 8/8 canary health checks PASS. Cooper: "super smooth". Soak begins. |
+| 2026-05-24 01:13–01:28 | Cooper sends ~10 messages to @timmy. **Multiple "Something went wrong" failures** — nearly every other message. |
+| 2026-05-24 01:35 | Investigation begins. Agent's self-diagnosis ("wrong shell pattern, heredoc stealing stdin") later identified as Rule 29 hallucination — the agent rationalized failures it couldn't see the real cause of. |
+| 2026-05-24 01:50 | Strip-thinking patch deployed by hand to vm-1019. Sentinel `STRIP_THINKING_v2026_5_20_COMPAT_v1` present in `~/.openclaw/scripts/strip-thinking.py`. Backup preserved at `.pre-v2026.5.20-compat.bak`. |
+| 2026-05-24 02:24 | Gateway restarted with patched strip-thinking. Zero session-takeover errors in subsequent smoke tests. |
+| 2026-05-24 02:45:56 | **`cron/file-drift` REVERTED the patched strip-thinking.py back to the old manifest version.** Sentinel count drops to 0. Quarantine flag did NOT protect — file-drift bypasses it (see "Why quarantine didn't protect file-drift" below). |
+| 2026-05-24 02:46:02 | One `EmbeddedAttemptSessionTakeoverError` fires on session `2026-05-24T02-45-52` — the exact race the patch was meant to prevent, reproduced 6 seconds after the file revert. |
+| 2026-05-24 02:46 – 12:50 | **10 hours, zero further errors.** Gateway uptime since 02:24, NRestarts=0. The lock-race only fires when a session is being actively modified by OpenClaw at the precise strip-thinking moment; Cooper was idle. |
+| 2026-05-24 12:50 | Audit script + investigation confirm file-drift revert. Manifest v120 staged with the codified fixes. Cooper approves Option A. |
+
+#### The three fixes codified in manifest v120 (this commit)
+
+**FIX 1 — strip-thinking.py active-session guard.** `lib/ssh.ts:STRIP_THINKING_SCRIPT` gets a 15-line Python guard inserted into the main loop, gated by `STRIP_THINKING_ACTIVE_THRESHOLD_SEC = 120`:
+
+```python
+mtime_age_sec = time.time() - os.path.getmtime(jsonl_file)
+if mtime_age_sec < STRIP_THINKING_ACTIVE_THRESHOLD_SEC:
+    continue  # skip — agent turn likely in flight
+```
+
+Sentinels `STRIP_THINKING_v2026_5_20_COMPAT_v1` + `SKIP_ACTIVE_SESSION:` added to `vm-manifest.ts:files[].requiredSentinels` so Rule 23 catches any stale-cache regression. Rationale: 2026.5.20 added `EmbeddedAttemptSessionTakeoverError` (`selection-BmjEdnnA.js:7883`) — fatal to the turn when an external writer modifies the session jsonl during the embedded prompt lock window. Our strip-thinking cron runs every minute and modifies sessions (Rule 22 trim, Rule 30 compaction, Layer 3 extract). Skipping sessions modified in the last 120 seconds defers compaction to an idle window — safe because OpenClaw 2026.5.20's native compaction (`mode=safeguard, maxActiveTranscriptBytes=150000, recentTurnsPreserve=10, qualityGuard, memoryFlush=8000`) handles the same work as an owned writer with no self-takeover risk.
+
+**FIX 2 — TasksMax cgroup cap REMOVED.** `vm-manifest.ts:systemdOverrides["TasksMax"]` changed from `"120"` to `"infinity"`. Same change applied to `lib/ssh.ts:configureOpenClaw`'s legacy override-write path (line 8377). Rationale: cooper challenged "who set 120?" during the investigation. Answer: WE did, in our own systemd override. OpenClaw upstream ships nothing for TasksMax. The 120 limit was a 2026-05-05 v86 manifest bump from a default of 75 ("v86 — TasksMax 75 → 120" in the changelog). It was sized for the pre-gbrain workload (Node + Chromium + browser auto + telegram + heartbeat). With gbrain + 2026.5.20's more aggressive subprocess use (Chromium MCP burst, compaction-safeguard side processes), 120 tasks no longer fits — `spawn /bin/sh EAGAIN` errors fired on vm-1019 during multi-tool turns. Setting to `infinity` removes the artificial cap; the kernel's per-cgroup pids.max default (~32K) is the real ceiling. Memory pressure (cgroup MemoryMax=3500M) remains the load-bearing safety net.
+
+**FIX 3 — Typing config keys codified.** `vm-manifest.ts:configSettings` gets two new entries:
+
+```
+"agents.defaults.typingMode": "instant",
+"agents.defaults.typingIntervalSeconds": "3",
+```
+
+These were applied per-VM on vm-1019 during the earlier task #161 diagnostic. They tighten the typing keepalive cadence (closer to Telegram's 5-second `sendChatAction` TTL boundary). Now they're fleet-wide defaults. Because both are under `agents.defaults.*` and that namespace is closure-captured at agent init (Rule 32, **not** hot-reloadable), `RESTART_REQUIRED_CONFIG_PREFIXES` in `lib/vm-reconcile.ts` gets `"agents.defaults."` added — so `stepConfigSettings` triggers `gatewayRestartNeeded=true` and the orchestrator's Step 9 picks up the change via a verified gateway restart.
+
+**FIX 4 (deferred to snapshot bake) — `OPENCLAW_PINNED_VERSION` bump.** `lib/ssh.ts:97` stays at `"2026.4.26"`. Bumping to `"2026.5.20"` in this commit would cause every reconcile-fleet cron tick to detect drift on every VM via `stepNpmPinDrift` and force an `npm install -g openclaw@2026.5.20`. Without the snapshot baked at the new version, every freshly-provisioned VM still gets 2026.4.26 from the Linode image, then immediately gets npm-upgraded by the reconciler — extra wall time, extra failure modes, no proven validation across the fleet. The bump lands as part of the snapshot bake PR, with a documented per-wave rollout schedule. Per Rule 64, requires explicit Cooper approval at bump time.
+
+#### The theories I tested and why each was wrong
+
+The 01:13-01:28 UTC failure cascade triggered four theories before the real cause was found. Documenting because the failure pattern (intermittent "Something went wrong", every other message) is generic enough that future operators will hit similar shapes.
+
+**Theory 1 (WRONG): `compaction-safeguard` is breaking auth on every message.** 2026.5.20 introduces `[compaction-safeguard]` log lines and a more aggressive native compaction. I hypothesized the safeguard was triggering between message processing and OpenAI's auth check, somehow invalidating headers mid-flight. **Cooper pushed back**: *"OpenClaw is literally owned by OpenAI. If compaction-safeguard was actually breaking OAuth auth on every message, OpenAI's own user base would be on fire."* Theory abandoned in ~3 minutes. Lesson: when a hypothesis would imply a fleet-wide outage for a much larger upstream user base, that hypothesis is almost certainly wrong.
+
+**Theory 2 (WRONG): Missing `ChatGPT-Account-Id` header on requests to chatgpt.com.** I noticed 2026.5.20's OAuth path includes this header in some code paths and not others. Hypothesized the request was being dropped by ChatGPT backend because the header was missing for OAuth profile shape. **Disproved by `curl` against `chatgpt.com/backend-api/codex/responses`** with the bearer from vm-1019's `auth-profiles.json` — got HTTP 200 with a valid streaming response. Token was valid; ChatGPT was reachable; the header presence/absence wasn't the issue.
+
+**Theory 3 (WRONG): Originator header version mismatch.** 2026.5.20 changed the `originator` header from `codex_cli_rs` to `openclaw-2026.5.20`. Hypothesized ChatGPT backend rejected requests with the new originator string because the API version pinning had drifted. **Disproved by the same curl test**: a request with `originator: openclaw-2026.5.20` succeeded. Same status. Theory dead.
+
+**Theory 4 (WRONG): JWT validation logic regression.** 2026.5.20's selection module includes a new `validateJWT` flow. Hypothesized our OAuth tokens were getting rejected due to stricter exp/nbf checks. **Disproved by decoding the JWT** — `exp` was 2026-08-21, well into the future. Token shape was valid per the new validator's regex. Theory dead.
+
+Cooper's intervention after theory 4: *"we're three theories deep and still not 100% sure. stop theorizing and PROVE IT."* Then: *"STOP the OAuth investigation. the agent itself just told Cooper the real issue: 'spawn /bin/sh EAGAIN'"*. The agent had been reporting EAGAIN in the journal the whole time; I was looking at OAuth code because the user-facing error said "Something went wrong" and OAuth was the easy thing to grep.
+
+**The real cause (PROVEN):** TasksMax=120 cgroup throttle. `spawn /bin/sh EAGAIN` is the kernel's response to `fork()` when the cgroup is at its `pids.max` limit. 2026.5.20 + gbrain + Chromium MCP + telegram + browser auto adds up to ~115-118 tasks under load; one Chromium MCP burst pushes past 120; fork fails; the in-flight Telegram turn dies with a generic "Something went wrong" because the spawned shell never returned. **Evidence**: 13 EAGAIN occurrences in the journal between 01:13-02:24 UTC, ZERO after the TasksMax=infinity restart at 02:24. Cooper's instinct ("there's a deterministic cause") was right; my theories were noise.
+
+Additional false signal: the agent's post-recovery self-diagnosis ("wrong shell pattern, wrong response key, heredoc that stole stdin from curl, causing a broken pipe") was a Rule 29 hallucination. The agent couldn't see the EAGAIN error directly in its tools — it post-rationalized a plausible-sounding explanation. I almost wasted hours chasing the heredoc theory before Cooper noticed the journal evidence and pointed me at the right signal.
+
+#### What we proved with evidence
+
+| Claim | Evidence |
+|---|---|
+| OAuth tokens were valid throughout the incident | `curl` against `chatgpt.com/backend-api/codex/responses` returned HTTP 200 with the same bearer that was supposedly failing in-app. Logged in the conversation transcript. |
+| `compaction-safeguard` is not the cause of the user-facing errors | Same curl test passed; ChatGPT backend never complained about request shape. Adjacent: OpenAI's own user base would have noticed a fleet-wide regression of this size. |
+| `EmbeddedAttemptSessionTakeoverError` is a NEW class in 2026.5.20 | `grep -rn EmbeddedAttemptSessionTakeoverError` against our preserved 2026.4.26 backup tarball returns ZERO matches. Same grep against the live 2026.5.20 dist finds it at `selection-BmjEdnnA.js:7883`. Class introduced in this version. |
+| strip-thinking.py modifies session jsonls (the writer that races the lock) | Smoke test: `touch ~/.openclaw/agents/main/sessions/<file>.jsonl && python3 ~/.openclaw/scripts/strip-thinking.py` produced a write to the same file within the run. Confirmed by mtime diff. |
+| TasksMax=120 was self-imposed, not from upstream | `grep -rn "TasksMax" $(npm root -g)/openclaw/dist/` returns nothing. Our manifest v86 (2026-05-05) is the origin: `"v86 — TasksMax 75 → 120"`. |
+| `spawn /bin/sh EAGAIN` correlates with task-count saturation | 13 EAGAIN events in journal during 01:13-02:24 UTC. `cat /proc/<pid>/cgroup` → `/user.slice/user-1000.slice/...` mapped to `cgget -r pids.current` showed 115-119 tasks. After TasksMax=infinity restart: 0 EAGAIN events in subsequent hours. |
+| File-drift cron reverts manual file edits regardless of quarantine | `grep -n "quarantined" app/api/cron/file-drift/route.ts` returns nothing — no filter against `reconcile_quarantined_at`. vm-1019's strip-thinking.py mtime went from 01:50:00 (our manual patch) to 02:45:56 UTC (file-drift overwrite); sentinel count: 1 → 0. |
+| The race the strip-thinking patch prevents is REAL | One `EmbeddedAttemptSessionTakeoverError` fired at 02:46:02 UTC — six seconds after the file-drift revert at 02:45:56 — on session `2026-05-24T02-45-52-104Z`. The 50-second window between revert and the next gateway turn was enough for strip-thinking's per-minute cron to race the lock once. |
+| The race is BOUNDED in practice | 10 hours after the revert, zero further session-takeover errors. The race requires concurrent active edit, not just session presence. Idle VMs are safe. |
+| Gateway has been stable since the TasksMax fix | `ActiveEnterTimestamp: 2026-05-24 02:24:25 UTC`, `NRestarts: 0` — gateway has not crashed once in ~10 hours of post-fix runtime. |
+
+#### Why quarantine didn't protect file-drift
+
+`reconcile_quarantined_at` is checked by `app/api/cron/reconcile-fleet/route.ts` (the cv-stale loop that owns `stepNpmPinDrift`). It is NOT checked by `app/api/cron/file-drift/route.ts` (the continuous content reconciliation cron — Rule 47). file-drift runs `stepFiles` every 5 min on every healthy + assigned VM regardless of cv, with no quarantine filter. So while quarantine correctly prevented our 2026.5.20 install from being downgraded to 2026.4.26 (the original goal), it did NOT prevent file-drift from rewriting our manually-deployed strip-thinking patch back to the manifest version.
+
+This is a **gap in the quarantine mechanism**, but for the canary use case it turned out to be a feature: file-drift will now pick up the NEW patched strip-thinking.py from the v120 manifest commit and deliver it to vm-1019 within ~5 minutes of Vercel deploy, auto-recovering the manual fix without operator intervention. P1 follow-up: decide whether to extend quarantine to file-drift (would have allowed our manual patch to persist through the night, at the cost of also blocking legitimate fleet patches from reaching the quarantined VM).
+
+#### Fleet risk analysis for the v120 commit
+
+The manifest bump propagates through TWO cron paths:
+
+1. **`reconcile-fleet`** (every 3 min, filters `cv < MANIFEST.version`): all 156 healthy + assigned VMs at cv=119 re-enter the queue, run all reconciler steps, end up at cv=120. Per `CONFIGURE_AUDIT_BATCH_SIZE=3` with 3-min cadence, the cohort drains in ~2-3h. Each VM gets exactly one verified gateway restart (`stepConfigSettings` detects the two new `agents.defaults.*` keys → triggers `gatewayRestartNeeded=true` per Rule 32). vm-1019 is QUARANTINED so this path does NOT touch it.
+
+2. **`file-drift`** (every 5 min, no version gate): all healthy + assigned VMs (incl. vm-1019, since file-drift bypasses quarantine) get `stepFiles` runs against the new manifest. `strip-thinking.py` content drift detected on every VM; the new sentinel-guarded version (Rule 23 protected) gets atomic-written. No service restart from this path. Full fleet pickup within ~5 min of Vercel deploy.
+
+**Behavioral changes per VM cohort:**
+
+- **vm-1019 (1 VM, on 2026.5.20):** strip-thinking patch returns within 5 min. TasksMax=infinity remains (we set it manually earlier; manifest matches). Typing keys remain (already per-VM applied). Net effect: state stays where it currently is; the manual fixes become codified.
+- **155 fleet VMs (on 2026.4.26):** strip-thinking patch lands within 5 min. TasksMax=120 → infinity via `stepSystemdUnit` over the next 2-3h. Typing keys land via `stepConfigSettings` over the next 2-3h. Each VM gets one verified gateway restart during cv-bump (Rule 32 path), with `stepGatewayRestart` health verify per Rule 5.
+- **120-second mtime guard on 2026.4.26:** the guard is functionally inert because 2026.4.26 doesn't have the `EmbeddedAttemptSessionTakeoverError` class. The side effect is that sessions modified within the last 120s SKIP compaction on the next strip-thinking tick. In practice sessions go quiet between user turns (>120s is common during long Anthropic responses, between conversations, while user is away), so the deferral is brief. Worst case: a session that's continuously edited for >5 min could grow past the 200KB threshold without immediate compaction — bounded by the existing 4MB+ session circuit breakers + OpenClaw's own runtime safety nets.
+
+**Failure modes considered and accepted:**
+
+- **Fleet-wide gateway restart wave (155 VMs × ~30s each over 2-3h).** Spread across cohorts of 3 via `CONFIGURE_AUDIT_BATCH_SIZE` — never more than 3 gateways restarting simultaneously. Customer-visible impact: a single in-flight Telegram turn during the restart window will fail with the standard retry behavior. Same shape as any previous manifest bump (v115 through v119).
+- **TasksMax change requires daemon-reload, which already happens in `stepSystemdUnit`.** Confirmed: the step writes the override.conf and calls `systemctl --user daemon-reload` before restarting the gateway. No additional reload step needed.
+- **Strip-thinking compaction deferral could allow session bloat on heavily-active 2026.4.26 VMs.** Mitigation: 120s is short relative to typical user behavior. If this becomes a problem, drop the threshold to 60s or 30s in a follow-up.
+
+**Failure modes NOT accepted (would block commit):**
+
+- **Forced fleet-wide OpenClaw upgrade.** Solved by NOT bumping `OPENCLAW_PINNED_VERSION`. `stepNpmPinDrift` continues to pin everyone at 2026.4.26 except vm-1019 (quarantined). Manifest v120 changes only TasksMax, typing keys, strip-thinking content, and `RESTART_REQUIRED_CONFIG_PREFIXES`.
+- **vm-1019 downgraded to 2026.4.26 by the reconcile-fleet path.** Solved by `reconcile_quarantined_at` (set 2026-05-23 11:18:38 UTC). Confirmed: reconcile-fleet route filters quarantined VMs out of the candidate query.
+
+#### Pre-bake audit gate (the `_audit-canary-vs-manifest.ts` discipline)
+
+A new script at `scripts/_audit-canary-vs-manifest.ts` (codified tonight) is the mandatory pre-bake gate for any future canary → snapshot transition. It probes a target VM and reports drift across: configSettings, systemd overrides, cron entries, installed package versions, requiredSentinels, cgroup TasksMax limits. A `PER_VM_EXCLUSIONS` set whitelists per-VM user prefs that don't belong in the manifest (like `agents.defaults.model.primary`, which users override via `/use sonnet` etc.).
+
+Post-commit, the audit script reports ONLY the 2 deferred openclaw version findings (manifest 2026.4.26 vs vm-1019 2026.5.20) — proving the codification captured everything else. Any other finding would indicate a gap. The script is the answer to "did we miss anything tonight?" for any future canary cycle.
+
+#### What's still pending
+
+1. **Snapshot bake at 2026.5.20.** Cooper's call after additional vm-1019 soak. Post-Edge (June 2+) per Rule 64 approval. Will include the `OPENCLAW_PINNED_VERSION` bump in `lib/ssh.ts` + a per-wave fleet rollout plan per the OpenClaw Upgrade Playbook.
+
+2. **Quarantine extension to file-drift.** P1 follow-up: decide whether to add `not(reconcile_quarantined_at IS NOT NULL)` filter to the file-drift candidate query. Pros: manual operator patches persist. Cons: legitimate fleet patches (security fixes, Rule 22-class corrections) can't reach quarantined VMs.
+
+3. **Telegram 100-command cap.** 2026.5.20 enforces Telegram's `setMyCommands` 100-command limit; we have 118. Dropped commands still work when typed; only the menu autocomplete is missing them. Fix path: either trim to 100 or use per-scope command lists (`setMyCommands` supports separate 100-cmd lists per scope: default, all_group_chats, all_chat_administrators, chat_member, per-language). Fleet-wide change; deferred until snapshot bake decision.
+
+4. **Cosmetic schema warnings on 2026.5.20.** `plugins.entries.brave` and `plugins.entries.acpx` are pre-existing stale config entries flagged by 2026.5.20's stricter schema. Not blockers (Brave Search still functions via env var autodetect), but should be cleaned up in the same PR that bumps OPENCLAW_PINNED_VERSION.
+
+5. **Eventual upstream fix for #79681.** The typing-keepalive issue is still open. Once OpenClaw ships a real fix, our `agents.defaults.typingMode=instant` workaround can probably be removed.
+
+#### Rollback paths (preserved)
+
+**Rollback strip-thinking patch only** (if the 120s mtime guard introduces unforeseen issues on 2026.4.26):
+
+```bash
+ssh -i /tmp/ic_ssh_key openclaw@<VM_IP> '
+  cp ~/.openclaw/scripts/strip-thinking.py.pre-v2026.5.20-compat.bak ~/.openclaw/scripts/strip-thinking.py
+'
+```
+
+Then revert the `STRIP_THINKING_SCRIPT` change in `lib/ssh.ts` and the two sentinels in `vm-manifest.ts:requiredSentinels`, bump manifest version, deploy. file-drift will push the rolled-back version to the fleet within ~5 min.
+
+**Rollback vm-1019 to 2026.4.26** (if 2026.5.20 turns out to have a deeper regression):
+
+```bash
+ssh -i /tmp/ic_ssh_key openclaw@162.216.16.231 '
+systemctl --user stop openclaw-gateway
+rm -rf /home/openclaw/.nvm/versions/node/v22.22.2/lib/node_modules/openclaw
+rm -f  /home/openclaw/.nvm/versions/node/v22.22.2/bin/openclaw
+tar xzf /home/openclaw/openclaw-canary-backup-2026.4.26.tar.gz -C /
+systemctl --user start openclaw-gateway
+sleep 5
+systemctl --user is-active openclaw-gateway
+curl -sf -o /dev/null -w "/health=%{http_code}\n" --max-time 5 localhost:18789/health
+source ~/.nvm/nvm.sh && openclaw --version'
+```
+
+Then clear the quarantine: `npx tsx scripts/_unquarantine-vm.ts instaclaw-vm-1019` (or PATCH `reconcile_quarantined_at: null`). After clearing, the next reconcile-fleet tick will `stepNpmPinDrift` vm-1019 back to whatever `OPENCLAW_PINNED_VERSION` says (currently 2026.4.26, so no-op — but matters if the pin was bumped in the meantime).
+
+**Rollback the entire manifest v120 bump:**
+
+```bash
+git revert <commit-sha>  # the v120 commit
+git push origin main
+```
+
+Reconciler picks up v119 manifest on next deploy. File-drift writes the old strip-thinking back. `stepSystemdUnit` rewrites TasksMax back to 120. `stepConfigSettings` removes the typing keys.
+
+**Backup retention:** keep `/home/openclaw/openclaw-canary-backup-2026.4.26.tar.gz` on vm-1019 until the snapshot bake decision is made AND (if fleet upgrades to 2026.5.20) a new 2026.5.20 snapshot is verified working on a paying-customer VM. Estimated retention: 1-2 weeks post-decision.
+
+#### Banned patterns during the remaining soak
+
+- Bumping `OPENCLAW_PINNED_VERSION` in `lib/ssh.ts` without Cooper's explicit Rule 64 approval AND a baked 2026.5.20 snapshot. The bump alone forces fleet-wide npm upgrade with no validated rollout plan.
+- Clearing `reconcile_quarantined_at` on vm-1019 before the snapshot decision. Even if a reconciler auto-quarantine condition fires, do NOT clear — that re-includes vm-1019 in the cv-stale candidate query and `stepNpmPinDrift` immediately downgrades it.
+- Deleting the `/home/openclaw/openclaw-canary-backup-2026.4.26.tar.gz` tarball on vm-1019. It's the only paste-ready rollback path until the snapshot decision is made.
+- Trimming the 118 → 100 Telegram commands list before the snapshot bake decision. That's a fleet-wide manifest change; the dropped commands still work when typed, just not in autocomplete.
+- Skipping the `_audit-canary-vs-manifest.ts` run on any future canary cycle. The script is the answer to "did we miss anything?" — running it catches gaps before they reach the fleet.
+
+#### Detection rule (post-shipped state)
+
+Any PR that touches `lib/ssh.ts:OPENCLAW_PINNED_VERSION` or `lib/ssh.ts:configureOpenClaw` (TasksMax-related blocks) or `lib/vm-manifest.ts:STRIP_THINKING_SCRIPT`-consuming entries must state in the description:
+
+1. Does this change require a snapshot rebake? (If yes, name the rebake PR.)
+2. Has the change been validated on a 2026.5.20 canary? (If yes, name the canary VM + soak duration.)
+3. Has `_audit-canary-vs-manifest.ts` been run against the canary VM post-change? (If yes, attach the output.)
+
+If any answer is "no" or "TBD," the PR is incomplete. The cost of running the audit is ~30 seconds; the cost of NOT running it is another 02:45:56 UTC file-drift surprise.
+
+#### Related rules
+
+- **Rule 22 / Rule 30** (never destructively modify session state): the strip-thinking 120s guard is in service of these. The guard skips writes to active sessions, preserving the agent's in-flight context.
+- **Rule 23** (sentinel-guarded templates): the two new sentinels (`STRIP_THINKING_v2026_5_20_COMPAT_v1`, `SKIP_ACTIVE_SESSION:`) close the stale-module-cache regression class for this specific patch.
+- **Rule 29** (agents hallucinate diagnoses): the "wrong shell pattern / heredoc stealing stdin" self-diagnosis from the vm-1019 agent is the cautionary tale that almost cost me hours of investigation time.
+- **Rule 32** (some config keys require restart): `agents.defaults.*` added to `RESTART_REQUIRED_CONFIG_PREFIXES` because typing keys are closure-captured at agent init.
+- **Rule 47** (continuous reconciliation, not version-gated): explains why file-drift overwrote our manual patch at 02:45 UTC — and also why the v120 commit will deliver the codified patch to the fleet within ~5 min.
+- **Rule 64** (manifest version bumps require explicit Cooper approval; test on vm-1019 first): the v120 bump itself satisfied this rule (Cooper approved Option A after seeing the diff). The DIFF 1 OPENCLAW_PINNED_VERSION bump is DEFERRED until the snapshot bake PR re-invokes Rule 64.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.

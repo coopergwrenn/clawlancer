@@ -108,6 +108,17 @@ import * as path from "path";
 
 const RESTART_REQUIRED_CONFIG_PREFIXES: string[] = [
   "messages.",
+  // v120 (2026-05-24): agents.defaults.* keys are closure-captured at
+  // agent-run init — verified empirically on vm-1019 (typingMode +
+  // typingIntervalSeconds set via `openclaw config set`, journal showed
+  // "[reload] config change detected" but never "[reload] config hot
+  // reload applied" for these keys; openclaw CLI confirmed with "Restart
+  // the gateway to apply"). Without this prefix, stepConfigSettings writes
+  // the new value to openclaw.json but never triggers the restart that
+  // makes the agent runtime pick it up — fleet would silently fail to
+  // apply typing UX changes until each VM was naturally restarted
+  // (could be days). See CLAUDE.md Rule 32 + Rule 65.
+  "agents.defaults.",
 ];
 
 function keyRequiresGatewayRestart(key: string): boolean {

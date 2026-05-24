@@ -1673,7 +1673,7 @@ export const VM_MANIFEST = {
    * IMPORTANT for snapshot bake: the bake VM should reconcile to v113,
    * not v112 — Cooper notified snapshot terminal at bump time.
    */
-  version: 119,
+  version: 120,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -1830,6 +1830,21 @@ export const VM_MANIFEST = {
     // VM, BEFORE this flag flips back to "true" — and only with Cooper's
     // explicit approval per Rule 64.
     "messages.statusReactions.enabled": "false",
+    // v120 (2026-05-24): typing keepalive tuning.
+    //   typingMode=instant fires signalRunStart at run-begin (BEFORE the LLM
+    //   call), starting the keepalive loop immediately. typingIntervalSeconds=3
+    //   keeps the loop refreshing under Telegram's 5s typing TTL (default 6s
+    //   leaves a 1s dead-air gap per cycle).
+    //   Verified end-to-end on vm-1019 canary 2026-05-23 — typing stayed
+    //   continuous through warm-cache turns. Empirically validated on 2026.5.20;
+    //   keys are schema-compatible with 2026.4.26 (existed for many versions).
+    //   Both keys require gateway restart to take effect (closure-captured at
+    //   agent-run init) — RESTART_REQUIRED_CONFIG_PREFIXES in
+    //   lib/vm-reconcile.ts must contain "agents.defaults." or the reconciler
+    //   will set the value but never trigger the restart that makes it live.
+    //   See CLAUDE.md Rule 65 + Rule 32.
+    "agents.defaults.typingMode": "instant",
+    "agents.defaults.typingIntervalSeconds": "3",
     // v71: OpenClaw's default discovery.mdns.mode is "minimal" (per
     // runtime-schema-TpYHXgGk.js: `cfg.discovery?.mdns?.mode ?? "minimal"`).
     // Bonjour mDNS broadcast triggers a CIAO-library shutdown race when the
@@ -2182,6 +2197,17 @@ export const VM_MANIFEST = {
         "ORPHAN_REPAIR:",
         "def _is_session_file",
         "STALE_MEMORY_FLAG_CLEANUP:",
+        // v120 (2026-05-24): STRIP_THINKING_v2026_5_20_COMPAT_v1 guard.
+        // Skips modifying sessions whose mtime is within the last 120s
+        // (proxy for "agent turn in flight"). Prevents OpenClaw 2026.5.20's
+        // EmbeddedAttemptSessionTakeoverError from firing when our cron
+        // races the agent's prompt-release lock window. No-op on 2026.4.26
+        // (the takeover error class doesn't exist there) — pure defense-
+        // in-depth. Both sentinels load-bearing per Rule 23: the version
+        // marker AND the runtime log-line proving the guard is wired.
+        // See CLAUDE.md Rule 65.
+        "STRIP_THINKING_v2026_5_20_COMPAT_v1",
+        "SKIP_ACTIVE_SESSION:",
       ],
     },
     {
@@ -2720,7 +2746,7 @@ export const VM_MANIFEST = {
     "ExecStopPost": "/bin/bash /home/openclaw/.openclaw/scripts/memory-snapshot.sh pre-stop 2>/dev/null || true",
     "MemoryHigh": "3G",             // Soft limit: kernel throttles at 3GB (gateway slows, doesn't die)
     "MemoryMax": "3500M",           // Hard kill: cgroup OOM at 3.5GB (leaves 500MB for sshd/system)
-    "TasksMax": "120",              // v86 (2026-05-05): raised 75 → 120. The 75 cap was the *real* root cause of vm-724-class fork errors (34/24h on vm-724 with 0 zombies in the snapshot — see docs/prd/zombie-reaping-tini-analysis-2026-05-05.md §11). Chrome alone uses ~50; Node ~11; idle headroom was 14 — easily blown by an agent burst. 120 restores burst headroom (~59) without restoring the full pre-incident 150 risk. Canary on vm-050 first per Upgrade Playbook before fleet rollout.
+    "TasksMax": "infinity",         // v120 (2026-05-24): removed artificial cap. Investigation 2026-05-24 (vm-1019 EAGAIN during Chromium MCP burst) proved prior caps (150 → 75 → 120) were OURS — OpenClaw upstream ships NO TasksMax constraint, Ubuntu user.slice defaults to "infinity". TasksMax counts THREADS not processes; a single Chromium headless session uses 100+ threads (browser + GPU + renderer + utility + network + each with internal threads), making 120 ~half of normal-burst need. The "spawn /bin/sh EAGAIN" failures earlier this canary night were the cap, not a runaway. Runaway protection is still in place via MemoryMax=3500M (kernel kills cgroup at 3.5GB) + OOMScoreAdjust=500 (kernel kills gateway before sshd) + prctl-subreaper (zombie reaping). See CLAUDE.md Rule 65 for full evidence + Rule 86 (the prior 75→120 raise this supersedes).
     "OOMScoreAdjust": "500",        // Higher = killed first. sshd has -900. Gateway dies before sshd.
     // Removed 2026-05-15: RuntimeMaxSec=86400 + RuntimeRandomizedExtraSec=3600. The 24h
     // forced restart caused mid-conversation SIGTERM with no drain mechanism.
