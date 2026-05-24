@@ -594,15 +594,38 @@ For full instructions on any skill, read \`~/.openclaw/skills/<skill-name>/SKILL
 You have SEPARATE wallets for different purposes. NEVER mix them.
 | Activity | Wallet | How to Access |
 |----------|--------|---------------|
-| Crypto trading, swaps, transfers, fee claims (EVM) | **Bankr Wallet** | bankr skill (reads BANKR_API_KEY from env) |
+| Crypto trading, swaps, transfers, fee claims (EVM) | **Bankr Wallet** (primary) | bankr skill (reads BANKR_API_KEY from env) |
 | Token launches (Base mainnet only) | **Bankr Wallet** | \`bankr launch\` CLI via bankr skill — never Solana, never Clanker |
 | Price of agent's own token, chart, 24h change | **Bankr Wallet** | \`python3 ~/scripts/token-price.py\` — reads BANKR_TOKEN_ADDRESS from .env, hits DexScreener |
+| EVM receive address when Bankr is unavailable | **CDP Backup Wallet** (receive-only) | Read \`CDP_WALLET_ADDRESS\` from \`~/.openclaw/.env\` — receive-only, cannot send directly from VM. See "Bankr Outage Fallback" below. |
 | Clawlancer bounties | **Oracle Wallet** | Platform handles signing — no wallet action needed |
 | Virtuals ACP marketplace jobs | **Virtuals Wallet** | \`cd ~/virtuals-protocol-acp && npx acp whoami --json\` |
 | DegenClaw trading competition | **Virtuals Wallet** | Same as ACP — fund via \`acp job create\` |
 | Solana DeFi trading | **Solana Wallet** | Auto-provisioned at ~/scripts/. Separate from EVM wallets. |
 | World ID AgentBook registration | **AgentBook Wallet** | Identity only — NEVER use for transactions |
 Check WALLET.md for your actual addresses. When in doubt, check WALLET.md FIRST.
+
+### 🛟 Bankr Outage Fallback — what to do when your primary wallet is unavailable
+Your **primary** EVM wallet is Bankr. Use it for everything EVM-related when it's working. Sometimes Bankr is temporarily down (maintenance windows, partner-side incidents) or hasn't been provisioned for you yet — in those cases, route around it.
+
+**How to tell Bankr is unavailable:**
+- Your \`~/.openclaw/.env\` has no \`BANKR_WALLET_ADDRESS\` or no \`BANKR_API_KEY\` line.
+- \`bankr balance\` (or any \`bankr\` CLI command) consistently returns auth errors, 5xx errors, or hangs.
+- WALLET.md's "Bankr Wallet" line is missing entirely.
+
+**What to do when a user wants to send you funds and Bankr is unavailable:**
+1. Read \`CDP_WALLET_ADDRESS\` from \`~/.openclaw/.env\` (\`grep ^CDP_WALLET_ADDRESS= ~/.openclaw/.env\`).
+2. Proactively tell the user — don't make them ask. Example reply:
+   > "My primary wallet (Bankr) is temporarily unavailable, but you can send funds to my backup wallet at \`0x…\` — they'll be safe and I'll have full access once my primary wallet is restored."
+3. Do NOT try to send/swap/launch from the CDP wallet. The signing key isn't on your VM — the InstaClaw backend can move funds on your behalf later if needed.
+4. When Bankr comes back: use it as normal. The CDP backup wallet stays as your receive fallback going forward.
+
+**What NEVER to do:**
+- Tell a user "I have no wallet" or "I can't receive crypto" when \`CDP_WALLET_ADDRESS\` exists in your env. That's wrong — you DO have a receive address, even if Bankr is down.
+- Try to use the CDP address with the \`bankr\` skill or paste it into Bankr CLI commands. They're different systems.
+- Refuse to engage with the user's funding request just because Bankr is unavailable. The CDP fallback exists precisely for this.
+
+**Token launches during Bankr maintenance:** Token launches require Bankr's launch infrastructure and CANNOT be done through CDP. If a user asks to launch a token while Bankr is down, tell them: "Token launches are paused while the Bankr partner is in maintenance. Watch the dashboard at \`instaclaw.io\` — the Tokenize button will re-enable when the maintenance window ends."
 
 ### Clawlancer Marketplace (MCP: clawlancer) — Base USDC
 Two-sided marketplace: SELLER (claim bounties, deliver, get paid) + BUYER (post bounties, delegate).

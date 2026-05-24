@@ -305,6 +305,108 @@ function checkEnvVarsPresent(): CheckResult {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// CDP backup wallet readiness — restored 2026-05-24 (Cooper P0).
+//
+// CDP is the agent's BACKUP wallet for EVM operations when Bankr is in
+// maintenance. Every freshly-baked snapshot must be able to provision CDP
+// wallets on first VM boot. Four prerequisites:
+//   1. CDP_API_KEY_ID + CDP_API_KEY_SECRET + CDP_WALLET_SECRET in env
+//      (loaded from instaclaw/.env.local for local pre-bake; the same
+//      keys must also be live in Vercel production for the post-bake
+//      backfill cron to work).
+//   2. @coinbase/cdp-sdk in instaclaw/package.json (Vercel bundling).
+//   3. instaclaw/lib/cdp-wallet.ts present (the provisioning helper).
+//   4. supabase/pending_migrations/*vm_cdp_wallet*.sql OR the columns
+//      already applied to prod (we check both).
+//
+// All four are CRITICAL — bake refuses if any fails. Without CDP, paying
+// users have no backup wallet during a Bankr outage, which is what this
+// whole infrastructure exists to prevent.
+// ──────────────────────────────────────────────────────────────────────────────
+function checkCdpReadiness(): CheckResult[] {
+  const results: CheckResult[] = [];
+
+  // Check 1: env vars
+  const cdpEnvVars = ["CDP_API_KEY_ID", "CDP_API_KEY_SECRET", "CDP_WALLET_SECRET"];
+  const cdpEnvMissing = cdpEnvVars.filter((k) => !process.env[k]);
+  results.push({
+    name: "CDP env vars (backup wallet provisioning)",
+    severity: "CRITICAL",
+    passed: cdpEnvMissing.length === 0,
+    summary:
+      cdpEnvMissing.length === 0
+        ? `${cdpEnvVars.length}/${cdpEnvVars.length} present ✓`
+        : `missing: ${cdpEnvMissing.join(", ")}`,
+    details:
+      cdpEnvMissing.length > 0
+        ? "Set in Vercel production via the Web UI (Coinbase CDP dashboard → Developer Platform → API Keys). Backup wallet provisioning is DOWN without these — paying users have no EVM receive address when Bankr is in maintenance."
+        : undefined,
+  });
+
+  // Check 2: SDK dependency in package.json
+  let sdkInPackageJson = false;
+  try {
+    const pkg = JSON.parse(readFileSync(resolve(repoInstaclaw, "package.json"), "utf-8")) as {
+      dependencies?: Record<string, string>;
+    };
+    sdkInPackageJson = !!pkg.dependencies?.["@coinbase/cdp-sdk"];
+  } catch {
+    sdkInPackageJson = false;
+  }
+  results.push({
+    name: "@coinbase/cdp-sdk in package.json",
+    severity: "CRITICAL",
+    passed: sdkInPackageJson,
+    summary: sdkInPackageJson ? "present ✓" : "MISSING from instaclaw/package.json",
+    details: sdkInPackageJson
+      ? undefined
+      : "Add via `npm install @coinbase/cdp-sdk` from instaclaw/. Without it, Vercel nft tracer won't bundle the SDK and the CDP provision call throws at runtime.",
+  });
+
+  // Check 3: helper file
+  const helperPath = resolve(repoInstaclaw, "lib/cdp-wallet.ts");
+  const helperPresent = existsSync(helperPath);
+  results.push({
+    name: "lib/cdp-wallet.ts (provisionCdpWallet helper)",
+    severity: "CRITICAL",
+    passed: helperPresent,
+    summary: helperPresent ? "present ✓" : "MISSING",
+    details: helperPresent
+      ? undefined
+      : "Restore the helper before baking. Without it, /api/vm/assign + /api/billing/webhook + cron/provision-missing-cdp-wallets all fail to import.",
+  });
+
+  // Check 4: migration tracked (pending or applied). We check both
+  // pending_migrations/ and migrations/ since either is acceptable
+  // (Rule 56: pending until prod-applied, then git-mv to migrations).
+  const migrationPatterns = ["20260524180000_vm_cdp_wallet.sql"];
+  const pendingDir = resolve(repoInstaclaw, "supabase/pending_migrations");
+  const appliedDir = resolve(repoInstaclaw, "supabase/migrations");
+  const migrationLocation = migrationPatterns
+    .map((name) => {
+      if (existsSync(resolve(pendingDir, name))) return `pending: ${name}`;
+      if (existsSync(resolve(appliedDir, name))) return `applied: ${name}`;
+      return null;
+    })
+    .filter((s): s is string => s !== null);
+  results.push({
+    name: "CDP migration tracked in repo",
+    severity: "CRITICAL",
+    passed: migrationLocation.length > 0,
+    summary:
+      migrationLocation.length > 0
+        ? migrationLocation.join("; ")
+        : "MISSING from both pending_migrations/ and migrations/",
+    details:
+      migrationLocation.length > 0
+        ? undefined
+        : "Migration file 20260524180000_vm_cdp_wallet.sql adds cdp_wallet_id + cdp_wallet_address to instaclaw_vms. Apply via Supabase Studio per Rule 56, then git mv into migrations/.",
+  });
+
+  return results;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // 2026-05-22 P0 incident response: env var VALUE validation
 //
 // `checkEnvVarsPresent` above only verifies that vars are SET. Per the
@@ -1034,6 +1136,8 @@ async function main(): Promise<number> {
   push(checkEnvVarsPresent());
   // 2026-05-22 incident response: value validation, not just presence.
   for (const r of checkBooleanEnvVarValues()) push(r);
+  // 2026-05-24 CDP backup wallet restoration (Cooper P0).
+  for (const r of checkCdpReadiness()) push(r);
   push(checkLinodeSnapshotMatch());
 
   const manifestCheck = checkManifestVersion();

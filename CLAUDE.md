@@ -1906,8 +1906,15 @@ sudo rm -rf /var/log/*.gz /var/log/*.1 /var/log/*.old
 | 15e | Cron: silence-watchdog.py | `crontab -l \| grep -q "silence-watchdog.py"` |
 | 15f | Cron: openclaw memory index | `crontab -l \| grep -q "openclaw memory index"` |
 | 15g | Cron: SHM cleanup | `crontab -l \| grep -q "SHM_CLEANUP"` |
+| 16a | CDP backup wallet helper `instaclaw/lib/cdp-wallet.ts` present | `test -f /Users/cooperwrenn/wild-west-bots/instaclaw/lib/cdp-wallet.ts` |
+| 16b | `@coinbase/cdp-sdk` in `instaclaw/package.json` | `grep -q '@coinbase/cdp-sdk' /Users/cooperwrenn/wild-west-bots/instaclaw/package.json` |
+| 16c | CDP env vars set in Vercel `instaclaw` project (production + preview) | Vercel dashboard → instaclaw → Settings → Environment Variables. Must show `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`. |
+| 16d | Migration `20260524180000_vm_cdp_wallet.sql` applied to prod | `SELECT column_name FROM information_schema.columns WHERE table_name='instaclaw_vms' AND column_name IN ('cdp_wallet_id','cdp_wallet_address');` — must return 2 rows |
+| 16e | Cron `/api/cron/provision-missing-cdp-wallets` registered | `grep -q 'provision-missing-cdp-wallets' /Users/cooperwrenn/wild-west-bots/instaclaw/vercel.json` |
 
 **CRITICAL: ALL 7 crons (15a-15g) must be present.** Missing crons caused a P0 incident on 2026-04-08 where sessions grew to 4MB+ and burned credits 20x faster (see commit 68e9e4c). The reconciler does NOT catch missing crons on freshly configured VMs — configureOpenClaw() now installs them, but they must also be in the snapshot as defense-in-depth.
+
+**CRITICAL: items 16a-16e are non-negotiable.** Missing any of them means newly-provisioned VMs from this snapshot will have NO backup wallet during a Bankr outage. The original CDP infrastructure was lost during the Bankr cutover in early 2026 and silently absent for months; restored 2026-05-24 (Cooper P0). The `scripts/_pre-bake-check.ts` script verifies all five gates automatically (`checkCdpReadiness`) and refuses the bake on any failure.
 
 **8. Check disk usage — MUST be under 5.9GB:**
 ```bash

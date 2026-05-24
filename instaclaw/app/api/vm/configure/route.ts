@@ -414,6 +414,11 @@ export async function POST(req: NextRequest) {
       bankrEvmAddress: vm.bankr_evm_address ?? undefined,
       bankrTokenAddress: vm.bankr_token_address ?? undefined,
       bankrTokenSymbol: vm.bankr_token_symbol ?? undefined,
+      // CDP backup wallet — receive-only address written to ~/.openclaw/.env
+      // as CDP_WALLET_ADDRESS and rendered in WALLET.md as the agent's
+      // Bankr-outage fallback. Pre-migration this column doesn't exist;
+      // optional-chain so the SELECT("*") gracefully returns undefined.
+      cdpWalletAddress: (vm as { cdp_wallet_address?: string | null }).cdp_wallet_address ?? undefined,
       partner: userProfile?.partner ?? undefined,
     }, userId);
 

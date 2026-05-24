@@ -205,6 +205,15 @@ export interface TarballParams {
    *  passes config.bankrTokenName directly into the WALLET.md template
    *  via lib/ssh.ts:buildWalletMd. */
   bankrTokenName?: string | null;
+  /**
+   * Coinbase Developer Platform (CDP) backup wallet — receive-only EVM
+   * address on Base. Server-managed via Coinbase MPC custody; no signing
+   * material lands on the VM. Always emitted in .env as
+   * `CDP_WALLET_ADDRESS` when set (independent of Bankr) so the agent's
+   * Bankr-outage fallback works on every cloud-init-provisioned VM.
+   * Rendered in WALLET.md as the "Backup Wallet (Coinbase CDP)" section.
+   */
+  cdpWalletAddress?: string | null;
 
   // ── World ID ──
   worldIdNullifier?: string | null;
@@ -467,6 +476,7 @@ export function buildIdentityMdForTarball(p: TarballParams): string {
 export function buildWalletMdForTarball(p: TarballParams): string {
   return buildWalletMd({
     bankrEvmAddress: p.bankrEvmAddress,
+    cdpWalletAddress: p.cdpWalletAddress,
     bankrTokenAddress: p.bankrTokenAddress,
     bankrTokenSymbol: p.bankrTokenSymbol,
     bankrTokenName: p.bankrTokenName,
@@ -570,6 +580,11 @@ export function buildDotEnv(p: TarballParams): string {
   if (p.bankrApiKey) lines.push(`BANKR_API_KEY=${p.bankrApiKey}`);
   if (p.bankrTokenAddress) lines.push(`BANKR_TOKEN_ADDRESS=${p.bankrTokenAddress}`);
   if (p.bankrTokenSymbol) lines.push(`BANKR_TOKEN_SYMBOL=${p.bankrTokenSymbol}`);
+  // CDP backup wallet address — receive-only fallback for EVM operations
+  // when Bankr is unavailable. Emitted in its own conditional, independent
+  // of any Bankr field, so the fallback path works on every cloud-init VM
+  // including those provisioned during a Bankr maintenance window.
+  if (p.cdpWalletAddress) lines.push(`CDP_WALLET_ADDRESS=${p.cdpWalletAddress}`);
   if (p.userTimezone) lines.push(`USER_TIMEZONE=${p.userTimezone}`);
 
   // ── World ID env vars — paired emission ─────────────────────────────
@@ -912,6 +927,7 @@ export function buildOpenClawJsonForTarball(p: TarballParams): object {
     bankrEvmAddress: p.bankrEvmAddress ?? undefined,
     bankrTokenAddress: p.bankrTokenAddress ?? undefined,
     bankrTokenSymbol: p.bankrTokenSymbol ?? undefined,
+    cdpWalletAddress: p.cdpWalletAddress ?? undefined,
     partner: p.partner ?? undefined,
   };
 

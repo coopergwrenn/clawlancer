@@ -7,6 +7,7 @@ import { VM_MANIFEST } from "@/lib/vm-manifest";
 import { sendPaymentFailedEmail, sendCanceledEmail, sendPendingEmail, sendTrialEndingEmail, sendAdminAlertEmail, sendVMReadyEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 import { provisionBankrWallet } from "@/lib/bankr-provision";
+import { provisionCdpWallet } from "@/lib/cdp-wallet";
 import { thawVM } from "@/lib/vm-freeze-thaw";
 import { markThawPendingForV2User } from "@/lib/freeze-v2-thaw-entry";
 import { wakeIfHibernating } from "@/lib/wake-vm";
@@ -533,6 +534,35 @@ async function processEvent(event: any) {
             ).catch(() => {});
             break;
           }
+        }
+
+        // ── CDP backup wallet (runs FIRST as reliable baseline) ──
+        // Coinbase Developer Platform MPC wallet — server-managed.
+        // Independent of Bankr; runs even during Bankr maintenance so
+        // every agent always has a working EVM receive address.
+        // Address lands in ~/.openclaw/.env + WALLET.md downstream.
+        //
+        // Idempotent: provisionCdpWallet SELECTs cdp_wallet_address
+        // FIRST and short-circuits if present. CDP has no idempotency
+        // key (every createAccount mints a new account) so the DB
+        // check prevents orphan accumulation on webhook retries.
+        //
+        // Wrapped in its own try/catch so a CDP failure NEVER blocks
+        // Bankr provisioning. Cron safety net (provision-missing-
+        // cdp-wallets) catches anything that slipped through.
+        try {
+          await provisionCdpWallet({
+            vmId: assignResult.vmId,
+            userId,
+          });
+        } catch (cdpErr) {
+          logger.error("CDP backup wallet provision failed in billing/webhook (non-fatal)", {
+            route: "billing/webhook",
+            error: cdpErr instanceof Error ? cdpErr.message : String(cdpErr),
+            vmId: assignResult.vmId,
+            userId,
+          });
+          // Non-fatal: cron safety net catches it on the next cycle.
         }
 
         // Provision Bankr wallet for the agent (non-fatal — agent works without it).

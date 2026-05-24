@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1048.0",
+    "@coinbase/cdp-sdk": "^1.44.0",
     "@novnc/novnc": "^1.6.0",
     "@resvg/resvg-js": "^2.6.2",
     "@sentry/nextjs": "^10.38.0",

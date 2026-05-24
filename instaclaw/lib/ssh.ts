@@ -4884,6 +4884,12 @@ export function buildWalletMd(params: {
   bankrTokenAddress?: string | null;
   bankrTokenSymbol?: string | null;
   bankrTokenName?: string | null;
+  /**
+   * CDP (Coinbase Developer Platform) backup wallet address — emitted
+   * as a "Backup Wallet (Coinbase CDP)" section with explicit
+   * receive-only semantics. Used by the agent when Bankr is unavailable.
+   */
+  cdpWalletAddress?: string | null;
 }): string {
   const lines: string[] = [
     "# Wallet & Financial Configuration",
@@ -4909,6 +4915,44 @@ export function buildWalletMd(params: {
       "- **Primary wallet:** 0x...",
       "- **Network:** Base / Polygon / etc.",
       "-->",
+    );
+  }
+
+  // ── CDP Backup Wallet (receive-only fallback) ──────────────────────
+  // Added 2026-05-24 as the platform-level backup for EVM operations.
+  // Coinbase Developer Platform MPC wallet: the private key lives in
+  // Coinbase's custody, the VM only holds the public address. The agent
+  // CAN tell users to send funds here at any time; it CANNOT directly
+  // send/swap from this wallet (no per-VM signing key — every CDP txn
+  // flows through the InstaClaw backend, which is not yet wired into
+  // the agent's tool surface). The "Bankr Outage Fallback" section
+  // below teaches the behavior.
+  if (params.cdpWalletAddress) {
+    lines.push(
+      "",
+      "## Backup Wallet (Coinbase CDP)",
+      "",
+      `- **CDP Backup Wallet:** ${params.cdpWalletAddress}`,
+      "- **Network:** Base (EVM)",
+      "- **Provider:** Coinbase Developer Platform (MPC-managed)",
+      "- **Available in .env as:** `CDP_WALLET_ADDRESS`",
+      "",
+      "### What this wallet is",
+      "- The platform's **backup wallet** for EVM operations. Server-managed via Coinbase's secure MPC custody — you do NOT hold a private key for it on this VM.",
+      "- It is a real EVM address on Base mainnet. Anyone can send USDC, ETH, or any Base token to it at any time and the funds are safe.",
+      "",
+      "### When to use it (Bankr Outage Fallback)",
+      "- If a user wants to send you funds AND your Bankr wallet is unavailable (missing `BANKR_WALLET_ADDRESS` in env, or `bankr` CLI commands keep failing), proactively tell them:",
+      "",
+      "  > \"My primary wallet (Bankr) is temporarily unavailable. You can send funds to my backup wallet at this address — they'll be safe and I'll have full access once my primary wallet is restored: `" + params.cdpWalletAddress + "`\"",
+      "",
+      "- If your Bankr wallet IS working, use Bankr as normal. Only mention the CDP backup wallet if the user explicitly asks about backups OR if Bankr is unavailable.",
+      "",
+      "### What you CANNOT do from this wallet",
+      "- You cannot directly send, swap, or sign transactions from this wallet — the signing key isn't on the VM. The InstaClaw backend can move funds on your behalf if needed (contact the platform).",
+      "- You cannot launch a token from this wallet. Token launches always go through Bankr (or the dashboard at `instaclaw.io` when Bankr is in maintenance).",
+      "- **DO NOT** present this wallet as your primary trading wallet. It is a backup only.",
+      "- **DO NOT** copy this address into the Bankr skill, ACP wallet, Solana wallet, or any other context — it is CDP-specific.",
     );
   }
   if (params.bankrTokenAddress && params.bankrTokenSymbol) {
@@ -6129,6 +6173,23 @@ export async function configureOpenClaw(
       );
     }
 
+    // Deploy CDP (Coinbase Developer Platform) backup wallet address to .env.
+    // Receive-only — the private key lives in Coinbase MPC custody, never on
+    // the VM. CDP_WALLET_ADDRESS is the agent's fallback EVM address when
+    // Bankr is unavailable. Always emitted in its own block (not coupled to
+    // Bankr) so the CDP fallback works even on VMs that have no Bankr wallet
+    // yet (e.g., during a Bankr maintenance window or before the Bankr
+    // safety-net cron catches up).
+    if (config.cdpWalletAddress) {
+      scriptParts.push(
+        '# Deploy CDP backup wallet address (receive-only; server-managed key)',
+        `grep -q "^CDP_WALLET_ADDRESS=" "$HOME/.openclaw/.env" 2>/dev/null && \\`,
+        `  sed -i "s/^CDP_WALLET_ADDRESS=.*/CDP_WALLET_ADDRESS=${config.cdpWalletAddress}/" "$HOME/.openclaw/.env" || \\`,
+        `  echo "CDP_WALLET_ADDRESS=${config.cdpWalletAddress}" >> "$HOME/.openclaw/.env"`,
+        ''
+      );
+    }
+
     // #8 — Deploy launched token's address + symbol to .env so
     // ~/scripts/token-price.py can answer "what's my token at?" in
     // chat without having to query the DB. Only writes when the agent
@@ -6628,6 +6689,7 @@ export async function configureOpenClaw(
       bankrTokenAddress: config.bankrTokenAddress,
       bankrTokenSymbol: config.bankrTokenSymbol,
       bankrTokenName: config.bankrTokenName,
+      cdpWalletAddress: config.cdpWalletAddress,
     });
     const walletB64 = Buffer.from(walletMdContent, 'utf-8').toString('base64');
     scriptParts.push(

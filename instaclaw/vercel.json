@@ -38,6 +38,10 @@
       "schedule": "*/30 * * * *"
     },
     {
+      "path": "/api/cron/provision-missing-cdp-wallets",
+      "schedule": "*/30 * * * *"
+    },
+    {
       "path": "/api/cron/reconcile-fleet",
       "schedule": "*/3 * * * *"
     },

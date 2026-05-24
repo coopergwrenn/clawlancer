@@ -5,6 +5,7 @@ import { assignOrProvisionUserVm } from "@/lib/createUserVM";
 import { logger } from "@/lib/logger";
 import { logOnboardingEvent } from "@/lib/onboarding-events";
 import { provisionBankrWallet } from "@/lib/bankr-provision";
+import { provisionCdpWallet } from "@/lib/cdp-wallet";
 import { sendAdminAlertEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
@@ -229,6 +230,36 @@ export async function POST(req: NextRequest) {
           `VM ${vm.id} was assigned to ${targetUserId} but immediately re-read shows owner=${assignedCheck?.assigned_to}. Bankr provisioning skipped — manual reconciliation needed.`
         ).catch(() => {});
       } else if (assignedCheck.ip_address) {
+        // ── CDP backup wallet (runs FIRST as reliable baseline) ──
+        // Coinbase Developer Platform MPC wallet — server-managed.
+        // Independent of Bankr; runs even during Bankr maintenance so
+        // every agent always has a working EVM receive address. The
+        // address is written to ~/.openclaw/.env + WALLET.md by the
+        // downstream configureOpenClaw / cloud-init tarball.
+        //
+        // Idempotent: provisionCdpWallet SELECTs cdp_wallet_address
+        // FIRST and short-circuits if present (CDP has no idempotency
+        // key like Bankr's 409; re-runs would orphan accounts).
+        //
+        // Wrapped in its own try/catch so a CDP failure NEVER blocks
+        // Bankr provisioning. Cron safety net (provision-missing-
+        // cdp-wallets) catches anything that slipped through.
+        try {
+          await provisionCdpWallet({
+            vmId: vm.id,
+            userId: targetUserId,
+          });
+        } catch (cdpErr) {
+          logger.error("CDP backup wallet provision failed in /api/vm/assign (non-fatal)", {
+            route: "vm/assign",
+            error: cdpErr instanceof Error ? cdpErr.message : String(cdpErr),
+            vmId: vm.id,
+            userId: targetUserId,
+          });
+          // Non-fatal: cron safety net catches on next cycle. Continue
+          // to Bankr provisioning regardless.
+        }
+
         await provisionBankrWallet({
           vmId: vm.id,
           userId: targetUserId,

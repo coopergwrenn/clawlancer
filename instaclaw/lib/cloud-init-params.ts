@@ -128,6 +128,11 @@ export async function buildParamsFromVmRow(
   const bankrEvmAddress = optStr("bankr_evm_address");
   const bankrTokenAddress = optStr("bankr_token_address");
   const bankrTokenSymbol = optStr("bankr_token_symbol");
+  // CDP backup wallet — receive-only EVM address on Base, server-managed
+  // via Coinbase MPC. Always-on fallback that runs alongside Bankr. Public
+  // address only; no private key on the VM. Surfaced in WALLET.md and
+  // ~/.openclaw/.env (CDP_WALLET_ADDRESS).
+  const cdpWalletAddress = optStr("cdp_wallet_address");
   const partner = optStr("partner");
 
   // bankr_api_key_encrypted: column is encrypted-at-rest (the column name
@@ -234,6 +239,7 @@ export async function buildParamsFromVmRow(
     bankrApiKey,
     bankrTokenAddress,
     bankrTokenSymbol,
+    cdpWalletAddress,
     worldIdNullifier,
     worldIdLevel,
     partner,

@@ -59,6 +59,14 @@ export interface UserConfig {
   bankrTokenSymbol?: string;
   /** Bankr token name — e.g. "AlphaTrader" */
   bankrTokenName?: string;
+  /**
+   * CDP (Coinbase Developer Platform) backup wallet address — 0x-prefixed
+   * EVM address on Base. Receive-only from the agent's perspective: the
+   * private key lives in Coinbase MPC custody, never on the VM. Deployed
+   * to ~/.openclaw/.env as `CDP_WALLET_ADDRESS` and rendered as the
+   * "Backup Wallet" section in WALLET.md. Used when Bankr is unavailable.
+   */
+  cdpWalletAddress?: string;
   /** Partner tag (e.g., "edge_city") — gates partner-specific skill installation */
   partner?: string;
 }
