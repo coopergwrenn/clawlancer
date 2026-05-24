@@ -230,8 +230,26 @@ export function BankrWalletCard({
     return () => clearInterval(interval);
   }, [tokenAddress]);
 
-  // Don't render if no Bankr wallet provisioned
-  if (!walletId || !evmAddress) return null;
+  // Don't render if no Bankr wallet provisioned.
+  // EXCEPT during BANKR_MAINTENANCE: show a standalone no-wallet maintenance
+  // card explaining that provisioning will resume once the upstream partner
+  // returns. Without this branch, users whose wallet hasn't been provisioned
+  // yet (because provisionBankrWallet noops during maintenance + the backfill
+  // cron also noops) would see nothing where the wallet card should be —
+  // they'd assume the feature was removed or their account is broken.
+  // See lib/bankr-maintenance.ts + shelpinc/vm-1019 incident 2026-05-24.
+  if (!walletId || !evmAddress) {
+    if (bankrMaintenance) {
+      return (
+        <BankrMaintenanceNotice
+          variant="card"
+          title="wallet provisioning paused"
+          body="your agent's wallet will be set up once our infrastructure partner completes scheduled maintenance. nothing to do — we'll handle it automatically as soon as service resumes."
+        />
+      );
+    }
+    return null;
+  }
 
   const shortAddress = `${evmAddress.slice(0, 6)}...${evmAddress.slice(-4)}`;
   const hasToken = !!tokenAddress;
