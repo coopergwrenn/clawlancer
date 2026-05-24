@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Flame,
@@ -13,6 +13,7 @@ import {
   ExternalLink,
   TrendingDown,
 } from "lucide-react";
+import { BankrMaintenanceNotice } from "@/components/dashboard/bankr-maintenance-notice";
 
 const SNAPPY = [0.23, 1, 0.32, 1] as const;
 
@@ -1713,6 +1714,7 @@ function Closing() {
 export default function TokenPage() {
   return (
     <>
+      <MaintenanceBanner />
       <Hero />
       <hr className="section-divider" />
       <Flywheel />
@@ -1726,6 +1728,37 @@ export default function TokenPage() {
       <Closing />
       <Disclaimer />
     </>
+  );
+}
+
+/* ─── Maintenance Banner ─────────────────────────────
+   Polled from /api/bankr/maintenance (server-side env read). Renders as
+   a centered pill above the hero ONLY when BANKR_MAINTENANCE=true.
+   Designed to feel like part of the page (warm-gray glass, wrench icon),
+   not a "something is wrong" warning. See components/dashboard/
+   bankr-maintenance-notice.tsx + Cooper's 2026-05-24 directive. */
+function MaintenanceBanner() {
+  const [maintenance, setMaintenance] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/bankr/maintenance")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d?.maintenance === true) setMaintenance(true);
+      })
+      .catch(() => {
+        // Silent — if the endpoint fails, default to "not in maintenance"
+        // so we never falsely scare users with a pause notice.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (!maintenance) return null;
+  return (
+    <div className="relative w-full flex justify-center pt-6 px-4 z-20">
+      <BankrMaintenanceNotice variant="banner" />
+    </div>
   );
 }
 

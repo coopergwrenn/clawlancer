@@ -5,6 +5,7 @@ import { getUserVm } from "@/lib/get-user-vm";
 import { TIER_DISPLAY, Tier, ApiMode } from "@/lib/stripe";
 import { logger } from "@/lib/logger";
 import { syncBankrLaunchForVm } from "@/lib/bankr-launch-sync";
+import { isBankrMaintenance } from "@/lib/bankr-maintenance";
 
 // This endpoint is polled every 2s by the deploying page. Keep it fast —
 // Supabase queries only, NO external API calls (Stripe, Telegram, etc.).
@@ -188,6 +189,14 @@ export async function GET() {
 
       return NextResponse.json({
         status: "assigned",
+        // Bankr maintenance flag. When true, dashboard surfaces (BankrWalletCard,
+        // AgentWalletFundingCard) render maintenance notices in place of action
+        // CTAs. Source: server-side process.env.BANKR_MAINTENANCE — kept here
+        // (not as NEXT_PUBLIC_) so the env stays operational-only and surfaces
+        // through an existing endpoint the dashboard already polls every 2s.
+        // Flipping the env + redeploying causes UI to update within one poll
+        // interval. See lib/bankr-maintenance.ts.
+        bankrMaintenance: isBankrMaintenance(),
         // 2026-05-23: top-level `user` payload for live-DB verification of
         // session-cached fields. The dashboard layout's Edge intent gate
         // reads `user.indexLastIntentAt` to bypass stale session state

@@ -5,6 +5,7 @@ import { logger } from "@/lib/logger";
 import { sendAdminAlertEmail } from "@/lib/email";
 import { connectSSH } from "@/lib/ssh";
 import type { VMRecord } from "@/lib/ssh";
+import { isBankrMaintenance } from "@/lib/bankr-maintenance";
 
 // Token launches are synchronous on Bankr's side. Bumped to 60s because real
 // (non-simulate) deploys include on-chain tx + Uniswap V4 pool creation + fee wiring.
@@ -26,6 +27,22 @@ interface BankrLaunchResponse {
 
 export async function POST(req: NextRequest) {
   const DIAG_ID = Math.random().toString(36).slice(2, 10);
+  // Bankr maintenance gate — defense-in-depth. The UI hides the tokenize
+  // CTA when BANKR_MAINTENANCE=true, but stale tabs or scripted callers
+  // could still POST here. Return 503 with a graceful message so any
+  // client that DOES reach this route surfaces the same maintenance
+  // framing the dashboard shows. See lib/bankr-maintenance.ts.
+  if (isBankrMaintenance()) {
+    logger.info("tokenize:maintenance_blocked", { diagId: DIAG_ID });
+    return NextResponse.json(
+      {
+        error: "bankr_maintenance",
+        message:
+          "token launches are paused while our infrastructure partner completes scheduled maintenance. back in the coming days.",
+      },
+      { status: 503 },
+    );
+  }
   try {
   logger.info("tokenize:start", { diagId: DIAG_ID });
   // Accept NextAuth session (web app) OR X-Mini-App-Token (World mini app)

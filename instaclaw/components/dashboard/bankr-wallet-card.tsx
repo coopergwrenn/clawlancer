@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Wallet, ExternalLink, Copy, Check, Sparkles, TrendingUp, TrendingDown, Upload, Wand2, X, Gift } from "lucide-react";
 import { HowToBuy } from "./how-to-buy";
 import { WhyTokenize } from "./why-tokenize";
+import { BankrMaintenanceNotice } from "./bankr-maintenance-notice";
 import { pickTweetTemplate } from "@/lib/bankr-tweet-templates";
 
 interface BankrWalletCardProps {
@@ -31,6 +32,16 @@ interface BankrWalletCardProps {
    * external readers see the trust signal.
    */
   worldIdVerified?: boolean;
+  /**
+   * Bankr maintenance flag — when true, the pre-launch CTA is replaced
+   * with a graceful maintenance notice and the tokenize/suggest/generate/
+   * upload code paths refuse to fire. Post-launch (hasToken) state is
+   * UNAFFECTED — chart, trade-on-Bankr deeplink, and HowToBuy still render
+   * because already-launched tokens trade externally on DEXs. Threaded
+   * from the server component (app/(dashboard)/dashboard/page.tsx) so the
+   * env var stays server-side only. See lib/bankr-maintenance.ts.
+   */
+  bankrMaintenance?: boolean;
 }
 
 interface TokenPrice {
@@ -94,6 +105,7 @@ export function BankrWalletCard({
   agentName,
   freshLaunch,
   worldIdVerified,
+  bankrMaintenance = false,
 }: BankrWalletCardProps) {
   const [copied, setCopied] = useState(false);
   const [tokenizing, setTokenizing] = useState(false);
@@ -787,7 +799,14 @@ export function BankrWalletCard({
         </div>
       ) : (
         <>
-          {!showTokenForm ? (
+          {bankrMaintenance ? (
+            /* Bankr maintenance state — replaces the entire pre-launch
+               Tokenize CTA group (value prop + WhyTokenize accordion +
+               orange Tokenize button). Wallet address + balance above
+               this block are read-only and stay visible. See
+               lib/bankr-maintenance.ts + Cooper's 2026-05-24 directive. */
+            <BankrMaintenanceNotice variant="card" />
+          ) : !showTokenForm ? (
             <div className="space-y-3">
               {/* Plain-language value prop — sits above the button so the
                   user knows WHY they'd click before they read the label. */}

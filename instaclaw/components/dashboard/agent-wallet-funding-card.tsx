@@ -15,9 +15,17 @@
 
 import { useEffect, useState } from "react";
 import { Fuel, Copy, Check, ExternalLink } from "lucide-react";
+import { BankrMaintenanceNotice } from "./bankr-maintenance-notice";
 
 interface AgentWalletFundingCardProps {
   evmAddress: string | null;
+  /**
+   * Bankr maintenance flag — when true, a soft inline note is added below
+   * the explanation row indicating fee claims are paused. Address + balance
+   * stay visible (read-only, safe). Threaded from the server component.
+   * See lib/bankr-maintenance.ts.
+   */
+  bankrMaintenance?: boolean;
 }
 
 const BASE_RPC = "https://mainnet.base.org";
@@ -25,7 +33,7 @@ const BASE_RPC = "https://mainnet.base.org";
 // $0.50 of ETH is comfortable headroom that survives a moderate gas spike.
 const SUGGESTED_FUNDING_USD = 0.50;
 
-export function AgentWalletFundingCard({ evmAddress }: AgentWalletFundingCardProps) {
+export function AgentWalletFundingCard({ evmAddress, bankrMaintenance = false }: AgentWalletFundingCardProps) {
   const [copied, setCopied] = useState(false);
   const [balanceEth, setBalanceEth] = useState<string | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(true);
@@ -123,6 +131,16 @@ export function AgentWalletFundingCard({ evmAddress }: AgentWalletFundingCardPro
         gas (~${SUGGESTED_FUNDING_USD.toFixed(2)}). Send ETH on Base to your
         agent&apos;s wallet address below.
       </p>
+
+      {/* Maintenance note — visible only when BANKR_MAINTENANCE=true. The
+          address + balance below stay visible (read-only, no risk) because
+          users may still want to copy the address or send funds TO the
+          wallet during the pause. See lib/bankr-maintenance.ts. */}
+      {bankrMaintenance && (
+        <div className="mb-4">
+          <BankrMaintenanceNotice variant="inline" />
+        </div>
+      )}
 
       {/* Address row — mirror of BankrWalletCard pattern */}
       <div className="flex items-center gap-2 mb-3">

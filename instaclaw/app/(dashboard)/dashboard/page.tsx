@@ -96,6 +96,12 @@ interface VMStatus {
   // (Path B). The dashboard hands it to BankrWalletCard, which fires the
   // celebration view + confetti + share card. Cleared on subsequent polls.
   freshLaunch?: { tokenAddress: string; tokenSymbol: string; launchNumber?: number } | null;
+  // Bankr maintenance flag. When true, BankrWalletCard renders a graceful
+  // maintenance notice in place of the Tokenize CTA; AgentWalletFundingCard
+  // shows an inline "fee claims paused" note. Wallet address + balance stay
+  // visible (read-only, no risk). Threaded from /api/vm/status. See
+  // lib/bankr-maintenance.ts.
+  bankrMaintenance?: boolean;
 }
 
 interface UsageData {
@@ -655,13 +661,17 @@ export default function DashboardPage() {
           agentName={vm.telegramBotUsername}
           freshLaunch={vmStatus?.freshLaunch ?? null}
           worldIdVerified={vm.worldIdVerified ?? false}
+          bankrMaintenance={vmStatus?.bankrMaintenance ?? false}
         />
       )}
 
       {/* Gas funding guide — only shows when an EVM address is provisioned.
           Bridge until auto-gas sponsorship rolls out fleet-wide. */}
       {vm?.bankrEvmAddress && (
-        <AgentWalletFundingCard evmAddress={vm.bankrEvmAddress} />
+        <AgentWalletFundingCard
+          evmAddress={vm.bankrEvmAddress}
+          bankrMaintenance={vmStatus?.bankrMaintenance ?? false}
+        />
       )}
 
       {vmStatus?.status === "assigned" && vm ? (

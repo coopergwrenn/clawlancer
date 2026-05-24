@@ -21,6 +21,7 @@
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { encryptBankrKey } from "@/lib/bankr-encryption";
+import { isBankrMaintenance } from "@/lib/bankr-maintenance";
 
 const BANKR_API_URL = "https://api.bankr.bot";
 
@@ -58,6 +59,20 @@ export async function provisionBankrWallet(
   opts: ProvisionBankrWalletOptions,
 ): Promise<ProvisionBankrWalletResult | null> {
   const { vmId, userId, vmIp, idempotencyKey } = opts;
+
+  // Bankr maintenance gate. Returns null cleanly without calling the Bankr
+  // API or persisting any DB state — same shape as the BANKR_PARTNER_KEY-
+  // missing branch below, which billing's fail-soft contract already
+  // tolerates. The provision-missing-bankr-wallets cron (and the configure
+  // path) will pick this VM up on the next attempt after maintenance ends.
+  // See lib/bankr-maintenance.ts and Cooper's 2026-05-24 directive.
+  if (isBankrMaintenance()) {
+    logger.info("provisionBankrWallet: skipped (BANKR_MAINTENANCE=true)", {
+      vmId,
+      userId,
+    });
+    return null;
+  }
 
   const partnerKey = process.env.BANKR_PARTNER_KEY;
   if (!partnerKey) return null; // Not configured — silent skip (preserves billing fail-soft)

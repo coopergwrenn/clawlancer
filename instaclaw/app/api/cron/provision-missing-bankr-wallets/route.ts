@@ -5,6 +5,7 @@ import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { provisionBankrWallet } from "@/lib/bankr-provision";
 import { decryptBankrKey } from "@/lib/bankr-encryption";
 import { connectSSH } from "@/lib/ssh";
+import { isBankrMaintenance } from "@/lib/bankr-maintenance";
 
 /**
  * Continuous safety net for Bankr wallet coverage.
@@ -171,6 +172,18 @@ export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Bankr maintenance gate. When BANKR_MAINTENANCE=true, skip the entire
+  // run — no DB query, no provision attempts, no SSH. The candidate VMs
+  // will still be NULL when maintenance ends; the next cron tick after
+  // BANKR_MAINTENANCE=false picks them up naturally. See
+  // lib/bankr-maintenance.ts and Cooper's 2026-05-24 directive.
+  if (isBankrMaintenance()) {
+    logger.info("provision-missing-bankr-wallets: skipped (BANKR_MAINTENANCE=true)", {
+      route: "cron/provision-missing-bankr-wallets",
+    });
+    return NextResponse.json({ skipped: "bankr_maintenance" });
   }
 
   const lockAcquired = await tryAcquireCronLock(CRON_NAME, LOCK_TTL_SECONDS);
