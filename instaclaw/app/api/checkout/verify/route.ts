@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { getStripe } from "@/lib/stripe";
 import { getSupabase } from "@/lib/supabase";
 import { assignOrProvisionUserVm } from "@/lib/createUserVM";
+import { provisionCdpWallet } from "@/lib/cdp-wallet";
 import { logger } from "@/lib/logger";
 
 // Configure now runs inline (not via after()) so we need enough time
@@ -136,6 +137,29 @@ export async function POST(req: NextRequest) {
         vmAssigned: false,
         error: "no_vms",
       });
+    }
+
+    // ── CDP backup wallet (runs BEFORE configure so .env block lands) ──
+    // Mirrors /api/vm/assign + /api/billing/webhook. CDP wallet is the
+    // platform-level backup for EVM operations when Bankr is unavailable.
+    // Wrapped in its own try/catch — a CDP failure NEVER blocks the
+    // subsequent configure step. Idempotent: provisionCdpWallet SELECTs
+    // cdp_wallet_address from DB first; if Stripe webhook already minted
+    // for this user (parallel race), this is a no-op short-circuit.
+    // Backfill cron catches anything that slipped through.
+    try {
+      await provisionCdpWallet({
+        vmId: assignResult.vmId,
+        userId,
+      });
+    } catch (cdpErr) {
+      logger.error("CDP backup wallet provision failed in checkout/verify (non-fatal)", {
+        route: "checkout/verify",
+        error: cdpErr instanceof Error ? cdpErr.message : String(cdpErr),
+        vmId: assignResult.vmId,
+        userId,
+      });
+      // Non-fatal: cron safety net catches on next cycle.
     }
 
     // Path-specific post-assign:

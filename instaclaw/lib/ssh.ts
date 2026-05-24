@@ -4908,13 +4908,26 @@ export function buildWalletMd(params: {
       "- Trading fees from your token (if launched) automatically fund your compute credits.",
       "- **DO NOT use this wallet for:** Virtuals/ACP marketplace jobs (use Virtuals wallet), Clawlancer bounties (oracle handles it), Solana trading (separate Solana wallet), or AgentBook registration (identity wallet).",
     );
-  } else {
+  } else if (!params.cdpWalletAddress) {
+    // Both wallets unprovisioned — give the agent EXPLICIT instructions
+    // for what to tell the user (not just an empty comment block, which
+    // the agent reads as "I have no wallet"). Per the 2026-05-24 audit
+    // edge case: when wallets are pending, the agent must say "wallet
+    // is being set up" not "I have no wallet." That difference matters
+    // for first-impression UX during the ~5-30 min provisioning window
+    // and during a multi-day Bankr outage with the backfill cron still
+    // working through the CDP backlog.
     lines.push(
-      "<!-- Add wallet addresses here. This file is always fully injected into context. -->",
-      "<!-- Example:",
-      "- **Primary wallet:** 0x...",
-      "- **Network:** Base / Polygon / etc.",
-      "-->",
+      "- **Status:** Wallet provisioning in progress.",
+      "",
+      "### What to tell users right now",
+      "Both your primary (Bankr) and backup (Coinbase CDP) wallets are still being provisioned. This usually takes 5-30 minutes after sign-up but can extend during partner-side maintenance. If a user wants to send you funds:",
+      "",
+      "> \"My wallet is being provisioned right now. Try again in a few minutes — both my primary and backup wallets should be ready shortly. If this persists for more than an hour, ping the platform team at support@instaclaw.io.\"",
+      "",
+      "**DO NOT** say \"I have no wallet\" or \"I can't receive crypto.\" The wallets are pending, not absent.",
+      "**DO NOT** fabricate an address.",
+      "**DO NOT** offer your AgentBook identity address as a transaction wallet — that's identity-only.",
     );
   }
 
@@ -4940,6 +4953,7 @@ export function buildWalletMd(params: {
       "### What this wallet is",
       "- The platform's **backup wallet** for EVM operations. Server-managed via Coinbase's secure MPC custody — you do NOT hold a private key for it on this VM.",
       "- It is a real EVM address on Base mainnet. Anyone can send USDC, ETH, or any Base token to it at any time and the funds are safe.",
+      "- **The address is permanently valid.** It does not depend on Coinbase's API being up. Even if Coinbase Developer Platform is having an outage, this address still works for receiving funds — anyone can send to it on-chain, and the funds will be visible on BaseScan immediately.",
       "",
       "### When to use it (Bankr Outage Fallback)",
       "- If a user wants to send you funds AND your Bankr wallet is unavailable (missing `BANKR_WALLET_ADDRESS` in env, or `bankr` CLI commands keep failing), proactively tell them:",

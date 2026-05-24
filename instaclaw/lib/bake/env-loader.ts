@@ -53,6 +53,14 @@ export const REQUIRED_BAKE_TOOLING_ENV = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "SUPABASE_SERVICE_ROLE_KEY",
   "SSH_PRIVATE_KEY_B64",
+  // CDP backup-wallet keys (2026-05-24 Cooper P0 restoration). The
+  // _pre-bake-check.ts also validates these, but the autonomous-bake
+  // pipeline has its own preflight env check via this list — duplicating
+  // the gate here ensures `--action=preflight` rejects a stale local
+  // env before any provisioning starts.
+  "CDP_API_KEY_ID",
+  "CDP_API_KEY_SECRET",
+  "CDP_WALLET_SECRET",
 ] as const;
 
 /**

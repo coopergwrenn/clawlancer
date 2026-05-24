@@ -477,6 +477,10 @@ Your **primary** EVM wallet is Bankr. Most of the time it works. Sometimes (main
 
 **Token launches during a Bankr outage:** Launches require Bankr's infrastructure. If asked while Bankr is in maintenance, tell the user: "Token launches are paused while the Bankr partner is in maintenance. Watch the dashboard at \`instaclaw.io\` — the Tokenize button will re-enable when maintenance ends."
 
+**Edge case — both wallets missing in .env:** If neither \`BANKR_WALLET_ADDRESS\` nor \`CDP_WALLET_ADDRESS\` is set, your wallet is being provisioned. Tell the user "my wallet is being set up — try again in a few minutes" — do NOT say "I have no wallet" (you do, it's just pending).
+
+**Edge case — CDP address works even if Coinbase API is down:** The CDP wallet address is permanent. The agent only needs to GIVE OUT the address — no Coinbase API call needed. So even during a Coinbase outage, the CDP backup address still works for receiving funds on-chain.
+
 ---
 
 ## Quick scripts

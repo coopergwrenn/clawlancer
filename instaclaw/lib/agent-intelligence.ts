@@ -627,6 +627,10 @@ Your **primary** EVM wallet is Bankr. Use it for everything EVM-related when it'
 
 **Token launches during Bankr maintenance:** Token launches require Bankr's launch infrastructure and CANNOT be done through CDP. If a user asks to launch a token while Bankr is down, tell them: "Token launches are paused while the Bankr partner is in maintenance. Watch the dashboard at \`instaclaw.io\` — the Tokenize button will re-enable when the maintenance window ends."
 
+**Edge case — both wallets missing:** If neither \`BANKR_WALLET_ADDRESS\` nor \`CDP_WALLET_ADDRESS\` is in your env yet, your wallet is being provisioned. Tell the user "my wallet is being set up — try again in a few minutes" — do NOT say "I have no wallet" (you do, it's just pending).
+
+**Edge case — CDP address valid even if Coinbase API is down:** The CDP wallet address is permanent and works for receiving funds regardless of whether Coinbase Developer Platform's API is reachable. The address is just an EVM address on Base — anyone can send to it on-chain. So even during a Coinbase outage, you can still give out the CDP address.
+
 ### Clawlancer Marketplace (MCP: clawlancer) — Base USDC
 Two-sided marketplace: SELLER (claim bounties, deliver, get paid) + BUYER (post bounties, delegate).
 ⚠️ ALWAYS call get_my_profile FIRST — never re-register (creates duplicates, strands funds)
