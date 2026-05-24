@@ -3853,6 +3853,85 @@ If any answer is "no" or "TBD," the PR is incomplete. The cost of running the au
 - **Rule 47** (continuous reconciliation, not version-gated): explains why file-drift overwrote our manual patch at 02:45 UTC — and also why the v120 commit will deliver the codified patch to the fleet within ~5 min.
 - **Rule 64** (manifest version bumps require explicit Cooper approval; test on vm-1019 first): the v120 bump itself satisfied this rule (Cooper approved Option A after seeing the diff). The DIFF 1 OPENCLAW_PINNED_VERSION bump is DEFERRED until the snapshot bake PR re-invokes Rule 64.
 
+### Rule 66 — Every InstaClaw agent gets BOTH a primary (Bankr) AND a backup (Coinbase CDP) wallet; the backup is non-negotiable
+
+Every assigned VM must have BOTH `bankr_*` columns AND `cdp_wallet_id` + `cdp_wallet_address` populated, AND the corresponding `.env` lines (`BANKR_WALLET_ADDRESS`, `BANKR_API_KEY`, `CDP_WALLET_ADDRESS`) written on the VM. CDP serves as the receive-only EVM fallback when Bankr is unavailable. The CDP wallet is a Coinbase Developer Platform MPC-managed wallet — server-managed; no signing material lives on the VM.
+
+#### Why this rule exists — the 2026-05-24 audit findings
+
+CDP wallets were the **original** wallet provisioned for every InstaClaw agent BEFORE the Bankr partnership cutover in early 2026. Bankr replaced CDP as the primary wallet, but CDP infrastructure was supposed to remain as the backup. It got lost during the cutover — `lib/cdp.ts` stayed at the marketplace root, never ported into `instaclaw/`. **For months**, paying users had no backup wallet during Bankr maintenance windows. Cooper P0'd the restoration on 2026-05-24.
+
+Restored as ADDITIVE infrastructure (not a replacement for Bankr):
+- **Mint path**: `provisionCdpWallet({vmId, userId})` in `lib/cdp-wallet.ts`. CRITICAL divergence from Bankr — CDP has NO idempotency key on `createAccount`, so this helper MUST SELECT `cdp_wallet_address` from DB first and short-circuit if present. Without that, retries/race conditions would mint orphan CDP accounts forever (Coinbase has no delete API).
+- **Called from**: `/api/vm/assign`, `/api/billing/webhook`, `/api/checkout/verify` — runs BEFORE `provisionBankrWallet` so CDP is the reliable baseline. Each call wrapped in its own try/catch so a CDP failure NEVER blocks Bankr provisioning.
+- **Backfill cron**: `/api/cron/provision-missing-cdp-wallets` every 30 min, concurrency 3, PER_RUN_LIMIT 50. No `BANKR_MAINTENANCE` gate — CDP is precisely the thing that backs Bankr up.
+- **On-VM delivery**: `configureOpenClaw` + cloud-init `buildDotEnv` both write `CDP_WALLET_ADDRESS` to `~/.openclaw/.env` in their own conditional block, independent of any Bankr field.
+- **Agent knowledge**: `buildWalletMd` emits a "## Backup Wallet (Coinbase CDP)" section in WALLET.md with explicit receive-only semantics, "Bankr Outage Fallback" instructions, and the EXACT user-facing reply ("My primary wallet (Bankr) is temporarily unavailable…"). Mirror sections in V1 (`agent-intelligence.ts` SOUL supplement) and V2 (`workspace-templates-v2.ts` AGENTS.md) wallet routing tables.
+- **Both-missing edge case**: `buildWalletMd`'s no-wallet branch now emits explicit "Wallet provisioning in progress" content with a paste-ready user-facing reply, NOT just an empty comment block. Per the 2026-05-24 audit, the agent must say "wallet being set up — try again in a few minutes," NOT "I have no wallet."
+
+#### Mandatory invariants
+
+1. **Every assigned VM has BOTH `bankr_evm_address` AND `cdp_wallet_address` populated** (or both NULL during the provisioning window — never one without the other persisting beyond the next cron tick). The two cron safety nets (`provision-missing-bankr-wallets` + `provision-missing-cdp-wallets`) catch drift.
+2. **CDP wallet is RECEIVE-ONLY from the agent's perspective.** No signing key on the VM. The agent CANNOT send/swap/launch from the CDP wallet directly — those operations require the InstaClaw backend. The agent's only spendable EVM wallet is Bankr.
+3. **CDP address validity is INDEPENDENT of Coinbase API state.** The address is a permanent EVM address on Base. Even during a Coinbase Developer Platform outage, the agent can give out the address and funds will land on-chain.
+4. **No `wallet_provider` enum on `instaclaw_vms`.** CDP is ADDITIVE, not a mutually-exclusive alternative to Bankr. Every VM gets BOTH.
+5. **Snapshot bake refuses if CDP infrastructure is missing.** Five `scripts/_pre-bake-check.ts:checkCdpReadiness()` gates: env vars present, `@coinbase/cdp-sdk` in `package.json`, `lib/cdp-wallet.ts` present, migration tracked, cron entry registered. Mirrored as CLAUDE.md §7 verification items 16a-16e. The autonomous-bake pipeline also gates via `REQUIRED_BAKE_TOOLING_ENV` in `lib/bake/env-loader.ts`.
+
+#### Banned patterns
+
+- Removing the CDP provision call from `/api/vm/assign` or `/api/billing/webhook` or `/api/checkout/verify`. CDP is the reliable baseline — every assignment path must include it.
+- Adding a `wallet_provider` enum or any code that treats Bankr/CDP as mutually exclusive. They run in parallel.
+- Calling `cdp.evm.createAccount()` without a DB-first idempotency check. Orphan CDP accounts accumulate inert in our Coinbase org and cannot be deleted.
+- Emitting `CDP_WALLET_ADDRESS` as part of the Bankr `.env` block. CDP runs independently — its emission must be unconditional on Bankr fields so the fallback works even on VMs with no Bankr wallet yet (e.g., during a Bankr maintenance window or before the Bankr safety-net cron catches up).
+- Updating `buildWalletMd` without re-running the backfill cron / one-shot script to propagate WALLET.md content to existing minted VMs. The cron's `cdp_wallet_address IS NULL` filter excludes already-minted VMs, so template changes only reach them via configureOpenClaw or `scripts/_backfill-cdp-wallet-md.ts`.
+
+#### Detection rule
+
+PR review checklist for any change touching wallet provisioning:
+1. Does the change touch any of the three assignment routes (`vm/assign`, `billing/webhook`, `checkout/verify`)? If yes, verify CDP call is still present + still runs BEFORE Bankr.
+2. Does the change touch `buildWalletMd` content? If yes, plan a propagation step — either run `scripts/_backfill-cdp-wallet-md.ts` post-deploy OR bump the manifest to force reconcile.
+3. Does the change introduce a new wallet provider? If yes, do NOT model it as mutually exclusive with Bankr/CDP. ADDITIVE is the pattern.
+4. Does the change reference Coinbase CDP API in a way that requires the API to be UP? If yes, the address-validity invariant (#3 above) may be violated — receive functionality must NEVER depend on Coinbase API state.
+
+#### Related rules
+- **Rule 38** (atomic-write tmp files must self-clean on ENOSPC): CDP backfill writes WALLET.md via tmp+mv per this pattern.
+- **Rule 47** (continuous reconciliation, not version-gated): the file-drift cron handles `vm-manifest.ts:files[]` entries but NOT per-VM WALLET.md. The CDP backfill cron's writeEnvAndWallet step is the equivalent continuous-reconciliation path for per-VM WALLET.md content.
+- **Rule 56** (migration files must be self-contained): `20260524180000_vm_cdp_wallet.sql` lived in `pending_migrations/` until Cooper applied via Supabase Studio, then `git mv`'d to `migrations/`.
+- **Rule 67** (next number) — RESERVED for the Anthropic balance monitoring rule below.
+
+### Rule 67 — Anthropic API balance MUST have proactive alerting; silent 402 cascades fleet-wide outages
+
+The proxy's gateway route (`app/api/gateway/proxy/route.ts:1278-1297` + `1380-1402`) intercepts Anthropic 402 / "credit balance too low" errors and returns a friendly user-facing "I'm temporarily unavailable" message. **This is the right user-facing behavior, but combined with the absence of admin alerting, it produces the May 14 2026 incident pattern: silent fleet-wide outage that the operator only learns about when paying users complain.**
+
+The fundamental constraint: Anthropic's regular API key cannot query account balance proactively. There's no `GET /v1/account/balance` endpoint. The only signal that the balance is exhausted is a 402 on a real `/v1/messages` request. So detection has to live in the request path.
+
+#### Mandatory pattern
+
+Every code path that detects an Anthropic 402 / "credit balance too low" / "billing" error MUST:
+1. Return the friendly user-facing message (existing behavior — preserves UX).
+2. Fire `sendAdminAlertEmail` with severity P0, deduped via `instaclaw_admin_alert_log` at a 1-hour interval. Subject line MUST start with `[P0] Anthropic balance` so it sorts to the top of the operator inbox.
+3. Log a structured `anthropic_balance_outage` event with the affected `vmId` + `userId` for forensics.
+
+The 1-hour dedup is tight enough that operators get woken up on the first 402 of an incident but not flooded by every subsequent customer message (which all return 402 too during the outage window).
+
+#### Banned patterns
+
+- Catching a 402 from Anthropic without firing an admin alert. The May 14 incident's whole shape was "silent." Never repeat it.
+- Per-VM admin alert dedup at sub-1h intervals during a confirmed Anthropic-balance outage — every VM in the fleet will fire one and the operator inbox melts down. The single hourly fleet-level alert is sufficient.
+- Trusting Anthropic's own billing email alerts to the account-owner email as sufficient. They are best-effort, can lag, and target Cooper's personal email (not the operator inbox). Belt-and-suspenders: our own alert from the request path.
+
+#### Operational runbook (when the alert fires)
+
+1. Confirm via Anthropic dashboard (console.anthropic.com → Billing) that the balance is actually $0 / near-$0. If yes:
+   - Trigger Anthropic auto-reload by depositing manually (the auto-reload trigger is balance-driven; in some failure modes auto-reload doesn't fire and a manual top-up restarts the chain).
+   - Wait for the next /v1/messages request to succeed (typically <30s after balance refreshes).
+   - Optionally restart caching paths: OpenClaw's `auth-profiles.json` caches 402 failures with `disabledUntil` timestamps; affected VMs need the cache cleared. `clearStaleAuthCacheForUser` helper exists for this (per Rule 16).
+2. If balance is fine but 402s keep coming, investigate org-level issues (rate-limit org throttle, suspended account, key rotation, etc.).
+
+#### Detection rule
+
+Code review: any new code path that calls Anthropic's API directly or via the gateway proxy must answer "what happens when Anthropic returns 402?" If the answer doesn't include "admin alert fires," the PR is incomplete.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.

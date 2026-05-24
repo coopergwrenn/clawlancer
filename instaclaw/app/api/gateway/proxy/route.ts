@@ -3,6 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 import { logger } from "@/lib/logger";
 import { sendAdminAlertEmail } from "@/lib/email";
+import { sendPerVmAlertDeduped } from "@/lib/admin-alert";
 import { trackProxy401, resetProxy401Count } from "@/lib/proxy-alert";
 import { repairCorruptedSession, type VMRecord } from "@/lib/ssh";
 import { routeModel, extractLastUserMessage, computeTierBudget, type RoutingContext, type RoutingDecision } from "@/lib/model-router";
@@ -1290,6 +1291,40 @@ export async function POST(req: NextRequest) {
             status: providerRes.status,
             error: errBody.slice(0, 200),
           });
+          // Rule 67 — P0 admin alert. Fleet-level dedup (1h) so a balance
+          // outage produces ONE alert, not one per affected VM. Without this,
+          // the May 14 2026 incident pattern repeats: silent fleet-wide
+          // failure that operators only learn about when customers complain.
+          // Fire-and-forget; never block the user response on the alert send.
+          sendPerVmAlertDeduped({
+            alertKey: "anthropic_balance_outage:fleet",
+            subject: "[P0] Anthropic balance outage — fleet-wide 402s intercepted",
+            body: [
+              "The gateway proxy just intercepted a 402 / credit-balance-too-low error from Anthropic.",
+              "Every paying user's agent is currently returning the friendly fallback message.",
+              "",
+              `First affected VM: ${vm.id} (${vm.name ?? "unnamed"})`,
+              `Provider status: ${providerRes.status}`,
+              `Error body (first 200 chars): ${errBody.slice(0, 200)}`,
+              `Detected at: ${new Date().toISOString()}`,
+              "",
+              "Runbook (per CLAUDE.md Rule 67):",
+              "  1. Check console.anthropic.com → Billing for current balance.",
+              "  2. If balance is $0 / near-$0: trigger manual deposit (auto-reload sometimes fails to fire).",
+              "  3. After balance refreshes, clear auth-profiles.json failure cache on affected VMs.",
+              "     Helper: clearStaleAuthCacheForUser (lib/auth-cache.ts).",
+              "  4. Verify a real /v1/messages probe succeeds before declaring resolved.",
+              "",
+              "This alert dedupes for 1 hour. Subsequent 402s in the next hour will NOT re-fire.",
+              "If the issue persists past 1h, expect a second alert.",
+            ].join("\n"),
+            dedupHours: 1,
+          }).catch((err) =>
+            logger.error("Anthropic balance alert failed to send", {
+              route: "gateway/proxy",
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
           return friendlyAssistantResponse(
             "I'm temporarily unavailable — please try again in a few minutes.",
             requestedModel,
@@ -1394,6 +1429,38 @@ export async function POST(req: NextRequest) {
           status: finalProviderRes.status,
           error: errBody.slice(0, 200),
         });
+        // Rule 67 — same fleet-level alert as the primary path above.
+        // 1h dedup; both code paths share the alert_key so the second
+        // path doesn't double-fire if the first already alerted within
+        // the hour.
+        sendPerVmAlertDeduped({
+          alertKey: "anthropic_balance_outage:fleet",
+          subject: "[P0] Anthropic balance outage — fleet-wide 402s intercepted",
+          body: [
+            "The gateway proxy just intercepted a 402 / credit-balance-too-low error from Anthropic.",
+            "Every paying user's agent is currently returning the friendly fallback message.",
+            "",
+            `First affected VM: ${vm.id} (${vm.name ?? "unnamed"})`,
+            `Provider status: ${finalProviderRes.status}`,
+            `Error body (first 200 chars): ${errBody.slice(0, 200)}`,
+            `Detected at: ${new Date().toISOString()}`,
+            "",
+            "Runbook (per CLAUDE.md Rule 67):",
+            "  1. Check console.anthropic.com → Billing for current balance.",
+            "  2. If balance is $0 / near-$0: trigger manual deposit (auto-reload sometimes fails to fire).",
+            "  3. After balance refreshes, clear auth-profiles.json failure cache on affected VMs.",
+            "     Helper: clearStaleAuthCacheForUser (lib/auth-cache.ts).",
+            "  4. Verify a real /v1/messages probe succeeds before declaring resolved.",
+            "",
+            "This alert dedupes for 1 hour.",
+          ].join("\n"),
+          dedupHours: 1,
+        }).catch((err) =>
+          logger.error("Anthropic balance alert failed to send", {
+            route: "gateway/proxy",
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
         return friendlyAssistantResponse(
           "I'm temporarily unavailable — please try again in a few minutes.",
           requestedModel,

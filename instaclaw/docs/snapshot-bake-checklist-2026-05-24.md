@@ -33,7 +33,7 @@ The bake-VM reconcile pass must land all changes between v113 and v120. Material
 - **v119 emergency revert**: `messages.statusReactions.enabled=false` (was momentarily true in v118; reverted because the typing-keepalive patch we attempted wasn't sound)
 - **v118 bonjour dual-gate**: `discovery.mdns.mode=off` + `Environment=OPENCLAW_DISABLE_BONJOUR=true` in systemd unit (the v113 snapshot may not have the env-var half — needs verification)
 - **EDGEOS_EVENTS_BEARER_TOKEN** distribution: not a snapshot concern (per-VM keys minted at assignment via `stepEdgeOSApiKey`; bearer reads from Vercel env at runtime)
-- **CDP backup wallet infrastructure (2026-05-24, Rule 67)**: NEW additive subsystem restored after a months-long gap. Bake VM must verify ALL of the following are present + functional BEFORE imagize:
+- **CDP backup wallet infrastructure (2026-05-24, Rule 66)**: NEW additive subsystem restored after a months-long gap. Bake VM must verify ALL of the following are present + functional BEFORE imagize:
   - `instaclaw/lib/cdp-wallet.ts` exists (`provisionCdpWallet` helper)
   - `@coinbase/cdp-sdk ^1.44.0` in `instaclaw/package.json`
   - Migration `20260524180000_vm_cdp_wallet.sql` applied to prod (`cdp_wallet_id` + `cdp_wallet_address` columns exist on `instaclaw_vms`)
