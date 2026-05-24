@@ -1,29 +1,28 @@
 # Changelog — generated 2026-05-24
 
-Window: `158f1cdf245106347857a7509ef481bdee785a28` → `HEAD` (HEAD = `882575aa`)
-Total commits: 3
+Window: `882575aa0876e7295e689184ac4e2f98fba5801c` → `HEAD` (HEAD = `f2d735aa`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 882575aa0876e7295e689184ac4e2f98fba5801c -->
+<!-- LAST_GENERATED_SHA: f2d735aabd61141c823e7484fda4cf747b4e7d96 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
 - **Infrastructure:** 0
-- **Feature (user-facing):** 2
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 2
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-- `88d51f6d` 2026-05-24 — fix(bankr): minimal surgical maintenance state — disabled button + 1 line [1 files] _(ai-assisted)_
-- `882575aa` 2026-05-24 — use-cases marquee: switch to .liquid-glass-pill 3-element architecture [1 files] _(ai-assisted)_
+- `f2d735aa` 2026-05-24 — how-it-works: neutral liquid-glass circles for numbered steps [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `beccdb95` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `75b71e41` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -35,10 +34,9 @@ _(none)_
 
 _(none)_
 
-### Feature (user-facing) (2)
+### Feature (user-facing) (1)
 
-- `88d51f6d` 2026-05-24 — fix(bankr): minimal surgical maintenance state — disabled button + 1 line [1 files] _(ai-assisted)_
-- `882575aa` 2026-05-24 — use-cases marquee: switch to .liquid-glass-pill 3-element architecture [1 files] _(ai-assisted)_
+- `f2d735aa` 2026-05-24 — how-it-works: neutral liquid-glass circles for numbered steps [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -46,17 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `beccdb95` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `75b71e41` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (2)
+## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `88d51f6d` 2026-05-24 — fix(bankr): minimal surgical maintenance state — disabled button + 1 line
-- `882575aa` 2026-05-24 — use-cases marquee: switch to .liquid-glass-pill 3-element architecture
+- `f2d735aa` 2026-05-24 — how-it-works: neutral liquid-glass circles for numbered steps
 
 ## Appendix — every commit (chronological)
 
-- `beccdb95` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
-- `88d51f6d` 2026-05-24 — fix(bankr): minimal surgical maintenance state — disabled button + 1 line [1 files] _(ai-assisted)_
-- `882575aa` 2026-05-24 — use-cases marquee: switch to .liquid-glass-pill 3-element architecture [1 files] _(ai-assisted)_
+- `75b71e41` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `f2d735aa` 2026-05-24 — how-it-works: neutral liquid-glass circles for numbered steps [2 files] _(ai-assisted)_
