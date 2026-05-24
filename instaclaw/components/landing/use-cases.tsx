@@ -34,28 +34,25 @@ function MarqueeRow({
   // Duplicate enough to fill wide screens seamlessly
   const repeated = [...items, ...items, ...items, ...items];
 
+  // Vertical padding bumped from py-2 → py-4 so the .liquid-glass-pill-shadow
+  // sibling div (inset: -10px relative to pill, filter:blur(2px)) isn't
+  // clipped by the row container's `overflow-hidden`. Hero work source of
+  // truth: the masked-ring shadow needs ~12px of breathing room below the pill.
   return (
-    <div className="overflow-hidden w-full py-2">
+    <div className="overflow-hidden w-full py-4">
       <div className={`flex gap-3 w-max ${animClass}`}>
         {repeated.map((item, i) => (
-          <span
-            key={`${item}-${i}`}
-            className="whitespace-nowrap px-6 py-2 rounded-full text-sm shrink-0"
-            style={{
-              background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
-              backdropFilter: "blur(2px)",
-              WebkitBackdropFilter: "blur(2px)",
-              boxShadow: `
-                rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
-                rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
-                rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
-                rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
-              `,
-              color: "var(--foreground)",
-            }}
-          >
-            {item}
-          </span>
+          // 3-element architecture, reusing the same classes from
+          // .liquid-glass-pill (globals.css). Same shape/depth as the
+          // SpotsCounter glass pill in the hero — the whole reason the
+          // pill class system was built. Continuous transform on the
+          // .animate-marquee-* ancestor creates a stacking context but
+          // there's no entrance "snap" because the transform is always
+          // non-identity; backdrop-filter samples cleanly every frame.
+          <div key={`${item}-${i}`} className="liquid-glass-pill-root shrink-0">
+            <span className="liquid-glass-pill">{item}</span>
+            <div aria-hidden="true" className="liquid-glass-pill-shadow"></div>
+          </div>
         ))}
       </div>
     </div>
