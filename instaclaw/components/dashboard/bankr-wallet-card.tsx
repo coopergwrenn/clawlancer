@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Wallet, ExternalLink, Copy, Check, Sparkles, TrendingUp, TrendingDown, Upload, Wand2, X, Gift, Wrench } from "lucide-react";
+import { Wallet, ExternalLink, Copy, Check, Sparkles, TrendingUp, TrendingDown, Upload, Wand2, X, Gift } from "lucide-react";
 import { HowToBuy } from "./how-to-buy";
 import { WhyTokenize } from "./why-tokenize";
-import { BankrMaintenanceNotice } from "./bankr-maintenance-notice";
 import { pickTweetTemplate } from "@/lib/bankr-tweet-templates";
 
 interface BankrWalletCardProps {
@@ -33,13 +32,10 @@ interface BankrWalletCardProps {
    */
   worldIdVerified?: boolean;
   /**
-   * Bankr maintenance flag — when true, the pre-launch CTA is replaced
-   * with a graceful maintenance notice and the tokenize/suggest/generate/
-   * upload code paths refuse to fire. Post-launch (hasToken) state is
-   * UNAFFECTED — chart, trade-on-Bankr deeplink, and HowToBuy still render
-   * because already-launched tokens trade externally on DEXs. Threaded
-   * from the server component (app/(dashboard)/dashboard/page.tsx) so the
-   * env var stays server-side only. See lib/bankr-maintenance.ts.
+   * BANKR_MAINTENANCE flag — when true, the Tokenize button is disabled
+   * (opacity 0.5, cursor not-allowed, onClick guarded) and a one-line
+   * annotation appears below it. Everything else in the card renders
+   * exactly as normal. See lib/bankr-maintenance.ts.
    */
   bankrMaintenance?: boolean;
 }
@@ -230,44 +226,8 @@ export function BankrWalletCard({
     return () => clearInterval(interval);
   }, [tokenAddress]);
 
-  // No Bankr wallet yet — render a minimal "setup in progress" annotation.
-  // Critically NOT framed as a maintenance pause: agents have multiple wallet
-  // surfaces (the Bankr wallet here + a separate Ethereum wallet provisioned
-  // independently), so "wallet provisioning paused" or similar copy would
-  // be alarming AND inaccurate. The neutral "setup in progress" framing
-  // applies equally to:
-  //   - the normal 30-min window between assignment and the
-  //     provision-missing-bankr-wallets cron backfill (pre-maintenance UX
-  //     was return-null here; this small note is a strict improvement —
-  //     fresh attendees now know something is being prepared)
-  //   - the extended window during BANKR_MAINTENANCE when the backfill
-  //     cron itself is noop'd and the wait stretches to days
-  // See Cooper's 2026-05-24 directive + lib/bankr-maintenance.ts.
-  if (!walletId || !evmAddress) {
-    return (
-      <div
-        className="glass rounded-xl p-6"
-        style={{ border: "1px solid var(--border)" }}
-      >
-        <div className="flex items-center gap-2 mb-3">
-          <Wallet
-            className="w-4 h-4"
-            style={{ color: "var(--muted)" }}
-            aria-hidden
-          />
-          <span
-            className="text-sm font-medium"
-            style={{ color: "var(--muted)" }}
-          >
-            Agent Wallet
-          </span>
-        </div>
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
-          wallet setup in progress
-        </p>
-      </div>
-    );
-  }
+  // Don't render if no Bankr wallet provisioned
+  if (!walletId || !evmAddress) return null;
 
   const shortAddress = `${evmAddress.slice(0, 6)}...${evmAddress.slice(-4)}`;
   const hasToken = !!tokenAddress;
@@ -838,9 +798,7 @@ export function BankrWalletCard({
           {!showTokenForm ? (
             <div className="space-y-3">
               {/* Plain-language value prop — sits above the button so the
-                  user knows WHY they'd click before they read the label.
-                  Stays visible during BANKR_MAINTENANCE — Cooper's directive
-                  is to annotate the action, not hide the context. */}
+                  user knows WHY they'd click before they read the label. */}
               <div
                 className="glass rounded-xl px-4 py-3 text-sm leading-relaxed"
                 style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
@@ -854,21 +812,10 @@ export function BankrWalletCard({
                   push the CTA below the fold by default. */}
               <WhyTokenize />
 
-              {/* Tokenize button — disabled (opacity + cursor) during
-                  BANKR_MAINTENANCE. onClick guarded too as defense-in-depth
-                  against stale tabs. The orange gradient + lift styling
-                  stay so the CTA remains visually anchored; opacity 0.5
-                  signals "temporarily not actionable." See Cooper's
-                  2026-05-24 directive — annotation, not replacement. */}
               <button
                 onClick={bankrMaintenance ? undefined : handleOpenForm}
                 disabled={bankrMaintenance}
-                aria-disabled={bankrMaintenance}
-                className={`w-full rounded-full px-5 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
-                  bankrMaintenance
-                    ? "cursor-not-allowed"
-                    : "cursor-pointer active:scale-[0.99]"
-                }`}
+                className={`w-full rounded-full px-5 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 transition-all ${bankrMaintenance ? "cursor-not-allowed" : "cursor-pointer active:scale-[0.99]"}`}
                 style={{
                   background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
                   color: "#fff",
@@ -882,25 +829,10 @@ export function BankrWalletCard({
                 <Sparkles className="w-4 h-4" />
                 Tokenize Your Agent
               </button>
-
-              {/* Small annotation under the disabled button. Only renders
-                  during BANKR_MAINTENANCE. Centered, muted, wrench-iconed
-                  one-liner — explains the disable without hijacking the
-                  card. */}
               {bankrMaintenance && (
-                <div className="flex items-center justify-center gap-1.5 -mt-1">
-                  <Wrench
-                    className="w-3 h-3"
-                    style={{ color: "var(--muted)", opacity: 0.7 }}
-                    aria-hidden
-                  />
-                  <span
-                    className="text-xs"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    token launches paused during maintenance
-                  </span>
-                </div>
+                <p className="text-xs text-center" style={{ color: "var(--muted)" }}>
+                  token launches paused during maintenance
+                </p>
               )}
             </div>
           ) : !showConfirm ? (
