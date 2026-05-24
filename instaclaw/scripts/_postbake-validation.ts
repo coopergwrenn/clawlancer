@@ -242,6 +242,26 @@ async function run() {
     }
     console.log(`  Manifest version: ${manifestVersion}  |  LINODE_SNAPSHOT_CV env: ${cvEnvRaw ?? "<unset>"}\n`);
 
+    // ─── 0b. Vercel cron count awareness (Cooper 2026-05-24 sweep) ──────────
+    // Vercel Pro caps at 100 cron jobs per project (verified
+    // 2026-05-24 against https://vercel.com/docs/cron-jobs/usage-and-pricing).
+    // Approaching the limit is silent: deploy fails at 101 with a non-obvious
+    // error. Track and warn well before. Today's count = 44 after the
+    // CDP-wallet provisioning cron (commit ab9d5dd4) — 56 headroom.
+    // P1 warn at 80; P0 fail at 100. Read from instaclaw/vercel.json.
+    let cronCount = 0;
+    try {
+      const vercelJson = JSON.parse(readFileSync(resolve(repoInstaclaw, "vercel.json"), "utf-8"));
+      cronCount = Array.isArray(vercelJson?.crons) ? vercelJson.crons.length : 0;
+    } catch {}
+    record(`Vercel cron count under 100 (Pro plan limit) — current=${cronCount}`,
+      cronCount >= 100 ? "P0" : cronCount >= 80 ? "P1" : "P2", ["bake", "test"],
+      cronCount > 0 && cronCount < 100,
+      cronCount === 0 ? "couldn't parse vercel.json crons array"
+        : cronCount >= 100 ? `${cronCount} crons exceeds Pro plan cap of 100 — next deploy WILL fail`
+          : cronCount >= 80 ? `${cronCount} crons — within 20 of Pro cap; review before adding more`
+            : "");
+
     // ─── 1. Machine identity (test-mode: must differ from bake) ─────────────
     const hostKeyFp = (await exec(c, `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null | awk '{print $2}'`)).stdout.trim();
     const machineId = (await exec(c, `cat /etc/machine-id`)).stdout.trim();
@@ -753,6 +773,53 @@ async function run() {
     const mcpEntry = (await exec(c, `python3 -c "import json; d=json.load(open('$HOME/.openclaw/openclaw.json')); print('gbrain' in d.get('mcp',{}).get('servers',{}))"`)).stdout.trim();
     record(`gbrain MCP entry in openclaw.json${gbrainNoteSuffix}`, gbrainGateSev, ["bake", "test"], mcpEntry === "True", "");
 
+    // ─── 19b. gbrain ANTHROPIC_API_KEY architecture (Rule 35 EnvironmentFile) ──
+    // Commit 2026-05-22 c9d3c5b1 migrated ANTHROPIC_API_KEY from inline
+    // `Environment=ANTHROPIC_API_KEY=...` baked into the gbrain.service unit
+    // to an `EnvironmentFile=-$HOME/.gbrain/.env` directive sourced from a
+    // separate file (install-gbrain.sh Phase E5, lines 1166-1253). The OLD
+    // inline architecture had a load-bearing bug: rotating
+    // GBRAIN_ANTHROPIC_API_KEY in Vercel + pushing the new value via
+    // stepEnvVarPush updated $HOME/.openclaw/.env but did NOT update the
+    // gbrain.service unit — gbrain kept hitting Anthropic with the OLD key
+    // until manual sed+restart healed it (~2.5 days drift observed
+    // 2026-05-21 across the edge_city VMs).
+    //
+    // The NEW EnvironmentFile architecture sources the key from
+    // $HOME/.gbrain/.env which IS updated by stepGbrainEnvSync + .env push.
+    // Pre-existing edge VMs (vm-050, vm-922, vm-917 verified 2026-05-24)
+    // are still on the OLD inline architecture and migrating via
+    // stepGbrainEnvSync; the NEW bake MUST encode the NEW architecture
+    // directly so fresh-from-snapshot VMs ship rotation-safe.
+    //
+    // These gates catch the regression: if install-gbrain.sh ever reverts
+    // to inline-key emission, the snapshot ships broken rotation behavior.
+    if (gbrainInstalled) {
+      const gbrainUnitV2 = (await exec(c, `cat ~/.config/systemd/user/gbrain.service 2>/dev/null`)).stdout;
+      const hasEnvFile = /EnvironmentFile\s*=-?\s*\$?\{?HOME\}?\/\.gbrain\/\.env/.test(gbrainUnitV2)
+        || /EnvironmentFile\s*=-?\s*\/home\/openclaw\/\.gbrain\/\.env/.test(gbrainUnitV2);
+      const hasInlineAnthropicKey = /^Environment\s*=\s*ANTHROPIC_API_KEY\s*=/m.test(gbrainUnitV2);
+      record("gbrain.service uses EnvironmentFile architecture (Rule 35 / 2026-05-22 c9d3c5b1)",
+        gbrainGateSev, ["bake", "test"], hasEnvFile,
+        hasEnvFile ? "" : "gbrain.service missing EnvironmentFile=-$HOME/.gbrain/.env — rotation will silently fail (pre-c9d3c5b1 inline architecture)");
+      record("gbrain.service has NO inline Environment=ANTHROPIC_API_KEY (legacy bug)",
+        gbrainGateSev, ["bake", "test"], !hasInlineAnthropicKey,
+        hasInlineAnthropicKey ? "inline Environment=ANTHROPIC_API_KEY found in gbrain.service — install-gbrain.sh regressed to pre-c9d3c5b1 architecture" : "");
+      // $HOME/.gbrain/.env must exist + contain ANTHROPIC_API_KEY for the
+      // EnvironmentFile directive to actually load the key. Optional `-`
+      // prefix means missing-file boots gbrain without the key (embeds
+      // will 401 instead of unit refusing to start) — so absence is a
+      // real bug to surface, not a silent skip.
+      const gbrainEnvProbe = (await exec(c, `test -f ~/.gbrain/.env && grep -c "^ANTHROPIC_API_KEY=sk-ant-" ~/.gbrain/.env 2>/dev/null || echo "no-file"`)).stdout.trim();
+      record("~/.gbrain/.env present + contains ANTHROPIC_API_KEY=sk-ant- (Rule 35)",
+        gbrainGateSev, ["bake", "test"], gbrainEnvProbe === "1",
+        gbrainEnvProbe === "no-file"
+          ? "~/.gbrain/.env file missing — EnvironmentFile directive will silently load nothing → embeds 401"
+          : gbrainEnvProbe === "0"
+            ? "~/.gbrain/.env present but no ANTHROPIC_API_KEY=sk-ant- line"
+            : `count=${gbrainEnvProbe}`);
+    }
+
     // ─── 20. Gateway operational state ─────────────────────────────────────
     if (MODE === "test") {
       // Gateway must be running on a test VM
@@ -772,6 +839,23 @@ async function run() {
       const tasksMaxRt = (await exec(c, `systemctl --user show openclaw-gateway -p TasksMax`)).stdout.trim();
       record("TasksMax=infinity applied at runtime (v120 — Chromium MCP burst protection)",
         "P0", ["test"], /TasksMax=infinity/i.test(tasksMaxRt), tasksMaxRt);
+
+      // CDP wallet — per-VM backup wallet shipped 2026-05-24 (commit ab9d5dd4).
+      // configureOpenClaw writes CDP_WALLET_ADDRESS to ~/.openclaw/.env at
+      // assign time (lib/ssh.ts:6200-6202) when vm.cdp_wallet_address is set.
+      // The /api/cron/provision-missing-cdp-wallets cron (every 30 min) is
+      // the backfill safety net + DB↔disk drift fixup. Fresh-from-snapshot
+      // VMs WITH a paying-user assignment should have this set within ~3 min
+      // of configureOpenClaw. If it's missing on a test VM, either (a) the
+      // /api/vm/assign path didn't mint CDP (env vars missing in Vercel,
+      // CDP API down), or (b) the configureOpenClaw DB→disk write failed.
+      // Both are bake-blocking surfaces.
+      const cdpInEnv = (await exec(c, `grep -cE "^CDP_WALLET_ADDRESS=0x[a-fA-F0-9]{40}$" ~/.openclaw/.env 2>/dev/null || echo 0`)).stdout.trim();
+      record("CDP_WALLET_ADDRESS in ~/.openclaw/.env (commit ab9d5dd4 backup-wallet)",
+        "P0", ["test"], parseInt(cdpInEnv, 10) === 1,
+        cdpInEnv === "0"
+          ? "CDP_WALLET_ADDRESS missing from .env — paying user has no backup wallet when Bankr is in maintenance"
+          : `count=${cdpInEnv}`);
     } else {
       // Gateway must be STOPPED on bake VM (we just stopped it during cleanup)
       const isActive = (await exec(c, `systemctl --user is-active openclaw-gateway 2>&1`)).stdout.trim();
