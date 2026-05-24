@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Wallet, ExternalLink, Copy, Check, Sparkles, TrendingUp, TrendingDown, Upload, Wand2, X, Gift } from "lucide-react";
+import { Wallet, ExternalLink, Copy, Check, Sparkles, TrendingUp, TrendingDown, Upload, Wand2, X, Gift, Wrench } from "lucide-react";
 import { HowToBuy } from "./how-to-buy";
 import { WhyTokenize } from "./why-tokenize";
 import { BankrMaintenanceNotice } from "./bankr-maintenance-notice";
@@ -230,25 +230,43 @@ export function BankrWalletCard({
     return () => clearInterval(interval);
   }, [tokenAddress]);
 
-  // Don't render if no Bankr wallet provisioned.
-  // EXCEPT during BANKR_MAINTENANCE: show a standalone no-wallet maintenance
-  // card explaining that provisioning will resume once the upstream partner
-  // returns. Without this branch, users whose wallet hasn't been provisioned
-  // yet (because provisionBankrWallet noops during maintenance + the backfill
-  // cron also noops) would see nothing where the wallet card should be —
-  // they'd assume the feature was removed or their account is broken.
-  // See lib/bankr-maintenance.ts + shelpinc/vm-1019 incident 2026-05-24.
+  // No Bankr wallet yet — render a minimal "setup in progress" annotation.
+  // Critically NOT framed as a maintenance pause: agents have multiple wallet
+  // surfaces (the Bankr wallet here + a separate Ethereum wallet provisioned
+  // independently), so "wallet provisioning paused" or similar copy would
+  // be alarming AND inaccurate. The neutral "setup in progress" framing
+  // applies equally to:
+  //   - the normal 30-min window between assignment and the
+  //     provision-missing-bankr-wallets cron backfill (pre-maintenance UX
+  //     was return-null here; this small note is a strict improvement —
+  //     fresh attendees now know something is being prepared)
+  //   - the extended window during BANKR_MAINTENANCE when the backfill
+  //     cron itself is noop'd and the wait stretches to days
+  // See Cooper's 2026-05-24 directive + lib/bankr-maintenance.ts.
   if (!walletId || !evmAddress) {
-    if (bankrMaintenance) {
-      return (
-        <BankrMaintenanceNotice
-          variant="card"
-          title="wallet provisioning paused"
-          body="your agent's wallet will be set up once our infrastructure partner completes scheduled maintenance. nothing to do — we'll handle it automatically as soon as service resumes."
-        />
-      );
-    }
-    return null;
+    return (
+      <div
+        className="glass rounded-xl p-6"
+        style={{ border: "1px solid var(--border)" }}
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Wallet
+            className="w-4 h-4"
+            style={{ color: "var(--muted)" }}
+            aria-hidden
+          />
+          <span
+            className="text-sm font-medium"
+            style={{ color: "var(--muted)" }}
+          >
+            Agent Wallet
+          </span>
+        </div>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          wallet setup in progress
+        </p>
+      </div>
+    );
   }
 
   const shortAddress = `${evmAddress.slice(0, 6)}...${evmAddress.slice(-4)}`;
@@ -817,17 +835,12 @@ export function BankrWalletCard({
         </div>
       ) : (
         <>
-          {bankrMaintenance ? (
-            /* Bankr maintenance state — replaces the entire pre-launch
-               Tokenize CTA group (value prop + WhyTokenize accordion +
-               orange Tokenize button). Wallet address + balance above
-               this block are read-only and stay visible. See
-               lib/bankr-maintenance.ts + Cooper's 2026-05-24 directive. */
-            <BankrMaintenanceNotice variant="card" />
-          ) : !showTokenForm ? (
+          {!showTokenForm ? (
             <div className="space-y-3">
               {/* Plain-language value prop — sits above the button so the
-                  user knows WHY they'd click before they read the label. */}
+                  user knows WHY they'd click before they read the label.
+                  Stays visible during BANKR_MAINTENANCE — Cooper's directive
+                  is to annotate the action, not hide the context. */}
               <div
                 className="glass rounded-xl px-4 py-3 text-sm leading-relaxed"
                 style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
@@ -841,9 +854,21 @@ export function BankrWalletCard({
                   push the CTA below the fold by default. */}
               <WhyTokenize />
 
+              {/* Tokenize button — disabled (opacity + cursor) during
+                  BANKR_MAINTENANCE. onClick guarded too as defense-in-depth
+                  against stale tabs. The orange gradient + lift styling
+                  stay so the CTA remains visually anchored; opacity 0.5
+                  signals "temporarily not actionable." See Cooper's
+                  2026-05-24 directive — annotation, not replacement. */}
               <button
-                onClick={handleOpenForm}
-                className="w-full rounded-full px-5 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.99]"
+                onClick={bankrMaintenance ? undefined : handleOpenForm}
+                disabled={bankrMaintenance}
+                aria-disabled={bankrMaintenance}
+                className={`w-full rounded-full px-5 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
+                  bankrMaintenance
+                    ? "cursor-not-allowed"
+                    : "cursor-pointer active:scale-[0.99]"
+                }`}
                 style={{
                   background: "linear-gradient(135deg, rgba(249,115,22,0.85), rgba(234,88,12,0.95))",
                   color: "#fff",
@@ -851,11 +876,32 @@ export function BankrWalletCard({
                   backdropFilter: "blur(8px)",
                   WebkitBackdropFilter: "blur(8px)",
                   textShadow: "0 1px 2px rgba(0,0,0,0.15)",
+                  opacity: bankrMaintenance ? 0.5 : 1,
                 }}
               >
                 <Sparkles className="w-4 h-4" />
                 Tokenize Your Agent
               </button>
+
+              {/* Small annotation under the disabled button. Only renders
+                  during BANKR_MAINTENANCE. Centered, muted, wrench-iconed
+                  one-liner — explains the disable without hijacking the
+                  card. */}
+              {bankrMaintenance && (
+                <div className="flex items-center justify-center gap-1.5 -mt-1">
+                  <Wrench
+                    className="w-3 h-3"
+                    style={{ color: "var(--muted)", opacity: 0.7 }}
+                    aria-hidden
+                  />
+                  <span
+                    className="text-xs"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    token launches paused during maintenance
+                  </span>
+                </div>
+              )}
             </div>
           ) : !showConfirm ? (
             <div
