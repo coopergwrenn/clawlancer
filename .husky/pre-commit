@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 # Pre-commit hook: when vm-manifest.ts is staged, automatically refresh
-# the timestamped touch comment in the reconcile-fleet route to invalidate
-# Vercel's @vercel/nft trace cache for that bundle.
+# a timestamped touch comment in EVERY cron route that imports VM_MANIFEST.
+# This invalidates Vercel's @vercel/nft trace cache for those bundles so
+# the next deploy picks up the new manifest content.
 #
 # Background: Vercel's nft trace cache silently serves stale vm-manifest.ts
 # imports to bundled cron routes across deploys. The manual touch-comment
@@ -15,33 +16,55 @@
 # staged diff. Touching unconditionally would create churn on unrelated
 # commits. The shape `git diff --cached --name-only` returns staged paths
 # relative to repo root.
+#
+# 2026-05-24 (v120 commit incident): extended to file-drift route.
+# The v120 commit only touched reconcile-fleet's bundle, leaving file-drift
+# with stale v119 manifest → manifest-integrity flagged stale_bundle and
+# refused to run → strip-thinking patch never reached vm-1019. Any new
+# cron route that imports VM_MANIFEST must be added to ROUTE_FILES below.
 
 # Detect staged changes to vm-manifest.ts
 if git diff --cached --name-only | grep -q "instaclaw/lib/vm-manifest.ts"; then
-  ROUTE_FILE="instaclaw/app/api/cron/reconcile-fleet/route.ts"
-  if [ ! -f "$ROUTE_FILE" ]; then
-    echo "[pre-commit] WARN: $ROUTE_FILE not found — skipping nft cache-bust touch"
-    exit 0
-  fi
+  # Every cron route that imports VM_MANIFEST goes here. To find candidates:
+  #   grep -lRn "from \"@/lib/vm-manifest\"" instaclaw/app/api/cron/
+  ROUTE_FILES="
+instaclaw/app/api/cron/reconcile-fleet/route.ts
+instaclaw/app/api/cron/file-drift/route.ts
+"
 
   TS=$(date -u +"%Y-%m-%d %H:%M UTC")
   COMMENT="// nft cache-bust auto-touch (vm-manifest.ts changed): $TS"
 
-  # Append the comment near the top of the route file's constants block,
-  # right after the existing CONFIG_AUDIT_BATCH_SIZE declaration. We use
-  # `sed -i` (BSD sed on macOS needs an empty extension arg) to insert
-  # the comment AFTER the matching line.
-  if grep -q "^const CONFIG_AUDIT_BATCH_SIZE" "$ROUTE_FILE"; then
+  for ROUTE_FILE in $ROUTE_FILES; do
+    if [ ! -f "$ROUTE_FILE" ]; then
+      echo "[pre-commit] WARN: $ROUTE_FILE not found — skipping nft cache-bust touch"
+      continue
+    fi
+
+    # Each route has its own stable single-line anchor near the top. Match
+    # the first one we find; bail with a warning if none present.
+    #   reconcile-fleet: const CONFIG_AUDIT_BATCH_SIZE = ...
+    #   file-drift:      const CRON_NAME = "file-drift";
+    ANCHOR=""
+    if grep -q "^const CONFIG_AUDIT_BATCH_SIZE" "$ROUTE_FILE"; then
+      ANCHOR="^const CONFIG_AUDIT_BATCH_SIZE"
+    elif grep -q "^const CRON_NAME = " "$ROUTE_FILE"; then
+      ANCHOR="^const CRON_NAME = "
+    fi
+
+    if [ -z "$ANCHOR" ]; then
+      echo "[pre-commit] WARN: no known anchor in $ROUTE_FILE — skipping cache-bust (manual touch recommended)"
+      continue
+    fi
+
     if [ "$(uname)" = "Darwin" ]; then
-      sed -i '' "/^const CONFIG_AUDIT_BATCH_SIZE/a\\
+      sed -i '' "/$ANCHOR/a\\
 $COMMENT
 " "$ROUTE_FILE"
     else
-      sed -i "/^const CONFIG_AUDIT_BATCH_SIZE/a\\$COMMENT" "$ROUTE_FILE"
+      sed -i "/$ANCHOR/a\\$COMMENT" "$ROUTE_FILE"
     fi
     git add "$ROUTE_FILE"
     echo "[pre-commit] vm-manifest.ts changed → auto-touched $ROUTE_FILE for nft cache-bust"
-  else
-    echo "[pre-commit] WARN: CONFIG_AUDIT_BATCH_SIZE anchor not found in $ROUTE_FILE — skipping cache-bust (manual touch recommended)"
-  fi
+  done
 fi

@@ -45,6 +45,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const CRON_NAME = "file-drift";
+// nft cache-bust manual-touch (2026-05-24 13:30 UTC): the v120 commit only
+// busted reconcile-fleet's bundle via pre-commit hook; file-drift's bundle
+// stayed on stale v119 manifest → manifest-integrity refused to run →
+// strip-thinking patch didn't reach vm-1019. Pre-commit hook now extended
+// to touch this file on every vm-manifest.ts change (see .husky/pre-commit).
 const LOCK_TTL_SECONDS = 360; // > maxDuration with 60s headroom
 const BATCH_SIZE = 30;
 const CONCURRENCY = 5;
