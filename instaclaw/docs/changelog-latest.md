@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-24
 
-Window: `9b546ec7b415d6c94d11d90e462e1bc2efbc12c0` → `HEAD` (HEAD = `4a6be1cb`)
+Window: `4a6be1cbe551b72f0cf23cdc5d253e15d408f63c` → `HEAD` (HEAD = `158f1cdf`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 4a6be1cbe551b72f0cf23cdc5d253e15d408f63c -->
+<!-- LAST_GENERATED_SHA: 158f1cdf245106347857a7509ef481bdee785a28 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `4a6be1cb` 2026-05-24 — fix(bankr): render maintenance card when wallet not yet provisioned [1 files] _(ai-assisted)_
+- `158f1cdf` 2026-05-24 — fix(bankr): annotate disabled Tokenize button instead of full-card replacement [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `6230258f` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `24630898` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `4a6be1cb` 2026-05-24 — fix(bankr): render maintenance card when wallet not yet provisioned [1 files] _(ai-assisted)_
+- `158f1cdf` 2026-05-24 — fix(bankr): annotate disabled Tokenize button instead of full-card replacement [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `6230258f` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `24630898` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `4a6be1cb` 2026-05-24 — fix(bankr): render maintenance card when wallet not yet provisioned
+- `158f1cdf` 2026-05-24 — fix(bankr): annotate disabled Tokenize button instead of full-card replacement
 
 ## Appendix — every commit (chronological)
 
-- `6230258f` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
-- `4a6be1cb` 2026-05-24 — fix(bankr): render maintenance card when wallet not yet provisioned [1 files] _(ai-assisted)_
+- `24630898` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `158f1cdf` 2026-05-24 — fix(bankr): annotate disabled Tokenize button instead of full-card replacement [1 files] _(ai-assisted)_
