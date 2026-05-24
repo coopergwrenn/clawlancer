@@ -265,7 +265,7 @@ visual language for "this object is in front of the page."
 
 ## 3. The class system
 
-Four glass shapes ship today. Each is independent CSS — none inherit from
+Five glass shapes ship today. Each is independent CSS — none inherit from
 the others. **Tweaking one does not affect the others, by design.**
 
 ### `.liquid-glass-btn` — Hero CTA ("Claim My Agent")
@@ -302,6 +302,19 @@ the others. **Tweaking one does not affect the others, by design.**
 - **Wrapping:** Required — root + surface + shadow. The nav Links are the surfaces.
 - **Locked in:** `globals.css` lines 741-925.
 
+### `.liquid-glass-card` — Testimonial cards (and future content containers)
+
+- **Dimensions:** Width set externally via tailwind (currently `w-[320px]`). Height pinned via `min-height: 240px` + `flex: 1` on the surface so all cards in a marquee row render uniformly regardless of content length.
+- **Shape:** Rounded square (`border-radius: 12px`)
+- **Substrate inset:** `-4px` with `rgba(0,0,0,0.08)` core alpha (vs pill's `-3px / 0.10`). **Tuned at card scale.** Cooper's 2026-05-24 "anti-muddy" callout: lower alpha avoids the large rectangle reading as a darker patch against cream.
+- **Shadow proxy inset:** `-20px`, `filter: blur(3px)` (vs pill's `-10px / blur(2px)`). Shadow `::after` offset `top: 26px / left: 18px` (vs pill `14 / 10`). **Tuned at card scale.** Proportionally larger to match the card's bigger visual weight — matches the btn's `top:24 / left:18` ratio at hero-CTA scale.
+- **Surface positioning:** `display: block; width: 100%; flex: 1` so the surface fills the stretched root height.
+- **Root display:** `flex; flex-direction: column` so `flex: 1` on the surface works.
+- **No hover state.** Cards are decorative.
+- **Wrapping:** Required — root + surface + shadow.
+- **Used by:** `components/landing/testimonials.tsx` (the "What People Are Saying" marquee — 5 testimonials × 4 marquee duplicates × 2 rows = 40 card instances).
+- **Locked in:** `globals.css` lines 741-872 (between `.liquid-glass-orb` and `.liquid-glass-nav-btn`).
+
 ### `.liquid-glass-orb` — Numbered step circles in "How It Works"
 
 - **Dimensions:** Set externally via `w-N h-N` tailwind on the root (currently `w-12 h-12 sm:w-14 sm:h-14` → 48px / 56px)
@@ -335,6 +348,7 @@ All four classes share, identically:
 | `.liquid-glass-pill` | stadium 9999px | 40px | 12px/500 | 20px | -3px | -10px | 14px / 10px |
 | `.liquid-glass-nav-btn` | rounded 0.5rem | 36px | 14px/500 | 16px | -2px | -8px | 12px / 8px |
 | `.liquid-glass-orb` | circle 50% | parent-sized | parent-sized | n/a | -3px | -10px | 14px / 10px |
+| `.liquid-glass-card` | rounded 12px | min 240px | 14px (content) | 20px | -4px | -20px | 26px / 18px |
 
 Surface dimensions scale roughly linearly with substrate / shadow offsets.
 A future variant should follow this scaling pattern (e.g., a 100px hero
