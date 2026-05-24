@@ -1,19 +1,19 @@
 # Changelog — generated 2026-05-24
 
-Window: `706076dd3693eb9cacfc7f850056b1d18d154f49` → `HEAD` (HEAD = `b81a3e62`)
+Window: `b81a3e62412b7efd9b53fbf927da01ba535ebe2a` → `HEAD` (HEAD = `49821c6d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: b81a3e62412b7efd9b53fbf927da01ba535ebe2a -->
+<!-- LAST_GENERATED_SHA: 49821c6d759381b7b6809e00d4af394c1c596332 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
-- AI-assisted commits (co-authored): 1
+- **Docs / PRD only:** 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `72cb41b1` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
-- `b81a3e62` 2026-05-24 — docs: add liquid-glass UI reference for the design language built 2026-05-24 [1 files] _(ai-assisted)_
+- `49821c6d` 2026-05-24 — chore: promote CDP wallet migration to applied (Rule 56) [2 files]
+- `be4f3ee2` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `49821c6d` 2026-05-24 — chore: promote CDP wallet migration to applied (Rule 56) [2 files]
 
 ### Feature (user-facing) (0)
 
@@ -43,18 +43,11 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `72cb41b1` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
-- `b81a3e62` 2026-05-24 — docs: add liquid-glass UI reference for the design language built 2026-05-24 [1 files] _(ai-assisted)_
-
-## AI-assisted commits (1)
-
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
-
-- `b81a3e62` 2026-05-24 — docs: add liquid-glass UI reference for the design language built 2026-05-24
+- `be4f3ee2` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Appendix — every commit (chronological)
 
-- `72cb41b1` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
-- `b81a3e62` 2026-05-24 — docs: add liquid-glass UI reference for the design language built 2026-05-24 [1 files] _(ai-assisted)_
+- `be4f3ee2` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `49821c6d` 2026-05-24 — chore: promote CDP wallet migration to applied (Rule 56) [2 files]
