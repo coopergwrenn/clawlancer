@@ -218,52 +218,19 @@ function HeroInner() {
             <WaitlistForm />
           ) : (
             <>
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="glow-wrap" style={{ width: "auto" }}>
-                  <div className="glow-border" style={{ width: "auto" }}>
-                    <div className="glow-spinner" />
-                    <div className="glow-content" style={{ background: "transparent" }}>
-                      <Link
-                        href={session ? "/dashboard" : "/signup"}
-                        className="block px-8 sm:px-14 py-3.5 sm:py-4 rounded-lg text-base sm:text-lg font-semibold transition-all text-center whitespace-nowrap"
-                        style={{
-                          background: "linear-gradient(180deg, rgba(220,103,67,0.95) 0%, rgba(200,85,52,1) 100%)",
-                          color: "#ffffff",
-                          boxShadow: `
-                            rgba(255, 255, 255, 0.25) 0px 1px 1px 0px inset,
-                            rgba(220, 103, 67, 0.15) 0px -2px 4px 0px inset
-                          `,
-                        }}
-                      >
-                        {session ? "Go to Dashboard" : "Claim My Agent"}
-                      </Link>
-                    </div>
-                  </div>
+              <div className="flex justify-center pt-2">
+                <div className="liquid-glass-btn-root">
+                  <Link
+                    href={session ? "/dashboard" : "/signup"}
+                    className="liquid-glass-btn"
+                  >
+                    <span>Claim My Agent</span>
+                  </Link>
+                  <div aria-hidden="true" className="liquid-glass-btn-shadow"></div>
                 </div>
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    document.getElementById("learn-more")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }}
-                  className="px-6 sm:px-8 py-3.5 sm:py-4 rounded-lg text-base sm:text-base font-medium transition-all whitespace-nowrap cursor-pointer"
-                  style={{
-                    background: "linear-gradient(-75deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05))",
-                    backdropFilter: "blur(2px)",
-                    WebkitBackdropFilter: "blur(2px)",
-                    color: "var(--foreground)",
-                    boxShadow: `
-                      rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
-                      rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
-                      rgba(0, 0, 0, 0.1) 0px 2px 4px 0px,
-                      rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset
-                    `,
-                  }}
-                >
-                  Learn More
-                </button>
               </div>
 
-              {/* Scarcity line */}
+              {/* Scarcity line — quieted to a whisper */}
               <ScarcityLine />
             </>
           )}
@@ -279,25 +246,14 @@ function ScarcityLine() {
   if (spots === null) return null;
   return (
     <motion.span
-      className="inline-flex items-center px-4 py-1.5 rounded-full text-xs tracking-wide"
-      style={{
-        background: "linear-gradient(-75deg, rgba(255,255,255,0.03), rgba(255,255,255,0.12), rgba(255,255,255,0.03))",
-        backdropFilter: "blur(2px)",
-        WebkitBackdropFilter: "blur(2px)",
-        boxShadow: `
-          rgba(0,0,0,0.03) 0px 1px 2px 0px inset,
-          rgba(255,255,255,0.4) 0px -1px 2px 0px inset,
-          rgba(0,0,0,0.06) 0px 2px 4px -1px
-        `,
-        color: "var(--muted)",
-      }}
+      className="inline-flex items-center gap-1.5 text-[11px] tracking-wide"
+      style={{ color: "var(--muted)", opacity: 0.55 }}
       initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
+      animate={{ opacity: 0.55, y: 0 }}
       transition={{ delay: 1.2, duration: 0.5, ease: SNAPPY }}
     >
-      <Cloud size={14} strokeWidth={1.5} className="shrink-0 mr-1.5" style={{ opacity: 0.55 }} />
-      <span style={{ opacity: 0.55 }}>Limited cloud servers</span>
-      &nbsp;only&nbsp;<span className="font-bold shimmer-text text-sm" style={{ fontFamily: "var(--font-serif)" }}>{spots}</span>&nbsp;agents left
+      <Cloud size={11} strokeWidth={1.5} className="shrink-0" style={{ opacity: 0.7 }} />
+      <span>Limited cloud servers — only <span className="font-medium shimmer-text" style={{ fontFamily: "var(--font-serif)", opacity: 1 }}>{spots}</span> agents left</span>
     </motion.span>
   );
 }

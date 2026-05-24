@@ -261,71 +261,216 @@ html.lenis body {
   -webkit-backdrop-filter: blur(12px);
 }
 
-/* Glow border effect (orange) */
-@keyframes glow-spin {
-  from { transform: translate(-50%, -50%) rotate(0deg); }
-  to { transform: translate(-50%, -50%) rotate(360deg); }
-}
+/* ─── Liquid Glass primary CTA (v7 — verbatim wabi 3-element port) ───
+   v1-v6 all failed because I was either inventing values from theory
+   or porting recipes that needed photo backgrounds. v7 ports wabi.ai's
+   actual 3-element architecture EXACTLY:
 
-@keyframes glow-pulse-orange {
-  0%, 100% {
-    box-shadow:
-      0 0 10px 2px rgba(220, 103, 67, 0.25),
-      0 0 22px 5px rgba(220, 103, 67, 0.1);
-  }
-  50% {
-    box-shadow:
-      0 0 16px 5px rgba(220, 103, 67, 0.35),
-      0 0 36px 10px rgba(220, 103, 67, 0.12);
-  }
-}
+     .liquid-glass-btn-root      (wrapper, positioning context only)
+       .liquid-glass-btn         (the button surface — transparent +
+                                   sheen gradient + 4-layer box-shadow
+                                   + conic-gradient ::after rim)
+       .liquid-glass-btn-shadow  (sibling div, NOT a pseudo — sits
+                                   OUTSIDE the button's stacking
+                                   context. inset:-16px overhang.
+                                   filter:blur(2px). Its ::after is a
+                                   masked ring with linear gradient
+                                   that creates the directional
+                                   drop shadow.)
 
-/* Outer wrapper: carries the pulsing shadow halo (not clipped) */
-.glow-wrap {
+   Every value below is from wabi's live computed CSS (extracted via
+   puppeteer getComputedStyle on 2026-05-24). The only changes:
+   - height 68px → 56px (slightly slimmer for our composition)
+   - font-weight 400 → 500 (better hierarchy with our headline)
+   - letter-spacing normal → -0.15px (subtle tightening)
+   - color rgb(25,25,25) → #1c1c1c (basically the same) */
+
+.liquid-glass-btn-root {
   position: relative;
-  border-radius: 0.5rem;
-  animation: glow-pulse-orange 4s ease-in-out infinite;
-  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  z-index: 2;
+  isolation: isolate;
+  /* font properties cascade to surface */
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.15px;
+  line-height: 24px;
+  color: #1c1c1c;
 }
 
-/* Inner wrapper: clips the spinning gradient to the border area */
-.glow-border {
-  position: relative;
-  padding: 1.5px;
-  border-radius: 0.5rem;
-  overflow: hidden;
-  width: 100%;
-  /* Persistent base border — always visible */
-  background: rgba(220, 103, 67, 0.35);
-}
-
-.glow-border > .glow-spinner {
+/* "Refraction substrate" — soft dark radial gradient behind the button.
+   On flat cream bg, backdrop-filter has nothing to blur, so the button
+   reads flat. This ::before gives backdrop-filter something to refract,
+   permanently recreating the depth that only appeared during the
+   framer-motion entrance (when the parent's opacity-induced stacking
+   context provided rasterized content for backdrop-filter to blur).
+   Sized slightly larger than the button so the halo extends visibly
+   past the edges. */
+.liquid-glass-btn-root::before {
+  content: '';
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 300%;
-  aspect-ratio: 1;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0%,
-    transparent 35%,
-    rgba(220, 103, 67, 0.7) 50%,
-    #f0976e 62%,
-    #ffffff 70%,
-    #f0976e 78%,
-    rgba(220, 103, 67, 0.7) 90%,
-    transparent 100%
+  inset: -5px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    ellipse at 50% 60%,
+    rgba(0, 0, 0, 0.12) 0%,
+    rgba(0, 0, 0, 0.04) 50%,
+    transparent 80%
   );
-  animation: glow-spin 4s linear infinite;
-  z-index: 0;
+  z-index: -1;
+  pointer-events: none;
 }
 
-.glow-border > .glow-content {
+.liquid-glass-btn {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 68px;
+  padding: 0 40px;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: linear-gradient(-75deg,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.20),
+    rgba(255, 255, 255, 0.05));
+  -webkit-backdrop-filter: blur(2px);
+          backdrop-filter: blur(2px);
+  border: 0;
+  border-radius: 9999px;
+  box-shadow:
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.2) 0px 4px 2px -2px,
+    rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  z-index: 2;
+  transition:
+    transform 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    box-shadow 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    background-color 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    backdrop-filter 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Conic-gradient rim on the surface — exactly wabi's recipe.
+   Dark stops at α 0.5 catch the top/bottom edges (where light hits a
+   real glass cylinder). The mask-composite:exclude trick renders only
+   the border ring, not the fill. */
+.liquid-glass-btn::after {
+  content: '';
+  position: absolute;
+  inset: -0.5px 0 0 -0.5px;
+  width: calc(100% + 1px);
+  height: calc(100% + 1px);
+  padding: 1px;
+  background-image:
+    conic-gradient(from -75deg at 50% 50%,
+      rgba(0, 0, 0, 0.5),
+      rgba(0, 0, 0, 0) 5%,
+      rgba(0, 0, 0, 0) 40%,
+      rgba(0, 0, 0, 0.5) 50%,
+      rgba(0, 0, 0, 0) 60%,
+      rgba(0, 0, 0, 0) 95%,
+      rgba(0, 0, 0, 0.5)),
+    linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  box-shadow: rgba(255, 255, 255, 0.5) 0px 0px 0px 0.5px inset;
+  border-radius: inherit;
   z-index: 1;
-  border-radius: calc(0.5rem - 1px);
-  background: #ffffff;
-  width: 100%;
+  pointer-events: none;
+}
+
+/* The shadow proxy — SIBLING div, not a pseudo. Sits OUTSIDE the
+   button's stacking context so its dark gradient doesn't bleed
+   through the transparent surface. The wrapper has overflow visible
+   so the 16px overhang on each side renders. */
+.liquid-glass-btn-shadow {
+  position: absolute;
+  inset: -16px;
+  filter: blur(2px);
+  pointer-events: none;
+  overflow: visible;
+  transition: filter 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* The shadow shape itself — bottom-right-anchored masked ring with
+   linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.1)). The mask makes
+   only the ring (not the interior) visible; the part hidden behind
+   the button doesn't render. */
+.liquid-glass-btn-shadow::after {
+  content: '';
+  position: absolute;
+  top: 24px;
+  left: 18px;
+  right: 0;
+  bottom: 0;
+  width: calc(100% - 36px);
+  height: calc(100% - 36px);
+  padding: 2px;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.1));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  border-radius: 9999px;
+  pointer-events: none;
+  transition:
+    top 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.liquid-glass-btn > * {
+  position: relative;
+  z-index: 2;
+}
+
+.liquid-glass-btn:hover {
+  background-color: rgba(240, 240, 240, 0.4);
+  box-shadow:
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.25) 0px 2.4px 0.8px -1.6px,
+    rgba(255, 255, 255, 0.5) 0px 0px 0.8px 1.6px inset;
+}
+
+.liquid-glass-btn-root:has(.liquid-glass-btn:hover) .liquid-glass-btn-shadow {
+  filter: blur(1px);
+}
+
+.liquid-glass-btn-root:has(.liquid-glass-btn:hover) .liquid-glass-btn-shadow::after {
+  top: 18px;
+}
+
+.liquid-glass-btn:active {
+  transform: translateY(1px) scale(0.99);
+  transition-duration: 0.15s;
+}
+
+.liquid-glass-btn-root:has(.liquid-glass-btn:active) .liquid-glass-btn-shadow::after {
+  top: 24px;
+  opacity: 0.75;
+}
+
+.liquid-glass-btn:focus-visible {
+  outline: 2px solid rgba(220, 103, 67, 0.6);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-glass-btn {
+    transition: none;
+  }
 }
 
 /* Claude Code shimmer — orange base with golden highlight sweep */
