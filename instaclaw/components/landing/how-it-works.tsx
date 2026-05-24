@@ -66,13 +66,13 @@ export function HowItWorks() {
               />
 
               <div className="flex gap-6 sm:gap-10 py-10 sm:py-14 items-start">
-                {/* Step number in neutral liquid-glass circle.
-                    3-element architecture mirroring .liquid-glass-pill —
-                    root (refraction substrate + isolation) + surface
-                    (sheen + conic rim) + sibling shadow proxy. Diameter
-                    set by tailwind w-12 h-12 / sm:w-14 sm:h-14. */}
-                <span className="liquid-glass-circle-root shrink-0 mt-1 w-12 h-12 sm:w-14 sm:h-14">
-                  <span className="liquid-glass-circle">
+                {/* Step number in liquid-glass orb — same wabi recipe
+                    as .liquid-glass-pill (refraction substrate + sheen
+                    + conic rim + 4-layer box-shadow + sibling masked-
+                    ring shadow), border-radius: 50%. Diameter set by
+                    tailwind w-12 h-12 / sm:w-14 sm:h-14. */}
+                <span className="liquid-glass-orb-root shrink-0 mt-1 w-12 h-12 sm:w-14 sm:h-14">
+                  <span className="liquid-glass-orb">
                     <span
                       className="text-xl sm:text-2xl font-medium tracking-[-0.5px]"
                       style={{
@@ -83,7 +83,7 @@ export function HowItWorks() {
                       {step.number}
                     </span>
                   </span>
-                  <div aria-hidden="true" className="liquid-glass-circle-shadow"></div>
+                  <div aria-hidden="true" className="liquid-glass-orb-shadow"></div>
                 </span>
 
                 {/* Content */}
