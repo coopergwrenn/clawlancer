@@ -598,11 +598,49 @@ html.lenis body {
 }
 
 /* ─── Liquid Glass NAV button (.liquid-glass-nav-btn) ────────────────
-   Subtler glass treatment for secondary CTAs in the navbar.
-   Single-element only — NO shadow proxy, NO refraction substrate.
-   Alphas reduced ~65% from .liquid-glass-btn so it doesn't compete
-   with the hero CTA. Reads as "glass chip on navbar", not "floating
-   3D object". Independent class — does NOT inherit from .liquid-glass-btn. */
+   Full 3-element architecture mirroring .liquid-glass-btn, scaled down
+   to navbar dimensions (36px tall, 16px h-padding, 14px font, 8px
+   radius). Cooper's 2026-05-24 callout: the spots-counter pill reads
+   as "real glass", so Get Started should too. Same recipe as
+   .liquid-glass-pill but with rounded-square (0.5rem) instead of
+   stadium (9999px) radius.
+   Independent class — does NOT inherit from .liquid-glass-btn or
+   .liquid-glass-pill. Future tweaks to either source class won't
+   regress this. */
+
+.liquid-glass-nav-btn-root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.5rem;
+  z-index: 2;
+  isolation: isolate;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.1px;
+  line-height: 20px;
+  color: var(--foreground);
+}
+
+/* Refraction substrate — gives backdrop-filter dark pixels to refract
+   on the flat cream bg. Without this the glass looks like a flat
+   sticker. Smaller inset than pill (-2px vs -3px) so it doesn't bleed
+   into adjacent nav items. */
+.liquid-glass-nav-btn-root::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 0.5rem;
+  background: radial-gradient(
+    ellipse at 50% 60%,
+    rgba(0, 0, 0, 0.09) 0%,
+    rgba(0, 0, 0, 0.025) 50%,
+    transparent 80%
+  );
+  z-index: -1;
+  pointer-events: none;
+}
 
 .liquid-glass-nav-btn {
   position: relative;
@@ -613,41 +651,122 @@ html.lenis body {
   padding: 0 16px;
   background-color: rgba(0, 0, 0, 0);
   background-image: linear-gradient(-75deg,
-    rgba(255, 255, 255, 0.035),
-    rgba(255, 255, 255, 0.14),
-    rgba(255, 255, 255, 0.035));
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.20),
+    rgba(255, 255, 255, 0.05));
   -webkit-backdrop-filter: blur(2px);
           backdrop-filter: blur(2px);
   border: 0;
   border-radius: 0.5rem;
   box-shadow:
-    rgba(0, 0, 0, 0.04) 0px 2px 2px 0px inset,
-    rgba(255, 255, 255, 0.35) 0px -2px 2px 0px inset,
-    rgba(0, 0, 0, 0.13) 0px 4px 2px -2px,
-    rgba(255, 255, 255, 0.14) 0px 0px 1.6px 4px inset;
-  color: var(--foreground);
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: -0.1px;
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.18) 0px 4px 2px -2px,
+    rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset;
+  color: inherit;
+  font: inherit;
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+  z-index: 2;
 }
 
+/* Conic-gradient rim — same recipe as .liquid-glass-btn::after and
+   .liquid-glass-pill::after. Masked padding-box ring border. */
+.liquid-glass-nav-btn::after {
+  content: '';
+  position: absolute;
+  inset: -0.5px 0 0 -0.5px;
+  width: calc(100% + 1px);
+  height: calc(100% + 1px);
+  padding: 1px;
+  background-image:
+    conic-gradient(from -75deg at 50% 50%,
+      rgba(0, 0, 0, 0.5),
+      rgba(0, 0, 0, 0) 5%,
+      rgba(0, 0, 0, 0) 40%,
+      rgba(0, 0, 0, 0.5) 50%,
+      rgba(0, 0, 0, 0) 60%,
+      rgba(0, 0, 0, 0) 95%,
+      rgba(0, 0, 0, 0.5)),
+    linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  box-shadow: rgba(255, 255, 255, 0.5) 0px 0px 0px 0.5px inset;
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+  transition: opacity 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.liquid-glass-nav-btn > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Sibling shadow div — masked ring shadow proxy, scaled smaller than
+   pill (-8px inset, top:12px/left:8px offsets) to fit nav density. */
+.liquid-glass-nav-btn-shadow {
+  position: absolute;
+  inset: -8px;
+  filter: blur(2px);
+  pointer-events: none;
+  overflow: visible;
+}
+
+.liquid-glass-nav-btn-shadow::after {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: 8px;
+  right: 0;
+  bottom: 0;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
+  padding: 2px;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.08));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  border-radius: 0.5rem;
+  pointer-events: none;
+  transition: filter 0.25s cubic-bezier(0.25, 1, 0.5, 1), top 0.25s cubic-bezier(0.25, 1, 0.5, 1), left 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Hover — lift the surface, brighten the rim, retract the shadow. */
 .liquid-glass-nav-btn:hover {
   background-color: rgba(240, 240, 240, 0.30);
   box-shadow:
-    rgba(0, 0, 0, 0.04) 0px 2px 2px 0px inset,
-    rgba(255, 255, 255, 0.45) 0px -2px 2px 0px inset,
-    rgba(0, 0, 0, 0.17) 0px 2.4px 0.8px -1.6px,
-    rgba(255, 255, 255, 0.30) 0px 0px 0.8px 1.6px inset;
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.6) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.22) 0px 2.4px 0.8px -1.6px,
+    rgba(255, 255, 255, 0.32) 0px 0px 0.8px 1.6px inset;
+}
+
+.liquid-glass-nav-btn-root:has(.liquid-glass-nav-btn:hover) .liquid-glass-nav-btn-shadow {
+  filter: blur(3px);
+}
+
+.liquid-glass-nav-btn-root:has(.liquid-glass-nav-btn:hover) .liquid-glass-nav-btn-shadow::after {
+  top: 10px;
+  left: 6px;
 }
 
 .liquid-glass-nav-btn:active {
   transform: translateY(0.5px);
   transition-duration: 0.1s;
+}
+
+.liquid-glass-nav-btn-root:has(.liquid-glass-nav-btn:active) .liquid-glass-nav-btn-shadow::after {
+  top: 14px;
+  left: 10px;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.04));
 }
 
 .liquid-glass-nav-btn:focus-visible {
@@ -660,7 +779,10 @@ html.lenis body {
   .liquid-glass-pill::after,
   .liquid-glass-pill-shadow,
   .liquid-glass-pill-shadow::after,
-  .liquid-glass-nav-btn {
+  .liquid-glass-nav-btn,
+  .liquid-glass-nav-btn::after,
+  .liquid-glass-nav-btn-shadow,
+  .liquid-glass-nav-btn-shadow::after {
     transition: none;
   }
 }
