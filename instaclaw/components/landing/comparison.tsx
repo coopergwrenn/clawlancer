@@ -148,9 +148,12 @@ export function Comparison() {
           ))}
         </div>
 
-        {/* Bottom punchline with shimmer */}
+        {/* Bottom punchline with shimmer. font-family is the only thing
+            changed here vs the shimmer-text class — the orange→gold→orange
+            background-clip + animation in globals.css stays untouched. */}
         <motion.p
           className="text-center mt-10 text-sm sm:text-base font-semibold shimmer-text"
+          style={{ fontFamily: "var(--font-serif)" }}
           initial={{ opacity: 0, y: 10 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-40px" }}
