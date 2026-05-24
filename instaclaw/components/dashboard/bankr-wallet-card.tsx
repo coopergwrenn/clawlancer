@@ -104,6 +104,9 @@ export function BankrWalletCard({
   bankrMaintenance = false,
 }: BankrWalletCardProps) {
   const [copied, setCopied] = useState(false);
+  // Tokenize-click guard for the no-wallet case. Surfaced as a one-line
+  // annotation below the button. See Cooper's 2026-05-24 directive.
+  const [walletPending, setWalletPending] = useState(false);
   const [tokenizing, setTokenizing] = useState(false);
   const [tokenName, setTokenName] = useState("");
   const [tokenSym, setTokenSym] = useState("");
@@ -226,11 +229,15 @@ export function BankrWalletCard({
     return () => clearInterval(interval);
   }, [tokenAddress]);
 
-  // Don't render if no Bankr wallet provisioned
-  if (!walletId || !evmAddress) return null;
-
-  const shortAddress = `${evmAddress.slice(0, 6)}...${evmAddress.slice(-4)}`;
+  // Always render the card — even without a wallet — so new users see the
+  // Tokenize feature and get excited about it before provisioning completes.
+  // The address row, copy/explorer affordances, and Tokenize action all
+  // null-guard below. See Cooper's 2026-05-24 directive.
+  const shortAddress = evmAddress
+    ? `${evmAddress.slice(0, 6)}...${evmAddress.slice(-4)}`
+    : null;
   const hasToken = !!tokenAddress;
+  const hasWallet = !!(walletId && evmAddress);
 
   async function handleCopy() {
     if (!evmAddress) return;
@@ -582,35 +589,39 @@ export function BankrWalletCard({
         </a>
       </div>
 
-      {/* Wallet address */}
-      <div className="flex items-center gap-2 mb-3">
-        <code
-          className="text-sm px-2 py-1 rounded"
-          style={{ background: "rgba(0,0,0,0.04)" }}
-        >
-          {shortAddress}
-        </code>
-        <button
-          onClick={handleCopy}
-          className="p-1 rounded hover:bg-black/5 transition-colors"
-          title="Copy full address"
-        >
-          {copied ? (
-            <Check className="w-3.5 h-3.5 text-green-600" />
-          ) : (
-            <Copy className="w-3.5 h-3.5" style={{ color: "var(--muted)" }} />
-          )}
-        </button>
-        <a
-          href={`https://basescan.org/address/${evmAddress}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="p-1 rounded hover:bg-black/5 transition-colors"
-          title="View on BaseScan"
-        >
-          <ExternalLink className="w-3.5 h-3.5" style={{ color: "var(--muted)" }} />
-        </a>
-      </div>
+      {/* Wallet address — hides cleanly when wallet not yet provisioned.
+          The "Base mainnet" sub-line below stays visible either way (it
+          describes the network where the wallet will live). */}
+      {evmAddress && (
+        <div className="flex items-center gap-2 mb-3">
+          <code
+            className="text-sm px-2 py-1 rounded"
+            style={{ background: "rgba(0,0,0,0.04)" }}
+          >
+            {shortAddress}
+          </code>
+          <button
+            onClick={handleCopy}
+            className="p-1 rounded hover:bg-black/5 transition-colors"
+            title="Copy full address"
+          >
+            {copied ? (
+              <Check className="w-3.5 h-3.5 text-green-600" />
+            ) : (
+              <Copy className="w-3.5 h-3.5" style={{ color: "var(--muted)" }} />
+            )}
+          </button>
+          <a
+            href={`https://basescan.org/address/${evmAddress}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1 rounded hover:bg-black/5 transition-colors"
+            title="View on BaseScan"
+          >
+            <ExternalLink className="w-3.5 h-3.5" style={{ color: "var(--muted)" }} />
+          </a>
+        </div>
+      )}
 
       <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
         Base mainnet
@@ -813,7 +824,18 @@ export function BankrWalletCard({
               <WhyTokenize />
 
               <button
-                onClick={bankrMaintenance ? undefined : handleOpenForm}
+                onClick={
+                  bankrMaintenance
+                    ? undefined
+                    : !hasWallet
+                      ? () => {
+                          setWalletPending(true);
+                          // Self-dismiss after 5s so the inline message
+                          // doesn't linger forever after the user reads it.
+                          setTimeout(() => setWalletPending(false), 5000);
+                        }
+                      : handleOpenForm
+                }
                 disabled={bankrMaintenance}
                 className={`w-full rounded-full px-5 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 transition-all ${bankrMaintenance ? "cursor-not-allowed" : "cursor-pointer active:scale-[0.99]"}`}
                 style={{
@@ -829,11 +851,15 @@ export function BankrWalletCard({
                 <Sparkles className="w-4 h-4" />
                 Tokenize Your Agent
               </button>
-              {bankrMaintenance && (
+              {bankrMaintenance ? (
                 <p className="text-xs text-center" style={{ color: "var(--muted)" }}>
                   token launches paused during maintenance
                 </p>
-              )}
+              ) : walletPending ? (
+                <p className="text-xs text-center" style={{ color: "var(--muted)" }}>
+                  wallet is being set up, check back shortly
+                </p>
+              ) : null}
             </div>
           ) : !showConfirm ? (
             <div
