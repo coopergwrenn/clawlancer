@@ -98,6 +98,37 @@ const features = [
   },
 ];
 
+// Renders a string with any "World ID" mentions replaced by a subtle
+// inline link to https://world.org. No-op for strings that don't
+// contain "World ID" — the regex split returns a single-element array
+// containing just the original string, which renders as one <span>.
+// Future-proof: if "World ID" appears in another card later, it gets
+// auto-linkified; no per-card JSX needed.
+function linkifyWorldId(text: string) {
+  const parts = text.split(/(World ID)/g);
+  return parts.map((part, i) =>
+    part === "World ID" ? (
+      <a
+        key={i}
+        href="https://world.org"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline transition-opacity hover:opacity-100"
+        style={{
+          color: "inherit",
+          opacity: 0.7,
+          transitionDuration: "300ms",
+          transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+        }}
+      >
+        {part}
+      </a>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
+}
+
 export function Features() {
   const [openTech, setOpenTech] = useState<number | null>(null);
 
@@ -164,7 +195,7 @@ export function Features() {
                     className="text-sm sm:text-base leading-relaxed max-w-md"
                     style={{ color: "var(--muted)" }}
                   >
-                    {feature.description}
+                    {linkifyWorldId(feature.description)}
                   </p>
 
                   {/* Technical details toggle.
@@ -211,7 +242,7 @@ export function Features() {
                               className="pt-2 text-xs leading-relaxed max-w-md"
                               style={{ color: "var(--muted)" }}
                             >
-                              {feature.tech}
+                              {linkifyWorldId(feature.tech)}
                             </p>
                           </motion.div>
                         )}
