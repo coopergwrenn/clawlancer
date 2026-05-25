@@ -12,7 +12,7 @@ import {
   Users,
   Shield,
   CreditCard,
-  Key,
+  Plug,
   Fingerprint,
 } from "lucide-react";
 
@@ -83,11 +83,11 @@ const features = [
     tech: "Credits map to AI token usage. A simple message uses 1 to 3 credits; a complex multi-step task (web research, code execution, file management) uses 10 to 50. BYOK users bypass credits entirely and pay Anthropic directly based on their own API usage.",
   },
   {
-    icon: Key,
-    title: "Bring Your Own Key",
+    icon: Plug,
+    title: "Bring Your Favorite Model",
     description:
-      "Already have an Anthropic API key? Plug it in and pay Anthropic direct. Same agent, same skills, no markup from us.",
-    tech: "BYOK (Bring Your Own Key) mode lets you connect your Anthropic API key directly. Your key is encrypted at rest (AES-256) and stored on your VM only. All API calls go directly from your VM to Anthropic, never proxied through us. Choose any Claude model (Sonnet, Opus, Haiku) and configure rate limits, token budgets, and system prompts.",
+      "Pick from Claude Sonnet, Opus, or Haiku. Connect your ChatGPT account via OAuth and use the models you already pay for. Or plug in your Anthropic API key, no markup from us. The agent runs on whatever you bring.",
+    tech: "Default models include Claude Sonnet, Opus, and Haiku, all available via our credit system. OAuth integrations let you connect an existing ChatGPT account so the agent routes requests through your subscription, with usage counting against your ChatGPT plan instead of our credits. BYOK mode lets you plug in your Anthropic API key directly, encrypted at rest (AES-256) and stored on your VM only. All BYOK API calls go directly from your VM to Anthropic, never proxied through us.",
   },
   {
     icon: Fingerprint,
