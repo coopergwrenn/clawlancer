@@ -1,16 +1,16 @@
 # Changelog — generated 2026-05-25
 
-Window: `0d0f7c182ccbeaf244232b6fb96a417fb90da957` → `HEAD` (HEAD = `434a935d`)
+Window: `434a935df8b69ba7a40be2125f6530edb3cd60e3` → `HEAD` (HEAD = `47f62194`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 434a935df8b69ba7a40be2125f6530edb3cd60e3 -->
+<!-- LAST_GENERATED_SHA: 47f62194590ed683199bc97ba1f40dd7a01b9ac6 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Infrastructure:** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,11 +18,12 @@ Total commits: 2
 
 ## What changed for users
 
-- `434a935d` 2026-05-24 — hero: per-word shimmer on cycling keyword (one-shot, finishes before next) [2 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `71490f6a` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `47f62194` 2026-05-25 — hero shimmer: bump cycling-keyword color #DC6743 → #E96F4D (coral) [1 files] _(ai-assisted)_
+- `d50dbf52` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -30,13 +31,13 @@ Total commits: 2
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
+
+- `47f62194` 2026-05-25 — hero shimmer: bump cycling-keyword color #DC6743 → #E96F4D (coral) [1 files] _(ai-assisted)_
+
+### Feature (user-facing) (0)
 
 _(none)_
-
-### Feature (user-facing) (1)
-
-- `434a935d` 2026-05-24 — hero: per-word shimmer on cycling keyword (one-shot, finishes before next) [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `71490f6a` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `d50dbf52` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `434a935d` 2026-05-24 — hero: per-word shimmer on cycling keyword (one-shot, finishes before next)
+- `47f62194` 2026-05-25 — hero shimmer: bump cycling-keyword color #DC6743 → #E96F4D (coral)
 
 ## Appendix — every commit (chronological)
 
-- `71490f6a` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `434a935d` 2026-05-24 — hero: per-word shimmer on cycling keyword (one-shot, finishes before next) [2 files] _(ai-assisted)_
+- `d50dbf52` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `47f62194` 2026-05-25 — hero shimmer: bump cycling-keyword color #DC6743 → #E96F4D (coral) [1 files] _(ai-assisted)_
