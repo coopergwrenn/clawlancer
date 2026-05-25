@@ -450,12 +450,38 @@ function reconcileRunAudit(): BakeStep {
     recovery_hint: "Read errors[] + strictErrors[] in output. Common: build-essential missing, ufw missing, GBRAIN_INSTALL_ENABLED unset for non-edge install path.",
     preconditions: [envVarSet("RECONCILE_SOUL_MIGRATION_ENABLED")],
     action: async (ctx) => {
+      // ── Override reconcileVM's strict-mode 180s deadline for the bake ──
+      // The bake VM provisions fresh from an N-version-old snapshot. The
+      // reconcile must apply every fix from the snapshot's cv (e.g. 113)
+      // up to the current manifest version (e.g. 120) — 7+ versions of
+      // drift. Single-tick wall-clock can hit 8+ minutes legitimately
+      // (Rule 44: "strict-deadline ≠ failure"). Vercel cron's 180s is
+      // sized for steady-state 1-version drift — a fresh-snapshot bake
+      // is a fundamentally different workload. Set to 45 min (estimated
+      // 25 min step × 1.8 buffer) — bake runs in a local Node process
+      // with no Vercel function-timeout pressure.
+      // Bug surfaced 2026-05-25 (first 2026.4.26→v120 bake attempt
+      // failed at 180s on step=config-settings, fresh from cv=113 source).
+      // The env var is read by lib/vm-reconcile.ts:STRICT_DEADLINE_MS.
+      const prevDeadlineOverride = process.env.STRICT_DEADLINE_MS_OVERRIDE;
+      process.env.STRICT_DEADLINE_MS_OVERRIDE = String(45 * 60 * 1000);
       const synthVM = buildSyntheticVM(ctx.state);
-      const r = await runReconcileOnBakeVM(
-        synthVM,
-        { strict: true, dryRun: ctx.dry_run, skipGatewayRestart: false },
-        ctx.repo_root,
-      );
+      let r;
+      try {
+        r = await runReconcileOnBakeVM(
+          synthVM,
+          { strict: true, dryRun: ctx.dry_run, skipGatewayRestart: false },
+          ctx.repo_root,
+        );
+      } finally {
+        // Restore previous value so subsequent steps (or test runs) see
+        // the production default behavior.
+        if (prevDeadlineOverride === undefined) {
+          delete process.env.STRICT_DEADLINE_MS_OVERRIDE;
+        } else {
+          process.env.STRICT_DEADLINE_MS_OVERRIDE = prevDeadlineOverride;
+        }
+      }
       const out = [
         `  fixed: ${r.fixed.length}`,
         `  alreadyCorrect: ${r.alreadyCorrect.length}`,

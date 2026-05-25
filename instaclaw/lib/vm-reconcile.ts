@@ -475,16 +475,32 @@ export async function reconcileVM(
   // whole cron batch. Implemented via Promise.race — accept the limitation
   // that in-flight SSH commands may complete after the deadline (see
   // phase-2c-v2-todo.md for signal-threaded cancellation).
-  const STRICT_DEADLINE_MS = 180_000;
-  const STRICT_WARN_AT_MS = 150_000;
+  //
+  // Env override: STRICT_DEADLINE_MS_OVERRIDE. Default 180_000 (3 min) is
+  // sized for Vercel cron's 300s function maxDuration with ~120s headroom
+  // for the cron's pre/post work. Long-running operators (snapshot bake's
+  // reconcile-run-audit step at lib/bake/steps.ts:445) set the override
+  // to ~45 min because the bake VM provisions fresh from an N-version-old
+  // snapshot — multi-version drift catch-up can take 8+ minutes legitimately
+  // (every cv-bump iteration past Vercel's 300s budget is the Rule 44
+  // "strict-deadline ≠ failure" symptom). The bake's local Node process
+  // has no Vercel timeout pressure, so a higher cap is safe there.
+  // Bumped 2026-05-25 after the v2026.4.26→v120 bake failed at 180s on
+  // step=config-settings (cv=113 source → cv=120 target = 8 manifest versions
+  // of drift, well beyond the cron-tick budget).
+  const STRICT_DEADLINE_MS = Number(process.env.STRICT_DEADLINE_MS_OVERRIDE) || 180_000;
+  // Warn at 83% of deadline — same ratio as the original 150/180 (= 0.833).
+  // Keeps the "approaching deadline" warning useful at any override value.
+  const STRICT_WARN_AT_MS = Math.floor(STRICT_DEADLINE_MS * 5 / 6);
   let currentStep: string = "init";
   const warnTimer = strict
     ? setTimeout(() => {
-        logger.warn("reconcileVM: approaching 180s strict deadline", {
+        logger.warn(`reconcileVM: approaching ${STRICT_DEADLINE_MS}ms strict deadline`, {
           route: "reconcileVM",
           vmId: vm.id,
           currentStep,
           elapsedMs: STRICT_WARN_AT_MS,
+          deadlineMs: STRICT_DEADLINE_MS,
         });
       }, STRICT_WARN_AT_MS)
     : null;
