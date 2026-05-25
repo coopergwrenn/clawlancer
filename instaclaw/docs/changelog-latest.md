@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-25
 
-Window: `5281b6aa92f9fac3e4f3161ea749d6f680da6d52` → `HEAD` (HEAD = `163b734b`)
+Window: `163b734b63eda29f1509f1b3ca376427b5852958` → `HEAD` (HEAD = `ea4e6a5d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 163b734b63eda29f1509f1b3ca376427b5852958 -->
+<!-- LAST_GENERATED_SHA: ea4e6a5dbddac44c75e9148170f852d350b77f27 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `163b734b` 2026-05-25 — pricing: IA pass — remove OpenClaw badge, declarative capstone copy [1 files] _(ai-assisted)_
+- `ea4e6a5d` 2026-05-25 — features: relocate OpenClaw badge as section signature, upgrade to liquid-glass-pill recipe [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `22bc1da7` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `23309d25` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `163b734b` 2026-05-25 — pricing: IA pass — remove OpenClaw badge, declarative capstone copy [1 files] _(ai-assisted)_
+- `ea4e6a5d` 2026-05-25 — features: relocate OpenClaw badge as section signature, upgrade to liquid-glass-pill recipe [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `22bc1da7` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `23309d25` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `163b734b` 2026-05-25 — pricing: IA pass — remove OpenClaw badge, declarative capstone copy
+- `ea4e6a5d` 2026-05-25 — features: relocate OpenClaw badge as section signature, upgrade to liquid-glass-pill recipe
 
 ## Appendix — every commit (chronological)
 
-- `22bc1da7` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `163b734b` 2026-05-25 — pricing: IA pass — remove OpenClaw badge, declarative capstone copy [1 files] _(ai-assisted)_
+- `23309d25` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `ea4e6a5d` 2026-05-25 — features: relocate OpenClaw badge as section signature, upgrade to liquid-glass-pill recipe [1 files] _(ai-assisted)_
