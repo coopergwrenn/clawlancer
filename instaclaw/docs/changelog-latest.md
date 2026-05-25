@@ -1,16 +1,16 @@
 # Changelog — generated 2026-05-25
 
-Window: `cb6144e68903667adda201cec9fad91bf8d47df4` → `HEAD` (HEAD = `520212ae`)
+Window: `520212ae777cf32960ffc5163dd49dff0360c0cc` → `HEAD` (HEAD = `2b9ab8d5`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 520212ae777cf32960ffc5163dd49dff0360c0cc -->
+<!-- LAST_GENERATED_SHA: 2b9ab8d594083710909eb9e797fdfa850bca90c9 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 0
-- **Feature (user-facing):** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,26 +18,25 @@ Total commits: 2
 
 ## What changed for users
 
-_None in this window._
+- `2b9ab8d5` 2026-05-25 — features: "More than a chatbot" header, rewrite all 7 cards, add 4 new ones [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `520212ae` 2026-05-25 — fix(bake): strip watchdog crons BEFORE openclaw install to prevent ENOTEMPTY race [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `3dc5ef0d` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `a5bbdeaa` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `520212ae` 2026-05-25 — fix(bake): strip watchdog crons BEFORE openclaw install to prevent ENOTEMPTY race [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+_(none)_
 
 ### Infrastructure (0)
 
 _(none)_
 
-### Feature (user-facing) (0)
+### Feature (user-facing) (1)
 
-_(none)_
+- `2b9ab8d5` 2026-05-25 — features: "More than a chatbot" header, rewrite all 7 cards, add 4 new ones [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,21 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `3dc5ef0d` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `520212ae` 2026-05-25 — [reconciler, infrastructure] — fix(bake): strip watchdog crons BEFORE openclaw install to prevent ENOTEMPTY race
+- `a5bbdeaa` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `520212ae` 2026-05-25 — fix(bake): strip watchdog crons BEFORE openclaw install to prevent ENOTEMPTY race
+- `2b9ab8d5` 2026-05-25 — features: "More than a chatbot" header, rewrite all 7 cards, add 4 new ones
 
 ## Appendix — every commit (chronological)
 
-- `3dc5ef0d` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `520212ae` 2026-05-25 — fix(bake): strip watchdog crons BEFORE openclaw install to prevent ENOTEMPTY race [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `a5bbdeaa` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `2b9ab8d5` 2026-05-25 — features: "More than a chatbot" header, rewrite all 7 cards, add 4 new ones [1 files] _(ai-assisted)_
