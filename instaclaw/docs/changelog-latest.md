@@ -1,19 +1,19 @@
 # Changelog — generated 2026-05-25
 
-Window: `257d6019c566b12965138f624ddc875da5e00d5c` → `HEAD` (HEAD = `f71b34bb`)
-Total commits: 2
+Window: `f71b34bbfcd93a7d8ab4589b209b76e9c3ea0972` → `HEAD` (HEAD = `6f998d3c`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: f71b34bbfcd93a7d8ab4589b209b76e9c3ea0972 -->
+<!-- LAST_GENERATED_SHA: 6f998d3c4b8303e399e0cb725fec8870ab5fe5f9 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
+- **Reconciler / manifest:** 2
 - **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 2
 - Merge commits: 0
 
 ## What changed for users
@@ -22,14 +22,16 @@ _None in this window._
 
 ## What changed under the hood
 
-- `f71b34bb` 2026-05-25 — fix(bake): skip stepInstaclawXmtp via SKIP_INSTACLAW_XMTP=true env var [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
-- `268366d1` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `883a9899` 2026-05-25 — fix(bootstrap): two-layer defense restoring quirky greeting on every fresh signup [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `6f998d3c` 2026-05-25 — fix(bake): pin openclaw install to OPENCLAW_PINNED_VERSION + verify post-install loudly [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `32f954c3` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (2)
 
-- `f71b34bb` 2026-05-25 — fix(bake): skip stepInstaclawXmtp via SKIP_INSTACLAW_XMTP=true env var [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `883a9899` 2026-05-25 — fix(bootstrap): two-layer defense restoring quirky greeting on every fresh signup [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `6f998d3c` 2026-05-25 — fix(bake): pin openclaw install to OPENCLAW_PINNED_VERSION + verify post-install loudly [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,21 +47,24 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `268366d1` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `32f954c3` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
-## Multi-category commits (1)
+## Multi-category commits (2)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `f71b34bb` 2026-05-25 — [reconciler, infrastructure, edge] — fix(bake): skip stepInstaclawXmtp via SKIP_INSTACLAW_XMTP=true env var
+- `883a9899` 2026-05-25 — [reconciler, infrastructure, edge] — fix(bootstrap): two-layer defense restoring quirky greeting on every fresh signup
+- `6f998d3c` 2026-05-25 — [reconciler, infrastructure] — fix(bake): pin openclaw install to OPENCLAW_PINNED_VERSION + verify post-install loudly
 
-## AI-assisted commits (1)
+## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `f71b34bb` 2026-05-25 — fix(bake): skip stepInstaclawXmtp via SKIP_INSTACLAW_XMTP=true env var
+- `883a9899` 2026-05-25 — fix(bootstrap): two-layer defense restoring quirky greeting on every fresh signup
+- `6f998d3c` 2026-05-25 — fix(bake): pin openclaw install to OPENCLAW_PINNED_VERSION + verify post-install loudly
 
 ## Appendix — every commit (chronological)
 
-- `268366d1` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `f71b34bb` 2026-05-25 — fix(bake): skip stepInstaclawXmtp via SKIP_INSTACLAW_XMTP=true env var [2 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `32f954c3` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `883a9899` 2026-05-25 — fix(bootstrap): two-layer defense restoring quirky greeting on every fresh signup [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `6f998d3c` 2026-05-25 — fix(bake): pin openclaw install to OPENCLAW_PINNED_VERSION + verify post-install loudly [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
