@@ -1,3 +1,5 @@
+import { MessageCircle } from "lucide-react";
+
 // Pixel art avatar definitions — 8×8 grids
 // h=hair, s=skin, e=eye, m=mouth, b=shirt, space=transparent
 type AvatarDef = { grid: string[]; colors: Record<string, string>; bg: string };
@@ -365,13 +367,45 @@ function MarqueeRow({
 export function Testimonials() {
   return (
     <section className="py-16 sm:py-[12vh] overflow-x-clip">
-      <div className="text-center mb-12 px-4">
+      <div className="relative text-center mb-12 px-4">
         <h2
           className="text-4xl sm:text-5xl lg:text-6xl font-normal tracking-[-1px] leading-[1.05]"
           style={{ fontFamily: "var(--font-serif)" }}
         >
           What People Are Saying
         </h2>
+
+        {/* Discord community pill. Uses the .liquid-glass-pill recipe
+            from globals.css (same as the SpotsCounter pill in the
+            hero) so it reads as part of the existing design system.
+            On mobile: sits centered below the H2 (mt-6 flex
+            justify-center). On sm+ screens: absolute-positioned to
+            the right edge, vertically centered with the H2. */}
+        <div className="mt-6 flex justify-center sm:mt-0 sm:absolute sm:top-1/2 sm:right-6 sm:-translate-y-1/2 lg:right-12">
+          <a
+            href="https://discord.gg/EymJzdFK9t"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="liquid-glass-pill-root transition-opacity hover:opacity-80"
+            style={{
+              transitionDuration: "300ms",
+              transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+            }}
+          >
+            <span className="liquid-glass-pill">
+              <MessageCircle
+                className="w-3.5 h-3.5 shrink-0"
+                strokeWidth={1.75}
+              />
+              <span>
+                Discord
+                <span style={{ opacity: 0.4, margin: "0 6px" }}>·</span>
+                1k+ members
+              </span>
+            </span>
+            <div aria-hidden="true" className="liquid-glass-pill-shadow"></div>
+          </a>
+        </div>
       </div>
 
       <div className="relative">
