@@ -410,6 +410,19 @@ function upgradeOpenClawAndPinNode(): BakeStep {
       const cmd = `
 set -e
 source ~/.nvm/nvm.sh
+echo "── update vm-watchdog pin file FIRST so cron doesn't reinstall the old version ──"
+# vm-watchdog.py (cron, every minute, from cv=113 snapshot) reads this
+# file and reinstalls openclaw if installed version != pin file content.
+# The snapshot ships with pin file = "2026.4.26". Without this update,
+# vm-watchdog would detect our 2026.5.22 install as "drift" and
+# reinstall 2026.4.26 over the top, creating a window where openclaw.mjs
+# is gone. Surfaced bake attempt 11 (2026-05-25) — fixed.
+# stepNpmPinDrift already does this for production reconciles
+# (lib/vm-reconcile.ts:4395). Bake needs same treatment.
+mkdir -p "$HOME/.openclaw"
+echo "${PINNED}" > "$HOME/.openclaw/.openclaw-pinned-version"
+echo "── pin file updated to ${PINNED} ──"
+cat "$HOME/.openclaw/.openclaw-pinned-version"
 echo "── install openclaw@${PINNED} (explicit pin, no @latest) ──"
 npm install -g "openclaw@${PINNED}" 2>&1 | tail -10
 echo "── verify 1: openclaw --version ──"
