@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-25
 
-Window: `ea4e6a5dbddac44c75e9148170f852d350b77f27` → `HEAD` (HEAD = `d9030d2d`)
+Window: `d9030d2db37bbd6a77d147ffdc2933cc1938bf77` → `HEAD` (HEAD = `61252686`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: d9030d2db37bbd6a77d147ffdc2933cc1938bf77 -->
+<!-- LAST_GENERATED_SHA: 6125268625b8e0415f94f89878c5e563a6c5e088 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `d9030d2d` 2026-05-25 — fix(bake): post-self-audit validator corrections [1 files] _(ai-assisted)_
-- `10137ecb` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `61252686` 2026-05-25 — fix(bake): split 2nd chromium-browser check (audit caught half-done fix) [1 files] _(ai-assisted)_
+- `fcdaf296` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `d9030d2d` 2026-05-25 — fix(bake): post-self-audit validator corrections [1 files] _(ai-assisted)_
+- `61252686` 2026-05-25 — fix(bake): split 2nd chromium-browser check (audit caught half-done fix) [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `10137ecb` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `fcdaf296` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `d9030d2d` 2026-05-25 — fix(bake): post-self-audit validator corrections
+- `61252686` 2026-05-25 — fix(bake): split 2nd chromium-browser check (audit caught half-done fix)
 
 ## Appendix — every commit (chronological)
 
-- `10137ecb` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `d9030d2d` 2026-05-25 — fix(bake): post-self-audit validator corrections [1 files] _(ai-assisted)_
+- `fcdaf296` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `61252686` 2026-05-25 — fix(bake): split 2nd chromium-browser check (audit caught half-done fix) [1 files] _(ai-assisted)_
