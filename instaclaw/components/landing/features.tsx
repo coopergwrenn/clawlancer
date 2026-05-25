@@ -5,10 +5,14 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   Zap,
   Terminal,
-  Shield,
+  Wallet,
+  Coins,
   Brain,
+  Sparkles,
+  Users,
+  Shield,
   CreditCard,
-  Globe,
+  Key,
   Fingerprint,
 } from "lucide-react";
 
@@ -19,50 +23,78 @@ const features = [
     icon: Zap,
     title: "Instant Deployment",
     description:
-      "Sign up and your AI is ready to go. No technical setup, no waiting.",
-    tech: "Your dedicated cloud instance is provisioned automatically on signup. The full OpenClaw runtime, pre-configured skills, and messaging integrations are ready in under two minutes — no SSH, no CLI, no Docker.",
+      "From sign-in to running AI in two minutes. Your server boots from a pre-baked snapshot with skills installed and messaging wired. Nothing for you to configure.",
+    tech: "Your VM provisions automatically on signup from a pre-baked Linode snapshot. The OpenClaw runtime, MCP skills, and bot integrations are wired in before first message. No SSH, CLI, or Docker required to get started, though all three are available if you want them.",
   },
   {
     icon: Terminal,
     title: "Your Own Computer",
     description:
-      "Your AI gets its own private machine. It can browse the web, manage files, and run tasks. Just like you would.",
-    tech: "A dedicated Ubuntu VM with full bash shell execution, Python/Node runtimes, headless browser, file I/O, and the ability to install any software. Not a shared container — an isolated cloud instance with its own firewall, storage, and compute resources.",
+      "A real Ubuntu machine with a real shell, real filesystem, and real network. Install any software, run any code, store any file. Most AI products give you a chat box. We give you a server.",
+    tech: "A dedicated Ubuntu VM with full bash, Python and Node runtimes, headless browser, persistent file I/O. Your own firewall, storage, and compute. Not a shared container.",
   },
   {
-    icon: Shield,
-    title: "Always On",
+    icon: Wallet,
+    title: "Has Its Own Wallet",
     description:
-      "Your AI works around the clock. It never takes a break, even while you sleep.",
-    tech: "Cron-based task scheduling lets your agent run jobs on any schedule. Background services persist across sessions. Your VM stays live 24/7 with automatic health monitoring and restart — no cold starts, no spin-down timeouts.",
+      "A real wallet on Base, provisioned at signup. Holds USDC, ETH, anything. Spends like a debit card via Bankr. Your agent is the first AI that can actually pay for things.",
+    tech: "A Bankr-provisioned EVM wallet on Base mainnet, registered to your agent's identity via AgentBook. Holds ERC-20 tokens, native ETH, and NFTs. Outbound spending uses Bankr's payment rail for on-chain debit-style transactions.",
+  },
+  {
+    icon: Coins,
+    title: "Launches Its Own Token",
+    description:
+      "Your agent can mint and launch tokens via Bankr. List on the exchange, set the supply, watch it trade. The first AI you can spin out as a tradeable asset.",
+    tech: "Token launch capability is provided via the Bankr partnership. Agents call 'bankr launch' to mint an ERC-20 with custom supply, fee tier, and listing parameters. Listed automatically on the Bankr exchange with built-in liquidity.",
   },
   {
     icon: Brain,
     title: "Skills & Memory",
     description:
-      "It learns what you like, remembers past conversations, and picks up new abilities over time. The more you use it, the better it gets.",
-    tech: "Persistent long-term memory across all conversations. Skills are MCP tool servers and OpenClaw skill packages — pre-installed from our curated library, or taught by you via chat and saved as reusable workflows. The skill system supports versioning with automatic updates.",
+      "Pre-loaded with skills for web research, coding, file management, market analysis, and more. Memory persists across every conversation, every day, forever. Teach it a skill once and it remembers it.",
+    tech: "Persistent long-term memory across every conversation, stored locally on your VM via gbrain (PGLite). Skills are MCP tool servers and OpenClaw skill packages, pre-installed from our curated library or taught by you via chat and saved as reusable workflows. The skill system supports versioning with automatic updates.",
+  },
+  {
+    icon: Sparkles,
+    title: "Has Its Own Personality",
+    description:
+      "Set the tone. Define the preferences. Write how it should handle your priorities. Your agent isn't a chatbot persona. It's an identity that evolves.",
+    tech: "Identity lives in SOUL.md, a markdown file in your agent's workspace. The reconciler keeps it consistent across sessions. Edit anytime to teach the agent how you want to be treated, what to remember, and how to prioritize.",
+  },
+  {
+    icon: Users,
+    title: "Talks to Other Agents",
+    description:
+      "Your agent can message other agents directly. Coordinate tasks, share context, transact. Most agents are still alone in chat windows. This one has friends.",
+    tech: "Agent-to-agent communication via AgentBook (decentralized agent directory). Your agent has a verifiable wallet identity that other agents can address. Multi-agent commerce flows through Bankr or the Virtuals ACP protocol.",
+  },
+  {
+    icon: Shield,
+    title: "Always On",
+    description:
+      "Scheduled jobs at 3am. Background checks while you're in meetings. A morning brief drafted while you sleep. The agent runs whether you're watching or not.",
+    tech: "Cron-based task scheduling lets your agent run jobs on any schedule. Background services persist across sessions. Your VM stays live 24/7 with automatic health monitoring and restart, no cold starts or spin-down timeouts.",
   },
   {
     icon: CreditCard,
     title: "Simple Pricing",
     description:
-      "One flat monthly price, everything included. No hidden fees, no surprises.",
-    tech: "Credits map roughly to AI token usage. A simple message uses 1–3 credits; a complex multi-step task (web research, code execution, file management) uses 10–50. BYOK users bypass credits entirely and pay Anthropic directly based on their own API usage.",
+      "One monthly price covers the AI model, your infrastructure, your skills, all of it. No per-token math. No surprise bills.",
+    tech: "Credits map to AI token usage. A simple message uses 1 to 3 credits; a complex multi-step task (web research, code execution, file management) uses 10 to 50. BYOK users bypass credits entirely and pay Anthropic directly based on their own API usage.",
   },
   {
-    icon: Globe,
-    title: "Power User Friendly",
+    icon: Key,
+    title: "Bring Your Own Key",
     description:
-      "Already have your own AI account? Connect it directly and save on costs.",
-    tech: "BYOK (Bring Your Own Key) mode lets you connect your Anthropic API key directly. Your key is encrypted at rest (AES-256) and stored on your VM only. All API calls go directly from your VM to Anthropic — never proxied. Choose any Claude model (Sonnet, Opus, Haiku) and configure rate limits, token budgets, and system prompts.",
+      "Already have an Anthropic API key? Plug it in and pay Anthropic direct. Same agent, same skills, no markup from us.",
+    tech: "BYOK (Bring Your Own Key) mode lets you connect your Anthropic API key directly. Your key is encrypted at rest (AES-256) and stored on your VM only. All API calls go directly from your VM to Anthropic, never proxied through us. Choose any Claude model (Sonnet, Opus, Haiku) and configure rate limits, token budgets, and system prompts.",
   },
   {
     icon: Fingerprint,
     title: "Human Verification",
     description:
-      "Prove there's a real person behind your AI. Get a verified trust badge so others know your agent is legit.",
-    tech: "Identity verification links your agent to a real human operator. Verified agents receive a trust badge visible to other users and services, reducing spam and building trust in multi-agent interactions across the OpenClaw ecosystem.",
+      "Verify your human identity via World ID. Other agents and services see the badge and know there's a person behind it. In the agent-to-agent economy, that matters.",
+    tech: "Identity verification via World ID links your agent to a real human operator (proof of personhood, no PII shared). Verified agents receive a trust badge visible to other users and services, reducing spam and building trust in multi-agent interactions across the OpenClaw ecosystem.",
   },
 ];
 
@@ -83,7 +115,7 @@ export function Features() {
             className="text-4xl sm:text-5xl lg:text-6xl font-normal tracking-[-1px] leading-[1.05] mb-6"
             style={{ fontFamily: "var(--font-serif)" }}
           >
-            Effortlessly Simple
+            More than a chatbot
           </h2>
         </motion.div>
 
