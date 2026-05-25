@@ -309,15 +309,10 @@ function HeroInner() {
 
         {/* Subtext — benefit-driven, three short beats matching the
             cycling-word cadence above, with a "we make it easy"
-            closer that disarms the technical-skill barrier.
-            Squiggle + scribble SVG decorations from the prior subtitle
-            are restored on the analogous new phrases:
-              • scribble circle → "Never forgets a detail"
-                (heir to the old "remembers everything")
-              • squiggle underline → "Never sleeps"
-                (heir to the old "around the clock")
-            Delays preserved (1.8s scribble, 1.4s squiggle) — start
-            just after the parent <motion.p> settles at ~T=1.2s. */}
+            closer that disarms the technical-skill barrier. Plain
+            text — squiggle + scribble SVG decorations removed
+            2026-05-24 per Cooper after seeing them in the new
+            layout. */}
         <motion.p
           className="text-base sm:text-xl max-w-md sm:max-w-xl mx-auto leading-[2] sm:leading-relaxed sm:text-balance"
           style={{ color: "var(--muted)" }}
@@ -325,55 +320,7 @@ function HeroInner() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.7, ease: SNAPPY }}
         >
-          <span className="relative inline-block">
-            <motion.svg
-              className="absolute pointer-events-none"
-              style={{
-                left: "-12px",
-                top: "-6px",
-                width: "calc(100% + 24px)",
-                height: "calc(100% + 12px)",
-              }}
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 200 100"
-              preserveAspectRatio="none"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.7 }}
-              transition={{ delay: 1.8, duration: 0.1 }}
-            >
-              <motion.path
-                d="M8,50 Q10,16 55,13 Q120,10 170,20 Q192,35 190,55 Q188,78 150,86 Q100,92 40,84 Q6,74 8,50"
-                fill="none"
-                stroke="var(--accent)"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                vectorEffect="non-scaling-stroke"
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ delay: 1.8, duration: 0.7, ease: "easeOut" }}
-              />
-            </motion.svg>
-            <span className="relative">Never forgets a detail</span>
-          </span>
-          .{" "}
-          <span className="relative inline-block">
-            Never sleeps
-            <motion.span
-              className="absolute pointer-events-none left-0 bottom-0"
-              style={{
-                height: "6px",
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='6' viewBox='0 0 20 6'%3E%3Cpath d='M0,3 Q5,0.5 10,3 Q15,5.5 20,3' fill='none' stroke='%23DC6743' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "repeat-x",
-                backgroundSize: "20px 6px",
-                transformOrigin: "left center",
-              }}
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: "100%", opacity: 0.85 }}
-              transition={{ delay: 1.4, duration: 0.6, ease: "easeOut" }}
-            />
-          </span>
-          . Gets smarter every day. No technical experience required — we make it easy.
+          Never forgets a detail. Never sleeps. Gets smarter every day. No technical experience required — we make it easy.
         </motion.p>
 
         {/* CTA — plain div, NOT motion.div. Both opacity AND transform on an
