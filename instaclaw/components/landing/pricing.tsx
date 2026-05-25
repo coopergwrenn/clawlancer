@@ -215,6 +215,60 @@ export function Pricing() {
           ))}
         </div>
 
+        {/* Enterprise callout — for readers who scroll past the three cards
+            and need something the cards don't cover. NOT a "Contact Sales"
+            box: the question headline directly references the cards above
+            ("Outside the cards?"), the body uses the page's staccato rhythm
+            from how-it-works.tsx step 3 ("Scheduled jobs at 3am. Background
+            checks while you're in meetings."), and the button uses the
+            three-part .liquid-glass-pill recipe (root + pill + shadow proxy)
+            sized 30% larger than the Discord pill in testimonials. Sized to
+            register as a primary action without competing with the cards
+            above or the "Get Started" final CTA below. */}
+        <motion.div
+          className="mt-20 sm:mt-24 flex flex-col items-center text-center px-4"
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-80px" }}
+          transition={{ duration: 0.7, ease: SNAPPY, delay: 0.15 }}
+        >
+          <h3
+            className="text-3xl sm:text-4xl font-normal tracking-[-0.5px] mb-5"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            Outside the cards?
+          </h3>
+          <p
+            className="text-base leading-relaxed max-w-md mb-8"
+            style={{ color: "var(--muted)" }}
+          >
+            Some teams run dozens of agents. Some need integrations we haven&apos;t built yet. Some want a real person to call. Tell us what you&apos;re building.
+          </p>
+          <a
+            href="https://cal.com/coop"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="liquid-glass-pill-root transition-opacity hover:opacity-85"
+            style={{
+              transitionDuration: "300ms",
+              transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+            }}
+          >
+            <span
+              className="liquid-glass-pill"
+              style={{
+                height: "52px",
+                padding: "0 28px",
+                fontSize: "15px",
+                fontWeight: 500,
+              }}
+            >
+              Talk to us
+            </span>
+            <div aria-hidden="true" className="liquid-glass-pill-shadow"></div>
+          </a>
+        </motion.div>
+
         {/* Powered by OpenClaw badge */}
         <motion.div
           className="text-center mt-8"
