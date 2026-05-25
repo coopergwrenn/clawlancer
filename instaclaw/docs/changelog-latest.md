@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-25
 
-Window: `69178895b60f239617a91fe400fadb620e8cd7b3` → `HEAD` (HEAD = `c063e3b8`)
+Window: `c063e3b8f9ac95a38129b0ef79e3243d2937c857` → `HEAD` (HEAD = `42b8cc26`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: c063e3b8f9ac95a38129b0ef79e3243d2937c857 -->
+<!-- LAST_GENERATED_SHA: 42b8cc267c35a9905ac7a0365f003eb428b6fd03 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `c063e3b8` 2026-05-25 — how-it-works: refresh copy (no more waitlist), mute Technical details toggle [1 files] _(ai-assisted)_
+- `42b8cc26` 2026-05-25 — how-it-works step 2: punchier description with "body" closer [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `383a2d65` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `21707625` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `c063e3b8` 2026-05-25 — how-it-works: refresh copy (no more waitlist), mute Technical details toggle [1 files] _(ai-assisted)_
+- `42b8cc26` 2026-05-25 — how-it-works step 2: punchier description with "body" closer [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `383a2d65` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `21707625` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `c063e3b8` 2026-05-25 — how-it-works: refresh copy (no more waitlist), mute Technical details toggle
+- `42b8cc26` 2026-05-25 — how-it-works step 2: punchier description with "body" closer
 
 ## Appendix — every commit (chronological)
 
-- `383a2d65` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `c063e3b8` 2026-05-25 — how-it-works: refresh copy (no more waitlist), mute Technical details toggle [1 files] _(ai-assisted)_
+- `21707625` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `42b8cc26` 2026-05-25 — how-it-works step 2: punchier description with "body" closer [1 files] _(ai-assisted)_
