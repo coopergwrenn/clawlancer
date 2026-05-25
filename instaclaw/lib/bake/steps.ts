@@ -454,17 +454,32 @@ function reconcileRunAudit(): BakeStep {
       // The bake VM provisions fresh from an N-version-old snapshot. The
       // reconcile must apply every fix from the snapshot's cv (e.g. 113)
       // up to the current manifest version (e.g. 120) — 7+ versions of
-      // drift. Single-tick wall-clock can hit 8+ minutes legitimately
-      // (Rule 44: "strict-deadline ≠ failure"). Vercel cron's 180s is
-      // sized for steady-state 1-version drift — a fresh-snapshot bake
-      // is a fundamentally different workload. Set to 45 min (estimated
-      // 25 min step × 1.8 buffer) — bake runs in a local Node process
-      // with no Vercel function-timeout pressure.
-      // Bug surfaced 2026-05-25 (first 2026.4.26→v120 bake attempt
-      // failed at 180s on step=config-settings, fresh from cv=113 source).
+      // drift. Vercel cron's 180s deadline is sized for steady-state 1-
+      // version drift — a fresh-snapshot bake is a fundamentally
+      // different workload. The bake runs in a local Node process with
+      // no Vercel function-timeout pressure.
+      //
+      // Timing analysis from the 2026-05-25 first-attempt failure:
+      //   - bake elapsed at kill = 8m05s
+      //   - pre-reconcile work (provision + upgrade-os) = ~5m
+      //   - reconcile actually ran 180s (= 3 min) before being killed at
+      //     step=config-settings (only got through disk-guard + step-files,
+      //     reported 40 alreadyCorrect)
+      //   - estimated full reconcile time on 7-version drift: 15-25 min
+      //
+      // Deadline value: 60 min. Rationale:
+      //   - 2x upper estimate (60 vs 25-30 min) — solid safety buffer
+      //   - 20x observed partial (60 vs 3 min) — well above Cooper's 3.5x
+      //     floor recommendation
+      //   - Cooper explicit sanction 2026-05-25: "60 min is fine, 90 min
+      //     is fine. taking 60 min instead of 45 min is fine"
+      //   - Cost of being wrong HIGH: wait longer on genuine hang
+      //   - Cost of being wrong LOW: false-fail like 1st attempt did
+      //   - We err HIGH for shipping the Edge Esmeralda foundation snapshot
+      //
       // The env var is read by lib/vm-reconcile.ts:STRICT_DEADLINE_MS.
       const prevDeadlineOverride = process.env.STRICT_DEADLINE_MS_OVERRIDE;
-      process.env.STRICT_DEADLINE_MS_OVERRIDE = String(45 * 60 * 1000);
+      process.env.STRICT_DEADLINE_MS_OVERRIDE = String(60 * 60 * 1000);
       const synthVM = buildSyntheticVM(ctx.state);
       let r;
       try {
