@@ -503,22 +503,64 @@ function reconcileAcquireCronLock(): BakeStep {
   return {
     id: "reconcile-acquire-lock",
     phase: "reconcile",
-    description: "Acquire reconcile-fleet cron lock (4h TTL)",
+    description: "Acquire reconcile-fleet cron lock (4h TTL, polls up to 15 min)",
     estimated_seconds: 5,
     retryable: true,
-    recovery_hint: "If lock is held by a Vercel cron run, wait 3 minutes and retry.",
+    recovery_hint: "If still held after 15 min, another bake is in progress or vercel-cron is stuck.",
     preconditions: [],
     action: async (ctx) => {
       // Dynamic import to avoid eager Supabase init.
       // @ts-ignore — dynamic path
       const mod = await import(resolve(ctx.repo_root, "lib/cron-lock.ts"));
-      const acquired = await mod.tryAcquireCronLock(
-        "reconcile-fleet",
-        4 * 3600,
-        `autonomous-bake-${ctx.state.run_id}`,
-      );
-      if (!acquired) return fail("reconcile-fleet lock held by another process");
-      return ok([`  acquired (4h TTL)`], {
+      // POLL-WITH-RETRY: vercel-cron runs reconcile-fleet every ~3 min and
+      // holds the lock for ~30-60s per run. The launcher already waits for
+      // the lock to release BEFORE invoking the bake, but provision +
+      // upgrade-os-openclaw take ~6 min — long enough for vercel-cron to
+      // re-acquire 1-2 times before this step fires. Bake attempts 12 and
+      // 16 both died here from fail-fast on a one-shot acquire.
+      //
+      // Fix: poll every 5s for up to 15 min. With vercel-cron's ~3-min
+      // cycle, we expect 4-5 acquire-windows in 15 min — race-win
+      // probability >97% per the analysis in CLAUDE.md. If we still can't
+      // acquire after 15 min, something genuinely abnormal is happening
+      // (another bake in progress, vercel-cron stuck, etc.) and failure
+      // is the right outcome.
+      const POLL_INTERVAL_MS = 5_000;
+      const TOTAL_BUDGET_MS = 15 * 60 * 1000;
+      const startedAt = Date.now();
+      let attempt = 0;
+      let acquired = false;
+      let lastHolder: string | null = null;
+      while (Date.now() - startedAt < TOTAL_BUDGET_MS) {
+        attempt++;
+        acquired = await mod.tryAcquireCronLock(
+          "reconcile-fleet",
+          4 * 3600,
+          `autonomous-bake-${ctx.state.run_id}`,
+        );
+        if (acquired) break;
+        // Peek at the holder for logging (best-effort)
+        try {
+          const holder = await mod.getCronLockHolder?.("reconcile-fleet");
+          lastHolder = holder ?? "unknown";
+        } catch {
+          lastHolder = "unknown";
+        }
+        if (attempt % 6 === 1) {
+          // Log once every 30s of polling
+          const elapsed = Math.round((Date.now() - startedAt) / 1000);
+          ctx.log(`  attempt ${attempt}: lock held by ${lastHolder} (elapsed ${elapsed}s)`);
+        }
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      }
+      if (!acquired) {
+        return fail(
+          `reconcile-fleet lock held by another process for >15 min` +
+            (lastHolder ? ` (last seen holder: ${lastHolder})` : ""),
+        );
+      }
+      const elapsed = Math.round((Date.now() - startedAt) / 1000);
+      return ok([`  acquired (4h TTL) after ${attempt} attempt(s) / ${elapsed}s`], {
         cron_lock: { acquired: true, acquired_at: new Date().toISOString() },
       });
     },
