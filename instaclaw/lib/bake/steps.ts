@@ -410,19 +410,41 @@ function upgradeOpenClawAndPinNode(): BakeStep {
       const cmd = `
 set -e
 source ~/.nvm/nvm.sh
-echo "── update vm-watchdog pin file FIRST so cron doesn't reinstall the old version ──"
-# vm-watchdog.py (cron, every minute, from cv=113 snapshot) reads this
-# file and reinstalls openclaw if installed version != pin file content.
-# The snapshot ships with pin file = "2026.4.26". Without this update,
-# vm-watchdog would detect our 2026.5.22 install as "drift" and
-# reinstall 2026.4.26 over the top, creating a window where openclaw.mjs
-# is gone. Surfaced bake attempt 11 (2026-05-25) — fixed.
-# stepNpmPinDrift already does this for production reconciles
-# (lib/vm-reconcile.ts:4395). Bake needs same treatment.
+echo "── DISABLE all watchdog crons that could race the npm install ──"
+# vm-watchdog.py (cron, every minute, from cv=113 snapshot) reads
+# ~/.openclaw/.openclaw-pinned-version and reinstalls openclaw if the
+# installed version doesn't match. Even with a pin-file pre-write,
+# there's a race: vm-watchdog may have STARTED its reinstall BEFORE
+# our cycle and be mid-install when our npm install runs. Result:
+# ENOTEMPTY collision (npm error errno -39) on the directory rename.
+# Surfaced bake attempt 13 (2026-05-25):
+#   npm error ENOTEMPTY: directory not empty, rename
+#     '.../node_modules/openclaw' -> '.../node_modules/.openclaw-XFSbIheA'
+#
+# Strongest fix: wipe these crons BEFORE any openclaw operation.
+# The bake VM is ephemeral; the manifest's reconciler cronJobsRemove
+# scrubs these crons fleet-wide anyway. The snapshot we're producing
+# inherits the same scrub via the reconciler that runs later in the
+# bake pipeline. Clean state for the install + clean state baked
+# into the snapshot.
+crontab -l 2>/dev/null | grep -vE 'vm-watchdog|silence-watchdog|openclaw-config-watchdog' | crontab - || true
+echo "── waiting 5s for any in-flight watchdog runs to settle ──"
+sleep 5
+# If any npm install is still running from a watchdog tick that started
+# before our crontab strip, wait for it. pgrep returns 0 if any match.
+for i in $(seq 1 30); do
+  if pgrep -fa 'npm install.*openclaw' >/dev/null 2>&1; then
+    echo "  [iter $i] npm install in flight — waiting 2s for it to finish"
+    sleep 2
+  else
+    echo "  no npm install in flight — safe to proceed"
+    break
+  fi
+done
+echo "── update vm-watchdog pin file (defense in depth — even with cron disabled) ──"
 mkdir -p "$HOME/.openclaw"
 echo "${PINNED}" > "$HOME/.openclaw/.openclaw-pinned-version"
-echo "── pin file updated to ${PINNED} ──"
-cat "$HOME/.openclaw/.openclaw-pinned-version"
+echo "── pin file content: $(cat $HOME/.openclaw/.openclaw-pinned-version) ──"
 echo "── install openclaw@${PINNED} (explicit pin, no @latest) ──"
 npm install -g "openclaw@${PINNED}" 2>&1 | tail -10
 echo "── verify 1: openclaw --version ──"
