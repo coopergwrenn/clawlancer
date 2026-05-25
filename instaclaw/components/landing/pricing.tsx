@@ -269,61 +269,36 @@ export function Pricing() {
           </a>
         </motion.div>
 
-        {/* Powered by OpenClaw badge */}
-        <motion.div
-          className="text-center mt-8"
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ delay: 0.4, duration: 0.6, ease: SNAPPY }}
-        >
-          <a
-            href="https://openclaw.ai/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-6 py-2 rounded-full hover:opacity-80 transition-opacity"
-            style={glassStyle}
-          >
-            <svg className="w-4 h-4 shrink-0" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M60 10 C30 10 15 35 15 55 C15 75 30 95 45 100 L45 110 L55 110 L55 100 C55 100 60 102 65 100 L65 110 L75 110 L75 100 C90 95 105 75 105 55 C105 35 90 10 60 10Z" fill="url(#oc-grad)" />
-              <path d="M20 45 C5 40 0 50 5 60 C10 70 20 65 25 55 C28 48 25 45 20 45Z" fill="url(#oc-grad)" />
-              <path d="M100 45 C115 40 120 50 115 60 C110 70 100 65 95 55 C92 48 95 45 100 45Z" fill="url(#oc-grad)" />
-              <path d="M45 15 Q35 5 30 8" stroke="#f87171" strokeWidth="2" strokeLinecap="round" />
-              <path d="M75 15 Q85 5 90 8" stroke="#f87171" strokeWidth="2" strokeLinecap="round" />
-              <circle cx="45" cy="35" r="6" fill="#1a1a2e" />
-              <circle cx="75" cy="35" r="6" fill="#1a1a2e" />
-              <circle cx="46" cy="34" r="2" fill="#67e8f9" />
-              <circle cx="76" cy="34" r="2" fill="#67e8f9" />
-              <defs>
-                <linearGradient id="oc-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#f87171" />
-                  <stop offset="100%" stopColor="#dc2626" />
-                </linearGradient>
-              </defs>
-            </svg>
-            <span className="text-xs" style={{ color: "var(--foreground)" }}>Powered by</span>
-            <span className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>OpenClaw</span>
-          </a>
-        </motion.div>
+        {/* Final CTA capstone.
+            Cooper 2026-05-25 IA pass: removed the "Powered by OpenClaw"
+            pill that used to sit between the "Outside the cards?"
+            enterprise callout above and this capstone. That pill was
+            an attribution duplicate of FAQ entries 1, 2, and 5 (which
+            explain the OpenClaw relationship in depth), and its
+            decorative placement was interrupting two action moments —
+            the enterprise path above and the primary path here. The
+            brand context survives via the FAQ; the pricing section's
+            transition to the FAQ now reads as two distinct paragraphs
+            (enterprise side path, then primary capstone) instead of
+            three jumbled stacked elements.
 
-        {/* Final CTA — section capstone.
-            "Ready to get started?" matches the section H2's exact serif
-            sizing (text-4xl sm:text-5xl lg:text-6xl tracking-[-1px]) so
-            it bookends "Simple, Transparent Pricing" at the section
-            opener. "Outside the cards?" above remains the sub-callout
-            interlude between these two heavy serif bookends.
+            Headline rewritten from "Ready to get started?" (question,
+            generic SaaS-template) to "Start your free trial." Reasons:
+              - Statement, not question. Questions invite hesitation;
+                statements project confidence.
+              - Specific. The trial is the actual offer. Concrete beats
+                abstract.
+              - Mirrors Resend's "Start sending this afternoon" pattern:
+                forward-looking, concrete time-bound action, low-
+                commitment language.
 
-            Get Started glass pill is the heaviest pill on the page:
-            60px height, 40px horiz padding, 17px font (vs the Talk to
-            us pill's 52/28/15 — about 15% larger on every dimension).
-            Same .liquid-glass-pill 3-part recipe so the pills are
-            visually siblings in the same family, with Get Started
-            clearly being the elder.
-
-            mt-24 sm:mt-32 separation from the OpenClaw pill above
-            creates the page-ending breath. Removed the BYOK note that
-            used to sit between them — redundant with the "Bring Your
-            Favorite Model" card in the features section. */}
+            Final hierarchy at the section bottom:
+              Outside the cards? + body + Talk to us pill   (alt path)
+                                  mt-24 sm:mt-32
+              Start your free trial. + Get Started pill     (primary)
+                                  → FAQ section
+            Two clean moments, each addressing a distinct reader
+            mental state. */}
         <motion.div
           id="waitlist"
           className="mt-24 sm:mt-32 text-center"
@@ -336,7 +311,7 @@ export function Pricing() {
             className="text-4xl sm:text-5xl lg:text-6xl font-normal tracking-[-1px] leading-[1.05] mb-8"
             style={{ fontFamily: "var(--font-serif)" }}
           >
-            Ready to get started?
+            Start your free trial.
           </h3>
           <Link
             href="/signup"
