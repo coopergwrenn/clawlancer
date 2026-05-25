@@ -212,12 +212,19 @@ export async function verifyStripped(bakeVmIp: string): Promise<
       detail: r2.stdout.trim(),
     });
 
-    // service inactive + disabled
+    // service stopped (inactive OR failed — both mean the gateway won't
+    // start gbrain on snapshot boot). After SIGKILL (per Rule 54), systemd
+    // marks the unit as "failed" (abnormal exit), NOT "inactive" (clean
+    // stop). Both are correct end-states for the snapshot's purposes —
+    // the per-VM mint at first reconcile resets the state anyway.
+    // Bake attempt 18 failed here on `is-active === "inactive"` strict
+    // check after SIGKILL produced "failed". 2026-05-25.
     const r3 = await sshExec(c, "systemctl --user is-active gbrain.service 2>&1 || true");
+    const activeState = r3.stdout.trim();
     results.push({
-      ok: r3.stdout.trim() === "inactive",
-      label: "gbrain.service is inactive",
-      detail: r3.stdout.trim(),
+      ok: activeState === "inactive" || activeState === "failed",
+      label: "gbrain.service is stopped (inactive or failed)",
+      detail: activeState,
     });
     const r4 = await sshExec(c, "systemctl --user is-enabled gbrain.service 2>&1 || true");
     results.push({
