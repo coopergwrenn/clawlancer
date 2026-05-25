@@ -94,7 +94,33 @@ import type { UserConfig } from "./user-config-types";
 // startup. Validated 22.22.2 + 2026.4.26 = clean install, no module
 // errors, /health=200 in 6s. NODE_PINNED_VERSION below MUST be at least
 // 22.22.2 for this OpenClaw version to install correctly.
-export const OPENCLAW_PINNED_VERSION = "2026.4.26";
+//
+// 2026.4.26 → 2026.5.22: Bumped 2026-05-25 as part of the pre-Edge-Esmeralda
+// snapshot bake (Rule 65 PARKED → SHIPPED). Per Rule 64, Cooper explicitly
+// approved this bump in the snapshot-bake PR. Background:
+//   - 3 upstream issues CLOSED in 2026.5.5+ that Edge attendees directly
+//     benefit from: #73428 (severe chat latency on 2026.4.26 SPECIFICALLY),
+//     #75656 (synchronous transcript reads block event loop), #75984 (90s
+//     event-loop block during agent run startup).
+//   - vm-1019 canary validated 2026.5.20 for 10+ hours under Cooper's real
+//     Telegram load (Rule 65 timeline). The "regression" we initially blamed
+//     on OpenClaw turned out to be our own TasksMax=120 cgroup throttle.
+//   - 2026.5.20 → 2026.5.22 delta is minor: 1 new error class
+//     (ProviderHttpError, internal), 1 plugin-SDK export rename
+//     (codex-native-task-runtime → agent-harness-task-runtime, plugin SDK
+//     internal — instaclaw does not reference it), 1 additive export
+//     (plugin-sdk/embedding-providers). EmbeddedAttemptSessionTakeoverError
+//     is still present in 2026.5.22 — the v120 manifest's strip-thinking.py
+//     active-session guard (STRIP_THINKING_v2026_5_20_COMPAT_v1) is required
+//     and remains shipped.
+// REQUIRED CO-SHIPPED FIXES (already in v120 manifest as of 2026-05-24):
+//   - TasksMax=infinity (was 120; cgroup throttle fired EAGAIN under 2026.5.x
+//     subprocess load) — vm-manifest.ts:systemdOverrides["TasksMax"]
+//   - strip-thinking.py 120s active-session guard — defends against
+//     EmbeddedAttemptSessionTakeoverError race
+//   - agents.defaults.typingMode="instant" + typingIntervalSeconds="3" —
+//     tighter typing keepalive cadence within Telegram's 5s sendChatAction TTL
+export const OPENCLAW_PINNED_VERSION = "2026.5.22";
 
 // Pinned Node.js version. nvm install 22 picks "latest v22" non-
 // deterministically across time, so pinning the exact patch makes fleet

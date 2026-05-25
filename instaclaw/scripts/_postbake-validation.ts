@@ -33,6 +33,7 @@
 
 import { readFileSync } from "fs";
 import { Client } from "ssh2";
+import { OPENCLAW_PINNED_VERSION, NODE_PINNED_VERSION } from "../lib/ssh";
 
 // ── Env loading ──
 // Resolve relative to the script's location so this works from any
@@ -289,11 +290,17 @@ async function run() {
     }
 
     // ─── 2. Infrastructure (build-essential, node, openclaw, prctl) ─────────
+    // Version checks read from lib/ssh.ts so the validator auto-tracks pin
+    // bumps. Previously hardcoded "2026.4.26" / "v22.22.2" — the literal
+    // would silently false-fail on the next bump. Import from source of
+    // truth: bumping OPENCLAW_PINNED_VERSION or NODE_PINNED_VERSION
+    // alone is now enough — no separate validator update required.
     const nodeV = (await exec(c, `source ~/.nvm/nvm.sh 2>/dev/null && node --version`)).stdout.trim();
-    record("node v22.22.2 pinned", "P0", ["bake", "test"], nodeV === "v22.22.2", `got ${nodeV}`);
+    const expectedNode = `v${NODE_PINNED_VERSION}`;
+    record(`node ${expectedNode} pinned`, "P0", ["bake", "test"], nodeV === expectedNode, `got ${nodeV}`);
 
     const openclawV = (await exec(c, `source ~/.nvm/nvm.sh 2>/dev/null && openclaw --version`)).stdout.trim();
-    record("OpenClaw 2026.4.26 pinned", "P0", ["bake", "test"], openclawV.includes("2026.4.26"), `got ${openclawV}`);
+    record(`OpenClaw ${OPENCLAW_PINNED_VERSION} pinned`, "P0", ["bake", "test"], openclawV.includes(OPENCLAW_PINNED_VERSION), `got ${openclawV}`);
 
     const gccPresent = (await exec(c, `which gcc`)).code === 0;
     record("build-essential / gcc installed (v88)", "P0", ["bake", "test"], gccPresent, "gcc on PATH");
@@ -1050,10 +1057,15 @@ async function run() {
     record("loginctl linger enabled for openclaw user", "P1", ["bake", "test"],
       /Linger=yes/.test(linger), linger || "<no Linger line>");
 
-    // 27j — NVM default node points at v22.22.2 (inventory §13)
+    // 27j — NVM default node points at the pinned version (inventory §13)
+    // Label + regex track NODE_PINNED_VERSION so a future Node bump doesn't
+    // silently mislabel. Escape regex specials (the literal dots in the
+    // version string) so the test is anchored, not a loose match.
     const nvmDefault = (await exec(c, `cat ~/.nvm/alias/default 2>/dev/null`)).stdout.trim();
-    record("NVM default alias points at v22.22.2", "P1", ["bake", "test"],
-      /^v?22\.22\.2$/.test(nvmDefault) || /^22\.22\.2/.test(nvmDefault), `alias=${nvmDefault}`);
+    const nodePinEsc = NODE_PINNED_VERSION.replace(/\./g, "\\.");
+    const nvmRe = new RegExp(`^v?${nodePinEsc}$`);
+    record(`NVM default alias points at v${NODE_PINNED_VERSION}`, "P1", ["bake", "test"],
+      nvmRe.test(nvmDefault), `alias=${nvmDefault}`);
 
     // 27j.1 — crontab Node-path drift detection (silent-failure class — discovered
     // 2026-05-24 ultrathink sweep). The `openclaw memory index` cron entry was

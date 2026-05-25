@@ -19,6 +19,7 @@ import { readFileSync } from "fs";
 import * as path from "path";
 import { Client } from "ssh2";
 import { createClient } from "@supabase/supabase-js";
+import { OPENCLAW_PINNED_VERSION } from "../lib/ssh";
 
 for (const f of [
   "/Users/cooperwrenn/wild-west-bots/instaclaw/.env.local",
@@ -167,7 +168,7 @@ function parseLine(line: string): Record<string, string> {
     const diskGB = parseInt(p.disk_free_gb ?? "0", 10);
     const anthropicKeyOk = parseInt(p.anthropic_key_len ?? "0", 10) > 20;
     const openaiKeyOk = parseInt(p.openai_key_len ?? "0", 10) > 20;
-    const openclawOk = (p.openclaw ?? "").includes("2026.4.26");
+    const openclawOk = (p.openclaw ?? "").includes(OPENCLAW_PINNED_VERSION);
     const gatewayOk = p.gateway_active === "active" && p.gateway_health === "200";
     const alreadyGbrained = p.gbrain_version === "0.28.1" && p.gbrain_mcp === "1";
     const issues: string[] = [];
