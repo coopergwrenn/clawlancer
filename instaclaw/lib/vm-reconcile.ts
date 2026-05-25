@@ -643,6 +643,21 @@ export async function reconcileVM(
     currentStep = "soul-v2-migration";
     await stepMigrateSoulV2(ssh, vm, result, dryRun);
 
+    // ── Step 2a.5: Bootstrap self-heal (Layer 2 of the 2026-05-25 fix) ──
+    // Re-writes BOOTSTRAP.md if absent AND no marker AND no substantive
+    // conversation. Pair with Layer 1 (configureOpenClaw verify-after-write,
+    // lib/ssh.ts) — that catches at configure time; this catches on the
+    // next reconcile tick for any case Layer 1 missed (cv-stale VMs that
+    // were provisioned before Layer 1 shipped, or any future regression
+    // of the configure-time silent-failure class).
+    //
+    // MUST run BEFORE stepBootstrapConsumed: if both fire on the same
+    // tick with file missing + no marker + no convo, stepBootstrapMissing
+    // creates the file, then stepBootstrapConsumed sees it present, runs
+    // its convo check, finds NOT_USED, and keeps the file. Order matters.
+    currentStep = "bootstrap-missing";
+    await stepBootstrapMissing(ssh, result, dryRun);
+
     // ── Step 2b: Bootstrap safety ──
     currentStep = "bootstrap-consumed";
     await stepBootstrapConsumed(ssh, result, dryRun);
@@ -3643,6 +3658,197 @@ async function deployFileEntry(
       result.fixed.push(`${fileName} (operating principles)`);
       break;
     }
+  }
+}
+
+/**
+ * Step 2a.5: BOOTSTRAP.md self-heal — write a fresh BOOTSTRAP.md on VMs
+ * that lost it before the user's first message.
+ *
+ * == 2026-05-25 incident ==
+ *
+ * Fleet audit (5 recently-assigned VMs) found ~40% missing BOOTSTRAP.md
+ * despite configureOpenClaw reporting OPENCLAW_CONFIGURE_DONE cleanly:
+ *
+ *   vm-1028 (edge_city, paying): BOOTSTRAP.md absent, .bootstrap_consumed
+ *     absent, no substantive assistant reply → quirky greeting NEVER fired.
+ *     User got the generic AGENTS.md session-rotation greeting instead.
+ *   vm-1026 (no partner): identical shape. Not a recovery-path bug.
+ *   vm-1027 (no partner, ~6h earlier): BOOTSTRAP.md PRESENT (3026 bytes).
+ *   vm-1024, vm-1025: BOOTSTRAP.md gone + marker present (normal consumed).
+ *
+ * Most likely root cause: a silent failure in the configureOpenClaw
+ * scriptParts bash pipeline (which doesn't `set -e`). Layer 1 added a
+ * verify-after-write in lib/ssh.ts:configureOpenClaw that catches at
+ * configure time. This step is Layer 2 — the safety net that catches
+ * the file's absence on the next reconciler tick (~3 min for cv-stale
+ * VMs) before the user ever messages.
+ *
+ * == Gating logic ==
+ *
+ * Re-write BOOTSTRAP.md ONLY when ALL three conditions hold:
+ *   1. BOOTSTRAP.md is absent (or empty)
+ *   2. .bootstrap_consumed is absent
+ *   3. No substantive (≥100 char) assistant reply in any session jsonl
+ *
+ * Why all three:
+ *   1. If BOOTSTRAP.md is present, the quirky-greeting trigger works.
+ *      Idempotent skip.
+ *   2. If .bootstrap_consumed is present, the user already had their
+ *      first conversation. Re-writing BOOTSTRAP.md would re-trigger the
+ *      quirky greeting mid-relationship — exactly the bug the marker
+ *      prevents. Skip.
+ *   3. If sessions show substantive conversation but no marker (stuck
+ *      state — agent forgot to create marker after first reply), do NOT
+ *      re-write BOOTSTRAP.md. Re-writing would make the agent re-greet
+ *      the user as a "first moment awake" mid-conversation. Push to
+ *      result.warnings so operators see it; don't fix automatically.
+ *
+ * Mirrors stepBootstrapConsumed's substantive-convo check (≥100 chars
+ * of text content from assistant role messages, walking *.jsonl files
+ * excluding trajectory + checkpoint sidecars). The two steps form a
+ * matched pair: this step CREATES, stepBootstrapConsumed CONSUMES.
+ * Together they implement the full state machine: missing → fresh
+ * write → present-and-unconsumed → consumed (gone + marker).
+ *
+ * Output contract (probe stdout):
+ *   "bootstrap=yes/no marker=yes/no"
+ * Output contract (convo check stdout):
+ *   "USED" → substantive convo found
+ *   "NOT_USED" → only init events / empty replies / no sessions
+ *   anything else → fail-safe: treated as USED (refuse to re-write
+ *     unless we can PROVE no real conversation happened, to avoid
+ *     mid-relationship re-greeting)
+ *
+ * Idempotent: BOOTSTRAP.md present → cheap probe + return. Two cron
+ * workers racing on the same VM: first writes, second sees present
+ * and skips.
+ */
+async function stepBootstrapMissing(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  const workspace = '~/.openclaw/workspace';
+  const bootstrapFile = `${workspace}/BOOTSTRAP.md`;
+  const flag = `${workspace}/.bootstrap_consumed`;
+
+  // Cheap single-shot probe: file presence + marker presence
+  const probe = await ssh.execCommand(
+    `bs=$(test -f ${bootstrapFile} && [ -s ${bootstrapFile} ] && echo yes || echo no); ` +
+      `mk=$(test -f ${flag} && echo yes || echo no); ` +
+      `echo "bootstrap=$bs marker=$mk"`
+  );
+  const probeOut = probe.stdout.trim();
+  const bootstrapPresent = /bootstrap=yes/.test(probeOut);
+  const markerPresent = /marker=yes/.test(probeOut);
+
+  if (bootstrapPresent) {
+    // Idempotent skip — file exists, no self-heal needed.
+    result.alreadyCorrect.push('bootstrap-missing (BOOTSTRAP.md present)');
+    return;
+  }
+
+  if (markerPresent) {
+    // Bootstrap was consumed (marker exists, file gone). Normal post-
+    // greeting state. Don't re-write — would re-trigger quirky greeting
+    // mid-relationship.
+    result.alreadyCorrect.push('bootstrap-missing (marker present, normal consumed state)');
+    return;
+  }
+
+  // Neither file nor marker present. Check if a real conversation happened
+  // before deciding to write — substantive convo without marker is a stuck
+  // state (agent forgot to create marker after first reply), but re-writing
+  // BOOTSTRAP.md would make the agent re-greet from scratch. Safer to flag
+  // and let an operator look.
+  //
+  // Same substantive-convo definition as stepBootstrapConsumed: ≥100 chars
+  // of extracted text from any assistant role message in any session jsonl
+  // (skipping trajectory + checkpoint sidecars).
+  const convoCheck = await ssh.execCommand(
+    `python3 - <<'BOOTSTRAP_MISSING_CHECK_PY'
+import json, os, glob
+sessions_dir = os.path.expanduser('~/.openclaw/agents/main/sessions')
+for f in glob.glob(os.path.join(sessions_dir, '*.jsonl')):
+    if 'trajectory' in f or 'checkpoint' in f:
+        continue
+    try:
+        with open(f) as fh:
+            for line in fh:
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
+                msg = e.get('message') or {}
+                if not isinstance(msg, dict):
+                    continue
+                if msg.get('role') != 'assistant':
+                    continue
+                content = msg.get('content')
+                if isinstance(content, str):
+                    text = content
+                elif isinstance(content, list):
+                    parts = []
+                    for b in content:
+                        if isinstance(b, dict) and b.get('type') == 'text':
+                            t = b.get('text')
+                            if isinstance(t, str):
+                                parts.append(t)
+                    text = ''.join(parts)
+                else:
+                    text = ''
+                if len(text.strip()) > 100:
+                    print('USED')
+                    raise SystemExit(0)
+    except (OSError, IOError):
+        continue
+print('NOT_USED')
+BOOTSTRAP_MISSING_CHECK_PY`
+  );
+
+  const convoVerdict = convoCheck.stdout.trim();
+  if (convoVerdict !== 'NOT_USED') {
+    // Either USED (substantive convo exists) or fail-safe (unexpected
+    // output / exit code). In both cases, refuse to re-write — the cost
+    // of a wrong write (mid-conversation re-greet) outweighs the cost of
+    // leaving the user without BOOTSTRAP.md.
+    result.warnings.push(
+      `bootstrap-missing: stuck state (BOOTSTRAP.md absent, no marker, but substantive convo or unexpected probe output: ${convoVerdict.slice(0, 80)}). Not auto-repairing. Operator review needed.`
+    );
+    return;
+  }
+
+  // All three conditions confirmed: no file, no marker, no substantive
+  // conversation. Safe to self-heal.
+  if (dryRun) {
+    result.fixed.push('[dry-run] bootstrap-missing: would write WORKSPACE_BOOTSTRAP_SHORT (quirky greeting self-heal)');
+    return;
+  }
+
+  // Note: we use WORKSPACE_BOOTSTRAP_SHORT not buildPersonalizedBootstrap,
+  // because the reconciler doesn't have the user's gmailProfileSummary in
+  // scope. The short variant preserves the core quirky-greeting experience;
+  // Gmail personalization is a nice-to-have on top. If the original
+  // configure was supposed to write the personalized version, that
+  // personalization is already lost — we're recovering the BASELINE
+  // greeting, not perfectly reconstructing what should have been there.
+  const b64 = Buffer.from(WORKSPACE_BOOTSTRAP_SHORT, 'utf-8').toString('base64');
+  const writeRes = await ssh.execCommand(
+    `mkdir -p ${workspace} && echo '${b64}' | base64 -d > ${bootstrapFile}`
+  );
+  const verify = await ssh.execCommand(
+    `test -f ${bootstrapFile} && [ -s ${bootstrapFile} ] && echo WRITTEN || echo FAILED`
+  );
+
+  if (verify.stdout.includes('WRITTEN')) {
+    result.fixed.push(
+      'bootstrap-missing: wrote fresh BOOTSTRAP.md (Layer 2 self-heal — quirky greeting will fire on next user message)'
+    );
+  } else {
+    result.errors.push(
+      `bootstrap-missing: self-heal write failed. writeRes stderr=${writeRes.stderr.slice(0, 150)}, verify stdout=${verify.stdout.slice(0, 100)}`
+    );
   }
 }
 

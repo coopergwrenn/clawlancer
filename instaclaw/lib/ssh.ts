@@ -8807,6 +8807,103 @@ export async function configureOpenClaw(
       );
     }
 
+    // ── Layer 1: BOOTSTRAP.md verify-after-write (defense-in-depth) ──
+    //
+    // The scriptParts pipeline above writes BOOTSTRAP.md unconditionally at
+    // line ~6989 (Gmail-connected branch) and ~6989 (Gmail-skipped branch).
+    // BUT — a 2026-05-25 fleet audit found ~40% of fresh pool VMs MISSING
+    // BOOTSTRAP.md despite OPENCLAW_CONFIGURE_DONE printing cleanly:
+    //
+    //   vm-1028 (edge_city, paying): BOOTSTRAP.md absent, .bootstrap_consumed
+    //     absent, no substantive assistant reply → quirky greeting NEVER fired.
+    //     Cooper got the generic AGENTS.md session-rotation greeting instead.
+    //   vm-1026 (no partner): identical shape. Not a recovery-path bug.
+    //   vm-1027 (no partner, ~6h earlier): BOOTSTRAP.md PRESENT (3026 bytes).
+    //
+    // Same code, intermittent failure. Most likely cause: the scriptParts
+    // bash script has no `set -e`, so a silent failure on the BOOTSTRAP.md
+    // write line (truncation under load, transient filesystem hiccup,
+    // base64-decode race, brief inode-table contention during the workspace
+    // wipe→write sequence) produces no error and doesn't surface in
+    // result.stdout — the file just isn't there.
+    //
+    // This block verifies the on-disk state OUTSIDE the failing pipeline:
+    // a fresh ssh.execCommand probe, then if missing, a standalone rewrite
+    // (not buffered behind 100KB+ of preceding script). Logs a structured
+    // warning if the fallback fires so we can track recurrence — if this
+    // alert lights up regularly, the scriptParts pipeline has a real
+    // reliability issue that warrants chunking it into smaller execs or
+    // adding `set -e` mid-script.
+    //
+    // Mirrors the if(gmailProfileSummary) branch so the rewrite content
+    // matches what scriptParts would have written (personalized vs short).
+    try {
+      const probe = await ssh.execCommand(
+        `f=$HOME/.openclaw/workspace/BOOTSTRAP.md; ` +
+          `test -f "$f" && [ -s "$f" ] && echo BOOTSTRAP_OK || echo BOOTSTRAP_MISSING`
+      );
+      if (!probe.stdout.includes("BOOTSTRAP_OK")) {
+        const bootstrapContent = config.gmailProfileSummary
+          ? buildPersonalizedBootstrap(config.gmailProfileSummary)
+          : WORKSPACE_BOOTSTRAP_SHORT;
+        const b64 = Buffer.from(bootstrapContent, "utf-8").toString("base64");
+        const rewriteResult = await ssh.execCommand(
+          `mkdir -p $HOME/.openclaw/workspace && ` +
+            `echo '${b64}' | base64 -d > $HOME/.openclaw/workspace/BOOTSTRAP.md`
+        );
+        const reverify = await ssh.execCommand(
+          `f=$HOME/.openclaw/workspace/BOOTSTRAP.md; ` +
+            `test -f "$f" && [ -s "$f" ] && echo BOOTSTRAP_REPAIRED || echo BOOTSTRAP_STILL_MISSING`
+        );
+        if (reverify.stdout.includes("BOOTSTRAP_REPAIRED")) {
+          logger.warn(
+            "BOOTSTRAP.md was missing after configureOpenClaw scriptParts pipeline — repaired via standalone write (Layer 1 fallback fired)",
+            {
+              route: "lib/ssh",
+              vmId: vm.id,
+              variant: config.gmailProfileSummary ? "personalized" : "short",
+              probeStdout: probe.stdout.trim().slice(0, 200),
+              alert: "bootstrap-md-fallback-fired",
+            }
+          );
+        } else {
+          // Both scriptParts AND standalone fallback failed — this is a real
+          // problem. Surface via recordFailure (non-critical: agent falls
+          // back to AGENTS.md "session rotation" greeting if BOOTSTRAP.md
+          // never lands, and stepBootstrapMissing on the next reconciler
+          // tick is the Layer 2 safety net for cv-stale VMs).
+          recordFailure(
+            "bootstrap_md_write",
+            new Error(
+              `BOOTSTRAP.md write failed in both scriptParts and standalone fallback. ` +
+                `Initial probe: ${probe.stdout.trim().slice(0, 100)}. ` +
+                `Standalone write stderr: ${rewriteResult.stderr.slice(0, 200)}. ` +
+                `Final verify: ${reverify.stdout.trim().slice(0, 100)}.`
+            ),
+            false
+          );
+          logger.error(
+            "BOOTSTRAP.md write failed in BOTH scriptParts and standalone fallback — quirky greeting will not fire for this user on first message",
+            {
+              route: "lib/ssh",
+              vmId: vm.id,
+              variant: config.gmailProfileSummary ? "personalized" : "short",
+              alert: "bootstrap-md-both-paths-failed",
+            }
+          );
+        }
+      }
+    } catch (bootstrapVerifyErr) {
+      // The verify-or-rewrite SSH itself threw. Non-fatal — log and move on.
+      // stepBootstrapMissing in the reconciler is the safety net.
+      recordFailure("bootstrap_md_verify", bootstrapVerifyErr, false);
+      logger.warn("BOOTSTRAP.md verify SSH path threw (non-fatal, Layer 2 reconciler self-heal will catch on next tick)", {
+        route: "lib/ssh",
+        vmId: vm.id,
+        error: bootstrapVerifyErr instanceof Error ? bootstrapVerifyErr.message : String(bootstrapVerifyErr),
+      });
+    }
+
     // Check if gateway is actually alive (verified by localhost curl inside VM)
     const gatewayVerified = result.stdout.includes("GATEWAY_VERIFIED") || result.stdout.includes("GATEWAY_ROLLBACK_RECOVERED");
 
