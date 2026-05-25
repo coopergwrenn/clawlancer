@@ -1081,6 +1081,77 @@ html.lenis body {
   }
 }
 
+/* Accent-color shimmer — InstaClaw brand-orange base (var(--accent),
+   #DC6743) with a warm cream highlight that sweeps across the text.
+   Sibling of .shimmer-text but recipe-matched to the brand color so
+   the cycling hero keyword doesn't shift hues.
+
+   Apply at the PER-WORD element (the inner motion.span inside the
+   AnimatePresence) — Cooper 2026-05-24: the shimmer must fire once
+   per word AND complete BEFORE the next word appears (with a visible
+   buffer of solid base color in between, not just at-the-instant).
+   Each new word mounts via AnimatePresence, the CSS animation fires
+   fresh on mount, plays once, completes inside the word's display
+   window with breathing room.
+
+   Timing math (KEYWORD_HOLD_MS=3000ms, KEYWORD_TRANSITION_S=0.5s):
+     T=0       → motion.span mounts, slide-in starts
+     T=500ms   → slide-in completes (animation-delay ends), shimmer starts
+     T=600ms   → 5% start-hold ends, sweep begins
+     T=1590ms  → highlight crosses word center (peak shimmer)
+     T=2300ms  → 85% sweep done, highlight off-screen at left
+     T=2800ms  → 10% end-hold ends, animation complete
+     T=2800–3000ms → 200ms BUFFER of solid base color
+     T=3000ms  → next word mounts, this word starts exiting
+
+   - Base:      var(--accent) #DC6743
+   - Highlight: #FFE0CC (warm cream, ~24% lighter, same hue family)
+   - Duration:  2.3s (max value that leaves ~200ms post-shimmer buffer)
+   - Delay:     0.5s (matches the slide-in transition exactly)
+   - Iteration: 1 (NOT infinite)
+   - Fill:      forwards (stays at end-state = solid base color)
+   - Pauses:    5% hold at start, 10% hold at end. Highlight is
+                off-screen during both pauses.
+
+   Reduced-motion override below disables the animation entirely. */
+.shimmer-accent {
+  color: transparent;
+  background: linear-gradient(
+    90deg,
+    var(--accent) 0%,
+    var(--accent) 40%,
+    #FFE0CC 50%,
+    var(--accent) 60%,
+    var(--accent) 100%
+  );
+  background-size: 400% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation-name: shimmer-accent;
+  animation-duration: 2.3s;
+  animation-timing-function: linear;
+  animation-delay: 0.5s;
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+@keyframes shimmer-accent {
+  0%, 5%   { background-position: 100% 0; }
+  90%, 100% { background-position: 0% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-accent {
+    animation: none;
+    color: var(--accent);
+    background: none;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+    -webkit-text-fill-color: var(--accent);
+  }
+}
+
 /* Claude Code shimmer — orange base with golden highlight sweep */
 .shimmer-text {
   color: transparent;

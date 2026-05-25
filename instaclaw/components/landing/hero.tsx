@@ -186,8 +186,16 @@ function KeywordCycle() {
               duration: reduced ? 0.01 : KEYWORD_TRANSITION_S,
               ease: KEYWORD_EASE,
             }}
-            className="block whitespace-nowrap"
-            style={{ color: "var(--accent)" }}
+            // shimmer-accent fires a one-shot CSS animation per word
+            // mount: 0.5s delay (waits for slide-in to complete) +
+            // 2.3s sweep + 0.2s post-shimmer buffer = settles into
+            // solid base color just before the next word arrives.
+            // The CSS animation lives on the inner element (NOT the
+            // container) so each new word's mount triggers a fresh
+            // animation cycle. Framer's transform/opacity props and
+            // the CSS background-position animation target different
+            // properties and don't conflict.
+            className="block whitespace-nowrap shimmer-accent"
           >
             {word}
           </motion.span>
