@@ -107,12 +107,27 @@ if [ -f ~/.openclaw/openclaw.json ]; then
 fi
 
 # 7. Verify final state
+#
+# IMPORTANT: do NOT use \`echo "label: $(cmd ... "literal" ... )"\` patterns.
+# The embedded double-quotes inside the \$(...) substitution confuse bash's
+# parser when nested inside an outer "..." echo string — bash silently
+# swallows the closing quote of the substitution, mcp-jq returns empty,
+# then the next echo's count(*) parens trip a "syntax error near
+# unexpected token \`('" at parse time. Capture each value into a
+# variable FIRST, then echo the variable. This was the root cause of
+# bake attempts 15 and 17 (2026-05-25) — surfaced post-bun-path-fix.
+BEARER_FILE_STATUS=$(ls ~/.gbrain/openclaw-bearer-token.txt 2>&1 | head -1)
+MCP_ENTRY_VAL=$(jq '.mcp.servers.gbrain // "absent"' ~/.openclaw/openclaw.json 2>/dev/null)
+SERVICE_ACTIVE_STATE=$(systemctl --user is-active gbrain.service 2>&1 || true)
+SERVICE_ENABLED_STATE=$(systemctl --user is-enabled gbrain.service 2>&1 || true)
+ACCESS_TOKENS_COUNT=$(cd ~/gbrain && $BUN_BIN -e "import {PGlite} from '@electric-sql/pglite'; const db=new PGlite('/home/openclaw/.gbrain/brain.pglite'); await db.waitReady; const r=await db.query('SELECT count(*) FROM access_tokens'); console.log(r.rows[0].count); await db.close();" 2>&1 | tail -1)
+
 echo "--- STRIP_BEARER_VERIFY ---"
-echo "bearer file: $(ls ~/.gbrain/openclaw-bearer-token.txt 2>&1 | head -1)"
-echo "mcp entry:   $(jq '.mcp.servers.gbrain // \\"absent\\"' ~/.openclaw/openclaw.json 2>/dev/null)"
-echo "is-active:   $(systemctl --user is-active gbrain.service 2>&1 || true)"
-echo "is-enabled:  $(systemctl --user is-enabled gbrain.service 2>&1 || true)"
-echo "access_tokens: $(cd ~/gbrain && $BUN_BIN -e \\"import {PGlite} from '@electric-sql/pglite'; const db=new PGlite('/home/openclaw/.gbrain/brain.pglite'); await db.waitReady; const r=await db.query('SELECT count(*) FROM access_tokens'); console.log(r.rows[0].count); await db.close();\\" 2>&1 | tail -1)"
+echo "bearer file:   $BEARER_FILE_STATUS"
+echo "mcp entry:     $MCP_ENTRY_VAL"
+echo "is-active:     $SERVICE_ACTIVE_STATE"
+echo "is-enabled:    $SERVICE_ENABLED_STATE"
+echo "access_tokens: $ACCESS_TOKENS_COUNT"
 
 echo "--- STRIP_BEARER_OK ---"
 `;
