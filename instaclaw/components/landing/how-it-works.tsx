@@ -17,8 +17,8 @@ const steps = [
     number: "2",
     title: "Connect",
     description:
-      "Connect your favorite messaging platform. Choose your preferred model. No coding, no configuration. Your agent now has a body.",
-    tech: "You connect by pasting a bot token from BotFather (Telegram) or the Developer Portal (Discord). Plan selection sets your monthly credit allocation and default Claude model. BYOK mode routes through your own Anthropic API key for direct billing if you prefer.",
+      "Connect Telegram, Discord, or iMessage. Pick your Claude model. No coding, no configuration. Your agent now has a body.",
+    tech: "You connect by pasting a bot token from BotFather (Telegram), the Developer Portal (Discord), or by linking iMessage during setup. Plan selection sets your monthly credit allocation and default Claude model. BYOK mode routes through your own Anthropic API key for direct billing if you prefer.",
   },
   {
     number: "3",
