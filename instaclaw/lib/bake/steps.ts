@@ -1146,20 +1146,31 @@ function soakValidate(): BakeStep {
   return {
     id: "soak-validate",
     phase: "soak",
-    description: "Run _postbake-validation.ts --mode=test on soak VM",
+    description: "Run _postbake-validation.ts --mode=bake on soak VM",
     estimated_seconds: 120,
     retryable: true,
-    recovery_hint: "If P0 fails on test mode, the new snapshot is broken — DO NOT cutover. Investigate.",
+    recovery_hint: "If P0 fails on bake mode against soak VM, the new snapshot is broken — DO NOT cutover. Investigate.",
     preconditions: [],
     action: async (ctx) => {
       if (!ctx.state.soak_vm.ip_address) return fail("no soak VM IP");
-      const cmd = `cd ${JSON.stringify(ctx.repo_root)} && npx tsx scripts/_postbake-validation.ts --vm-ip=${ctx.state.soak_vm.ip_address} --mode=test`;
+      // SOAK uses --mode=bake (NOT --mode=test).
+      // Both bake VM and soak VM are "fresh image, no user assignment, no
+      // cloud-init/setup.sh path" — neither runs configureOpenClaw. The
+      // checks that --mode=test gates as P0 (USER.md, gateway token 64-hex,
+      // gbrain MCP entry, exec-approvals.json, CDP_WALLET_ADDRESS, etc.) are
+      // all written by configureOpenClaw at REAL user assignment OR by
+      // cloud-init's setup.sh at first-real-boot. The soak VM has neither.
+      // --mode=test is correctly tagged for a real-production-VM validation
+      // (operator runs it manually post-customer-assignment); the bake's
+      // soak phase needs the bake-mode relaxations. Bake attempt 21
+      // (2026-05-25) failed soak-validate with 10 P0s — all in this class.
+      const cmd = `cd ${JSON.stringify(ctx.repo_root)} && npx tsx scripts/_postbake-validation.ts --vm-ip=${ctx.state.soak_vm.ip_address} --mode=bake`;
       try {
         const stdout = execSync(cmd, { encoding: "utf-8", timeout: 5 * 60 * 1000 });
         const summary = stdout.split("\n").filter((l) => /^P[012]:/.test(l.trim())).slice(-5);
         return ok([...summary, `  exit=0 (soak VM healthy from snapshot)`]);
       } catch (e: any) {
-        return fail(`_postbake-validation --mode=test exit ${e.status}`, (e.stdout ?? "").split("\n").slice(-30));
+        return fail(`_postbake-validation --mode=bake (soak) exit ${e.status}`, (e.stdout ?? "").split("\n").slice(-30));
       }
     },
     postconditions: [],
