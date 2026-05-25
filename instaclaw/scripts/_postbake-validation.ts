@@ -412,13 +412,28 @@ async function run() {
     // Caps per runtime-schema-TpYHXgGk.js:3208-3220:
     //   bootstrapMaxChars      = per-FILE cap (default 12000, ours 40000)
     //   bootstrapTotalMaxChars = TOTAL cap across all bootstrap files (default 60000)
-    const BOOTSTRAP_FILES_P0 = ["SOUL.md", "AGENTS.md", "IDENTITY.md", "USER.md", "TOOLS.md", "HEARTBEAT.md", "MEMORY.md"];
+    // Template files: written by reconciler from manifest. Present in both
+    // bake (post-reconcile-run-audit) and test (real VM post-provision) modes.
+    const BOOTSTRAP_FILES_P0_TEMPLATE = ["SOUL.md", "AGENTS.md", "IDENTITY.md", "TOOLS.md", "HEARTBEAT.md", "MEMORY.md"];
+    // Per-VM files: created by configureOpenClaw at real user assignment.
+    // The bake VM has no real user — USER.md is absent BY DESIGN. The check
+    // belongs in test mode (against a soak/real VM that has been configured).
+    // Bake attempt 19 (2026-05-25) failed on this P0 — it shouldn't.
+    const BOOTSTRAP_FILES_P0_PER_VM = ["USER.md"];
     const BOOTSTRAP_FILES_OPTIONAL = ["BOOTSTRAP.md"]; // legitimately may not exist
     const NON_BOOTSTRAP_WORKSPACE_FILES = ["CAPABILITIES.md", "EARN.md", "QUICK-REFERENCE.md", "WALLET.md"];
+    // Combined for size-cap checks below (per-file + total)
+    const BOOTSTRAP_FILES_P0 = [...BOOTSTRAP_FILES_P0_TEMPLATE, ...BOOTSTRAP_FILES_P0_PER_VM];
 
-    for (const f of BOOTSTRAP_FILES_P0) {
+    for (const f of BOOTSTRAP_FILES_P0_TEMPLATE) {
       const present = (await exec(c, `test -f ~/.openclaw/workspace/${f}`)).code === 0;
       record(`workspace/${f} present (bootstrap-required)`, "P0", ["bake", "test"], present, "");
+    }
+    for (const f of BOOTSTRAP_FILES_P0_PER_VM) {
+      const present = (await exec(c, `test -f ~/.openclaw/workspace/${f}`)).code === 0;
+      // P0 in test (real VM should have it after configureOpenClaw)
+      // — in bake, the file is absent BY DESIGN (no real user assigned).
+      record(`workspace/${f} present (bootstrap-required, per-VM)`, "P0", ["test"], present, "");
     }
     for (const f of NON_BOOTSTRAP_WORKSPACE_FILES) {
       const present = (await exec(c, `test -f ~/.openclaw/workspace/${f}`)).code === 0;
@@ -778,7 +793,12 @@ async function run() {
     record(`gbrain binary symlink present${gbrainNoteSuffix}`, gbrainGateSev, ["bake", "test"], gbrainSymlink.includes("gbrain"), gbrainSymlink.slice(0, 100));
 
     const mcpEntry = (await exec(c, `python3 -c "import json; d=json.load(open('$HOME/.openclaw/openclaw.json')); print('gbrain' in d.get('mcp',{}).get('servers',{}))"`)).stdout.trim();
-    record(`gbrain MCP entry in openclaw.json${gbrainNoteSuffix}`, gbrainGateSev, ["bake", "test"], mcpEntry === "True", "");
+    // bake mode: strip-bearer EXPLICITLY removes mcp.servers.gbrain (per
+    // §3.6 — per-VM bearer minted at first reconcile after assignment).
+    // The snapshot is supposed to ship WITHOUT this entry; checking for
+    // its presence in bake mode contradicts the strip-bearer step's intent.
+    // test mode: real-VM should have it post-configureOpenClaw.
+    record(`gbrain MCP entry in openclaw.json${gbrainNoteSuffix}`, gbrainGateSev, ["test"], mcpEntry === "True", "");
 
     // ─── 19b. gbrain ANTHROPIC_API_KEY architecture (Rule 35 EnvironmentFile) ──
     // Commit 2026-05-22 c9d3c5b1 migrated ANTHROPIC_API_KEY from inline
@@ -1000,10 +1020,14 @@ async function run() {
       /HEARTBEAT\.md\s*[—-]\s*Proactive Work Cycle/.test(heartbeatContent), heartbeatContent.slice(0, 60));
 
     // 27c — exec-approvals.json with security=full (inventory §12; gateway exec gates on this)
+    // Per-VM file: created by configureOpenClaw at user assignment, and
+    // explicitly wiped by _prebake-cleanup.sh (line 219-220) for security.
+    // Bake VM has NO real user → file absent BY DESIGN in bake mode.
+    // Bake attempt 19 (2026-05-25) failed P0 here — shouldn't.
     const execApprovals = (await exec(c, `cat ~/.openclaw/exec-approvals.json 2>/dev/null`)).stdout;
-    record("exec-approvals.json present + security=full", "P0", ["bake", "test"],
+    record("exec-approvals.json present + security=full", "P0", ["test"],
       /"security"\s*:\s*"full"/.test(execApprovals), execApprovals.slice(0, 80));
-    record("exec-approvals.json ask=off", "P1", ["bake", "test"],
+    record("exec-approvals.json ask=off", "P1", ["test"],
       /"ask"\s*:\s*"off"/.test(execApprovals), "");
 
     // 27d — .openclaw-pinned-version matches OpenClaw version (inventory §12)
@@ -1019,7 +1043,17 @@ async function run() {
       record(`apt binary: ${bin} on PATH`, "P1", ["bake", "test"], present, "");
     }
     // chromium-browser at the canonical path (inventory §7)
-    record("chromium-browser at /usr/local/bin/", "P1", ["bake", "test"],
+    // Installed at first-real-boot by cloud-init / setup.sh's
+    // `pip install crawlee[playwright]` → playwright's chromium-1223 install
+    // + symlink to /usr/local/bin/. Confirmed present on every recent
+    // production VM (vm-1026, vm-1027, vm-1028 — all from current snapshot
+    // 38977398). The BAKE VM provisions WITHOUT cloud-init/setup.sh — it
+    // SSH-installs openclaw directly, never runs the playwright install. So
+    // chromium-browser is absent on bake mode by-design (not a snapshot bug).
+    // Demote from P1 in bake mode to P2; keep P1 in test mode (but soak VM
+    // also provisions without cloud-init, so even test would currently fail
+    // — pinned as P2 across both pending the cloud-init bake integration).
+    record("chromium-browser at /usr/local/bin/", "P2", ["bake", "test"],
       (await exec(c, `test -x /usr/local/bin/chromium-browser`)).code === 0, "");
     // node_exporter binary present (reconciler stepNodeExporter heals if absent — P2 here)
     record("node_exporter binary on PATH", "P2", ["bake", "test"],
@@ -1078,13 +1112,33 @@ async function run() {
     // Validator gates: the cron line MUST reference the current Node version.
     const memoryIndexCron = (await exec(c, `crontab -l 2>/dev/null | grep "openclaw memory index"`)).stdout.trim();
     if (memoryIndexCron.length > 0) {
+      // Two valid cron forms:
+      //   (a) Dynamic NVM-source form (canonical per vm-manifest cronJobs):
+      //       `. /home/openclaw/.nvm/nvm.sh && openclaw memory index`
+      //       — version-resilient, survives Node bumps.
+      //   (b) Hardcoded-Node-path form (legacy, from older snapshots):
+      //       `/home/openclaw/.nvm/versions/node/vX.Y.Z/bin/openclaw memory index`
+      //       — stale on Node bump unless cron is rewritten.
+      // The pre-existing v113 snapshot ships with form (b) referencing v22.22.0
+      // (silent daily failure). _prebake-cleanup.sh now rewrites form (b) → (a)
+      // during every bake. The validator accepts BOTH and only flags stale (b).
+      const isDynamicForm = /\.\s*\/home\/openclaw\/\.nvm\/nvm\.sh\s*&&\s*openclaw\s+memory\s+index/.test(memoryIndexCron);
       const cronNodeVerMatch = memoryIndexCron.match(/nvm\/versions\/node\/v([\d.]+)\/bin/);
-      const cronNodeVer = cronNodeVerMatch ? cronNodeVerMatch[1] : "";
-      const cronNodeMatchesCurrent = cronNodeVer === nodeV.replace(/^v/, "");
-      record("crontab `openclaw memory index` Node path matches current Node version",
-        "P0", ["bake", "test"], cronNodeMatchesCurrent,
-        cronNodeMatchesCurrent ? "" :
-          `cron uses v${cronNodeVer || "?"} but current Node is ${nodeV} — daily 4AM memory index silently fails`);
+      if (isDynamicForm) {
+        record("crontab `openclaw memory index` uses dynamic NVM sourcing",
+          "P0", ["bake", "test"], true,
+          "form: `. ~/.nvm/nvm.sh && openclaw memory index` — version-resilient");
+      } else if (cronNodeVerMatch) {
+        const cronNodeVer = cronNodeVerMatch[1];
+        const cronNodeMatchesCurrent = cronNodeVer === nodeV.replace(/^v/, "");
+        record("crontab `openclaw memory index` Node path matches current Node version",
+          "P0", ["bake", "test"], cronNodeMatchesCurrent,
+          cronNodeMatchesCurrent ? "" :
+            `cron uses v${cronNodeVer} but current Node is ${nodeV} — daily 4AM memory index silently fails (rewrite to dynamic form via _prebake-cleanup)`);
+      } else {
+        record("crontab `openclaw memory index` has unknown shape",
+          "P0", ["bake", "test"], false, `entry: ${memoryIndexCron.slice(0, 100)}`);
+      }
     } else {
       record("crontab `openclaw memory index` entry present", "P1", ["bake", "test"],
         false, "no openclaw memory index entry in crontab");

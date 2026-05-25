@@ -505,6 +505,31 @@ if $CONFIRM; then
   fi
 fi
 
+# ─── 13.5. Crontab — rewrite stale hardcoded Node path cron entries ─────────
+# The 'openclaw memory index' cron historically used a HARDCODED Node path
+# (e.g. /home/openclaw/.nvm/versions/node/v22.22.0/bin/openclaw memory index).
+# When Node bumps (v22.22.0 → v22.22.2), nothing rewrites the entry — the
+# cron silently fails every 4 AM because the old binary path no longer
+# exists. Confirmed silent fleet-wide failure on v113 snapshot (vm-1035 +
+# bake VM 2026-05-25). The manifest's canonical form is dynamic NVM source.
+# Rewrite during bake so the snapshot ships clean. Idempotent: if already
+# in dynamic form, sed is a no-op.
+hdr "13.5. Rewrite stale 'openclaw memory index' cron to dynamic NVM form"
+if $CONFIRM; then
+  current=$(crontab -l 2>/dev/null || echo "")
+  # Only rewrite if a hardcoded-path entry exists AND no dynamic-form already.
+  if echo "$current" | grep -q 'nvm/versions/node/v[0-9.]*/bin/openclaw memory index'; then
+    log "Found stale hardcoded-path 'openclaw memory index' cron — rewriting to dynamic form"
+    new=$(echo "$current" | sed -E \
+      's|/home/openclaw/\.nvm/versions/node/v[0-9.]+/bin/openclaw memory index|. /home/openclaw/.nvm/nvm.sh \&\& openclaw memory index|')
+    echo "$new" | crontab -
+    log "Rewrite complete. New entry:"
+    crontab -l | grep "openclaw memory index" | head -1
+  else
+    log "No stale 'openclaw memory index' cron found — already dynamic or absent"
+  fi
+fi
+
 # ─── 14. Shell history + ssh known_hosts ────────────────────────────────────
 hdr "14. Wipe shell history + ssh known_hosts"
 rmf "$HOME/.bash_history" "$HOME/.zsh_history" "$HOME/.python_history" \
