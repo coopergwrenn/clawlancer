@@ -1165,15 +1165,27 @@ async function run() {
       "P0", ["bake", "test"], parseInt(ufw22, 10) >= 1,
       ufw22 === "0" ? "ufw 22/tcp ALLOW rule MISSING — first ufw enforcement tick will block SSH forever" : "");
 
-    // 27j.4 — /usr/local/bin/chromium-browser executable. Custom Chromium binary
-    // installed during bake. NOT in apt, NOT in manifest, NOT in configureOpenClaw.
-    // Required for the browser plugin + dispatch flow. Verified version
-    // (Google Chrome for Testing 148.x or compatible).
+    // 27j.4 — /usr/local/bin/chromium-browser executable.
+    // ORIGINAL CONTRACT (deprecated): "Custom Chromium binary installed during
+    // bake. NOT in apt, NOT in manifest, NOT in configureOpenClaw."
+    // ACTUAL CONTRACT (confirmed 2026-05-25 by SSH-probing vm-1026/27/28 —
+    // all from current snapshot 38977398): Chromium gets installed at
+    // FIRST-REAL-BOOT by cloud-init's setup.sh via
+    // `pip install crawlee[playwright]==1.5.0` → playwright auto-downloads
+    // chromium-1223 → symlink to /usr/local/bin/. NOT a snapshot-only install.
+    //
+    // The bake VM provisions WITHOUT user-data (no cloud-init/setup.sh path),
+    // so the symlink is absent on the bake VM by-design. Same for soak.
+    // Demote to P2 in both modes, matching the line-1042 sibling check.
+    // P1 followup: integrate playwright install into the bake (heavy:
+    // 250MB+ download) OR pass user-data to soak-provision so cloud-init
+    // runs and installs chromium-browser. Until then, the snapshot ships
+    // without chromium, and real-VM provisions install it via cloud-init.
     const chromiumVer = (await exec(c, `/usr/local/bin/chromium-browser --version 2>&1 | head -1`)).stdout.trim();
-    record("/usr/local/bin/chromium-browser executable (snapshot-only — bake recipe install)",
-      "P0", ["bake", "test"],
+    record("/usr/local/bin/chromium-browser executable (installed at first-real-boot via cloud-init)",
+      "P2", ["bake", "test"],
       /Chrome|Chromium/.test(chromiumVer) && /\d+\.\d+/.test(chromiumVer),
-      chromiumVer || "chromium-browser missing or non-executable");
+      chromiumVer || "chromium-browser missing or non-executable (expected on bake VM — installed by setup.sh on real provisions)");
 
     // 27j.5 — /usr/local/bin/openclaw-config-merge + openclaw-config-watchdog.
     // Custom shell scripts written at provision time (cloud-init / setup.sh)
