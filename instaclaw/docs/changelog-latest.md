@@ -1,16 +1,16 @@
 # Changelog — generated 2026-05-25
 
-Window: `8ffa2d41700733d1d08bdf80a752fd65675bed91` → `HEAD` (HEAD = `d8e31601`)
+Window: `d8e31601de4143c2d168da38a6db8284a777f2e3` → `HEAD` (HEAD = `cb6144e6`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: d8e31601de4143c2d168da38a6db8284a777f2e3 -->
+<!-- LAST_GENERATED_SHA: cb6144e68903667adda201cec9fad91bf8d47df4 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 0
-- **Feature (user-facing):** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,26 +18,25 @@ Total commits: 2
 
 ## What changed for users
 
-_None in this window._
+- `cb6144e6` 2026-05-25 — features: mute "Technical details" toggle to match how-it-works [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `d8e31601` 2026-05-25 — fix(bake): update .openclaw-pinned-version BEFORE install (vm-watchdog race) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `7000f302` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `7d753690` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `d8e31601` 2026-05-25 — fix(bake): update .openclaw-pinned-version BEFORE install (vm-watchdog race) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+_(none)_
 
 ### Infrastructure (0)
 
 _(none)_
 
-### Feature (user-facing) (0)
+### Feature (user-facing) (1)
 
-_(none)_
+- `cb6144e6` 2026-05-25 — features: mute "Technical details" toggle to match how-it-works [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,21 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `7000f302` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `d8e31601` 2026-05-25 — [reconciler, infrastructure] — fix(bake): update .openclaw-pinned-version BEFORE install (vm-watchdog race)
+- `7d753690` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `d8e31601` 2026-05-25 — fix(bake): update .openclaw-pinned-version BEFORE install (vm-watchdog race)
+- `cb6144e6` 2026-05-25 — features: mute "Technical details" toggle to match how-it-works
 
 ## Appendix — every commit (chronological)
 
-- `7000f302` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `d8e31601` 2026-05-25 — fix(bake): update .openclaw-pinned-version BEFORE install (vm-watchdog race) [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `7d753690` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `cb6144e6` 2026-05-25 — features: mute "Technical details" toggle to match how-it-works [1 files] _(ai-assisted)_
