@@ -323,13 +323,7 @@ function HeroInner() {
             layout. */}
         <motion.p
           className="text-base sm:text-xl max-w-md sm:max-w-xl mx-auto leading-[2] sm:leading-relaxed sm:text-balance"
-          // 2026-05-25 EXPERIMENT — borrow Zo.computer's subtitle
-          // treatment (editorial serif + warm dark olive). Uses our
-          // existing Instrument Serif (var(--font-serif), already in
-          // the bundle) instead of Zo's licensed Matina font. Color
-          // #3D3929 is Zo's exact subtitle color. Revert by replacing
-          // this style object with: { color: "var(--muted)" }
-          style={{ color: "#3D3929", fontFamily: "var(--font-serif)" }}
+          style={{ color: "var(--muted)" }}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.7, ease: SNAPPY }}
