@@ -674,17 +674,43 @@ function gbrainInstall(): BakeStep {
           ok: lines.some((l) => l.includes(`PHASE_${p}_OK`)),
           warn: lines.some((l) => l.includes(`PHASE_${p}_WARN`)),
         }));
-      const installComplete = lines.some((l) => l.includes("INSTALL_COMPLETE"));
+      // install-gbrain.sh has FOUR success terminals (per Rule 35):
+      //   INSTALL_COMPLETE   — fresh install from scratch succeeded
+      //   ALREADY_INSTALLED  — Phase A's 5-invariant check passed; no work done
+      //   BEARER_SYNCED      — Phase A6 surgical recovery (bearer mismatch
+      //                        resolved without brain wipe, vm-050-class state)
+      //   UPGRADE_COMPLETE   — Phase J in-place version upgrade succeeded
+      //                        (brain preserved, version bumped)
+      //
+      // The previous check only accepted INSTALL_COMPLETE — caused bake
+      // attempt 9 (2026-05-25) to fail because the snapshot's existing
+      // gbrain was already at the target version and Phase A reported
+      // "ALREADY_INSTALLED version=0.36.3.0 transport=streamable-http
+      // service=active port=loopback bearer=synced" — a CLEAN success
+      // state. Any of the 4 terminals means "no further work needed";
+      // the orchestrator should treat them identically.
+      const successTerminals = [
+        "INSTALL_COMPLETE",
+        "ALREADY_INSTALLED",
+        "BEARER_SYNCED",
+        "UPGRADE_COMPLETE",
+      ];
+      const matchedTerminal = successTerminals.find((t) =>
+        lines.some((l) => l.includes(t)),
+      );
 
       const phaseLines = phaseMarkers
         .map((p) => `  PHASE_${p.phase}: ${p.warn ? "WARN" : p.ok ? "OK" : "MISSING"}`)
         .join("\n");
 
-      if (!installComplete) {
-        return fail("install-gbrain.sh did not reach INSTALL_COMPLETE", [
-          phaseLines,
-          ...lines.slice(-10),
-        ]);
+      if (!matchedTerminal) {
+        return fail(
+          `install-gbrain.sh did not reach any success terminal (expected one of: ${successTerminals.join(", ")})`,
+          [
+            phaseLines,
+            ...lines.slice(-10),
+          ],
+        );
       }
       // C2 WARN is a P1 — Rule 54 protection is inert without it.
       const warnings: string[] = [];
@@ -694,7 +720,7 @@ function gbrainInstall(): BakeStep {
         );
       }
 
-      return ok([phaseLines, `  INSTALL_COMPLETE`], { warnings });
+      return ok([phaseLines, `  ${matchedTerminal}`], { warnings });
     },
     postconditions: [],
     rollback: async () => {},
