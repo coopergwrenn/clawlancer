@@ -44,8 +44,8 @@ const features = [
     icon: Coins,
     title: "Has Its Own Income",
     description:
-      "Your agent can make money. It launches a token, and the trading fees flow back into its wallet. It pays its own rent.",
-    tech: "Token launch capability via the Bankr partnership. Your agent calls 'bankr launch' autonomously to mint an ERC-20 with custom supply, fee tier, and listing parameters. Listed automatically on Bankr's exchange with built-in liquidity. Trading fees flow back to the agent's wallet and can pay for its own InstaClaw credits, BYOK API costs, or infrastructure. A token with steady volume creates a self-sustaining loop where the agent funds its own operations indefinitely. The user never touches a CLI. The agent runs the launch end-to-end.",
+      "Your agent can make money. It launches a token on Bankr, and the trading fees flow back into its wallet. That's one path. We're building the tools for trading, services, bounties, and whatever emerges. It pays its own rent.",
+    tech: "Token launches via the Bankr partnership are the first earning rail shipped. Your agent calls 'bankr launch' autonomously to mint an ERC-20 with custom supply, fee tier, and listing parameters. Listed automatically on Bankr's exchange with built-in liquidity. Trading fees flow back to the agent's wallet and can pay for its own InstaClaw credits, BYOK API costs, or infrastructure. A token with steady volume creates a self-sustaining loop where the agent funds its own operations indefinitely. The user never touches a CLI. The agent runs the launch end-to-end. On-chain trading, agent-to-agent service marketplaces, and bounty platform integrations are next on the roadmap.",
   },
   {
     icon: Brain,
@@ -98,19 +98,44 @@ const features = [
   },
 ];
 
-// Renders a string with any "World ID" mentions replaced by a subtle
-// inline link to https://world.org. No-op for strings that don't
-// contain "World ID" — the regex split returns a single-element array
-// containing just the original string, which renders as one <span>.
-// Future-proof: if "World ID" appears in another card later, it gets
-// auto-linkified; no per-card JSX needed.
-function linkifyWorldId(text: string) {
-  const parts = text.split(/(World ID)/g);
-  return parts.map((part, i) =>
-    part === "World ID" ? (
+// Generalized inline-link helper: scans a string for any matching key
+// in INLINE_LINKS and renders matches as subtle anchor tags. Non-match
+// segments render as plain spans. No-op for strings that contain no
+// matching terms (split returns a single-element array).
+//
+// To add a new linkified term: drop a key/value into INLINE_LINKS. The
+// regex is rebuilt from the keys at module load; nothing else changes.
+//
+// Edge cases handled correctly:
+//   - "Bankr's exchange" splits as ["", "Bankr", "'s exchange"] — the
+//     "'s" renders as plain text adjacent to the link. No display bug.
+//   - Multi-word terms ("World ID") work because the regex matches
+//     literal strings including spaces.
+//   - Terms that don't appear in a given string short-circuit cleanly.
+const INLINE_LINKS: Record<string, string> = {
+  "World ID": "https://world.org",
+  "Bankr": "https://bankr.fun",
+};
+
+// Escape any regex metacharacters that might appear in a key. None do
+// today (World ID, Bankr — all plain alpha + space) but future-proof
+// in case someone adds e.g. "C++" or "Node.js" later.
+const LINKIFY_PATTERN = new RegExp(
+  `(${Object.keys(INLINE_LINKS)
+    .map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|")})`,
+  "g"
+);
+
+function linkifyTerms(text: string) {
+  const parts = text.split(LINKIFY_PATTERN);
+  return parts.map((part, i) => {
+    const url = INLINE_LINKS[part];
+    if (!url) return <span key={i}>{part}</span>;
+    return (
       <a
         key={i}
-        href="https://world.org"
+        href={url}
         target="_blank"
         rel="noopener noreferrer"
         className="underline transition-opacity hover:opacity-100"
@@ -123,10 +148,8 @@ function linkifyWorldId(text: string) {
       >
         {part}
       </a>
-    ) : (
-      <span key={i}>{part}</span>
-    )
-  );
+    );
+  });
 }
 
 export function Features() {
@@ -195,7 +218,7 @@ export function Features() {
                     className="text-sm sm:text-base leading-relaxed max-w-md"
                     style={{ color: "var(--muted)" }}
                   >
-                    {linkifyWorldId(feature.description)}
+                    {linkifyTerms(feature.description)}
                   </p>
 
                   {/* Technical details toggle.
@@ -242,7 +265,7 @@ export function Features() {
                               className="pt-2 text-xs leading-relaxed max-w-md"
                               style={{ color: "var(--muted)" }}
                             >
-                              {linkifyWorldId(feature.tech)}
+                              {linkifyTerms(feature.tech)}
                             </p>
                           </motion.div>
                         )}
