@@ -1204,10 +1204,16 @@ async function run() {
     // runs and installs chromium-browser. Until then, the snapshot ships
     // without chromium, and real-VM provisions install it via cloud-init.
     const chromiumVer = (await exec(c, `/usr/local/bin/chromium-browser --version 2>&1 | head -1`)).stdout.trim();
-    record("/usr/local/bin/chromium-browser executable (installed at first-real-boot via cloud-init)",
-      "P2", ["bake", "test"],
-      /Chrome|Chromium/.test(chromiumVer) && /\d+\.\d+/.test(chromiumVer),
-      chromiumVer || "chromium-browser missing or non-executable (expected on bake VM — installed by setup.sh on real provisions)");
+    const chromiumExecutable = /Chrome|Chromium/.test(chromiumVer) && /\d+\.\d+/.test(chromiumVer);
+    // Same per-mode contract as the line-1076 sibling: P2 on bake/soak
+    // (cloud-init/setup.sh path not run; chromium absent by design),
+    // P0 on real-VM operator validation (real production VM MUST have it).
+    record("/usr/local/bin/chromium-browser executable (bake/soak — absent by design)",
+      "P2", ["bake"], chromiumExecutable,
+      chromiumVer || "expected absent (installed via cloud-init/setup.sh on real provisions)");
+    record("/usr/local/bin/chromium-browser executable (real VM via cloud-init setup.sh)",
+      "P0", ["test"], chromiumExecutable,
+      chromiumVer || "chromium-browser missing or non-executable");
 
     // 27j.5 — /usr/local/bin/openclaw-config-merge + openclaw-config-watchdog.
     // Custom shell scripts written at provision time (cloud-init / setup.sh)
