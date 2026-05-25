@@ -10,22 +10,22 @@ const steps = [
     number: "1",
     title: "Sign Up",
     description:
-      "Join the waitlist and grab your invite. Takes about 30 seconds.",
-    tech: "Invites are distributed in waves via our waitlist. Once activated, your account automatically provisions a dedicated cloud instance with the full OpenClaw runtime pre-installed.",
+      "Sign in with Google. We spin up a server for you. About thirty seconds.",
+    tech: "Signing in provisions a dedicated Ubuntu VM tied to your account (2 vCPU, 4GB RAM, 80GB disk) on Linode, with the OpenClaw runtime pre-installed. The machine is yours alone, not a shared inference service like ChatGPT or Claude.",
   },
   {
     number: "2",
     title: "Connect",
     description:
-      "Link your Telegram, Discord, Slack, or WhatsApp. Pick a plan. No coding, no configuration. That's the whole setup.",
-    tech: "OAuth-based bot linking for all supported platforms. Plan selection configures credit allocation and optional BYOK (Bring Your Own Key) mode for direct Anthropic API access with your choice of Claude model.",
+      "Connect Telegram or Discord. Pick a plan. No coding, no configuration.",
+    tech: "You connect by pasting a bot token from BotFather (Telegram) or the Developer Portal (Discord). Plan selection sets your monthly credit allocation and default Claude model. BYOK mode routes through your own Anthropic API key for direct billing if you prefer.",
   },
   {
     number: "3",
     title: "You're Live",
     description:
-      "Your personal AI launches on its own dedicated machine with real computing power, persistent memory, and pre-loaded skills. It starts working immediately and gets smarter every day.",
-    tech: "A dedicated Ubuntu VM spins up with full SSH access, shell execution, Python/Node runtimes, MCP tool servers, cron scheduling, and persistent memory across conversations. You can install any software, run background services, and extend the agent however you want.",
+      "Your agent boots on its own machine with pre-loaded skills and persistent memory. It starts working immediately and gets smarter every day.",
+    tech: "Your VM gets full SSH access, shell execution, Python and Node runtimes, MCP tool servers for skills, cron scheduling, and persistent memory that survives every conversation. You can install software, run background services, and extend the agent however you want.",
   },
 ];
 
@@ -101,15 +101,23 @@ export function HowItWorks() {
                     {step.description}
                   </p>
 
-                  {/* Technical details toggle */}
+                  {/* Technical details toggle.
+                      Cooper 2026-05-25: was var(--accent) orange,
+                      moved to var(--muted) gray so it reads as a
+                      standard supporting disclosure, not a primary
+                      CTA. Triangle inherits color (gray too). The
+                      expanded text matches the toggle color so the
+                      whole disclosure feels like one continuous
+                      muted aside. hover:opacity-70 provides the
+                      subtle interactive cue. */}
                   {step.tech && (
                     <div className="mt-3">
                       <button
                         onClick={() =>
                           setOpenTech(openTech === i ? null : i)
                         }
-                        className="inline-flex items-center gap-1.5 text-xs cursor-pointer transition-colors"
-                        style={{ color: "var(--accent)" }}
+                        className="inline-flex items-center gap-1.5 text-xs cursor-pointer transition-opacity hover:opacity-70"
+                        style={{ color: "var(--muted)" }}
                       >
                         <span
                           className="transition-transform duration-200"
@@ -139,7 +147,7 @@ export function HowItWorks() {
                           >
                             <p
                               className="pt-2 text-xs leading-relaxed max-w-md"
-                              style={{ color: "#999" }}
+                              style={{ color: "var(--muted)" }}
                             >
                               {step.tech}
                             </p>
