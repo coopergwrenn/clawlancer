@@ -1,43 +1,44 @@
-# Changelog — generated 2026-05-24
+# Changelog — generated 2026-05-25
 
-Window: `12cdd587b5413645279389086aaa39ee62ea123e` → `HEAD` (HEAD = `1dbb5505`)
-Total commits: 2
+Window: `1dbb5505c04f6145524d10ad5c0d642409f4d3d1` → `HEAD` (HEAD = `c9d5de5e`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 1dbb5505c04f6145524d10ad5c0d642409f4d3d1 -->
+<!-- LAST_GENERATED_SHA: c9d5de5ee0aa72c50e1935e292d922ab8595470f -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 0
-- **Feature (user-facing):** 0
+- **Feature (user-facing):** 2
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 2
 - Merge commits: 0
 
 ## What changed for users
 
-_None in this window._
+- `a62a62cf` 2026-05-24 — hero: cycling-keyword headline ("Your personal agent with its own ___") [1 files] _(ai-assisted)_
+- `c9d5de5e` 2026-05-24 — hero: "personalized" + restore subtitle scribble/squiggle decorations [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `1dbb5505` 2026-05-24 — fix(bake-validation): 5 snapshot-only gates from comprehensive vs-deployed audit [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `a93d53cc` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `943e9f3b` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `1dbb5505` 2026-05-24 — fix(bake-validation): 5 snapshot-only gates from comprehensive vs-deployed audit [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+_(none)_
 
 ### Infrastructure (0)
 
 _(none)_
 
-### Feature (user-facing) (0)
+### Feature (user-facing) (2)
 
-_(none)_
+- `a62a62cf` 2026-05-24 — hero: cycling-keyword headline ("Your personal agent with its own ___") [1 files] _(ai-assisted)_
+- `c9d5de5e` 2026-05-24 — hero: "personalized" + restore subtitle scribble/squiggle decorations [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,21 +46,17 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `a93d53cc` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `943e9f3b` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
 
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `1dbb5505` 2026-05-24 — [reconciler, infrastructure, docs] — fix(bake-validation): 5 snapshot-only gates from comprehensive vs-deployed audit
-
-## AI-assisted commits (1)
+## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `1dbb5505` 2026-05-24 — fix(bake-validation): 5 snapshot-only gates from comprehensive vs-deployed audit
+- `a62a62cf` 2026-05-24 — hero: cycling-keyword headline ("Your personal agent with its own ___")
+- `c9d5de5e` 2026-05-24 — hero: "personalized" + restore subtitle scribble/squiggle decorations
 
 ## Appendix — every commit (chronological)
 
-- `a93d53cc` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
-- `1dbb5505` 2026-05-24 — fix(bake-validation): 5 snapshot-only gates from comprehensive vs-deployed audit [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `943e9f3b` 2026-05-24 — chore(changelog): auto-update [skip ci] [2 files]
+- `a62a62cf` 2026-05-24 — hero: cycling-keyword headline ("Your personal agent with its own ___") [1 files] _(ai-assisted)_
+- `c9d5de5e` 2026-05-24 — hero: "personalized" + restore subtitle scribble/squiggle decorations [1 files] _(ai-assisted)_
