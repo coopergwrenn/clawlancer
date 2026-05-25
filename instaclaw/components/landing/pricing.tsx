@@ -306,40 +306,58 @@ export function Pricing() {
           </a>
         </motion.div>
 
-        {/* BYOK note */}
-        <motion.div
-          className="text-center mt-8 space-y-2"
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ delay: 0.5, duration: 0.6, ease: SNAPPY }}
-        >
-          <p className="text-sm max-w-[260px] sm:max-w-none mx-auto" style={{ color: "var(--muted)" }}>
-            BYOK = Bring Your Own Key. Use your Anthropic API key and pay less.
-          </p>
-        </motion.div>
+        {/* Final CTA — section capstone.
+            "Ready to get started?" matches the section H2's exact serif
+            sizing (text-4xl sm:text-5xl lg:text-6xl tracking-[-1px]) so
+            it bookends "Simple, Transparent Pricing" at the section
+            opener. "Outside the cards?" above remains the sub-callout
+            interlude between these two heavy serif bookends.
 
-        {/* Second waitlist form */}
+            Get Started glass pill is the heaviest pill on the page:
+            60px height, 40px horiz padding, 17px font (vs the Talk to
+            us pill's 52/28/15 — about 15% larger on every dimension).
+            Same .liquid-glass-pill 3-part recipe so the pills are
+            visually siblings in the same family, with Get Started
+            clearly being the elder.
+
+            mt-24 sm:mt-32 separation from the OpenClaw pill above
+            creates the page-ending breath. Removed the BYOK note that
+            used to sit between them — redundant with the "Bring Your
+            Favorite Model" card in the features section. */}
         <motion.div
           id="waitlist"
-          className="mt-16 text-center"
-          initial={{ opacity: 0, y: 20 }}
+          className="mt-24 sm:mt-32 text-center"
+          initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ delay: 0.3, duration: 0.6, ease: SNAPPY }}
+          viewport={{ once: true, margin: "-80px" }}
+          transition={{ duration: 0.7, ease: SNAPPY, delay: 0.15 }}
         >
-          <p className="text-lg font-medium mb-4">
+          <h3
+            className="text-4xl sm:text-5xl lg:text-6xl font-normal tracking-[-1px] leading-[1.05] mb-8"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
             Ready to get started?
-          </p>
+          </h3>
           <Link
             href="/signup"
-            className="inline-block px-8 py-4 text-base font-semibold text-center transition-all rounded-lg"
+            className="liquid-glass-pill-root transition-opacity hover:opacity-85"
             style={{
-              background: "var(--accent)",
-              color: "#ffffff",
+              transitionDuration: "300ms",
+              transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
             }}
           >
-            Get Started
+            <span
+              className="liquid-glass-pill"
+              style={{
+                height: "60px",
+                padding: "0 40px",
+                fontSize: "17px",
+                fontWeight: 500,
+              }}
+            >
+              Get Started
+            </span>
+            <div aria-hidden="true" className="liquid-glass-pill-shadow"></div>
           </Link>
         </motion.div>
       </div>
