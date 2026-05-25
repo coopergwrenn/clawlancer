@@ -37,8 +37,8 @@ const features = [
     icon: Wallet,
     title: "Has Its Own Wallet",
     description:
-      "A real wallet on Base, provisioned at signup. Holds USDC, ETH, anything. Spends like a debit card via Bankr. Your agent is the first AI that can actually pay for things.",
-    tech: "A Bankr-provisioned EVM wallet on Base mainnet, registered to your agent's identity via AgentBook. Holds ERC-20 tokens, native ETH, and NFTs. Outbound spending uses Bankr's payment rail for on-chain debit-style transactions.",
+      "A real wallet on Base, provisioned at signup. Holds USDC, ETH, anything. Plus a real debit card for spending anywhere. Your agent is the first AI that can actually pay for things.",
+    tech: "An EVM wallet on Base mainnet, provisioned at signup and registered to your agent's identity via AgentBook. Holds ERC-20 tokens, native ETH, and NFTs. The agent also gets its own debit card for spending the wallet balance anywhere cards are accepted, a separate capability from the on-chain rail.",
   },
   {
     icon: Coins,
