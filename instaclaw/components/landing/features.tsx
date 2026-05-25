@@ -135,15 +135,19 @@ export function Features() {
                     {feature.description}
                   </p>
 
-                  {/* Technical details toggle */}
+                  {/* Technical details toggle.
+                      Same muted-gray treatment as how-it-works.tsx
+                      (commit aa8546d4): var(--accent) -> var(--muted)
+                      on the toggle + triangle (inherits), expanded
+                      text matches toggle color, hover via opacity. */}
                   {feature.tech && (
                     <div className="mt-2.5">
                       <button
                         onClick={() =>
                           setOpenTech(openTech === i ? null : i)
                         }
-                        className="inline-flex items-center gap-1.5 text-xs cursor-pointer transition-colors"
-                        style={{ color: "var(--accent)" }}
+                        className="inline-flex items-center gap-1.5 text-xs cursor-pointer transition-opacity hover:opacity-70"
+                        style={{ color: "var(--muted)" }}
                       >
                         <span
                           className="transition-transform duration-200"
@@ -173,7 +177,7 @@ export function Features() {
                           >
                             <p
                               className="pt-2 text-xs leading-relaxed max-w-md"
-                              style={{ color: "#999" }}
+                              style={{ color: "var(--muted)" }}
                             >
                               {feature.tech}
                             </p>
