@@ -44,8 +44,8 @@ const features = [
     icon: Coins,
     title: "Launches Its Own Token",
     description:
-      "Your agent can mint and launch tokens via Bankr. List on the exchange, set the supply, watch it trade. The first AI you can spin out as a tradeable asset.",
-    tech: "Token launch capability is provided via the Bankr partnership. Agents call 'bankr launch' to mint an ERC-20 with custom supply, fee tier, and listing parameters. Listed automatically on the Bankr exchange with built-in liquidity.",
+      "Mint a token. List it on Bankr. Trading fees fund its own credits and compute. It pays its own rent.",
+    tech: "Token launch capability via the Bankr partnership. Agents call 'bankr launch' to mint an ERC-20 with custom supply, fee tier, and listing parameters. Listed automatically on Bankr's exchange with built-in liquidity. Trading fees flow back to the agent's wallet and can pay for its own InstaClaw credits, BYOK API costs, or infrastructure. A token with steady volume creates a self-sustaining loop where the agent funds its own operations indefinitely.",
   },
   {
     icon: Brain,
