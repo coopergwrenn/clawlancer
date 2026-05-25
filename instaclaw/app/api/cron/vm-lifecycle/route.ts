@@ -420,7 +420,13 @@ export async function GET(req: NextRequest) {
               await supabase
                 .from("instaclaw_vms")
                 .update({
-                  status: "destroyed",
+                  // 2026-05-25: was "destroyed" — rejected by
+                  // instaclaw_vms_status_check (valid values:
+                  // assigned/failed/ready/terminated). The Linode-ghost
+                  // auto-fix would have 500'd here if it ever fired.
+                  // Use 'terminated' — same intent (row is dead, exclude
+                  // from candidate queries) + legal per the CHECK.
+                  status: "terminated",
                   health_status: "unhealthy",
                   assigned_to: null,
                   assigned_at: null,

@@ -21,10 +21,16 @@ export async function POST(req: NextRequest) {
       // delete failure (RLS, FK constraint, network blip) still leaves the
       // row excluded from health-only candidate queries. If the delete
       // succeeds, the tombstone is moot; if it fails, the row is safely
-      // marked destroyed + unhealthy and the admin can retry.
+      // marked terminated + unhealthy and the admin can retry.
+      //
+      // 2026-05-25: was "destroyed" — rejected by instaclaw_vms_status_check
+      // (valid values: assigned/failed/ready/terminated). The route would
+      // have 500'd if anyone clicked Destroy in admin. Both 'destroyed' and
+      // 'terminated' express the same intent (terminal); only the latter
+      // is legal per the CHECK constraint.
       await supabase
         .from("instaclaw_vms")
-        .update({ status: "destroyed", health_status: "unhealthy" })
+        .update({ status: "terminated", health_status: "unhealthy" })
         .eq("id", vmId);
       // Delete VM record (Hetzner deletion is separate)
       await supabase.from("instaclaw_vms").delete().eq("id", vmId);
