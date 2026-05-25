@@ -90,18 +90,51 @@ export async function verifyCheckpointInstall(bakeVmIp: string): Promise<Checkpo
       detail: r5.stdout.trim(),
     });
 
-    // 6. Trial CHECKPOINT call — end-to-end exercise of the chain
-    // First confirm bearer + service active. If service isn't running, the
-    // bake-time bearer is set (Phase E5) and the service is up — we just
-    // call CHECKPOINT. This pre-dates the §3.6 bearer-strip; if you're
-    // running checkpoint-verify AFTER strip-bearer, the trial CHECKPOINT
-    // won't work — that's fine, just skip with a note.
-    const isActive = await sshExec(c, "systemctl --user is-active gbrain.service 2>&1 || true");
-    if (isActive.stdout.trim() === "active") {
+    // 6. Trial CHECKPOINT call — end-to-end exercise of the chain.
+    //
+    // Two bugs in the previous implementation, both surfaced bake attempt
+    // 10 (2026-05-25):
+    //
+    // Bug 1: pglite-checkpoint.sh writes ALL output to
+    //   ~/.openclaw/logs/pglite-checkpoint.log (NOT stdout) and always
+    //   exits 0 to avoid cron-failure-spam. So `r6.stdout` was always
+    //   empty → ok regex always failed → check ALWAYS reported failed
+    //   regardless of actual outcome.
+    //
+    // Bug 2: a gateway restart during the preceding reconcile may have
+    //   restarted gbrain too (downstream). gbrain takes ~30s to come
+    //   fully active. If checkpoint-verify runs while gbrain is in
+    //   "activating" state, pglite-checkpoint.sh silently skips
+    //   ("skip: state=activating") and the chain looks broken when
+    //   it's actually just timing.
+    //
+    // Fix: (a) poll for gbrain "active" up to 30s, (b) inject a marker
+    // into the log file so we can identify OUR script's output (not a
+    // stale cron tick from earlier), (c) invoke the script, (d) read
+    // the log file LINES-AFTER-MARKER to determine outcome.
+    let gbrainActive = false;
+    let gbrainState = "";
+    for (let i = 0; i < 15; i++) {
+      const probe = await sshExec(c, "systemctl --user is-active gbrain.service 2>&1 || true");
+      gbrainState = probe.stdout.trim();
+      if (gbrainState === "active") {
+        gbrainActive = true;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    if (gbrainActive) {
       const t0 = Date.now();
       const r6 = await sshExec(
         c,
-        `bash ~/.openclaw/scripts/pglite-checkpoint.sh 2>&1 | tail -3`,
+        // MARKER line in the log + run script + emit lines AFTER marker (= our script's output only).
+        // `tr` strips quotes so awk pattern is simpler.
+        `MARKER="checkpoint-verify-$$-$(date +%s)" && ` +
+          `mkdir -p ~/.openclaw/logs && ` +
+          `echo "[$(date -u +%FT%TZ)] $MARKER" >> ~/.openclaw/logs/pglite-checkpoint.log && ` +
+          `bash ~/.openclaw/scripts/pglite-checkpoint.sh && ` +
+          `sleep 0.5 && ` +
+          `awk -v m="$MARKER" '$0 ~ m { found=1; next } found' ~/.openclaw/logs/pglite-checkpoint.log 2>&1 | tail -3`,
         30_000,
       );
       trial_checkpoint_latency_ms = Date.now() - t0;
@@ -110,13 +143,19 @@ export async function verifyCheckpointInstall(bakeVmIp: string): Promise<Checkpo
       checks.push({
         ok,
         label: "End-to-end: trial CHECKPOINT call succeeds",
-        detail: ok ? r6.stdout.trim().slice(0, 100) : `FAILED: ${r6.stdout.trim().slice(0, 150)}`,
+        detail: ok
+          ? r6.stdout.trim().slice(0, 100)
+          : `FAILED (gbrain=${gbrainState}, log-tail=${(r6.stdout || "(empty)").trim().slice(0, 150)})`,
       });
     } else {
+      // gbrain didn't become active within 30s — escalate from old
+      // silent-skip to a real fail. Rule 35 + Rule 54: gbrain MUST be
+      // active for the CHECKPOINT MCP tool to be reachable.
       checks.push({
-        ok: true,
-        label: "End-to-end: trial CHECKPOINT (skipped — service inactive)",
-        detail: "service inactive (run BEFORE §3.6 strip-bearer for this check to fire)",
+        ok: false,
+        label: "End-to-end: trial CHECKPOINT — gbrain did not become active",
+        detail: `gbrain.service did not become active within 30s (last state: ${gbrainState}). ` +
+          `Rule 35 / Rule 54: gbrain MUST be active for the CHECKPOINT MCP tool to be reachable.`,
       });
     }
   } catch (e) {
