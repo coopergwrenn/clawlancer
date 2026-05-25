@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-25
 
-Window: `3655257e0973a3b69c089340081de225030545e4` → `HEAD` (HEAD = `245e2b18`)
+Window: `245e2b181120ce2118637d2d83deeb55650792b7` → `HEAD` (HEAD = `2d8072b9`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 245e2b181120ce2118637d2d83deeb55650792b7 -->
+<!-- LAST_GENERATED_SHA: 2d8072b97846c53b106fe4dff3f832be542a688a -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `245e2b18` 2026-05-25 — fix(scripts): _shelpinc-clean-slate-reset — add --recycle flag that calls wipeVMForNextUser before status=ready, mirroring admin reclaim [1 files] _(ai-assisted)_
-- `0e5fda63` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `2d8072b9` 2026-05-25 — fix(vms): status='destroyed' was rejected by CHECK constraint — swap to 'terminated' on both write sites [2 files] _(ai-assisted)_
+- `85ba992a` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `245e2b18` 2026-05-25 — fix(scripts): _shelpinc-clean-slate-reset — add --recycle flag that calls wipeVMForNextUser before status=ready, mirroring admin reclaim [1 files] _(ai-assisted)_
+- `2d8072b9` 2026-05-25 — fix(vms): status='destroyed' was rejected by CHECK constraint — swap to 'terminated' on both write sites [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `0e5fda63` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `85ba992a` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `245e2b18` 2026-05-25 — fix(scripts): _shelpinc-clean-slate-reset — add --recycle flag that calls wipeVMForNextUser before status=ready, mirroring admin reclaim
+- `2d8072b9` 2026-05-25 — fix(vms): status='destroyed' was rejected by CHECK constraint — swap to 'terminated' on both write sites
 
 ## Appendix — every commit (chronological)
 
-- `0e5fda63` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `245e2b18` 2026-05-25 — fix(scripts): _shelpinc-clean-slate-reset — add --recycle flag that calls wipeVMForNextUser before status=ready, mirroring admin reclaim [1 files] _(ai-assisted)_
+- `85ba992a` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `2d8072b9` 2026-05-25 — fix(vms): status='destroyed' was rejected by CHECK constraint — swap to 'terminated' on both write sites [2 files] _(ai-assisted)_
