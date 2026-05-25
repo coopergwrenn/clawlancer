@@ -262,6 +262,87 @@ export function Features() {
             </motion.div>
           ))}
         </div>
+
+        {/* "Powered by OpenClaw" attribution badge.
+            Relocated from pricing.tsx 2026-05-25 (commit ea0cb0f5
+            removed it from the pricing section, where it sat between
+            the enterprise callout and the final CTA and interrupted
+            two action moments).
+
+            New home rationale: this section already references
+            OpenClaw runtime four times in the feature-card tech
+            details ("OpenClaw runtime", "OpenClaw skill packages",
+            etc.). The badge now functions as a deliberate signature
+            line at the END of the section that enumerates what
+            OpenClaw enables. Narrative arc: capabilities listed,
+            then credited. The FAQ continues the relationship in
+            depth, but the SIGNATURE belongs here.
+
+            Recipe upgrade: the old badge used the legacy inline
+            glassStyle object (hand-built gradient + box-shadow +
+            backdrop-filter). Re-rendered with the current
+            .liquid-glass-pill 3-part recipe (root + pill surface
+            with conic-gradient rim + masked shadow proxy) so it
+            belongs in the same family as the Discord pill, Talk
+            to us pill, and Get Started pill. No inline size
+            overrides — uses the recipe's defaults (40px height,
+            20px horiz padding, 12px font, 500 weight from root)
+            to match the Discord pill's subordinate weight.
+
+            Typography: the recipe sets font-weight 500 on the
+            root, but the original badge differentiated "Powered
+            by" (regular body weight, ~400) from "OpenClaw"
+            (semibold, 600). Preserve that hierarchy via inline
+            style overrides on each span — without them, both
+            words inherit 500 and the "OpenClaw is the brand
+            name" signal collapses. */}
+        <motion.div
+          className="mt-16 sm:mt-20 flex justify-center"
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-80px" }}
+          transition={{ duration: 0.6, ease: SNAPPY, delay: 0.2 }}
+        >
+          <a
+            href="https://openclaw.ai/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="liquid-glass-pill-root transition-opacity hover:opacity-80"
+            style={{
+              transitionDuration: "300ms",
+              transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+            }}
+          >
+            <span className="liquid-glass-pill">
+              <svg
+                className="w-4 h-4 shrink-0"
+                viewBox="0 0 120 120"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <path d="M60 10 C30 10 15 35 15 55 C15 75 30 95 45 100 L45 110 L55 110 L55 100 C55 100 60 102 65 100 L65 110 L75 110 L75 100 C90 95 105 75 105 55 C105 35 90 10 60 10Z" fill="url(#oc-grad-features)" />
+                <path d="M20 45 C5 40 0 50 5 60 C10 70 20 65 25 55 C28 48 25 45 20 45Z" fill="url(#oc-grad-features)" />
+                <path d="M100 45 C115 40 120 50 115 60 C110 70 100 65 95 55 C92 48 95 45 100 45Z" fill="url(#oc-grad-features)" />
+                <path d="M45 15 Q35 5 30 8" stroke="#f87171" strokeWidth="2" strokeLinecap="round" />
+                <path d="M75 15 Q85 5 90 8" stroke="#f87171" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="45" cy="35" r="6" fill="#1a1a2e" />
+                <circle cx="75" cy="35" r="6" fill="#1a1a2e" />
+                <circle cx="46" cy="34" r="2" fill="#67e8f9" />
+                <circle cx="76" cy="34" r="2" fill="#67e8f9" />
+                <defs>
+                  <linearGradient id="oc-grad-features" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#f87171" />
+                    <stop offset="100%" stopColor="#dc2626" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <span style={{ fontWeight: 400 }}>Powered by</span>
+              <span style={{ fontWeight: 600 }}>OpenClaw</span>
+            </span>
+            <div aria-hidden="true" className="liquid-glass-pill-shadow"></div>
+          </a>
+        </motion.div>
       </div>
     </section>
   );
