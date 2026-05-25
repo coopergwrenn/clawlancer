@@ -8,15 +8,36 @@
  * to write — no risk of hand-copy drift.
  *
  * Usage:
- *   npx tsx scripts/_repair-bootstrap-md.ts <ip>
+ *   npx tsx scripts/_repair-bootstrap-md.ts <ip>          # safe-by-default
+ *   npx tsx scripts/_repair-bootstrap-md.ts <ip> --force  # operator override
  *
- * Skips the write if BOOTSTRAP.md is already present (idempotent).
- * Refuses to overwrite if `.bootstrap_consumed` exists (user has
- * already greeted; re-writing would re-trigger the quirky greeting
- * mid-relationship, which is the exact bug the marker prevents).
+ * Three-gate refusal (safe-by-default):
+ *   1. `.bootstrap_consumed` is present → REFUSE (marker = post-greeting
+ *      state; re-writing would re-trigger quirky greeting mid-relationship).
+ *      Cannot be overridden by --force — marker is a hard signal.
+ *   2. BOOTSTRAP.md already present → check sha256 vs canonical, skip if
+ *      match (idempotent) or skip if differs (preserve user variant).
+ *   3. ANY assistant message in sessions (>0 chars after strip) → REFUSE
+ *      (any existing agent-user interaction means re-writing would
+ *      re-trigger quirky greeting mid-relationship). STRICTER than
+ *      stepBootstrapMissing's ≥100-char threshold — for an operator tool,
+ *      we want zero risk of mid-conversation re-greet. Pass --force to
+ *      override this gate when the operator KNOWS the agent state should
+ *      be reset to first-run despite existing conversation (e.g., a
+ *      controlled test scenario where the agent should be re-introduced).
  *
- * Read-only-on-success: prints SHA-256 of the written content so
- * the operator can cross-check against the canonical template.
+ * Read-only-on-success: prints SHA-256 of the written content so the
+ * operator can cross-check against the canonical template.
+ *
+ * Why the --force flag exists (and why it's narrowly scoped):
+ *   The 2026-05-25 vm-1028 incident — operator (me) ran this script
+ *   against a VM whose agent had already responded to two user messages
+ *   (51 + 36 chars, below Layer 2's 100-char threshold but real
+ *   interactions). Re-introducing BOOTSTRAP.md retroactively would have
+ *   triggered the quirky greeting on the next /reset. Without a stricter
+ *   gate, the script silently shipped a footgun. Stricter gate closes
+ *   the default-path footgun; --force preserves the controlled-override
+ *   use case (test loops, intentional first-run resets).
  */
 import { readFileSync } from "fs";
 import { createHash } from "crypto";
@@ -43,9 +64,17 @@ function loadEnvFiles() {
 }
 
 async function main() {
-  const ip = process.argv[2];
-  if (!ip || !/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
-    console.error("Usage: npx tsx scripts/_repair-bootstrap-md.ts <ip>");
+  // Order-agnostic arg parsing: find IP via regex, look for --force token.
+  // Accepts: `<ip>`, `<ip> --force`, `--force <ip>`.
+  const args = process.argv.slice(2);
+  const force = args.includes("--force");
+  const ip = args.find((a) => /^\d+\.\d+\.\d+\.\d+$/.test(a));
+  if (!ip) {
+    console.error("Usage: npx tsx scripts/_repair-bootstrap-md.ts <ip> [--force]");
+    console.error("");
+    console.error("  <ip>     IPv4 address of the target VM (openclaw@<ip>)");
+    console.error("  --force  Override the substantive-convo refusal gate.");
+    console.error("           Does NOT override the .bootstrap_consumed marker check.");
     process.exit(1);
   }
 
@@ -108,8 +137,99 @@ async function main() {
       }
     }
 
-    // BOOTSTRAP.md absent AND .bootstrap_consumed absent — this is the
-    // bug state. Safe to write.
+    // ── Gate 3: substantive-convo check (NEW — closes vm-1028 footgun) ──
+    //
+    // Even with file AND marker absent, the agent may still have had a
+    // conversation with the user (brief replies under Layer 2's 100-char
+    // "substantive" threshold). Re-writing BOOTSTRAP.md retroactively
+    // would trigger the quirky "first moment awake" greeting on the
+    // user's next /reset — mid-relationship re-greet, the exact failure
+    // mode Layer 2's marker check exists to prevent.
+    //
+    // Stricter than stepBootstrapMissing's gate (≥100 chars): ANY
+    // assistant message with >0 chars after strip blocks the write. For
+    // an operator tool, default to zero risk of re-greeting.
+    //
+    // Operator override: --force skips this check. Marker check (Gate 1)
+    // is NOT overridable — marker presence is a hard "post-greeting"
+    // signal that should never be casually reset.
+    //
+    // open() uses encoding='utf-8', errors='ignore' to handle hypothetical
+    // C-locale VMs gracefully (UnicodeDecodeError on non-ASCII bytes in
+    // jsonl files would otherwise crash the Python script).
+    if (!force) {
+      const convoCheck = await ssh.execCommand(`python3 - <<'REPAIR_CONVO_CHECK_PY'
+import json, os, glob
+sessions_dir = os.path.expanduser('~/.openclaw/agents/main/sessions')
+for f in glob.glob(os.path.join(sessions_dir, '*.jsonl')):
+    if 'trajectory' in f or 'checkpoint' in f:
+        continue
+    try:
+        with open(f, encoding='utf-8', errors='ignore') as fh:
+            for line in fh:
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
+                msg = e.get('message') or {}
+                if not isinstance(msg, dict):
+                    continue
+                if msg.get('role') != 'assistant':
+                    continue
+                content = msg.get('content')
+                if isinstance(content, str):
+                    text = content
+                elif isinstance(content, list):
+                    parts = []
+                    for b in content:
+                        if isinstance(b, dict) and b.get('type') == 'text':
+                            t = b.get('text')
+                            if isinstance(t, str):
+                                parts.append(t)
+                    text = ''.join(parts)
+                else:
+                    text = ''
+                if len(text.strip()) > 0:
+                    print('USED')
+                    raise SystemExit(0)
+    except (OSError, IOError):
+        continue
+print('NOT_USED')
+REPAIR_CONVO_CHECK_PY`);
+      const verdict = convoCheck.stdout.trim();
+      // Fail-safe: anything not exactly NOT_USED is treated as USED.
+      // Unexpected output (Python crash, non-zero exit) defaults to
+      // refuse — never write speculatively when convo state is uncertain.
+      if (verdict !== "NOT_USED") {
+        console.error("");
+        console.error("REFUSING: agent has existing assistant messages in sessions.");
+        console.error("");
+        console.error("Re-writing BOOTSTRAP.md now would trigger the quirky 'first moment");
+        console.error("awake' greeting on the user's next session start — mid-relationship");
+        console.error("re-greet, which is exactly the failure mode Layer 2's marker check");
+        console.error("is designed to prevent.");
+        console.error("");
+        console.error(`Convo probe verdict: ${verdict.slice(0, 80)}`);
+        console.error("");
+        console.error("If you're sure (e.g., a controlled test where the agent state should");
+        console.error("be reset to first-run despite existing conversation), re-run with");
+        console.error("--force to override this check:");
+        console.error("");
+        console.error(`  npx tsx scripts/_repair-bootstrap-md.ts ${ip} --force`);
+        console.error("");
+        console.error("The --force flag does NOT override the .bootstrap_consumed marker");
+        console.error("check — if the marker exists, this script will always refuse.");
+        process.exit(2);
+      }
+    } else {
+      console.log(
+        "WARN: --force enabled — skipping substantive-convo check. " +
+          "Writing BOOTSTRAP.md despite potential existing conversation. " +
+          "Operator has explicitly opted in."
+      );
+    }
+
+    // Gates 1, 2, 3 cleared (or --force overrode Gate 3). Safe to write.
     const b64 = Buffer.from(WORKSPACE_BOOTSTRAP_SHORT, "utf-8").toString("base64");
     const writeResult = await ssh.execCommand(
       `echo '${b64}' | base64 -d > $HOME/.openclaw/workspace/BOOTSTRAP.md`

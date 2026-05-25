@@ -3802,7 +3802,7 @@ for f in glob.glob(os.path.join(sessions_dir, '*.jsonl')):
     if 'trajectory' in f or 'checkpoint' in f:
         continue
     try:
-        with open(f) as fh:
+        with open(f, encoding='utf-8', errors='ignore') as fh:
             for line in fh:
                 try:
                     e = json.loads(line)
@@ -3956,7 +3956,7 @@ for f in glob.glob(os.path.join(sessions_dir, '*.jsonl')):
     if 'trajectory' in f or 'checkpoint' in f:
         continue
     try:
-        with open(f) as fh:
+        with open(f, encoding='utf-8', errors='ignore') as fh:
             for line in fh:
                 try:
                     e = json.loads(line)

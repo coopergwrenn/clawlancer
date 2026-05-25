@@ -1673,7 +1673,7 @@ export const VM_MANIFEST = {
    * IMPORTANT for snapshot bake: the bake VM should reconcile to v113,
    * not v112 — Cooper notified snapshot terminal at bump time.
    */
-  version: 120,
+  version: 121,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
