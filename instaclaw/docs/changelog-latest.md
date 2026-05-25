@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-25
 
-Window: `245e2b181120ce2118637d2d83deeb55650792b7` → `HEAD` (HEAD = `2d8072b9`)
+Window: `2d8072b97846c53b106fe4dff3f832be542a688a` → `HEAD` (HEAD = `a25fd6a6`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 2d8072b97846c53b106fe4dff3f832be542a688a -->
+<!-- LAST_GENERATED_SHA: a25fd6a68e50a85437f16d9b2f654dcd9f50f5a9 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `2d8072b9` 2026-05-25 — fix(vms): status='destroyed' was rejected by CHECK constraint — swap to 'terminated' on both write sites [2 files] _(ai-assisted)_
-- `85ba992a` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `a25fd6a6` 2026-05-25 — fix(scripts): _shelpinc-clean-slate-reset — look up user_id by email at runtime instead of a stale UUID constant [1 files] _(ai-assisted)_
+- `45aec585` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `2d8072b9` 2026-05-25 — fix(vms): status='destroyed' was rejected by CHECK constraint — swap to 'terminated' on both write sites [2 files] _(ai-assisted)_
+- `a25fd6a6` 2026-05-25 — fix(scripts): _shelpinc-clean-slate-reset — look up user_id by email at runtime instead of a stale UUID constant [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `85ba992a` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `45aec585` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `2d8072b9` 2026-05-25 — fix(vms): status='destroyed' was rejected by CHECK constraint — swap to 'terminated' on both write sites
+- `a25fd6a6` 2026-05-25 — fix(scripts): _shelpinc-clean-slate-reset — look up user_id by email at runtime instead of a stale UUID constant
 
 ## Appendix — every commit (chronological)
 
-- `85ba992a` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `2d8072b9` 2026-05-25 — fix(vms): status='destroyed' was rejected by CHECK constraint — swap to 'terminated' on both write sites [2 files] _(ai-assisted)_
+- `45aec585` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `a25fd6a6` 2026-05-25 — fix(scripts): _shelpinc-clean-slate-reset — look up user_id by email at runtime instead of a stale UUID constant [1 files] _(ai-assisted)_
