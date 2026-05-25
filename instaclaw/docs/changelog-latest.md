@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-25
 
-Window: `520212ae777cf32960ffc5163dd49dff0360c0cc` → `HEAD` (HEAD = `2b9ab8d5`)
+Window: `2b9ab8d594083710909eb9e797fdfa850bca90c9` → `HEAD` (HEAD = `4c3c7dbc`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 2b9ab8d594083710909eb9e797fdfa850bca90c9 -->
+<!-- LAST_GENERATED_SHA: 4c3c7dbc41d9acb46cc631876decb2df3b0bc6a3 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `2b9ab8d5` 2026-05-25 — features: "More than a chatbot" header, rewrite all 7 cards, add 4 new ones [1 files] _(ai-assisted)_
+- `4c3c7dbc` 2026-05-25 — features: rewrite Token card — self-sustaining angle, "pays its own rent" closer [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `a5bbdeaa` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `83bb2447` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `2b9ab8d5` 2026-05-25 — features: "More than a chatbot" header, rewrite all 7 cards, add 4 new ones [1 files] _(ai-assisted)_
+- `4c3c7dbc` 2026-05-25 — features: rewrite Token card — self-sustaining angle, "pays its own rent" closer [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `a5bbdeaa` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `83bb2447` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `2b9ab8d5` 2026-05-25 — features: "More than a chatbot" header, rewrite all 7 cards, add 4 new ones
+- `4c3c7dbc` 2026-05-25 — features: rewrite Token card — self-sustaining angle, "pays its own rent" closer
 
 ## Appendix — every commit (chronological)
 
-- `a5bbdeaa` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `2b9ab8d5` 2026-05-25 — features: "More than a chatbot" header, rewrite all 7 cards, add 4 new ones [1 files] _(ai-assisted)_
+- `83bb2447` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `4c3c7dbc` 2026-05-25 — features: rewrite Token card — self-sustaining angle, "pays its own rent" closer [1 files] _(ai-assisted)_
