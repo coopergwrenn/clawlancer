@@ -24,8 +24,8 @@ const steps = [
     number: "3",
     title: "You're Live",
     description:
-      "Your agent boots on its own machine with pre-loaded skills and persistent memory. It starts working immediately and gets smarter every day.",
-    tech: "Your VM gets full SSH access, shell execution, Python and Node runtimes, MCP tool servers for skills, cron scheduling, and persistent memory that survives every conversation. You can install software, run background services, and extend the agent however you want.",
+      "Your agent goes to work on its own machine. Real browser, real wallet, working while you sleep. Skills and memory are the floor, not the ceiling. The chat window is the smallest part of what it does.",
+    tech: "Your VM has full SSH access, shell execution, Python and Node runtimes, MCP tool servers for skills, cron scheduling, and persistent memory that survives every conversation. The agent runs 24/7 even when you're offline. You can install software, run background services, and extend the agent however you want.",
   },
 ];
 
