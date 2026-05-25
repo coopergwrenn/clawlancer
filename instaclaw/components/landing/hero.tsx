@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { useSession } from "next-auth/react";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { SpotsCounter, useSpotsCount } from "./spots-counter";
 import { WaitlistForm } from "./waitlist-form";
@@ -50,26 +50,42 @@ const KEYWORD_TRANSITION_S = 0.5;
 const KEYWORD_EASE = [0.25, 1, 0.32, 1] as const;
 
 /**
- * KeywordCycle — premium mask-reveal cycling word.
+ * KeywordCycle — premium mask-reveal cycling word with width-fluid
+ * container.
  *
- * Width stability: all 9 keywords are stacked invisibly in one CSS grid
- * cell. The grid cell sizes itself to the WIDEST word (likely "debit
- * card") so the surrounding "Your personal agent with its own ___"
- * never reflows. No measurement, no useEffect, no flicker.
+ * Cooper's 2026-05-24 callout: the prior fixed-width-to-widest-word
+ * approach (CSS grid sizer stack) left ugly gaps after "own" on
+ * shorter words like "soul" or "skills". Fixed by replacing the
+ * fixed grid with a hidden measurement layer that exposes each
+ * word's natural width, and animating the visible container's
+ * width to match the current word — synchronized with the slide
+ * reveal so they feel like one motion.
  *
- * Mask reveal: AnimatePresence `mode="popLayout"` keeps the exiting
- * word in flow (visually) while the new word slides up from below. The
- * outer overflow:hidden creates the slot. `initial={false}` on the
- * Presence means the FIRST word ("computer") renders instantly with
- * no slide-in — no blank frame on page load.
+ * Width animation: framer-motion `animate={{ width }}` on the
+ * visible container, same 500ms / cubic-bezier(0.25, 1, 0.32, 1)
+ * as the word reveal. Width target is the measured width of the
+ * current word; widths are measured once on mount and re-measured
+ * after fonts load (Instrument Serif font-swap can shift glyph
+ * widths a few px).
  *
- * Reduced motion: `useReducedMotion()` collapses the slide to an
- * opacity-only swap.
+ * Mask reveal: AnimatePresence `mode="popLayout"` keeps the
+ * exiting word in flow visually while the new word slides up from
+ * below. The container's overflow-hidden creates the slot.
+ * `initial={false}` on Presence means the first word ("computer")
+ * renders instantly with no slide-in.
+ *
+ * Left-aligned inside the container — the cycling word sits
+ * directly adjacent to "own" with natural sentence spacing.
+ *
+ * Reduced motion: `useReducedMotion()` collapses to opacity-only.
  */
 function KeywordCycle() {
   const [index, setIndex] = useState(0);
+  const [widths, setWidths] = useState<Record<string, number>>({});
   const reduced = useReducedMotion();
+  const sizerContainerRef = useRef<HTMLSpanElement>(null);
 
+  // Cycle the index on a steady interval.
   useEffect(() => {
     const id = setInterval(() => {
       setIndex((i) => (i + 1) % KEYWORDS.length);
@@ -77,33 +93,88 @@ function KeywordCycle() {
     return () => clearInterval(id);
   }, []);
 
+  // Measure each word's natural width via the hidden sizer block.
+  // Re-measure after fonts load — Instrument Serif font-swap can
+  // shift glyph widths by a few px, which would otherwise leave the
+  // container slightly mis-sized on first paint.
+  useEffect(() => {
+    const measure = () => {
+      const root = sizerContainerRef.current;
+      if (!root) return;
+      const next: Record<string, number> = {};
+      root.querySelectorAll<HTMLElement>("[data-keyword]").forEach((el) => {
+        const key = el.dataset.keyword!;
+        next[key] = el.getBoundingClientRect().width;
+      });
+      setWidths(next);
+    };
+    measure();
+    if (typeof document !== "undefined" && document.fonts?.ready) {
+      document.fonts.ready.then(measure).catch(() => {});
+    }
+  }, []);
+
   const word = KEYWORDS[index];
+  const targetWidth = widths[word];
 
   return (
-    <span
-      className="relative inline-grid align-baseline"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      {/* Width sizer — every keyword overlaid invisibly in the same
-          single-cell grid. The grid cell sizes to the widest entry, so
-          the headline never reflows as words cycle. */}
-      {KEYWORDS.map((w) => (
-        <span
-          key={`sizer-${w}`}
-          aria-hidden="true"
-          className="invisible col-start-1 row-start-1 whitespace-nowrap"
-        >
-          {w}
-        </span>
-      ))}
-
-      {/* Mask layer — overflow-hidden creates the slot the word slides
-          through. Inherits the headline's line-height so descenders in
-          "computer" (p) and "memory" (y) don't get clipped. */}
+    <>
+      {/* Hidden measurement layer — every keyword rendered off-screen
+          (absolute, visibility:hidden, left:-9999) so it occupies no
+          inline space. Inherits the headline's font/size/weight from
+          its parent <h1>. Each child has data-keyword for refless
+          lookup. `inline-block` (NOT block!) is load-bearing: block
+          children stretch to the parent's auto-width (= widest word),
+          which makes every measurement read the widest word's width.
+          Inline-block sizes each child to its own content. */}
       <span
-        className="col-start-1 row-start-1 relative overflow-hidden pointer-events-none"
-        style={{ lineHeight: "inherit" }}
+        ref={sizerContainerRef}
+        aria-hidden="true"
+        className="pointer-events-none whitespace-nowrap"
+        style={{
+          position: "absolute",
+          visibility: "hidden",
+          left: "-9999px",
+          top: 0,
+        }}
+      >
+        {KEYWORDS.map((w) => (
+          <span
+            key={w}
+            data-keyword={w}
+            className="inline-block whitespace-nowrap"
+            style={{ marginRight: 20 }}
+          >
+            {w}
+          </span>
+        ))}
+      </span>
+
+      {/* Visible cycling container — width animates to the current
+          word's measured width, overflow:hidden creates the mask
+          slot.
+          inline-FLEX (not inline-block!) is load-bearing for baseline
+          alignment: per CSS spec, an inline-BLOCK's baseline becomes
+          the bottom margin edge when overflow is non-visible, which
+          would push the cycling word visibly higher than the
+          surrounding "with its own" text. Inline-flex computes its
+          baseline from its flex items (via align-items:baseline), so
+          the cycling word's baseline ends up co-located with the
+          surrounding text's baseline. */}
+      <motion.span
+        className="relative inline-flex overflow-hidden"
+        animate={{ width: targetWidth ?? "auto" }}
+        transition={{
+          duration: reduced ? 0.01 : KEYWORD_TRANSITION_S,
+          ease: KEYWORD_EASE,
+        }}
+        style={{
+          verticalAlign: "baseline",
+          alignItems: "baseline",
+          lineHeight: "inherit",
+        }}
+        aria-live="polite"
+        aria-atomic="true"
       >
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.span
@@ -121,8 +192,8 @@ function KeywordCycle() {
             {word}
           </motion.span>
         </AnimatePresence>
-      </span>
-    </span>
+      </motion.span>
+    </>
   );
 }
 
