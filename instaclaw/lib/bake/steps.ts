@@ -44,6 +44,7 @@ import { runStripBearer, verifyStripped } from "./strip-bearer";
 import { verifyCheckpointInstall } from "./checkpoint-verify";
 import { envVarSet, envVarAbsent, openSsh, sshExec } from "./verifications";
 import { REQUIRED_BAKE_TOOLING_ENV, DANGER_BAKE_TOOLING_ENV } from "./env-loader";
+import { OPENCLAW_PINNED_VERSION } from "../ssh";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -375,24 +376,86 @@ function upgradeOpenClawAndPinNode(): BakeStep {
   return {
     id: "upgrade-os-openclaw",
     phase: "upgrade-os",
-    description: "Install latest openclaw (npm) + pin nodejs (apt-mark hold)",
+    description: `Install openclaw@${OPENCLAW_PINNED_VERSION} (npm) + verify + pin nodejs (apt-mark hold)`,
     estimated_seconds: 120,
     retryable: true,
-    recovery_hint: "Network issue or npm registry hiccup — re-run. Idempotent.",
+    recovery_hint: "Network issue or npm registry hiccup — re-run. Idempotent. If verify section fails, run `npm install -g openclaw@<PINNED>` manually on the bake VM and inspect the bin symlink + package.json + dist/entry.js.",
     preconditions: [],
     action: async (ctx) => {
       const ip = ctx.state.bake_vm.ip_address!;
+      // ── PIN openclaw version explicitly — DO NOT use @latest ──
+      //
+      // History: the 2026-05-25 first-bake series (attempts 1-5) failed at
+      // reconcile-run-audit with 37 strict-errors of shape "<key>: bash:
+      // line 1: openclaw: command not found". Investigation on a fresh
+      // debug nanode found that `npm install -g openclaw@latest` had an
+      // observable partial-install state: `openclaw --version` returned
+      // the expected version IMMEDIATELY after install, but a later
+      // probe (~30 min later, no other actions) returned the OLD snapshot
+      // version (2026.4.26 instead of 2026.5.22). The dist-tag
+      // indirection + partial-install race produces deterministic 37-key
+      // failure during reconcile's strict per-key SET path.
+      //
+      // Fix: pin explicitly + verify-after-install loudly. The pin lives
+      // in lib/ssh.ts (the same constant that stepNpmPinDrift and
+      // configureOpenClaw use) — no dual source of truth.
+      //
+      // Verify is rigid: (a) openclaw --version matches PINNED,
+      // (b) package.json on disk matches PINNED, (c) openclaw config
+      // validate succeeds (exercises full dist/ import chain — catches
+      // partial installs where openclaw.mjs is fine but dist/* is
+      // broken). Any failure aborts the bake immediately with a
+      // diagnostic.
+      const PINNED = OPENCLAW_PINNED_VERSION;
       const cmd = `
 set -e
 source ~/.nvm/nvm.sh
-npm install -g openclaw@latest 2>&1 | tail -10
-openclaw --version
+echo "── install openclaw@${PINNED} (explicit pin, no @latest) ──"
+npm install -g "openclaw@${PINNED}" 2>&1 | tail -10
+echo "── verify 1: openclaw --version ──"
+ACTUAL_VERSION=$(openclaw --version 2>&1 | grep -oE '[0-9]{4}\\.[0-9]+\\.[0-9]+' | head -1)
+echo "  reported: $ACTUAL_VERSION"
+if [ "$ACTUAL_VERSION" != "${PINNED}" ]; then
+  echo "VERIFY_FAIL_VERSION: expected=${PINNED} got=$ACTUAL_VERSION"
+  exit 1
+fi
+echo "── verify 2: package.json version ──"
+PKG_VERSION=$(grep -oE '"version":\\s*"[^"]+"' "$(npm root -g)/openclaw/package.json" | head -1 | grep -oE '[0-9]{4}\\.[0-9]+\\.[0-9]+')
+echo "  on disk: $PKG_VERSION"
+if [ "$PKG_VERSION" != "${PINNED}" ]; then
+  echo "VERIFY_FAIL_PACKAGE_JSON: expected=${PINNED} got=$PKG_VERSION"
+  exit 1
+fi
+echo "── verify 3: bin symlink resolves ──"
+BIN_PATH=$(which openclaw)
+echo "  bin path: $BIN_PATH"
+if [ ! -L "$BIN_PATH" ] && [ ! -f "$BIN_PATH" ]; then
+  echo "VERIFY_FAIL_BIN: openclaw not on PATH"
+  exit 1
+fi
+echo "── verify 4: openclaw config validate (exercises full dist/ import chain) ──"
+# Only check exit code — content depends on existing openclaw.json (may not exist yet)
+if ! openclaw config validate 2>&1 | tail -3; then
+  echo "VERIFY_FAIL_VALIDATE: openclaw config validate failed"
+  exit 1
+fi
+echo "── all 4 verify checks PASSED. openclaw@${PINNED} install is clean. ──"
 sudo apt-mark hold nodejs 2>&1 || true
 apt-mark showhold | grep nodejs || true
 `;
       const r = await ssh(ip, (c) => sshExec(c, cmd, 180_000));
-      if (r.code !== 0) return fail(`upgrade exit ${r.code}`, [r.stderr.slice(-300)]);
-      return ok(r.stdout.split("\n").filter(Boolean).slice(-10));
+      if (r.code !== 0) {
+        return fail(
+          `upgrade exit ${r.code} — openclaw install or post-install verify FAILED. ` +
+          `Pinned=${PINNED}. Inspect stdout/stderr for VERIFY_FAIL_* markers.`,
+          [
+            ...r.stdout.split("\n").slice(-15),
+            "── stderr ──",
+            r.stderr.slice(-500),
+          ],
+        );
+      }
+      return ok(r.stdout.split("\n").filter(Boolean).slice(-12));
     },
     postconditions: [],
     rollback: async () => {},
