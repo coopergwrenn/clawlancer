@@ -249,8 +249,39 @@ the user. Common cases:
 // NVM preamble required before any `openclaw` CLI call on the VM.
 // Node 22 is installed via nvm in userspace (no root/sudo access).
 // Also loads LD_LIBRARY_PATH for userspace browser libs (libxkbcommon, libcairo, etc.)
+//
+// ── PATH safety fallback (2026-05-25 bake-attempt-5/7 fix) ──
+//
+// Sourcing nvm.sh SHOULD auto-activate the default node via nvm_auto and
+// add `$NVM_DIR/versions/node/<default>/bin` to PATH. Empirically this
+// works on production VMs + isolated debug-VM tests, but the 2026-05-25
+// snapshot bake (attempts 5 + 7) reproduced a failure mode where
+// `${NVM_PREAMBLE} && openclaw config set ...` returned "bash: line 1:
+// openclaw: command not found" during stepConfigSettings strict-mode path
+// — despite the same `${NVM_PREAMBLE} && ${getCommands}` having succeeded
+// in the preceding GET phase of the same step (same ssh.execCommand
+// shape, same NVM_PREAMBLE, same VM). The intermittent nature suggests
+// nvm_auto silently failing to activate the default node in some ssh2
+// exec contexts (likely interaction with bash non-login-shell + post-
+// install nvm-state race after upgrade-os-openclaw replaced openclaw bin).
+//
+// Fix: append an explicit PATH set that finds the highest installed node
+// version directory and prepends its bin. This is belt-and-suspenders:
+//   - On healthy VMs (nvm_auto worked), this re-adds the SAME bin dir to
+//     PATH (no behavior change — PATH already had it; duplicate is safe)
+//   - On the failure-mode VMs (nvm_auto silently failed), this ADDS the
+//     missing bin dir to PATH and openclaw resolves cleanly
+//   - On VMs with no NVM, `ls` returns empty, PATH gets a garbage entry
+//     (no-op for command resolution; no regression vs current behavior)
+//
+// `ls -1v` = version-sort (GNU ls, available on Ubuntu — all our fleet
+// runs Ubuntu). `tail -1` picks the highest installed node version. If
+// multiple versions (e.g., v22.22.0 + v22.22.2), picks v22.22.2.
 export const NVM_PREAMBLE =
-  'export LD_LIBRARY_PATH="$HOME/local-libs/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"';
+  'export LD_LIBRARY_PATH="$HOME/local-libs/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}" && ' +
+  'export NVM_DIR="$HOME/.nvm" && ' +
+  '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && ' +
+  'export PATH="$HOME/.nvm/versions/node/$(ls -1v "$HOME/.nvm/versions/node" 2>/dev/null | tail -1)/bin:$PATH"';
 
 // OpenClaw gateway port (default for openclaw gateway run)
 export const GATEWAY_PORT = 18789;
