@@ -1,16 +1,16 @@
 # Changelog — generated 2026-05-25
 
-Window: `7a24ebc7370e8e6fdfa52bf80ab3136579f332b2` → `HEAD` (HEAD = `aba8ad1b`)
+Window: `aba8ad1ba9f07b63eadabcf0959f136dfe8b5df1` → `HEAD` (HEAD = `257d6019`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: aba8ad1ba9f07b63eadabcf0959f136dfe8b5df1 -->
+<!-- LAST_GENERATED_SHA: 257d6019c566b12965138f624ddc875da5e00d5c -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Infrastructure:** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,11 +18,12 @@ Total commits: 2
 
 ## What changed for users
 
-- `aba8ad1b` 2026-05-25 — how-it-works step 2: add iMessage; sharpen setup with named specifics [1 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `e2ae9f12` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `257d6019` 2026-05-25 — fix(bake): bump STRICT_DEADLINE_MS override 45min → 60min for snapshot bake [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+- `1048f1fa` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -30,13 +31,13 @@ Total commits: 2
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
+
+- `257d6019` 2026-05-25 — fix(bake): bump STRICT_DEADLINE_MS override 45min → 60min for snapshot bake [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
+
+### Feature (user-facing) (0)
 
 _(none)_
-
-### Feature (user-facing) (1)
-
-- `aba8ad1b` 2026-05-25 — how-it-works step 2: add iMessage; sharpen setup with named specifics [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `e2ae9f12` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `1048f1fa` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `257d6019` 2026-05-25 — [infrastructure, edge] — fix(bake): bump STRICT_DEADLINE_MS override 45min → 60min for snapshot bake
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `aba8ad1b` 2026-05-25 — how-it-works step 2: add iMessage; sharpen setup with named specifics
+- `257d6019` 2026-05-25 — fix(bake): bump STRICT_DEADLINE_MS override 45min → 60min for snapshot bake
 
 ## Appendix — every commit (chronological)
 
-- `e2ae9f12` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `aba8ad1b` 2026-05-25 — how-it-works step 2: add iMessage; sharpen setup with named specifics [1 files] _(ai-assisted)_
+- `1048f1fa` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `257d6019` 2026-05-25 — fix(bake): bump STRICT_DEADLINE_MS override 45min → 60min for snapshot bake [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
