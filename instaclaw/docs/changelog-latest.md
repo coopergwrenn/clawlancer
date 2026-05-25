@@ -1,16 +1,16 @@
 # Changelog — generated 2026-05-25
 
-Window: `0e2bb7184c15556d686bf0456a43cf921f162242` → `HEAD` (HEAD = `2c068822`)
+Window: `2c068822239533da067b0989d0f0cf3dbba01189` → `HEAD` (HEAD = `d2e3defe`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 2c068822239533da067b0989d0f0cf3dbba01189 -->
+<!-- LAST_GENERATED_SHA: d2e3defe1922fce11bfe0bf1214d2e7a796aea9f -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
-- **Feature (user-facing):** 0
+- **Infrastructure:** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,12 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-_None in this window._
+- `d2e3defe` 2026-05-25 — testimonials: live Discord member count via public invite API + brand logo [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `2c068822` 2026-05-25 — fix(bake): strip-bearer verify accepts is-active=failed (SIGKILL) [1 files] _(ai-assisted)_
-- `de3b8f15` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `7048e6f9` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,13 +30,13 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
-
-- `2c068822` 2026-05-25 — fix(bake): strip-bearer verify accepts is-active=failed (SIGKILL) [1 files] _(ai-assisted)_
-
-### Feature (user-facing) (0)
+### Infrastructure (0)
 
 _(none)_
+
+### Feature (user-facing) (1)
+
+- `d2e3defe` 2026-05-25 — testimonials: live Discord member count via public invite API + brand logo [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `de3b8f15` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `7048e6f9` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `2c068822` 2026-05-25 — fix(bake): strip-bearer verify accepts is-active=failed (SIGKILL)
+- `d2e3defe` 2026-05-25 — testimonials: live Discord member count via public invite API + brand logo
 
 ## Appendix — every commit (chronological)
 
-- `de3b8f15` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `2c068822` 2026-05-25 — fix(bake): strip-bearer verify accepts is-active=failed (SIGKILL) [1 files] _(ai-assisted)_
+- `7048e6f9` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `d2e3defe` 2026-05-25 — testimonials: live Discord member count via public invite API + brand logo [1 files] _(ai-assisted)_
