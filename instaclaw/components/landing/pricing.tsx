@@ -24,11 +24,11 @@ const tiers = [
     name: "Starter",
     allInclusive: "$29",
     byok: "$14",
-    description: "Perfect for personal use",
+    description: "For personal use",
     features: [
-      "600 daily units (Haiku = 1, Sonnet = 4, Opus = 19)",
-      "All models included — Haiku, Sonnet & Opus",
-      "Dedicated VM + all channels",
+      "600 daily units (MiniMax 0.2, Haiku 1, Sonnet 4, Opus 19)",
+      "Conversations, research, light tasks",
+      "All models, all channels",
       "Switch models anytime via your bot",
     ],
     highlighted: false,
@@ -38,10 +38,10 @@ const tiers = [
     name: "Pro",
     allInclusive: "$99",
     byok: "$39",
-    description: "For power users",
+    description: "For daily power use",
     features: [
-      "1,000 daily units — nearly 2x Starter",
-      "All models included — Haiku, Sonnet & Opus",
+      "1,000 daily units",
+      "Headroom for daily Opus runs and multi-step tasks",
       "Priority support",
       "Early access to new features",
     ],
@@ -52,11 +52,11 @@ const tiers = [
     name: "Power",
     allInclusive: "$299",
     byok: "$99",
-    description: "Maximum performance",
+    description: "For always-on agent work",
     features: [
-      "2,500 daily units — over 4x Starter",
-      "All models included — Haiku, Sonnet & Opus",
-      "Upgraded server resources",
+      "2,500 daily units",
+      "Built for multi-agent workflows and cron-driven automation",
+      "Round-the-clock background services",
       "Dedicated support",
     ],
     highlighted: false,
@@ -84,7 +84,7 @@ export function Pricing() {
             Simple, Transparent Pricing
           </h2>
           <p className="text-sm sm:text-base max-w-[280px] sm:max-w-lg mx-auto mb-8" style={{ color: "var(--muted)" }}>
-            Every plan includes a dedicated VM, all AI models, and all channels. Daily units reset at midnight UTC — use them on any model you like.
+            Every plan includes a dedicated VM, all AI models, and all channels. Daily units reset at midnight UTC. Spend them on any model.
           </p>
 
           {/* BYOK toggle */}
