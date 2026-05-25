@@ -320,7 +320,7 @@ function HeroInner() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.7, ease: SNAPPY }}
         >
-          Never forgets a detail. Never sleeps. Gets smarter every day. No technical experience required — we make it easy.
+          Never forgets a detail. Never sleeps. Gets smarter every day. No technical experience required, we make it easy.
         </motion.p>
 
         {/* CTA — plain div, NOT motion.div. Both opacity AND transform on an
@@ -368,7 +368,7 @@ function ScarcityLine() {
       transition={{ delay: 1.2, duration: 0.5, ease: SNAPPY }}
     >
       <Cloud size={11} strokeWidth={1.5} className="shrink-0" style={{ opacity: 0.7 }} />
-      <span>Limited cloud servers — only <span className="font-medium shimmer-text" style={{ fontFamily: "var(--font-serif)", opacity: 1 }}>{spots}</span> agents left</span>
+      <span>Limited cloud servers, only <span className="font-medium shimmer-text" style={{ fontFamily: "var(--font-serif)", opacity: 1 }}>{spots}</span> agents left</span>
     </motion.span>
   );
 }
