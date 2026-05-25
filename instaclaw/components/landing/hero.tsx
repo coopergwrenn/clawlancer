@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { motion } from "motion/react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { useSession } from "next-auth/react";
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { SpotsCounter, useSpotsCount } from "./spots-counter";
 import { WaitlistForm } from "./waitlist-form";
@@ -13,6 +13,118 @@ import { Cloud } from "lucide-react";
 const WAITLIST_MODE = process.env.NEXT_PUBLIC_WAITLIST_MODE === "true";
 
 const SNAPPY = [0.23, 1, 0.32, 1] as const;
+
+// ─── Hero keyword cycle ────────────────────────────────────────────────
+// Each word ladders the "wait, it has its OWN ___?" reaction up a
+// different axis of dedicated infrastructure: physical → financial →
+// cognitive → digital → social → comprehensive → token economy →
+// payments rail → identity. Each maps to a real capability:
+//   computer    → dedicated Linode VM (g6-dedicated-2)
+//   wallet      → Bankr EVM wallet on Base mainnet
+//   memory      → gbrain PGLite + workspace files
+//   browser     → Chromium + browser-auto plugin, persistent state
+//   friends     → cross-VM agent-to-agent contact list
+//   skills      → MCP skill system (polymarket, solana, …)
+//   token       → ACP / Bankr token launch capability
+//   debit card  → spendable on-chain $$ via wallet
+//   soul        → SOUL.md personality + identity persistence
+// Order locked by Cooper 2026-05-24. Do NOT reorder without re-checking
+// the visual rhythm (short → long → short cadence of word lengths).
+const KEYWORDS = [
+  "computer",
+  "wallet",
+  "memory",
+  "browser",
+  "friends",
+  "skills",
+  "token",
+  "debit card",
+  "soul",
+] as const;
+
+const KEYWORD_HOLD_MS = 3000;
+// 500ms transition. cubic-bezier(0.25, 1, 0.32, 1) is the same premium
+// soft-out curve used by the glass button — keeps the whole landing
+// page tonally consistent.
+const KEYWORD_TRANSITION_S = 0.5;
+const KEYWORD_EASE = [0.25, 1, 0.32, 1] as const;
+
+/**
+ * KeywordCycle — premium mask-reveal cycling word.
+ *
+ * Width stability: all 9 keywords are stacked invisibly in one CSS grid
+ * cell. The grid cell sizes itself to the WIDEST word (likely "debit
+ * card") so the surrounding "Your personal agent with its own ___"
+ * never reflows. No measurement, no useEffect, no flicker.
+ *
+ * Mask reveal: AnimatePresence `mode="popLayout"` keeps the exiting
+ * word in flow (visually) while the new word slides up from below. The
+ * outer overflow:hidden creates the slot. `initial={false}` on the
+ * Presence means the FIRST word ("computer") renders instantly with
+ * no slide-in — no blank frame on page load.
+ *
+ * Reduced motion: `useReducedMotion()` collapses the slide to an
+ * opacity-only swap.
+ */
+function KeywordCycle() {
+  const [index, setIndex] = useState(0);
+  const reduced = useReducedMotion();
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setIndex((i) => (i + 1) % KEYWORDS.length);
+    }, KEYWORD_HOLD_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  const word = KEYWORDS[index];
+
+  return (
+    <span
+      className="relative inline-grid align-baseline"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      {/* Width sizer — every keyword overlaid invisibly in the same
+          single-cell grid. The grid cell sizes to the widest entry, so
+          the headline never reflows as words cycle. */}
+      {KEYWORDS.map((w) => (
+        <span
+          key={`sizer-${w}`}
+          aria-hidden="true"
+          className="invisible col-start-1 row-start-1 whitespace-nowrap"
+        >
+          {w}
+        </span>
+      ))}
+
+      {/* Mask layer — overflow-hidden creates the slot the word slides
+          through. Inherits the headline's line-height so descenders in
+          "computer" (p) and "memory" (y) don't get clipped. */}
+      <span
+        className="col-start-1 row-start-1 relative overflow-hidden pointer-events-none"
+        style={{ lineHeight: "inherit" }}
+      >
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.span
+            key={word}
+            initial={reduced ? { opacity: 0 } : { y: "100%", opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={reduced ? { opacity: 0 } : { y: "-110%", opacity: 0 }}
+            transition={{
+              duration: reduced ? 0.01 : KEYWORD_TRANSITION_S,
+              ease: KEYWORD_EASE,
+            }}
+            className="block whitespace-nowrap"
+            style={{ color: "var(--accent)" }}
+          >
+            {word}
+          </motion.span>
+        </AnimatePresence>
+      </span>
+    </span>
+  );
+}
 
 export function Hero() {
   return (
@@ -107,7 +219,11 @@ function HeroInner() {
           <SpotsCounter />
         </div>
 
-        {/* Headline */}
+        {/* Headline — two lines, second ends with cycling keyword.
+            KeywordCycle owns its own animation timeline; h1 only fires
+            the entrance once at mount, then settles to a stable
+            opacity:1/y:0 state — no ancestor stacking-context issue
+            for the cycling word's mask reveal. */}
         <motion.h1
           className="text-5xl sm:text-6xl lg:text-[80px] font-normal tracking-[-1.5px] leading-[1.05]"
           style={{ fontFamily: "var(--font-serif)" }}
@@ -115,12 +231,20 @@ function HeroInner() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.7, ease: SNAPPY }}
         >
-          Your Personal AI Agent.
+          Your personal agent
           <br />
-          Live in Minutes.
+          with its own <KeywordCycle />
         </motion.h1>
 
-        {/* Subtext */}
+        {/* Subtext — benefit-driven, three short beats matching the
+            cycling-word cadence above, with a "we make it easy"
+            closer that disarms the technical-skill barrier.
+            "Never forgets a detail" / "Never sleeps" / "Gets smarter
+            every day" are outcomes the user feels, not infrastructure
+            features (the cycling words already handle the feature
+            list). Squiggle + scribble SVG decorations from the prior
+            subtitle removed — they were anchored to specific phrases
+            that no longer exist. */}
         <motion.p
           className="text-base sm:text-xl max-w-md sm:max-w-xl mx-auto leading-[2] sm:leading-relaxed sm:text-balance"
           style={{ color: "var(--muted)" }}
@@ -128,57 +252,7 @@ function HeroInner() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5, duration: 0.7, ease: SNAPPY }}
         >
-          A personal AI that works for you{" "}
-          <span className="relative inline-block">
-            around the clock
-            <motion.span
-              className="absolute pointer-events-none left-0 bottom-0"
-              style={{
-                height: "6px",
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='6' viewBox='0 0 20 6'%3E%3Cpath d='M0,3 Q5,0.5 10,3 Q15,5.5 20,3' fill='none' stroke='%23DC6743' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "repeat-x",
-                backgroundSize: "20px 6px",
-                transformOrigin: "left center",
-              }}
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: "100%", opacity: 0.85 }}
-              transition={{ delay: 1.4, duration: 0.6, ease: "easeOut" }}
-            />
-          </span>
-          . It handles your tasks,{" "}
-          <span className="relative inline-block">
-            <motion.svg
-              className="absolute pointer-events-none"
-              style={{
-                left: "-12px",
-                top: "-6px",
-                width: "calc(100% + 24px)",
-                height: "calc(100% + 12px)",
-              }}
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 200 100"
-              preserveAspectRatio="none"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.7 }}
-              transition={{ delay: 1.8, duration: 0.1 }}
-            >
-              <motion.path
-                d="M8,50 Q10,16 55,13 Q120,10 170,20 Q192,35 190,55 Q188,78 150,86 Q100,92 40,84 Q6,74 8,50"
-                fill="none"
-                stroke="var(--accent)"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                vectorEffect="non-scaling-stroke"
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ delay: 1.8, duration: 0.7, ease: "easeOut" }}
-              />
-            </motion.svg>
-            <span className="relative">remembers everything</span>
-          </span>
-          , and gets smarter every day. Set it up in
-          minutes. No technical experience required.
+          Never forgets a detail. Never sleeps. Gets smarter every day. No technical experience required — we make it easy.
         </motion.p>
 
         {/* CTA — plain div, NOT motion.div. Both opacity AND transform on an
