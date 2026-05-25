@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-25
 
-Window: `dd2298e5568c6565101b7d355ebcc53717683f2a` → `HEAD` (HEAD = `0d0f7c18`)
+Window: `0d0f7c182ccbeaf244232b6fb96a417fb90da957` → `HEAD` (HEAD = `434a935d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 0d0f7c182ccbeaf244232b6fb96a417fb90da957 -->
+<!-- LAST_GENERATED_SHA: 434a935df8b69ba7a40be2125f6530edb3cd60e3 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `0d0f7c18` 2026-05-24 — hero: replace em-dashes with commas in copy [1 files] _(ai-assisted)_
+- `434a935d` 2026-05-24 — hero: per-word shimmer on cycling keyword (one-shot, finishes before next) [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `b5bd17fc` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `71490f6a` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `0d0f7c18` 2026-05-24 — hero: replace em-dashes with commas in copy [1 files] _(ai-assisted)_
+- `434a935d` 2026-05-24 — hero: per-word shimmer on cycling keyword (one-shot, finishes before next) [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `b5bd17fc` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `71490f6a` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `0d0f7c18` 2026-05-24 — hero: replace em-dashes with commas in copy
+- `434a935d` 2026-05-24 — hero: per-word shimmer on cycling keyword (one-shot, finishes before next)
 
 ## Appendix — every commit (chronological)
 
-- `b5bd17fc` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `0d0f7c18` 2026-05-24 — hero: replace em-dashes with commas in copy [1 files] _(ai-assisted)_
+- `71490f6a` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `434a935d` 2026-05-24 — hero: per-word shimmer on cycling keyword (one-shot, finishes before next) [2 files] _(ai-assisted)_
