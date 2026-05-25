@@ -1081,10 +1081,13 @@ html.lenis body {
   }
 }
 
-/* Accent-color shimmer — InstaClaw brand-orange base (var(--accent),
-   #DC6743) with a warm cream highlight that sweeps across the text.
-   Sibling of .shimmer-text but recipe-matched to the brand color so
-   the cycling hero keyword doesn't shift hues.
+/* Accent-color shimmer — coral-orange base (#E96F4D) with a warm
+   peach highlight that sweeps across the text. Sibling of
+   .shimmer-text but tuned with custom colors for the cycling hero
+   keyword. Note: base is INTENTIONALLY brighter than var(--accent)
+   (#DC6743) — 2026-05-25 color bump for vibrancy on the hero
+   keyword only. Do NOT replace var(--accent) elsewhere on the site
+   with this value; this color is scoped to the cycling keyword.
 
    Apply at the PER-WORD element (the inner motion.span inside the
    AnimatePresence) — Cooper 2026-05-24: the shimmer must fire once
@@ -1104,8 +1107,9 @@ html.lenis body {
      T=2800–3000ms → 200ms BUFFER of solid base color
      T=3000ms  → next word mounts, this word starts exiting
 
-   - Base:      var(--accent) #DC6743
-   - Highlight: #FFE0CC (warm cream, ~24% lighter, same hue family)
+   - Base:      #E96F4D (coral-orange — bumped 2026-05-25 from
+                var(--accent) #DC6743 for vibrancy)
+   - Highlight: #FFD4BA (warm peach, lighter version of the new base)
    - Duration:  2.3s (max value that leaves ~200ms post-shimmer buffer)
    - Delay:     0.5s (matches the slide-in transition exactly)
    - Iteration: 1 (NOT infinite)
@@ -1118,11 +1122,11 @@ html.lenis body {
   color: transparent;
   background: linear-gradient(
     90deg,
-    var(--accent) 0%,
-    var(--accent) 40%,
-    #FFE0CC 50%,
-    var(--accent) 60%,
-    var(--accent) 100%
+    #E96F4D 0%,
+    #E96F4D 40%,
+    #FFD4BA 50%,
+    #E96F4D 60%,
+    #E96F4D 100%
   );
   background-size: 400% 100%;
   -webkit-background-clip: text;
@@ -1144,11 +1148,11 @@ html.lenis body {
 @media (prefers-reduced-motion: reduce) {
   .shimmer-accent {
     animation: none;
-    color: var(--accent);
+    color: #E96F4D;
     background: none;
     -webkit-background-clip: initial;
     background-clip: initial;
-    -webkit-text-fill-color: var(--accent);
+    -webkit-text-fill-color: #E96F4D;
   }
 }
 
