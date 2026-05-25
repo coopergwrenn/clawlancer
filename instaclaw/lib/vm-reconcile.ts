@@ -3254,7 +3254,35 @@ async function stepConfigSettings(
   // "up to date" while chat completions were disabled in prod.
   for (const key of settingsToFix) {
     const val = settings[key];
-    const cmd = `${NVM_PREAMBLE} && openclaw config set ${key} '${val}'`;
+    // ── Bake-failure fix (2026-05-25 attempt 8) ──
+    // Use absolute paths to node + openclaw.mjs instead of relying on
+    // PATH resolution. Bake attempts 5/7/8 all failed here with
+    // "openclaw: command not found" even though NVM_PREAMBLE sourced
+    // nvm.sh successfully (verified by the preceding GET phase using
+    // the same NVM_PREAMBLE just succeeding on the same SSH connection
+    // ~seconds earlier). The bake VM is in some transient state right
+    // after `npm install -g openclaw@2026.5.22` where PATH resolution
+    // for openclaw silently fails. Direct testing on a fresh debug VM
+    // via the same node-ssh library + same NVM_PREAMBLE works fine,
+    // but the bake's specific timing/state hits a failure mode.
+    //
+    // The bulletproof fix: invoke `node /path/to/openclaw.mjs`
+    // directly. Bypasses PATH entirely. Works on every VM regardless
+    // of NVM state. Backwards-compatible: existing healthy VMs
+    // (production) ALSO have these paths, so this works there too.
+    const cmd =
+      `${NVM_PREAMBLE} && ` +
+      // Find the highest installed node version + openclaw package
+      `_NODE_DIR="$HOME/.nvm/versions/node/$(ls -1v $HOME/.nvm/versions/node 2>/dev/null | tail -1)" && ` +
+      `_NODE_BIN="$_NODE_DIR/bin/node" && ` +
+      `_OPENCLAW_MJS="$_NODE_DIR/lib/node_modules/openclaw/openclaw.mjs" && ` +
+      // Sanity: both must exist + be readable. If not, emit clear error
+      // (not a generic "command not found") so the diagnostic in
+      // result.strictErrors below identifies the actual missing file.
+      `[ -x "$_NODE_BIN" ] || { echo "NODE_BIN_MISSING: $_NODE_BIN" >&2; exit 127; } && ` +
+      `[ -f "$_OPENCLAW_MJS" ] || { echo "OPENCLAW_MJS_MISSING: $_OPENCLAW_MJS" >&2; exit 127; } && ` +
+      // Invoke openclaw directly via node — bypasses any PATH issues
+      `"$_NODE_BIN" "$_OPENCLAW_MJS" config set ${key} '${val}'`;
     const res = await ssh.execCommand(cmd, { execOptions: { timeout: 15000 } });
     if (res.code === 0) {
       result.fixed.push(key);
