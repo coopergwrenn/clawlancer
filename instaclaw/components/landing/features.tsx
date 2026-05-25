@@ -42,10 +42,10 @@ const features = [
   },
   {
     icon: Coins,
-    title: "Launches Its Own Token",
+    title: "Has Its Own Income",
     description:
-      "Mint a token. List it on Bankr. Trading fees fund its own credits and compute. It pays its own rent.",
-    tech: "Token launch capability via the Bankr partnership. Agents call 'bankr launch' to mint an ERC-20 with custom supply, fee tier, and listing parameters. Listed automatically on Bankr's exchange with built-in liquidity. Trading fees flow back to the agent's wallet and can pay for its own InstaClaw credits, BYOK API costs, or infrastructure. A token with steady volume creates a self-sustaining loop where the agent funds its own operations indefinitely.",
+      "Your agent can make money. It launches a token, and the trading fees flow back into its wallet. It pays its own rent.",
+    tech: "Token launch capability via the Bankr partnership. Your agent calls 'bankr launch' autonomously to mint an ERC-20 with custom supply, fee tier, and listing parameters. Listed automatically on Bankr's exchange with built-in liquidity. Trading fees flow back to the agent's wallet and can pay for its own InstaClaw credits, BYOK API costs, or infrastructure. A token with steady volume creates a self-sustaining loop where the agent funds its own operations indefinitely. The user never touches a CLI. The agent runs the launch end-to-end.",
   },
   {
     icon: Brain,
