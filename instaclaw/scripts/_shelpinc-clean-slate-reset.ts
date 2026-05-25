@@ -64,7 +64,6 @@ for (const f of [
 
 const APPLY = process.argv.includes("--apply");
 const RECYCLE = process.argv.includes("--recycle");
-const USER_ID = "feed3914-033e-458e-ae86-ad5c80b740d6";
 const USER_EMAIL = "shelpinc@gmail.com";
 
 const sb = createClient(
@@ -119,11 +118,59 @@ const USER_NULL_FIELDS: Record<string, unknown> = {
   updated_at: new Date().toISOString(),
 };
 
-async function getAssignedVms() {
+/**
+ * Look up the current shelpinc user_id by email. Replaces the previously
+ * hardcoded USER_ID constant that went stale on 2026-05-25 when shelpinc's
+ * row was recreated under a new UUID (the prior row at
+ * feed3914-033e-458e-ae86-ad5c80b740d6 is no longer the canonical record;
+ * the live row is at d2b197c5-... at time of writing).
+ *
+ * Rule 9 dual-account hazard mitigation: if more than one instaclaw_users
+ * row matches the email, log a warning and take the most-recent row. The
+ * older row may be a stale dual-account artifact; the more-recent row is
+ * almost always the one the user is currently using. The warning gives
+ * the operator the chance to abort before --apply does destructive work.
+ *
+ * Fails loudly (process.exit(1)) if zero rows match — the script is
+ * scoped to shelpinc, and if shelpinc doesn't exist, we should NOT
+ * silently no-op the user-row clear (Steps 3, 3b, 4, 5) or accidentally
+ * target the wrong user.
+ */
+async function resolveUserId(): Promise<string> {
+  const { data, error } = await sb
+    .from("instaclaw_users")
+    .select("id, email, created_at, name")
+    .eq("email", USER_EMAIL)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(`FATAL: user lookup failed for ${USER_EMAIL}: ${error.message}`);
+    process.exit(1);
+  }
+  if (!data || data.length === 0) {
+    console.error(`FATAL: no instaclaw_users row found for email ${USER_EMAIL}`);
+    process.exit(1);
+  }
+  if (data.length > 1) {
+    console.warn(
+      `⚠️  ${data.length} instaclaw_users rows match ${USER_EMAIL} (Rule 9 dual-account hazard).`,
+    );
+    console.warn(`    Using most-recent row by created_at. All matches:`);
+    for (const r of data) {
+      console.warn(`      ${r.id} (created ${r.created_at}, name=${r.name ?? "(null)"})`);
+    }
+    console.warn(`    Taking: ${data[0].id} (most recent)`);
+  } else {
+    console.log(`Resolved user_id: ${data[0].id} (single row matching ${USER_EMAIL})`);
+  }
+  return data[0].id as string;
+}
+
+async function getAssignedVms(userId: string) {
   const { data } = await sb
     .from("instaclaw_vms")
     .select("*")
-    .eq("assigned_to", USER_ID);
+    .eq("assigned_to", userId);
   return data ?? [];
 }
 
@@ -145,11 +192,17 @@ async function destroyLinode(instanceId: string): Promise<{ ok: boolean; detail:
 
 async function main() {
   const mode = RECYCLE ? "RECYCLE (wipe + return to pool)" : "DESTROY (delete Linode + terminate row)";
-  console.log(`\n${APPLY ? "🔥 APPLYING" : "🧐 DRY-RUN"} clean-slate reset for ${USER_EMAIL} (${USER_ID})`);
+  console.log(`\n${APPLY ? "🔥 APPLYING" : "🧐 DRY-RUN"} clean-slate reset for ${USER_EMAIL}`);
   console.log(`Mode: ${mode}\n`);
 
+  // Resolve user_id by email at runtime — replaces the previously hardcoded
+  // constant that went stale 2026-05-25. See resolveUserId() above for the
+  // dual-account hazard handling.
+  const USER_ID = await resolveUserId();
+  console.log();
+
   // ── 1. Find assigned VMs ──
-  const vms = await getAssignedVms();
+  const vms = await getAssignedVms(USER_ID);
   console.log(`Step 1/5: ${vms.length} assigned VM(s)`);
   for (const vm of vms) {
     console.log(`  - vm name=${vm.name} id=${vm.id.slice(0, 8)} linode=${vm.provider_server_id} ip=${vm.ip_address}`);
