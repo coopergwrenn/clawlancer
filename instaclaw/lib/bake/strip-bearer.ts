@@ -39,11 +39,21 @@ export interface StripBearerResult {
 const STRIP_SCRIPT = `set -e
 echo "--- STRIP_BEARER_START ---"
 
+# bun lives at ~/.bun/bin/bun and is NOT on PATH in non-interactive SSH
+# exec channels (same root cause as nvm — researched 2026-05-25, see
+# nvm-sh/nvm#1994). Use absolute path everywhere bun is invoked. Surfaced
+# bake attempt 15: \`bun -e\` returned "command not found", the CHECKPOINT
+# + DELETE FROM access_tokens never ran — the snapshot would have shipped
+# with the bake VM's bearer token still in the table. _postbake-validation.ts
+# already uses this exact pattern at line 774 (\`~/.bun/bin/bun --version\`).
+BUN_BIN=/home/openclaw/.bun/bin/bun
+[ -x "$BUN_BIN" ] || { echo "FAIL: bun binary missing at $BUN_BIN"; exit 1; }
+
 # 1. Pre-kill CHECKPOINT via direct PGLite (Rule 54)
 cd ~/gbrain
 if systemctl --user is-active --quiet gbrain.service; then
   echo "[1] gbrain.service active — issuing pre-kill CHECKPOINT"
-  bun -e "
+  $BUN_BIN -e "
     import { PGlite } from '@electric-sql/pglite';
     const db = new PGlite('/home/openclaw/.gbrain/brain.pglite');
     await db.waitReady;
@@ -63,7 +73,7 @@ sleep 2
 
 # 3. Wipe access_tokens + verify-marker page + final CHECKPOINTs
 echo "[3] wiping access_tokens + verify-marker page"
-bun -e "
+$BUN_BIN -e "
   import { PGlite } from '@electric-sql/pglite';
   const db = new PGlite('/home/openclaw/.gbrain/brain.pglite');
   await db.waitReady;
@@ -102,7 +112,7 @@ echo "bearer file: $(ls ~/.gbrain/openclaw-bearer-token.txt 2>&1 | head -1)"
 echo "mcp entry:   $(jq '.mcp.servers.gbrain // \\"absent\\"' ~/.openclaw/openclaw.json 2>/dev/null)"
 echo "is-active:   $(systemctl --user is-active gbrain.service 2>&1 || true)"
 echo "is-enabled:  $(systemctl --user is-enabled gbrain.service 2>&1 || true)"
-echo "access_tokens: $(cd ~/gbrain && bun -e \\"import {PGlite} from '@electric-sql/pglite'; const db=new PGlite('/home/openclaw/.gbrain/brain.pglite'); await db.waitReady; const r=await db.query('SELECT count(*) FROM access_tokens'); console.log(r.rows[0].count); await db.close();\\" 2>&1 | tail -1)"
+echo "access_tokens: $(cd ~/gbrain && $BUN_BIN -e \\"import {PGlite} from '@electric-sql/pglite'; const db=new PGlite('/home/openclaw/.gbrain/brain.pglite'); await db.waitReady; const r=await db.query('SELECT count(*) FROM access_tokens'); console.log(r.rows[0].count); await db.close();\\" 2>&1 | tail -1)"
 
 echo "--- STRIP_BEARER_OK ---"
 `;
@@ -202,9 +212,11 @@ export async function verifyStripped(bakeVmIp: string): Promise<
     });
 
     // access_tokens count = 0
+    // bun absolute path — same root cause as STRIP_SCRIPT (bake attempt 15
+    // 2026-05-25): \`bun\` not on PATH in non-interactive SSH exec channels.
     const r5 = await sshExec(
       c,
-      `cd ~/gbrain && bun -e "import {PGlite} from '@electric-sql/pglite'; const db=new PGlite('/home/openclaw/.gbrain/brain.pglite'); await db.waitReady; const r=await db.query('SELECT count(*) FROM access_tokens'); console.log(r.rows[0].count); await db.close();" 2>&1 | tail -1`,
+      `cd ~/gbrain && /home/openclaw/.bun/bin/bun -e "import {PGlite} from '@electric-sql/pglite'; const db=new PGlite('/home/openclaw/.gbrain/brain.pglite'); await db.waitReady; const r=await db.query('SELECT count(*) FROM access_tokens'); console.log(r.rows[0].count); await db.close();" 2>&1 | tail -1`,
       45_000,
     );
     const count = parseInt(r5.stdout.trim(), 10);
