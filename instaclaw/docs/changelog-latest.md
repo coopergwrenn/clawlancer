@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-25
 
-Window: `2b9ab8d594083710909eb9e797fdfa850bca90c9` → `HEAD` (HEAD = `4c3c7dbc`)
+Window: `4c3c7dbc41d9acb46cc631876decb2df3b0bc6a3` → `HEAD` (HEAD = `50a61921`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 4c3c7dbc41d9acb46cc631876decb2df3b0bc6a3 -->
+<!-- LAST_GENERATED_SHA: 50a61921a3e5fd82fb362ded293bcd5d468a07a5 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `4c3c7dbc` 2026-05-25 — features: rewrite Token card — self-sustaining angle, "pays its own rent" closer [1 files] _(ai-assisted)_
+- `50a61921` 2026-05-25 — features: fix Wallet card — separate debit card from Bankr (Bankr = token card only) [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `83bb2447` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `e501752f` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `4c3c7dbc` 2026-05-25 — features: rewrite Token card — self-sustaining angle, "pays its own rent" closer [1 files] _(ai-assisted)_
+- `50a61921` 2026-05-25 — features: fix Wallet card — separate debit card from Bankr (Bankr = token card only) [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `83bb2447` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `e501752f` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `4c3c7dbc` 2026-05-25 — features: rewrite Token card — self-sustaining angle, "pays its own rent" closer
+- `50a61921` 2026-05-25 — features: fix Wallet card — separate debit card from Bankr (Bankr = token card only)
 
 ## Appendix — every commit (chronological)
 
-- `83bb2447` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `4c3c7dbc` 2026-05-25 — features: rewrite Token card — self-sustaining angle, "pays its own rent" closer [1 files] _(ai-assisted)_
+- `e501752f` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `50a61921` 2026-05-25 — features: fix Wallet card — separate debit card from Bankr (Bankr = token card only) [1 files] _(ai-assisted)_
