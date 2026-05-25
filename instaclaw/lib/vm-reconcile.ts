@@ -7503,6 +7503,34 @@ async function stepInstaclawXmtp(
   strict: boolean,
   isPausedState: boolean,
 ): Promise<void> {
+  // ── Bake escape hatch ──
+  // When SKIP_INSTACLAW_XMTP=true is set in the environment, skip xmtp
+  // installation entirely. Set by the snapshot bake (lib/bake/steps.ts:
+  // reconcileRunAudit) because the bake's synthetic VM has no real
+  // gateway_token — setupXMTP's full re-provision path needs one (line
+  // 7683 below) and would push a strict-err that fails the bake.
+  //
+  // xmtp install on fresh-VM provisions is handled by configureOpenClaw
+  // at user-assignment time, where vm.gateway_token IS real. The cost of
+  // skipping in bake is ~30-60s extra at first-message (xmtp install
+  // moved from snapshot-time to first-provision-time). Acceptable given:
+  //   - 1000-attendee pool is pre-replenished before Edge Esmeralda;
+  //     onboarding is paced over hours, not seconds
+  //   - the alternative — installing xmtp with a fake gateway_token —
+  //     would bake a half-configured systemd unit + env-less wallet
+  //     directory into the snapshot, and pre-bake-cleanup's
+  //     ~/.openclaw/xmtp wipe leaves an EnvironmentFile-missing unit
+  //     that would crash-loop on fresh VM boot (no `-` prefix on the
+  //     EnvironmentFile= line in setupXMTP at lib/ssh.ts:13140)
+  //
+  // Production (non-bake) reconciles never set this env var, so the
+  // existing behavior is preserved fleet-wide. Bug surfaced 2026-05-25
+  // (snapshot bake attempt 3 failed at stepInstaclawXmtp with strict-err
+  // "full re-provision needed but vm.gateway_token is missing").
+  if (process.env.SKIP_INSTACLAW_XMTP === "true") {
+    result.warnings.push("instaclaw-xmtp: skipped (SKIP_INSTACLAW_XMTP=true, bake context)");
+    return;
+  }
   try {
     // Probe — five flags. `deps` is the Rule 48 addition: catches the
     // crash-loop case where unit/mjs/key are all present but node_modules

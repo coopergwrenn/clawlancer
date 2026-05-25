@@ -480,6 +480,17 @@ function reconcileRunAudit(): BakeStep {
       // The env var is read by lib/vm-reconcile.ts:STRICT_DEADLINE_MS.
       const prevDeadlineOverride = process.env.STRICT_DEADLINE_MS_OVERRIDE;
       process.env.STRICT_DEADLINE_MS_OVERRIDE = String(60 * 60 * 1000);
+      // ── Skip stepInstaclawXmtp in the bake ──
+      // The synthetic VM has no real gateway_token. stepInstaclawXmtp's
+      // full re-provision path (lib/vm-reconcile.ts:7683) requires one
+      // and pushes a strict-err that fails the bake otherwise. xmtp gets
+      // installed at user-assignment time by configureOpenClaw, where
+      // the real gateway_token is available. Surfaced 2026-05-25 (bake
+      // attempt 3 hit this after the deadline fix unblocked the rest of
+      // the reconcile). See the bake-escape-hatch comment in
+      // stepInstaclawXmtp for full rationale.
+      const prevSkipXmtp = process.env.SKIP_INSTACLAW_XMTP;
+      process.env.SKIP_INSTACLAW_XMTP = "true";
       const synthVM = buildSyntheticVM(ctx.state);
       let r;
       try {
@@ -489,12 +500,17 @@ function reconcileRunAudit(): BakeStep {
           ctx.repo_root,
         );
       } finally {
-        // Restore previous value so subsequent steps (or test runs) see
+        // Restore previous values so subsequent steps (or test runs) see
         // the production default behavior.
         if (prevDeadlineOverride === undefined) {
           delete process.env.STRICT_DEADLINE_MS_OVERRIDE;
         } else {
           process.env.STRICT_DEADLINE_MS_OVERRIDE = prevDeadlineOverride;
+        }
+        if (prevSkipXmtp === undefined) {
+          delete process.env.SKIP_INSTACLAW_XMTP;
+        } else {
+          process.env.SKIP_INSTACLAW_XMTP = prevSkipXmtp;
         }
       }
       const out = [
