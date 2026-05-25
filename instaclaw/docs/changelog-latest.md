@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-25
 
-Window: `daa1e3534bf6bf06f789c18a5f3c189ad8e98f86` → `HEAD` (HEAD = `dd2298e5`)
+Window: `dd2298e5568c6565101b7d355ebcc53717683f2a` → `HEAD` (HEAD = `0d0f7c18`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: dd2298e5568c6565101b7d355ebcc53717683f2a -->
+<!-- LAST_GENERATED_SHA: 0d0f7c182ccbeaf244232b6fb96a417fb90da957 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `dd2298e5` 2026-05-24 — hero: remove subtitle scribble + squiggle decorations [1 files] _(ai-assisted)_
+- `0d0f7c18` 2026-05-24 — hero: replace em-dashes with commas in copy [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `a834c582` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `b5bd17fc` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `dd2298e5` 2026-05-24 — hero: remove subtitle scribble + squiggle decorations [1 files] _(ai-assisted)_
+- `0d0f7c18` 2026-05-24 — hero: replace em-dashes with commas in copy [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `a834c582` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `b5bd17fc` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `dd2298e5` 2026-05-24 — hero: remove subtitle scribble + squiggle decorations
+- `0d0f7c18` 2026-05-24 — hero: replace em-dashes with commas in copy
 
 ## Appendix — every commit (chronological)
 
-- `a834c582` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
-- `dd2298e5` 2026-05-24 — hero: remove subtitle scribble + squiggle decorations [1 files] _(ai-assisted)_
+- `b5bd17fc` 2026-05-25 — chore(changelog): auto-update [skip ci] [2 files]
+- `0d0f7c18` 2026-05-24 — hero: replace em-dashes with commas in copy [1 files] _(ai-assisted)_
