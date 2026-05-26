@@ -487,24 +487,30 @@ function TelegramIcon({ size = 30 }: { size?: number }) {
             the fill matches the squircle clip on the container.
             rx=15 = 60 * 0.25, same ratio as the container's borderRadius. */}
         <rect width="60" height="60" rx="15" fill="url(#ic-telegram-grad)" />
-        {/* Plane path with the centering offset BAKED INTO the absolute
-            coords — no <g transform> wrapper. Eliminates eyeballed
-            translate values that drift over iterations.
+        {/* Plane path with optical-center offset BAKED into the absolute
+            coords — no <g transform> wrapper. Total shift from the
+            original Telegram brand SVG: dx=-3, dy=-1.
 
-            Method: browser SVGGraphicsElement.getBBox() on the original
-            path returns {x:11.249, y:17.320, w:36.041, h:31.665} — bbox
-            center at (29.27, 33.15). Required shift to put center on
-            viewBox (30, 30): dx=+0.73, dy=-3.15. Applied only to
-            absolute commands (M, L); relative commands (c, l) carry
-            their own deltas and don't need to translate. Verified
-            post-bake getBBox center = (30.000, 30.002).
+            Why not bbox-center (which would be dx=+0.73, dy=-3.15):
+            the plane is an asymmetric arrow shape — the visual weight
+            is concentrated in the body/tip (upper-right of the path)
+            and the wing+tail are thin outline on the left. The eye
+            tracks the leading direction of arrow shapes (the TIP) as
+            the focal point, not the geometric bbox. With strict
+            bbox-center the plane reads as biased upper-right because
+            the tip hugs the corner. Compensating with dx=-3, dy=-1
+            (cumulative from original; ~3.7 left + 2.2 below
+            viewBox-center) pulls the tip back from the corner and
+            lets the plane span both halves of both axes evenly.
 
-            Earlier (2, -3) eyeballed value overshot x by ~1.27 viewBox
-            units (~0.6 render px @ 30) and was rejected by Cooper as
-            visibly off-center. This bbox-center approach is the
-            mathematically rigorous answer. */}
+            Post-bake bbox center: (26.27, 32.15). NOT geometric
+            center — this is the optical-feel sweet spot Cooper
+            picked from a crosshair sweep. Pure left shifts (no
+            down) leave the tip floating in the upper-right; pure
+            down shifts (no left) leave the tip corner-hugging. The
+            (-3, -1) pairing addresses both. */}
         <path
-          d="M45.67 14.17 13.66 26.47c-2.18.85-2.16 2.05-.4 2.59l8.21 2.56 19.04-12.01c.9-.5 1.71-.24 1.04.32L26.13 34.99l-.6 9c.85 0 1.21-.39 1.67-.85l4-3.87 8.31 6.15c1.52.85 2.62.4 2.98-1.41l5.41-25.49c.53-2.2-.78-3.19-2.23-2.35z"
+          d="M41.94 16.32 9.93 28.62c-2.18.85-2.16 2.05-.4 2.59l8.21 2.56 19.04-12.01c.9-.5 1.71-.24 1.04.32L22.4 37.14l-.6 9c.85 0 1.21-.39 1.67-.85l4-3.87 8.31 6.15c1.52.85 2.62.4 2.98-1.41l5.41-25.49c.53-2.2-.78-3.19-2.23-2.35z"
           fill="#ffffff"
         />
       </svg>
