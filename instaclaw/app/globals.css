@@ -1657,149 +1657,323 @@ html.lenis body {
   50%      { opacity: 0.4; transform: scale(0.85); }
 }
 
+
 /* ──────────────────────────────────────────────────────────────────
- * /channels — channel selection page
+ * /channels — channel selection page (TRUE liquid-glass, v2)
  *
- * Glass card system for the channel picker. Sibling to .liquid-glass-btn
- * (same family, card-shaped rather than pill-shaped). Two variants:
- *   .channel-card        — active channels (iMessage, Telegram). Full
- *                          glass treatment, hover lift, primary feel.
- *   .channel-card-muted  — coming-soon channels (Discord, Slack). Same
- *                          architecture but reduced opacity and shadow
- *                          so they read as visually subordinate.
+ * Same recipe as .liquid-glass-btn / .liquid-glass-btn-shadow / 
+ * .liquid-glass-btn::after — every property copied verbatim, with two
+ * adaptations: (1) rectangular border-radius (22px) instead of pill,
+ * (2) channel-specific colored substrate so each card refracts the
+ * brand's hue rather than a neutral dark halo.
  *
- * Design rationale: the cream landing background has nothing for
- * backdrop-filter to refract on its own, so we layer multiple white-
- * gradient stops + inset highlights + outer shadows to simulate
- * frosted glass floating above the surface. This matches the language
- * of .liquid-glass-btn but with rectangular geometry.
+ * Architecture (3 DOM elements per card — identical to .liquid-glass-btn):
+ *
+ *   .channel-card-root          wrapper. isolation: isolate. Hosts the
+ *                                ::before refraction substrate.
+ *      .channel-card-surface    transparent surface with sheen
+ *                                background-image + 4-layer box-shadow
+ *                                + ::after conic rim. THIS is the
+ *                                interactive element (<a> or <div>).
+ *      .channel-card-shadow     sibling div (NOT a pseudo). Directional
+ *                                drop shadow that sits OUTSIDE the
+ *                                surface's stacking context.
+ *
+ * Channel-tinted modifier classes on the root:
+ *   .is-imessage     → green refraction substrate + green shadow tint
+ *   .is-telegram     → blue refraction substrate + blue shadow tint
+ *   .is-muted        → reduced-intensity neutral (Discord/Slack)
+ *
+ * Background atmosphere on the page itself (separate, in channels-client)
+ * provides a rich coral-blue color field that the cards refract through
+ * their backdrop-filter blur. Without that field, the glass has nothing
+ * to refract and reads as a flat white rectangle (the failure mode of
+ * v1 of this CSS).
  * ──────────────────────────────────────────────────────────────── */
 
-.channel-card {
+.channel-card-root {
   position: relative;
   display: block;
   width: 100%;
+  z-index: 2;
+  isolation: isolate;
   border-radius: 22px;
-  background-image: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.88) 0%,
-    rgba(255, 255, 255, 0.62) 50%,
-    rgba(255, 255, 255, 0.86) 100%
-  );
-  background-color: rgba(255, 255, 255, 0.55);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
-          backdrop-filter: blur(14px) saturate(140%);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.25),
-    0 1px 2px rgba(51, 51, 52, 0.04),
-    0 4px 12px -4px rgba(51, 51, 52, 0.08),
-    0 16px 36px -14px rgba(51, 51, 52, 0.10);
-  transition:
-    transform 0.25s cubic-bezier(0.25, 1, 0.5, 1),
-    box-shadow 0.25s cubic-bezier(0.25, 1, 0.5, 1),
-    background-color 0.25s cubic-bezier(0.25, 1, 0.5, 1);
-  text-decoration: none;
-  color: inherit;
 }
 
-/* Iridescent rim — a soft conic-style highlight that catches light
- * along the top-left, fades through middle, returns at bottom-right.
- * Same idea as .liquid-glass-btn::after but rectangular. */
-.channel-card::after {
+/* Refraction substrate — same idea as .liquid-glass-btn-root::before.
+   Dark radial halo extending past the card edges gives backdrop-filter
+   something to refract. Without this, the glass reads as opaque white. */
+.channel-card-root::before {
   content: '';
   position: absolute;
-  inset: 0;
+  inset: -8px;
   border-radius: inherit;
-  padding: 1px;
-  background-image: linear-gradient(
-    155deg,
-    rgba(255, 255, 255, 0.85),
-    rgba(255, 255, 255, 0) 30%,
-    rgba(255, 255, 255, 0) 70%,
-    rgba(255, 255, 255, 0.45)
+  background: radial-gradient(
+    ellipse at 50% 60%,
+    rgba(0, 0, 0, 0.12) 0%,
+    rgba(0, 0, 0, 0.04) 50%,
+    transparent 80%
   );
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Channel-specific colored substrates */
+.channel-card-root.is-imessage::before {
+  background: radial-gradient(
+    ellipse at 28% 50%,
+    rgba(31, 173, 62, 0.22) 0%,
+    rgba(31, 173, 62, 0.10) 35%,
+    rgba(0, 0, 0, 0.06) 70%,
+    transparent 90%
+  );
+}
+
+.channel-card-root.is-telegram::before {
+  background: radial-gradient(
+    ellipse at 28% 50%,
+    rgba(34, 158, 217, 0.22) 0%,
+    rgba(34, 158, 217, 0.10) 35%,
+    rgba(0, 0, 0, 0.06) 70%,
+    transparent 90%
+  );
+}
+
+/* The surface — TRANSPARENT bg-color, diagonal sheen overlay only.
+   Every value below matches .liquid-glass-btn exactly. */
+.channel-card-surface {
+  position: relative;
+  display: block;
+  width: 100%;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: linear-gradient(-75deg,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.22),
+    rgba(255, 255, 255, 0.05));
+  -webkit-backdrop-filter: blur(2px);
+          backdrop-filter: blur(2px);
+  border: 0;
+  border-radius: inherit;
+  box-shadow:
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.2) 0px 4px 2px -2px,
+    rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  z-index: 2;
+  transition:
+    transform 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    box-shadow 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    background-color 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    backdrop-filter 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Conic-gradient rim — exact copy of .liquid-glass-btn::after.
+   Dark stops at 0%, 50%, 100% catch the top/bottom edges where light
+   would glance off real glass. mask-composite:exclude renders only the
+   border ring. */
+.channel-card-surface::after {
+  content: '';
+  position: absolute;
+  inset: -0.5px 0 0 -0.5px;
+  width: calc(100% + 1px);
+  height: calc(100% + 1px);
+  padding: 1px;
+  background-image:
+    conic-gradient(from -75deg at 50% 50%,
+      rgba(0, 0, 0, 0.5),
+      rgba(0, 0, 0, 0) 5%,
+      rgba(0, 0, 0, 0) 40%,
+      rgba(0, 0, 0, 0.5) 50%,
+      rgba(0, 0, 0, 0) 60%,
+      rgba(0, 0, 0, 0) 95%,
+      rgba(0, 0, 0, 0.5)),
+    linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5));
   -webkit-mask:
     linear-gradient(#000, #000) content-box,
     linear-gradient(#000, #000);
   -webkit-mask-composite: xor;
           mask-composite: exclude;
+  box-shadow: rgba(255, 255, 255, 0.5) 0px 0px 0px 0.5px inset;
+  border-radius: inherit;
+  z-index: 1;
   pointer-events: none;
 }
 
-.channel-card:hover {
-  transform: translateY(-2px);
-  background-color: rgba(255, 255, 255, 0.68);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.3),
-    0 1px 2px rgba(51, 51, 52, 0.05),
-    0 10px 20px -4px rgba(51, 51, 52, 0.12),
-    0 24px 48px -16px rgba(51, 51, 52, 0.14);
+.channel-card-surface > * {
+  position: relative;
+  z-index: 2;
 }
 
-.channel-card:active {
-  transform: translateY(-1px);
-  transition-duration: 80ms;
+/* Directional drop shadow — sibling div pattern from .liquid-glass-btn-shadow.
+   Lives OUTSIDE the surface's stacking context so its dark gradient doesn't
+   bleed through the transparent card. */
+.channel-card-shadow {
+  position: absolute;
+  inset: -16px;
+  filter: blur(2px);
+  pointer-events: none;
+  overflow: visible;
+  transition: filter 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+  z-index: 0;
 }
 
-/* ─── Muted variant for coming-soon channels (Discord, Slack) ──── */
+.channel-card-shadow::after {
+  content: '';
+  position: absolute;
+  top: 24px;
+  left: 18px;
+  right: 0;
+  bottom: 0;
+  width: calc(100% - 36px);
+  height: calc(100% - 36px);
+  padding: 2px;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.20), rgba(0, 0, 0, 0.10));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  border-radius: 22px;
+  pointer-events: none;
+  transition:
+    top 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
 
-.channel-card-muted {
+/* Channel-tinted drop shadows */
+.channel-card-root.is-imessage .channel-card-shadow::after {
   background-image: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.5) 0%,
-    rgba(255, 255, 255, 0.32) 50%,
-    rgba(255, 255, 255, 0.45) 100%
+    rgba(31, 173, 62, 0.30),
+    rgba(31, 173, 62, 0.10)
   );
-  background-color: rgba(255, 255, 255, 0.35);
-  border-color: rgba(255, 255, 255, 0.45);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
-    0 1px 1px rgba(51, 51, 52, 0.02),
-    0 2px 6px -2px rgba(51, 51, 52, 0.04);
 }
 
-.channel-card-muted::after {
+.channel-card-root.is-telegram .channel-card-shadow::after {
   background-image: linear-gradient(
-    155deg,
-    rgba(255, 255, 255, 0.45),
-    rgba(255, 255, 255, 0) 40%,
-    rgba(255, 255, 255, 0) 60%,
-    rgba(255, 255, 255, 0.2)
+    rgba(34, 158, 217, 0.30),
+    rgba(34, 158, 217, 0.10)
   );
 }
 
-.channel-card-muted:hover {
-  transform: translateY(-1px);
-  background-color: rgba(255, 255, 255, 0.5);
+/* Hover — from .liquid-glass-btn:hover. The :has() lets us trigger the
+   surface hover state when ANY interactive child is hovered (so the
+   iMessage card's two stacked links both lift the card). */
+.channel-card-surface:hover,
+.channel-card-root:has(.channel-card-primary-link:hover) .channel-card-surface,
+.channel-card-root:has(.channel-card-secondary-link:hover) .channel-card-surface {
+  background-color: rgba(240, 240, 240, 0.4);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.65),
-    0 1px 1px rgba(51, 51, 52, 0.03),
-    0 6px 14px -4px rgba(51, 51, 52, 0.07);
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.25) 0px 2.4px 0.8px -1.6px,
+    rgba(255, 255, 255, 0.5) 0px 0px 0.8px 1.6px inset;
 }
 
-/* ─── Inner divider for iMessage's secondary action (Save Contact) ──
- * Sits between the primary card area and the small "save our contact
- * first" inline action. Subtle gradient line so it doesn't compete
- * with the card's outer rim. */
+.channel-card-root:has(.channel-card-surface:hover) .channel-card-shadow,
+.channel-card-root:has(.channel-card-primary-link:hover) .channel-card-shadow,
+.channel-card-root:has(.channel-card-secondary-link:hover) .channel-card-shadow {
+  filter: blur(1px);
+}
+
+.channel-card-root:has(.channel-card-surface:hover) .channel-card-shadow::after,
+.channel-card-root:has(.channel-card-primary-link:hover) .channel-card-shadow::after,
+.channel-card-root:has(.channel-card-secondary-link:hover) .channel-card-shadow::after {
+  top: 18px;
+}
+
+.channel-card-surface:active {
+  transform: translateY(1px) scale(0.998);
+  transition-duration: 0.15s;
+}
+
+.channel-card-root:has(.channel-card-surface:active) .channel-card-shadow::after {
+  top: 24px;
+  opacity: 0.75;
+}
+
+/* ─── Muted variant (Discord, Slack) — same recipe, lower intensity ── */
+
+.channel-card-root.is-muted::before {
+  background: radial-gradient(
+    ellipse at 50% 60%,
+    rgba(0, 0, 0, 0.06) 0%,
+    rgba(0, 0, 0, 0.02) 50%,
+    transparent 80%
+  );
+}
+
+.channel-card-root.is-muted .channel-card-surface {
+  background-image: linear-gradient(-75deg,
+    rgba(255, 255, 255, 0.03),
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.03));
+  box-shadow:
+    rgba(0, 0, 0, 0.03) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.30) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.10) 0px 4px 2px -2px,
+    rgba(255, 255, 255, 0.12) 0px 0px 1.6px 4px inset;
+}
+
+.channel-card-root.is-muted .channel-card-surface::after {
+  background-image:
+    conic-gradient(from -75deg at 50% 50%,
+      rgba(0, 0, 0, 0.28),
+      rgba(0, 0, 0, 0) 5%,
+      rgba(0, 0, 0, 0) 40%,
+      rgba(0, 0, 0, 0.28) 50%,
+      rgba(0, 0, 0, 0) 60%,
+      rgba(0, 0, 0, 0) 95%,
+      rgba(0, 0, 0, 0.28)),
+    linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3));
+}
+
+.channel-card-root.is-muted .channel-card-shadow::after {
+  background-image: linear-gradient(rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.04));
+}
+
+.channel-card-root.is-muted .channel-card-surface:hover {
+  background-color: rgba(240, 240, 240, 0.25);
+  box-shadow:
+    rgba(0, 0, 0, 0.03) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.30) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.12) 0px 2.4px 0.8px -1.6px,
+    rgba(255, 255, 255, 0.30) 0px 0px 0.8px 1.6px inset;
+}
+
+/* Inner divider for iMessage's two-action card */
 .channel-card-inner-divider {
   height: 1px;
   background-image: linear-gradient(
     90deg,
     rgba(51, 51, 52, 0) 0%,
-    rgba(51, 51, 52, 0.08) 50%,
+    rgba(51, 51, 52, 0.10) 50%,
     rgba(51, 51, 52, 0) 100%
   );
+  position: relative;
+  z-index: 2;
 }
 
-/* ─── "coming soon" section heading — small, uppercase, tracked out ── */
+/* Stacked inner links for the iMessage card */
+.channel-card-primary-link,
+.channel-card-secondary-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+  z-index: 2;
+  transition: opacity 0.15s ease-out;
+}
+
+/* Section label */
 .channel-section-label {
   font-family: var(--font-sans, system-ui), system-ui, sans-serif;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(51, 51, 52, 0.4);
+  color: rgba(51, 51, 52, 0.42);
 }
