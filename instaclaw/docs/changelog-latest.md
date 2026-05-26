@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-26
 
-Window: `21968aac6d4c2ed531db7f41bde81d3094fd4824` → `HEAD` (HEAD = `e189d048`)
+Window: `e189d04886b4beefcd30913a96bed90a98cf311f` → `HEAD` (HEAD = `b3f3a9b4`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: e189d04886b4beefcd30913a96bed90a98cf311f -->
+<!-- LAST_GENERATED_SHA: b3f3a9b404e8b4cb8233f0b6de425078bd504e29 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `e189d048` 2026-05-26 — hero: add 'income' to KEYWORDS cycle at position 2 [1 files] _(ai-assisted)_
+- `b3f3a9b4` 2026-05-26 — fix(onboarding-v2): route remaining marketing CTAs to /channels (Cooper-caught hero bug + sweep) [6 files] _(multi: [feature, edge]; ai-assisted)_
 
 ## What changed under the hood
 
-- `3fdb6e06` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
+- `27d4db02` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `e189d048` 2026-05-26 — hero: add 'income' to KEYWORDS cycle at position 2 [1 files] _(ai-assisted)_
+- `b3f3a9b4` 2026-05-26 — fix(onboarding-v2): route remaining marketing CTAs to /channels (Cooper-caught hero bug + sweep) [6 files] _(multi: [feature, edge]; ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `3fdb6e06` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
+- `27d4db02` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `b3f3a9b4` 2026-05-26 — [feature, edge] — fix(onboarding-v2): route remaining marketing CTAs to /channels (Cooper-caught hero bug + sweep)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `e189d048` 2026-05-26 — hero: add 'income' to KEYWORDS cycle at position 2
+- `b3f3a9b4` 2026-05-26 — fix(onboarding-v2): route remaining marketing CTAs to /channels (Cooper-caught hero bug + sweep)
 
 ## Appendix — every commit (chronological)
 
-- `3fdb6e06` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
-- `e189d048` 2026-05-26 — hero: add 'income' to KEYWORDS cycle at position 2 [1 files] _(ai-assisted)_
+- `27d4db02` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
+- `b3f3a9b4` 2026-05-26 — fix(onboarding-v2): route remaining marketing CTAs to /channels (Cooper-caught hero bug + sweep) [6 files] _(multi: [feature, edge]; ai-assisted)_
