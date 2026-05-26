@@ -75,6 +75,10 @@ export default auth((req) => {
     "/api/vm/validate",
     "/api/vm/fix-infra",
     "/api/vm/files/delivered",
+    "/api/imessage/inbound", // Self-auth via sendblue-signature HMAC-SHA256 header verified against SENDBLUE_WEBHOOK_SECRET. See app/api/imessage/inbound/route.ts + docs/prd/onboarding-redesign-2026-05-26.md §6.5.4.
+    "/api/channels/waitlist", // Public — channel waitlist signup form on /channels. Rate-limited by hashed IP (same ratchet as /api/waitlist). Always-open (not gated by WAITLIST_MODE) because channel waitlist is a separate UX surface from the legacy landing waitlist.
+    "/api/telegram/shared-bot/inbound", // Self-auth via X-Telegram-Bot-Api-Secret-Token header verified against TELEGRAM_SHARED_BOT_WEBHOOK_SECRET. Mirrors /api/imessage/inbound's pattern for the Telegram shared bot path. See app/api/telegram/shared-bot/inbound/route.ts + docs/prd/onboarding-redesign-2026-05-26.md §6.5.4.
+    "/api/imessage/vcard", // Public — serves the RFC 6350 vCard for our Sendblue number so users can "Save Contact" before texting (preempts iMessage Unknown Senders quarantine). Heavily cacheable static content; no PII, no DB.
     "/api/f",
     "/api/webhooks",
     "/api/instagram/token",

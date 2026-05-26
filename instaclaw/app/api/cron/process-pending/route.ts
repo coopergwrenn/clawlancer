@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { assignOrProvisionUserVm } from "@/lib/createUserVM";
 import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
+import { wipeVMForNextUser, type VMRecord } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
 // Prevent Vercel CDN from caching per-user responses
@@ -842,6 +843,295 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // -----------------------------------------------------------------
+  // Pass 6: Reclaim abandoned-after-OAuth VMs (per spec §6.5.10).
+  //
+  // Catches the new failure mode introduced by the 2026-05-26
+  // onboarding redesign: VM assignment fires at OAuth-complete (not
+  // card-complete). If the user abandons between OAuth and submitting
+  // /onboarding/done, we'd otherwise hold a $29/mo Linode VM forever.
+  //
+  // Predicate:
+  //   channel IS NOT NULL    — channel-onboarding (BYOB has channel
+  //                            NULL and is handled by Pass 4)
+  //   consumed_at IS NULL    — not already onboarded or reclaimed
+  //   created_at < 10min ago — give the web flow plenty of time
+  //
+  // Race-safe via compare-and-swap on consumed_at. Three writers
+  // (form-submit handler, m-return sweep, this cron) all use the same
+  // predicate; whoever's UPDATE returns a row wins. If form-submit
+  // beats us by 1ms, our UPDATE returns 0 rows and we skip.
+  //
+  // For each reclaimed row:
+  //   - User had a VM (the common case): wipe via wipeVMForNextUser,
+  //     return VM to pool with all per-user fields cleared.
+  //   - User had no VM (OAuth completed but assignment failed): just
+  //     mark pending row consumed+reclaimed, no VM work needed.
+  //   - Wipe failed: quarantine the VM (status='failed') so it's not
+  //     re-used, alert ops. Never silently leak — could expose prior
+  //     user's data to the next assignee.
+  // -----------------------------------------------------------------
+  let pass6Reclaimed = 0;
+  let pass6WipeFailed = 0;
+  let pass6NoVm = 0;
+  let pass6SkippedRace = 0;
+
+  const pass6TenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+
+  const { data: pass6Candidates, error: pass6CandErr } = await supabase
+    .from("instaclaw_pending_users")
+    .select("*")
+    .not("channel", "is", null)
+    .is("consumed_at", null)
+    .lt("created_at", pass6TenMinutesAgo)
+    .limit(10);
+
+  if (pass6CandErr) {
+    logger.error("Pass 6: candidate query failed", {
+      route: "cron/process-pending",
+      error: pass6CandErr.message,
+    });
+  } else if (pass6Candidates && pass6Candidates.length > 0) {
+    for (const pending of pass6Candidates) {
+      const ageMinutes = Math.floor(
+        (Date.now() - new Date(pending.created_at).getTime()) / 1000 / 60,
+      );
+
+      if (dryRun) {
+        // In dry-run mode, just count what we WOULD do without writing.
+        logger.info("Pass 6: [dry-run] would reclaim", {
+          route: "cron/process-pending",
+          pendingId: pending.id,
+          channel: pending.channel,
+          userId: pending.user_id,
+          ageMinutes,
+        });
+        pass6Reclaimed++;
+        continue;
+      }
+
+      // ─── Lookup VM BEFORE claiming the row ──
+      // Order matters here: if the VM lookup fails (DB hiccup, Rule-41
+      // multi-VM violation), we DON'T want a claimed-but-not-wiped
+      // pending row. That would create exactly the silent-leak the
+      // reclaim-health cron (item 6) can't catch, because its predicate
+      // looks for consumed_at IS NULL.
+      //
+      // Doing the read first is race-free (it's read-only). The atomic
+      // claim happens after we know whether there's a VM to wipe.
+      const userId = pending.user_id;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let vm: any = null;
+
+      if (userId) {
+        const { data, error: vmLookupErr } = await supabase
+          .from("instaclaw_vms")
+          .select("*")
+          .eq("assigned_to", userId)
+          .eq("status", "assigned")
+          .maybeSingle();
+
+        if (vmLookupErr) {
+          // Could be a Rule-41 violation (>1 VM per user) or DB hiccup.
+          // Skip without claiming — next cron tick will retry.
+          logger.error("Pass 6: VM lookup failed; skipping reclaim", {
+            route: "cron/process-pending",
+            pendingId: pending.id,
+            userId,
+            error: vmLookupErr.message,
+          });
+          continue;
+        }
+        vm = data;
+      }
+
+      // ─── Atomic claim via compare-and-swap on consumed_at ──
+      // Race-safety per spec §6.5.10. If another writer (form submit,
+      // m-return sweep) set consumed_at since our SELECT, this UPDATE
+      // returns 0 rows and we skip the row.
+      const nowIso = new Date().toISOString();
+      const { data: claimed, error: claimErr } = await supabase
+        .from("instaclaw_pending_users")
+        .update({
+          consumed_at: nowIso,
+          reclaimed_at: nowIso,
+        })
+        .eq("id", pending.id)
+        .is("consumed_at", null)
+        .select()
+        .maybeSingle();
+
+      if (claimErr) {
+        logger.error("Pass 6: claim UPDATE failed", {
+          route: "cron/process-pending",
+          pendingId: pending.id,
+          error: claimErr.message,
+        });
+        continue;
+      }
+
+      if (!claimed) {
+        // Race lost — another writer beat us. Not an error.
+        logger.info("Pass 6: race lost on consumed_at; skipping", {
+          route: "cron/process-pending",
+          pendingId: pending.id,
+        });
+        pass6SkippedRace++;
+        continue;
+      }
+
+      // ─── Branch on whether we have a VM to wipe ──
+      if (!userId) {
+        // OAuth never completed — pending row was created by the
+        // inbound webhook but the user never reached /auth. Just
+        // mark reclaimed (already done above). No VM, no user state.
+        logger.info("Pass 6: reclaimed pending row with no user_id", {
+          route: "cron/process-pending",
+          pendingId: pending.id,
+          channel: pending.channel,
+          ageMinutes,
+        });
+        pass6NoVm++;
+        continue;
+      }
+
+      if (!vm) {
+        // OAuth completed, but no VM was ever assigned (pool empty +
+        // cloud-init failed, or assignOrProvisionUserVm errored).
+        // Reset user onboarding flags so they can retry cleanly.
+        await supabase
+          .from("instaclaw_users")
+          .update({ onboarding_complete: false, deployment_lock_at: null })
+          .eq("id", userId);
+        logger.info("Pass 6: reclaimed pending row with no assigned VM", {
+          route: "cron/process-pending",
+          pendingId: pending.id,
+          userId,
+          channel: pending.channel,
+          ageMinutes,
+        });
+        pass6NoVm++;
+        continue;
+      }
+
+      // ─── Wipe the VM ──
+      // wipeVMForNextUser is the same 15-step SSH-side wipe used by
+      // the manual reclaim flow (lib/ssh.ts) — stops gateway, removes
+      // workspace/sessions/backups/media/wallet state, kills browser
+      // processes, clears bash history. Idempotent on retry.
+      const wipeResult = await wipeVMForNextUser(vm as VMRecord);
+
+      if (!wipeResult.success) {
+        // Wipe failed. Quarantine the VM (status='failed') so it's
+        // not picked up by the pool. Linode instance is still running
+        // and billing until ops manually destroys it — but better
+        // that than silently returning a VM with prior user's data
+        // to the pool.
+        logger.error("Pass 6: wipe failed; quarantining VM", {
+          route: "cron/process-pending",
+          pendingId: pending.id,
+          vmId: vm.id,
+          vmName: vm.name,
+          userId,
+          wipeError: wipeResult.error,
+        });
+
+        await supabase
+          .from("instaclaw_vms")
+          .update({
+            status: "failed",
+            health_status: "unhealthy",
+            assigned_to: null,
+            assigned_at: null,
+            gateway_url: null,
+            gateway_token: null,
+            telegram_bot_token: null,
+            telegram_bot_username: null,
+            telegram_chat_id: null,
+          })
+          .eq("id", vm.id);
+
+        // Reset user so they can retry with a fresh signup.
+        await supabase
+          .from("instaclaw_users")
+          .update({ onboarding_complete: false, deployment_lock_at: null })
+          .eq("id", userId);
+
+        // Admin alert with paste-ready next steps. Best-effort —
+        // don't let a Resend failure crash the cron.
+        sendAdminAlertEmail(
+          "[P1] Pass 6 reclaim wipe failed — VM quarantined",
+          [
+            `VM ${vm.name} (id=${vm.id}) wipe failed during Pass 6 reclaim.`,
+            `Status set to 'failed' for safety. Linode instance still billing.`,
+            ``,
+            `User: ${userId}`,
+            `Channel: ${pending.channel}`,
+            `Age at reclaim: ${ageMinutes} min`,
+            `Wipe error: ${wipeResult.error || "(no error message)"}`,
+            ``,
+            `Action required:`,
+            `  1. SSH to ${vm.ip_address || "(no ip recorded)"}:`,
+            `     ssh -i /tmp/ic_ssh_key openclaw@${vm.ip_address || "<ip>"}`,
+            `  2. Inspect VM state, decide destroy vs recover.`,
+            `  3. To destroy:`,
+            `     curl -X DELETE -H "Authorization: Bearer $LINODE_API_TOKEN" \\`,
+            `       "https://api.linode.com/v4/linode/instances/${vm.provider_server_id || "<id>"}"`,
+          ].join("\n"),
+        ).catch((err) => {
+          logger.error("Pass 6: admin alert failed to send", {
+            route: "cron/process-pending",
+            error: String(err),
+          });
+        });
+
+        pass6WipeFailed++;
+        continue;
+      }
+
+      // ─── Wipe succeeded. Return VM to pool. ──
+      // Matches Pass 2c's field-clearing surface so the recycled VM
+      // doesn't carry per-user state into the next assignee.
+      // Per spec §6.5.10: partner field cleared so a recycled Edge VM
+      // doesn't carry Edge identity into a non-Edge next-user.
+      await supabase
+        .from("instaclaw_vms")
+        .update({
+          status: "ready",
+          health_status: "healthy",
+          assigned_to: null,
+          assigned_at: null,
+          gateway_url: null,
+          gateway_token: null,
+          configure_lock_at: null,
+          configure_attempts: 0,
+          telegram_bot_token: null,
+          telegram_bot_username: null,
+          telegram_chat_id: null,
+          partner: null,
+        })
+        .eq("id", vm.id);
+
+      // Reset user onboarding flags so they can retry cleanly.
+      await supabase
+        .from("instaclaw_users")
+        .update({ onboarding_complete: false, deployment_lock_at: null })
+        .eq("id", userId);
+
+      logger.info("Pass 6: reclaimed abandoned VM", {
+        route: "cron/process-pending",
+        pendingId: pending.id,
+        vmId: vm.id,
+        vmName: vm.name,
+        userId,
+        channel: pending.channel,
+        ageMinutes,
+      });
+
+      pass6Reclaimed++;
+    }
+  }
+
   return NextResponse.json({
     dryRun: dryRun || undefined,
     pass0: {
@@ -858,5 +1148,11 @@ export async function GET(req: NextRequest) {
     autoConfigured,
     stuckDeployFixed,
     cleaned,
+    pass6: {
+      reclaimed: pass6Reclaimed,
+      wipeFailed: pass6WipeFailed,
+      noVm: pass6NoVm,
+      skippedRace: pass6SkippedRace,
+    },
   });
 }

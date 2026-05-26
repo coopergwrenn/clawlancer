@@ -314,7 +314,7 @@ export function Pricing() {
             Start your free trial.
           </h3>
           <Link
-            href="/signup"
+            href="/channels"
             className="liquid-glass-pill-root transition-opacity hover:opacity-85"
             style={{
               transitionDuration: "300ms",
