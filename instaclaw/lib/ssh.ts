@@ -5268,10 +5268,20 @@ export function buildOpenClawConfig(
       groups: {
         "*": { requireMention: false },
       },
-      // v57: OpenClaw 2026.4.5 renamed `streamMode` → `streaming`. The legacy
-      // key crashes the gateway on startup. Reconciler can't fix this because
-      // the gateway is dead before reconcile runs. MUST be correct on first boot.
-      streaming: "partial",
+      // OpenClaw schema history:
+      //   2026.4.5: renamed `streamMode` → `streaming`. Legacy `streamMode`
+      //     crashed gateway on startup. Reconciler can't fix this because
+      //     the gateway is dead before reconcile runs. MUST be correct on
+      //     first boot.
+      //   2026.5.22: `channels.telegram.streaming` MUST be an object. The
+      //     scalar `"partial"` (the legacy shorthand 2026.4.x accepted) is
+      //     rejected at startup:
+      //       channels.telegram.streaming: invalid config: must be object
+      //     Surfaced 2026-05-26 smoke test (vm-1042 cv=121 + 2026.5.22 binary).
+      // Fix: emit `streaming` as object with the `.mode` field. The reconciler
+      // fills in the rest of channels.telegram.streaming.* (preview.*) on
+      // the next cycle.
+      streaming: { mode: "partial" },
     };
     (ocConfig.plugins as Record<string, unknown>).entries = {
       ...((ocConfig.plugins as Record<string, unknown>).entries as Record<string, unknown>),
@@ -11287,9 +11297,21 @@ export async function updateChannelToken(
       configCmds.unshift(`curl -s "https://api.telegram.org/bot${tokens.botToken}/deleteWebhook" > /dev/null 2>&1 || true`);
       configCmds.push(`openclaw config set channels.telegram.allowFrom '["*"]'`);
       configCmds.push(`openclaw config set channels.telegram.dmPolicy open`);
-      // OpenClaw 2026.4.5+ renamed `streamMode` → `streaming`. Legacy key
-      // crashes the gateway on startup. Fixed in audit on 2026-04-10.
-      configCmds.push(`openclaw config set channels.telegram.streaming partial`);
+      // OpenClaw schema history:
+      //   2026.4.5: renamed `streamMode` → `streaming`. Legacy key crashed
+      //     gateway on startup. Fixed in audit on 2026-04-10.
+      //   2026.5.22: `channels.telegram.streaming` MUST be an object
+      //     (e.g. `{"mode":"partial","preview":{...}}`). Setting it to the
+      //     scalar string `"partial"` (the legacy shorthand 2026.4.x
+      //     accepted) is rejected at startup:
+      //       channels.telegram.streaming: invalid config: must be object
+      //     Surfaced 2026-05-26 smoke test (vm-1042 cv=121 with the new
+      //     snapshot's 2026.5.22 binary). configureOpenClaw wrote the
+      //     scalar; gateway refused; rollback failed; VM stuck.
+      // Fix: write to the canonical `.mode` sub-path that matches the
+      // manifest's configSettings. The reconciler's stepConfigSettings
+      // fills in the rest (streaming.preview.*) on the next cycle.
+      configCmds.push(`openclaw config set channels.telegram.streaming.mode partial`);
     }
 
     const script = [

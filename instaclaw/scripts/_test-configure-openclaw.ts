@@ -96,10 +96,14 @@ function runStaticChecks() {
     `got ${JSON.stringify(get("agents.defaults.sandbox.mode"))}`,
   );
 
-  // P0 #2 — streaming (NOT streamMode)
+  // P0 #2 — streaming object with .mode (NOT streamMode, NOT scalar string)
+  //   OpenClaw 2026.5.22 schema requires channels.telegram.streaming to be
+  //   an object. The pre-2026-05-26 codebase emitted the scalar "partial"
+  //   shorthand which 2026.4.x accepted but 2026.5.22 rejects with:
+  //     channels.telegram.streaming: invalid config: must be object
   check(
-    "channels.telegram.streaming === 'partial'",
-    get("channels.telegram.streaming") === "partial",
+    "channels.telegram.streaming.mode === 'partial' (object form)",
+    get("channels.telegram.streaming.mode") === "partial",
     `got ${JSON.stringify(get("channels.telegram.streaming"))}`,
   );
   check(
@@ -180,7 +184,8 @@ const REMOTE_CHECKS: RemoteCheck[] = [
   // we run with channels=[] (see runLiveChecks) and the telegram object is
   // absent from openclaw.json by design.
   { label: "openclaw.json: sandbox.mode = off", cmd: "jq -r '.agents.defaults.sandbox.mode' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "off" },
-  { label: "openclaw.json: telegram.streaming = partial", cmd: "jq -r '.channels.telegram.streaming' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "partial", telegramOnly: true },
+  // OpenClaw 2026.5.22 requires `streaming` to be an object; we emit `{mode: "partial"}`.
+  { label: "openclaw.json: telegram.streaming.mode = partial (object form)", cmd: "jq -r '.channels.telegram.streaming.mode' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "partial", telegramOnly: true },
   { label: "openclaw.json: telegram.streamMode ABSENT", cmd: "jq -r '.channels.telegram.streamMode // \"absent\"' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "absent" },
   { label: "openclaw.json: tools.exec.security = full", cmd: "jq -r '.tools.exec.security' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "full" },
   { label: "openclaw.json: tools.exec.ask = off", cmd: "jq -r '.tools.exec.ask' ~/.openclaw/openclaw.json", expect: (s) => s.trim() === "off" },

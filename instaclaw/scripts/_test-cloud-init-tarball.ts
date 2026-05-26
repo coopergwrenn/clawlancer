@@ -1091,9 +1091,12 @@ async function test11_BuildOpenClawJsonForTarball() {
     allInclusiveResult.channels.telegram.groupPolicy === "open",
     "channels.telegram.groupPolicy === 'open' (configureOpenClaw line 4989 parity)",
   );
+  // OpenClaw 2026.5.22: `streaming` must be an object. buildOpenClawConfig
+  // (lib/ssh.ts:5274 — was scalar, fixed 2026-05-26) now emits `{mode: "partial"}`.
   assert(
-    allInclusiveResult.channels.telegram.streaming === "partial",
-    "channels.telegram.streaming === 'partial' string form (configureOpenClaw line 4996 parity)",
+    typeof allInclusiveResult.channels.telegram.streaming === "object" &&
+      allInclusiveResult.channels.telegram.streaming.mode === "partial",
+    "channels.telegram.streaming === { mode: 'partial' } object form (configureOpenClaw line 5274 parity)",
   );
   assert(
     allInclusiveResult.channels.telegram.groups?.["*"]?.requireMention === false,
