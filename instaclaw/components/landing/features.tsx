@@ -114,7 +114,7 @@ const features = [
 //   - Terms that don't appear in a given string short-circuit cleanly.
 const INLINE_LINKS: Record<string, string> = {
   "World ID": "https://world.org",
-  "Bankr": "https://bankr.fun",
+  "Bankr": "https://bankr.bot",
 };
 
 // Escape any regex metacharacters that might appear in a key. None do
