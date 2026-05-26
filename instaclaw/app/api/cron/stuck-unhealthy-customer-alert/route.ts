@@ -98,10 +98,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // Candidates: paying-customer VMs that have been unhealthy/unknown for >1h.
   // Use health_fail_count as the stuck-time signal — see comment on
   // FAIL_COUNT_FOR_STUCK_WARN for why last_health_check is the wrong column.
-  const { data: candidates, error } = await supabase
+  const { data: unhealthyCandidates, error } = await supabase
     .from("instaclaw_vms")
     .select(
-      "id, name, ip_address, health_status, last_health_check, assigned_to, partner, config_version, health_fail_count, reconcile_consecutive_failures",
+      "id, name, ip_address, health_status, last_health_check, assigned_to, partner, config_version, health_fail_count, reconcile_consecutive_failures, updated_at",
     )
     .eq("status", "assigned")
     .eq("provider", "linode")
@@ -120,6 +120,57 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       { status: 500 },
     );
   }
+
+  // ── 2026-05-26 incident addendum: configure_failed orphan-state coverage ──
+  //
+  // Three paying users (anton, noyget, leighton) sat in
+  // health_status='configure_failed' for ~2 months because:
+  //   1. health-check explicitly SKIPS configure_failed VMs (route.ts:221
+  //      Rule 33 guard) — never increments health_fail_count, never re-probes.
+  //   2. reconcile-fleet, file-drift, AND all three stuck-VM tiers (this cron,
+  //      stuck-vm-auto-recover, reconcile-stuck-vms) filter health_status
+  //      with .in(["unhealthy","unknown"]) or .eq("healthy") — configure_failed
+  //      is invisible to all of them.
+  //   3. process-pending Pass 2 (the *intended* retry path) gates on an
+  //      unconsumed pending_users row that doesn't exist post-assignment.
+  //
+  // Net effect: configure_failed was an orphan state with zero recovery path.
+  // Cooper found out by accident during a manual audit, 2 months in.
+  //
+  // Fix: age-based detection. Because health_fail_count never grows for these
+  // VMs, we gate on updated_at instead. updated_at is set by every UPDATE on
+  // the row, including the configure_failed write itself. A row stuck at
+  // updated_at > 1h ago in configure_failed status is the exact signature.
+  //
+  // The reconcile-stuck-vms cron (Tier 3) has the matching auto-recovery branch.
+  // This Tier 1 cron pages first; Tier 3's auditVMConfig path then runs ~30 min
+  // later to flip the row back to healthy without wiping the workspace (Rule 22/30).
+  const oneHourAgoIso = new Date(now.getTime() - STUCK_HOURS_WARN * 3600_000).toISOString();
+  const { data: configureFailedCandidates, error: cfError } = await supabase
+    .from("instaclaw_vms")
+    .select(
+      "id, name, ip_address, health_status, last_health_check, assigned_to, partner, config_version, health_fail_count, reconcile_consecutive_failures, updated_at",
+    )
+    .eq("status", "assigned")
+    .eq("provider", "linode")
+    .eq("health_status", "configure_failed")
+    .lt("updated_at", oneHourAgoIso)
+    .not("assigned_to", "is", null);
+
+  if (cfError) {
+    logger.warn("stuck-unhealthy-customer-alert: configure_failed query failed (non-fatal)", {
+      route: "cron/stuck-unhealthy-customer-alert",
+      error: cfError.message,
+    });
+  }
+
+  // Merge the two candidate sets. Dedup by id (a VM is never in both, but be safe).
+  const candidates = [
+    ...(unhealthyCandidates ?? []),
+    ...(configureFailedCandidates ?? []),
+  ].filter(
+    (v, i, arr) => arr.findIndex((u) => u.id === v.id) === i,
+  );
 
   if (!candidates || candidates.length === 0) {
     logger.info("stuck-unhealthy-customer-alert: fleet clean", {
@@ -148,11 +199,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   for (const vm of candidates) {
     const user = userMap.get(vm.assigned_to);
-    // Derive hoursStuck from fail_count (× 2-min health-check cadence).
-    // last_health_check is always-fresh and can't be used as a stuck-time
-    // signal (was the bug that left vm-748 silent 7+ days).
-    const hoursStuck = ((vm.health_fail_count ?? 0) * 2) / 60;
-    const isCritical = (vm.health_fail_count ?? 0) >= FAIL_COUNT_FOR_STUCK_CRITICAL;
+    // Derive hoursStuck. Two signal sources depending on the failure mode:
+    //   - unhealthy/unknown: health_fail_count × 2-min health-check cadence.
+    //     last_health_check is always-fresh and can't be used as a stuck-time
+    //     signal (was the bug that left vm-748 silent 7+ days).
+    //   - configure_failed: health_fail_count never grows (Rule 33 guard in
+    //     health-check skips these). Use updated_at instead — set by the
+    //     configure_failed write itself, doesn't churn on health probes.
+    const hoursStuck =
+      vm.health_status === "configure_failed"
+        ? vm.updated_at
+          ? (now.getTime() - new Date(vm.updated_at).getTime()) / 3600_000
+          : 0
+        : ((vm.health_fail_count ?? 0) * 2) / 60;
+    const isCritical = hoursStuck >= STUCK_HOURS_CRITICAL;
     if (isCritical) critical++;
 
     // Dedup: rotating 6-hour bucket. Same VM in two consecutive crons within
