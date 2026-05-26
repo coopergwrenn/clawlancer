@@ -84,6 +84,19 @@ interface SubRow {
   current_period_end: string | null;
 }
 
+/**
+ * Mirrors `lib/billing-status.ts:isPaying` semantics for past_due:
+ * past_due ONLY counts as paying within a 7-day grace window past
+ * current_period_end. Beyond that, the user has effectively churned and
+ * suspend-check has legitimately suspended their VM.
+ */
+const PAST_DUE_GRACE_DAYS = 7;
+function pastDueWithinGrace(sub: SubRow | undefined): boolean {
+  if (!sub || sub.status !== "past_due" || !sub.current_period_end) return false;
+  const endMs = new Date(sub.current_period_end).getTime();
+  return Date.now() - endMs < PAST_DUE_GRACE_DAYS * 86400_000;
+}
+
 async function pgQuery<T = unknown>(path: string): Promise<T> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     headers: {
@@ -150,7 +163,7 @@ function ageDays(iso: string | null): number | null {
     const isPaying =
       subStatus === "active" ||
       subStatus === "trialing" ||
-      subStatus === "past_due" ||
+      pastDueWithinGrace(sub) ||
       Boolean(vm.partner);
     const intentionalOffline =
       vm.health_status === "suspended" || vm.health_status === "hibernating";

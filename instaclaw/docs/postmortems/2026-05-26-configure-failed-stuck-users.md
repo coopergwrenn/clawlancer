@@ -296,13 +296,30 @@ future cron could use this as a primary signal independent of fail_count.
 
 | Priority | Item | Owner |
 |---|---|---|
-| P1 | Cooper review + approve preventive-fix patches (Tier 1 + Tier 3) per Rule 64 | Cooper |
-| P1 | Investigate the 6 suspended-paying VMs with `last_proxy_call_at` within 1d (vm-921, vm-925, vm-966, vm-945, vm-912, vm-947) — wake-paid-hibernating may not be doing its job for them | next operator |
+| P1 | Investigate **vm-512** (spillageissue@gmail.com): past_due within 7-day grace, gateway INACTIVE on disk (not lying-DB — actually stopped). Suggests `wake-paid-hibernating` isn't firing on past_due-within-grace VMs. Different class from this incident (sleep-state wake bug, not configure_failed) but same shape of customer impact (paying-and-broken). | next operator |
 | P1 | Fix process-pending Pass 2 `if (!hasPending) continue;` gate — either remove gate or fall through to /api/vm/configure subscription-defaults path | next operator |
-| P2 | Codify Lesson 1 as a numbered rule in CLAUDE.md | next operator |
+| P2 | Codify Lesson 1 as numbered Rule 68 in CLAUDE.md (proposed text in Lesson 1 above) — enumerate health_status filter audit on any new state | next operator |
 | P2 | DB-vs-disk reconciliation sampler cron (Rule 23 + this incident's inverse) — pick 5 random VMs/day, verify health_status matches disk reality | new work |
 | P3 | Add `scripts/_audit-stuck-paying-users.ts` to operator patrol-mode (CLAUDE.md Operational Runbook → Patrol Mode section) | next operator |
 | P3 | Consider deprecating the `configure_failed` health_status entirely — replace with `configure_attempts >= MAX_CONFIGURE_ATTEMPTS` as the "exhausted" signal, let health_status track only on-disk gateway reality | architecture |
+
+### Original 6-VM "suspended-with-recent-proxy" concern — assessed + cleared
+
+The first audit pass (before the past_due-grace tightening) surfaced 6 paying
+users in suspended state with `last_proxy_call_at` within 1d as candidates for
+the same bug class. Individual assessment 2026-05-26 ~16:43 UTC:
+
+- **vm-921 (msgduel@gmail.com)** — past_due since 2026-05-15, 11d past grace cutoff → correctly suspended. Gateway responds (Cloudflare-tunneled), DB row is honest.
+- **vm-925 (realme21082568@gmail.com)** — past_due since 2026-05-16, 10d past grace cutoff → correctly suspended.
+- **vm-966, vm-945, vm-912, vm-947** — all past_due past grace cutoff (canceled/lapsed >7d) → correctly suspended.
+
+None of the 6 needed the DB-flip treatment. The audit script's `isPaying` check
+was too loose — counted ALL past_due as paying. Tightened to mirror
+`lib/billing-status.ts:isPaying` semantics: past_due ONLY counts as paying
+within 7 days of `current_period_end` (Rule 14). After tightening, P0 = 0 and
+P1_PAYING_OFFLINE drops from 10 → 3, all of which are within-grace past_due
+or normal user-idle suspends. The newly-surfaced vm-512 is the only one
+worth a real look (filed as the P1 above).
 
 ## Forensic evidence
 
