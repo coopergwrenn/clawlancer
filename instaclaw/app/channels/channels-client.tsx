@@ -489,7 +489,7 @@ function TelegramIcon({ size = 30 }: { size?: number }) {
         <rect width="60" height="60" rx="15" fill="url(#ic-telegram-grad)" />
         {/* Plane path with optical-center offset BAKED into the absolute
             coords — no <g transform> wrapper. Total shift from the
-            original Telegram brand SVG: dx=-3, dy=-1.
+            original Telegram brand SVG: dx=-3, dy=-2.
 
             Why not bbox-center (which would be dx=+0.73, dy=-3.15):
             the plane is an asymmetric arrow shape — the visual weight
@@ -498,19 +498,22 @@ function TelegramIcon({ size = 30 }: { size?: number }) {
             tracks the leading direction of arrow shapes (the TIP) as
             the focal point, not the geometric bbox. With strict
             bbox-center the plane reads as biased upper-right because
-            the tip hugs the corner. Compensating with dx=-3, dy=-1
-            (cumulative from original; ~3.7 left + 2.2 below
-            viewBox-center) pulls the tip back from the corner and
-            lets the plane span both halves of both axes evenly.
+            the tip hugs the corner.
 
-            Post-bake bbox center: (26.27, 32.15). NOT geometric
-            center — this is the optical-feel sweet spot Cooper
-            picked from a crosshair sweep. Pure left shifts (no
-            down) leave the tip floating in the upper-right; pure
-            down shifts (no left) leave the tip corner-hugging. The
-            (-3, -1) pairing addresses both. */}
+            Compensating with dx=-3, dy=-2 (cumulative from original;
+            bbox center post-bake at (26.27, 31.15) — 3.73 left and
+            1.15 below viewBox center) pulls the tip back from the
+            corner AND keeps the plane's body crossing the icon's
+            vertical center cleanly.
+
+            Tuning history: (+0.73, -3.15) bbox-center read as
+            right-biased; (-3, -1) per first sweep read as too-far-
+            down (empty space at top); (-3, -2) is Cooper's final
+            pick after a y-axis sweep with crosshair at viewBox
+            center — plane mass distributes evenly above + below
+            the horizontal midline. */}
         <path
-          d="M41.94 16.32 9.93 28.62c-2.18.85-2.16 2.05-.4 2.59l8.21 2.56 19.04-12.01c.9-.5 1.71-.24 1.04.32L22.4 37.14l-.6 9c.85 0 1.21-.39 1.67-.85l4-3.87 8.31 6.15c1.52.85 2.62.4 2.98-1.41l5.41-25.49c.53-2.2-.78-3.19-2.23-2.35z"
+          d="M41.94 15.32 9.93 27.62c-2.18.85-2.16 2.05-.4 2.59l8.21 2.56 19.04-12.01c.9-.5 1.71-.24 1.04.32L22.4 36.14l-.6 9c.85 0 1.21-.39 1.67-.85l4-3.87 8.31 6.15c1.52.85 2.62.4 2.98-1.41l5.41-25.49c.53-2.2-.78-3.19-2.23-2.35z"
           fill="#ffffff"
         />
       </svg>
