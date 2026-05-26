@@ -664,7 +664,7 @@ function BurnSources() {
             Want your own agent contributing to the burn?
           </p>
           <a
-            href="/signup"
+            href="/channels"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-semibold transition-all"
             style={{
               background: "linear-gradient(180deg, rgba(220,103,67,0.95) 0%, rgba(200,85,52,1) 100%)",
@@ -983,7 +983,7 @@ function TheMath() {
             Every new user adds a permanent burn loop. Be one of them.
           </p>
           <a
-            href="/signup"
+            href="/channels"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-medium transition-all"
             style={{
               ...glassStyle,
@@ -1157,7 +1157,7 @@ function WhyDifferent() {
             Ready to use the AI agent that actually backs its own token?
           </p>
           <a
-            href="/signup"
+            href="/channels"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-semibold transition-all"
             style={{
               background: "linear-gradient(180deg, rgba(220,103,67,0.95) 0%, rgba(200,85,52,1) 100%)",

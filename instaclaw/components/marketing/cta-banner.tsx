@@ -26,7 +26,7 @@ export function CtaBanner({
       </p>
       <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
         <Link
-          href="/signup"
+          href="/channels"
           className="px-6 py-3 rounded-lg text-sm font-medium transition-all"
           style={{
             background: "#DC6743",

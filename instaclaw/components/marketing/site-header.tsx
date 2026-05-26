@@ -58,7 +58,7 @@ export function SiteHeader() {
         </nav>
 
         <Link
-          href={session ? "/dashboard" : "/signup"}
+          href={session ? "/dashboard" : "/channels"}
           className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
           style={{
             background:

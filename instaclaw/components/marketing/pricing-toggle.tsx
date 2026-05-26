@@ -153,7 +153,7 @@ export function PricingToggle() {
             </ul>
             <div className="mt-6">
               <Link
-                href="/signup"
+                href="/channels"
                 className="block text-center py-2.5 rounded-lg text-sm font-medium transition-all"
                 style={{
                   background: tier.highlighted ? "#DC6743" : "rgba(0,0,0,0.05)",

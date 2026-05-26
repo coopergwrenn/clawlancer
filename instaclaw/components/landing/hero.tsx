@@ -360,7 +360,7 @@ function HeroInner() {
               <div className="flex justify-center pt-2">
                 <div className="liquid-glass-btn-root">
                   <Link
-                    href={session ? "/dashboard" : "/signup"}
+                    href={session ? "/dashboard" : "/channels"}
                     className="liquid-glass-btn"
                   >
                     <span>Claim My Agent</span>

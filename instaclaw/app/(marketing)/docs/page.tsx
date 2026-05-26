@@ -88,13 +88,13 @@ export default function DocsPage() {
                 <p>
                   Head to{" "}
                   <Link
-                    href="/signup"
+                    href="/channels"
                     className="underline hover:opacity-70"
                     style={{ color: "#DC6743" }}
                   >
-                    instaclaw.io/signup
+                    instaclaw.io/channels
                   </Link>{" "}
-                  and sign up with Google or email.
+                  and pick where you want to text your agent — iMessage, Telegram, or join the Discord/Slack waitlist.
                 </p>
                 <ul className="mt-3 space-y-1.5 list-disc pl-5">
                   <li>If you have an invite code, enter it during signup</li>
