@@ -130,10 +130,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     // Candidate pool: paying-customer, unhealthy ≥2h (fail_count ≥ 60),
     // not quarantined, has IP + gateway_url. Overfetch for B-deferral filtering.
-    const { data: pool, error: queryErr } = await supabase
+    const { data: unhealthyPool, error: queryErr } = await supabase
       .from("instaclaw_vms")
       .select(
-        "id, name, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, region, health_status, last_health_check, assigned_to, partner, config_version, health_fail_count, tier, api_mode",
+        "id, name, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, region, health_status, last_health_check, assigned_to, partner, config_version, health_fail_count, tier, api_mode, updated_at",
       )
       .eq("status", "assigned")
       .eq("provider", "linode")
@@ -153,6 +153,61 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       });
       return NextResponse.json({ error: queryErr.message }, { status: 500 });
     }
+
+    // ── 2026-05-26 incident addendum: configure_failed orphan-state recovery ──
+    //
+    // Three paying users sat in health_status='configure_failed' for ~2 months.
+    // Their gateways were healthy on disk (/health=200, npm openclaw installed,
+    // openclaw.json present), but the DB row never got flipped back to healthy.
+    // The 3-tier recovery pipeline (this cron + alert + auto-recover) all
+    // filtered .in("health_status", ["unhealthy","unknown"]), excluding
+    // configure_failed entirely. Plus the fail_count gate doesn't help —
+    // health-check explicitly skips configure_failed VMs per Rule 33, so
+    // health_fail_count stays at whatever value the configure-failure write
+    // left it at and never grows.
+    //
+    // Fix: separate query for configure_failed VMs with age-based gating via
+    // updated_at. Any configure_failed VM whose row hasn't been touched in
+    // ≥2h is stuck. We feed them into the same eligibility filter (B-deferral,
+    // C-failure-quarantine) and run the same auditVMConfig recovery path —
+    // which is exactly the right action: drift-repair only, no wipe (Rule
+    // 22/30), gateway restart for the freshly-written config.
+    //
+    // On success, auditVMConfig completes cleanly → the loop's update block
+    // flips health_status='healthy' → main reconcile-fleet picks it up next
+    // tick → cv advances to current manifest.
+    const stuckHoursThresholdIso = new Date(
+      now.getTime() - STUCK_HOURS_THRESHOLD * 3600_000,
+    ).toISOString();
+    const { data: configureFailedPool, error: cfQueryErr } = await supabase
+      .from("instaclaw_vms")
+      .select(
+        "id, name, ip_address, ssh_port, ssh_user, gateway_url, gateway_token, region, health_status, last_health_check, assigned_to, partner, config_version, health_fail_count, tier, api_mode, updated_at",
+      )
+      .eq("status", "assigned")
+      .eq("provider", "linode")
+      .eq("health_status", "configure_failed")
+      .lt("updated_at", stuckHoursThresholdIso)
+      .not("assigned_to", "is", null)
+      .not("ip_address", "is", null)
+      .not("gateway_url", "is", null)
+      .is("reconcile_quarantined_at", null)
+      .order("updated_at", { ascending: true }) // oldest-stuck first
+      .limit(MAX_VMS_PER_RUN * 6);
+
+    if (cfQueryErr) {
+      logger.warn("reconcile-stuck-vms: configure_failed query failed (non-fatal)", {
+        route: `cron/${CRON_NAME}`,
+        error: cfQueryErr.message,
+      });
+    }
+
+    // Merge the two pools. configure_failed VMs sorted to the front
+    // (typically the longest-stuck, paying customers with no recovery path).
+    const pool = [
+      ...(configureFailedPool ?? []),
+      ...(unhealthyPool ?? []),
+    ].filter((v, i, arr) => arr.findIndex((u) => u.id === v.id) === i);
 
     if (!pool || pool.length === 0) {
       return NextResponse.json({
@@ -304,13 +359,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       // Handle outcome
       if (outcome.kind === "success") {
         recovered++;
-        // Flip health_status to healthy + reset failure counters
+        // Flip health_status to healthy + reset failure counters.
+        // For configure_failed VMs, also reset configure_attempts + lock
+        // so /api/vm/status and any retry-configure UI report clean state.
+        const wasConfigureFailed = vm.health_status === "configure_failed";
         const { error: updErr } = await supabase
           .from("instaclaw_vms")
           .update({
             health_status: "healthy",
             health_fail_count: 0,
             last_health_check: new Date().toISOString(),
+            ...(wasConfigureFailed
+              ? { configure_attempts: 0, configure_lock_at: null }
+              : {}),
           })
           .eq("id", vm.id);
         if (updErr) {
