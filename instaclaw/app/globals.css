@@ -1656,3 +1656,150 @@ html.lenis body {
   0%, 100% { opacity: 1;   transform: scale(1);    }
   50%      { opacity: 0.4; transform: scale(0.85); }
 }
+
+/* ──────────────────────────────────────────────────────────────────
+ * /channels — channel selection page
+ *
+ * Glass card system for the channel picker. Sibling to .liquid-glass-btn
+ * (same family, card-shaped rather than pill-shaped). Two variants:
+ *   .channel-card        — active channels (iMessage, Telegram). Full
+ *                          glass treatment, hover lift, primary feel.
+ *   .channel-card-muted  — coming-soon channels (Discord, Slack). Same
+ *                          architecture but reduced opacity and shadow
+ *                          so they read as visually subordinate.
+ *
+ * Design rationale: the cream landing background has nothing for
+ * backdrop-filter to refract on its own, so we layer multiple white-
+ * gradient stops + inset highlights + outer shadows to simulate
+ * frosted glass floating above the surface. This matches the language
+ * of .liquid-glass-btn but with rectangular geometry.
+ * ──────────────────────────────────────────────────────────────── */
+
+.channel-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  border-radius: 22px;
+  background-image: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(255, 255, 255, 0.62) 50%,
+    rgba(255, 255, 255, 0.86) 100%
+  );
+  background-color: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+          backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.25),
+    0 1px 2px rgba(51, 51, 52, 0.04),
+    0 4px 12px -4px rgba(51, 51, 52, 0.08),
+    0 16px 36px -14px rgba(51, 51, 52, 0.10);
+  transition:
+    transform 0.25s cubic-bezier(0.25, 1, 0.5, 1),
+    box-shadow 0.25s cubic-bezier(0.25, 1, 0.5, 1),
+    background-color 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Iridescent rim — a soft conic-style highlight that catches light
+ * along the top-left, fades through middle, returns at bottom-right.
+ * Same idea as .liquid-glass-btn::after but rectangular. */
+.channel-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background-image: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.85),
+    rgba(255, 255, 255, 0) 30%,
+    rgba(255, 255, 255, 0) 70%,
+    rgba(255, 255, 255, 0.45)
+  );
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+}
+
+.channel-card:hover {
+  transform: translateY(-2px);
+  background-color: rgba(255, 255, 255, 0.68);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.3),
+    0 1px 2px rgba(51, 51, 52, 0.05),
+    0 10px 20px -4px rgba(51, 51, 52, 0.12),
+    0 24px 48px -16px rgba(51, 51, 52, 0.14);
+}
+
+.channel-card:active {
+  transform: translateY(-1px);
+  transition-duration: 80ms;
+}
+
+/* ─── Muted variant for coming-soon channels (Discord, Slack) ──── */
+
+.channel-card-muted {
+  background-image: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.5) 0%,
+    rgba(255, 255, 255, 0.32) 50%,
+    rgba(255, 255, 255, 0.45) 100%
+  );
+  background-color: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 1px 1px rgba(51, 51, 52, 0.02),
+    0 2px 6px -2px rgba(51, 51, 52, 0.04);
+}
+
+.channel-card-muted::after {
+  background-image: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.45),
+    rgba(255, 255, 255, 0) 40%,
+    rgba(255, 255, 255, 0) 60%,
+    rgba(255, 255, 255, 0.2)
+  );
+}
+
+.channel-card-muted:hover {
+  transform: translateY(-1px);
+  background-color: rgba(255, 255, 255, 0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    0 1px 1px rgba(51, 51, 52, 0.03),
+    0 6px 14px -4px rgba(51, 51, 52, 0.07);
+}
+
+/* ─── Inner divider for iMessage's secondary action (Save Contact) ──
+ * Sits between the primary card area and the small "save our contact
+ * first" inline action. Subtle gradient line so it doesn't compete
+ * with the card's outer rim. */
+.channel-card-inner-divider {
+  height: 1px;
+  background-image: linear-gradient(
+    90deg,
+    rgba(51, 51, 52, 0) 0%,
+    rgba(51, 51, 52, 0.08) 50%,
+    rgba(51, 51, 52, 0) 100%
+  );
+}
+
+/* ─── "coming soon" section heading — small, uppercase, tracked out ── */
+.channel-section-label {
+  font-family: var(--font-sans, system-ui), system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(51, 51, 52, 0.4);
+}
