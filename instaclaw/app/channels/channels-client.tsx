@@ -159,27 +159,26 @@ export function ChannelsClient() {
               {/* Inner divider */}
               <div className="channel-card-inner-divider mx-5" />
 
-              {/* Secondary tap — save our contact first */}
+              {/* Secondary tap — save our contact first.
+                  Apple-style quiet footnote. All-gray, regular weight,
+                  no coral accent — this is a SECONDARY action; the
+                  primary "iMessage → bot" tap above is the loud one.
+                  "(recommended)" in parens instead of an em-dash per
+                  the standing no-em-dashes rule. */}
               <a
                 href={VCARD_HREF}
                 className="channel-card-secondary-link px-5 py-3 hover:opacity-80"
               >
                 <div
                   className="flex items-center gap-2"
-                  style={{ color: CORAL }}
+                  style={{ color: SUBTLE_INK }}
                 >
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>+</span>
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>
+                  <span style={{ fontSize: 13, fontWeight: 400 }}>+</span>
+                  <span style={{ fontSize: 13, fontWeight: 400 }}>
                     save our contact first
                   </span>
-                  <span
-                    style={{
-                      fontSize: 11.5,
-                      color: SUBTLE_INK,
-                      fontWeight: 400,
-                    }}
-                  >
-                    — recommended
+                  <span style={{ fontSize: 11.5, fontWeight: 400, opacity: 0.85 }}>
+                    (recommended)
                   </span>
                 </div>
               </a>
