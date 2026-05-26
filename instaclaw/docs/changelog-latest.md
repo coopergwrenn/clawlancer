@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-26
 
-Window: `5cf9a0bd51c9357034254a8db147377b29c9f19d` → `HEAD` (HEAD = `03588dbe`)
+Window: `03588dbeb1151d6ae345db990eadb86f5152811f` → `HEAD` (HEAD = `ba531695`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 03588dbeb1151d6ae345db990eadb86f5152811f -->
+<!-- LAST_GENERATED_SHA: ba531695b5e5e8b79b1353ad51374ebebbafda67 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `03588dbe` 2026-05-26 — fix(channels): match Telegram icon shape to iMessage, recenter the plane [1 files] _(ai-assisted)_
+- `ba531695` 2026-05-26 — fix(channels): bake exact bbox-center offset into Telegram plane path [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `3b87d279` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
+- `9a174613` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `03588dbe` 2026-05-26 — fix(channels): match Telegram icon shape to iMessage, recenter the plane [1 files] _(ai-assisted)_
+- `ba531695` 2026-05-26 — fix(channels): bake exact bbox-center offset into Telegram plane path [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `3b87d279` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
+- `9a174613` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `03588dbe` 2026-05-26 — fix(channels): match Telegram icon shape to iMessage, recenter the plane
+- `ba531695` 2026-05-26 — fix(channels): bake exact bbox-center offset into Telegram plane path
 
 ## Appendix — every commit (chronological)
 
-- `3b87d279` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
-- `03588dbe` 2026-05-26 — fix(channels): match Telegram icon shape to iMessage, recenter the plane [1 files] _(ai-assisted)_
+- `9a174613` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
+- `ba531695` 2026-05-26 — fix(channels): bake exact bbox-center offset into Telegram plane path [1 files] _(ai-assisted)_
