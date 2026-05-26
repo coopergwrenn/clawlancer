@@ -273,7 +273,7 @@ function HeroInner() {
               Sign In
             </Link>
             <span className="liquid-glass-nav-btn-root">
-              <Link href="/signup" className="liquid-glass-nav-btn">
+              <Link href="/channels" className="liquid-glass-nav-btn">
                 Get Started
               </Link>
               <div aria-hidden="true" className="liquid-glass-nav-btn-shadow"></div>

@@ -26,6 +26,14 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/cron/reclaim-health",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/m-return-sweep",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/replenish-pool",
       "schedule": "*/5 * * * *"
     },

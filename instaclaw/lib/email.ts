@@ -226,6 +226,49 @@ export async function sendVMReadyEmail(
   controlPanelUrl: string,
   telegramBotUsername?: string
 ): Promise<void> {
+  // ─── Channel-onboarding skip (per spec §6.5.8) ──
+  // Channel-onboarding users (iMessage / Telegram shared bot) receive
+  // the agent's first message via their channel — sending a VM-ready
+  // email on top would be noise + potential double-notify.
+  //
+  // Detection: instaclaw_users.preferred_channel is set by
+  // /api/onboarding/done/submit when the user finishes the channel
+  // onboarding flow. Once set, they're a channel user — no email.
+  //
+  // BYOB Telegram users (legacy /signup → /connect) have NULL
+  // preferred_channel, so they still get the email as today. Zero
+  // behavior change for the legacy flow.
+  //
+  // Failure mode: if the lookup throws, we fall through and send
+  // anyway. Better to over-notify than to leave a channel user
+  // hanging if M_RETURN sweep is also delayed.
+  try {
+    const supabase = getSupabase();
+    const { data: userRow } = await supabase
+      .from("instaclaw_users")
+      .select("preferred_channel")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (userRow?.preferred_channel) {
+      logger.info("VM ready email suppressed — user has channel binding", {
+        route: "lib/email",
+        emailPrefix: email.slice(0, 3) + "***",
+        channel: userRow.preferred_channel,
+      });
+      return;
+    }
+  } catch (channelLookupErr) {
+    logger.warn(
+      "VM ready channel-binding check failed; falling through to send",
+      {
+        route: "lib/email",
+        emailPrefix: email.slice(0, 3) + "***",
+        error: String(channelLookupErr),
+      },
+    );
+  }
+
   // Dedup guard: never send this email more than once per email per 24h.
   // Uses instaclaw_admin_alert_log with a unique key to prevent spam.
   const dedupKey = `vm_ready_email:${email}`;

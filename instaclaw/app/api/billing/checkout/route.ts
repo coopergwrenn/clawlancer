@@ -304,11 +304,46 @@ export async function POST(req: NextRequest) {
       subscriptionData.trial_period_days = trialDays;
     }
 
+    // ─── Channel-onboarding success_url branch (spec §6.5.2 + §6.5.4) ──
+    //
+    // The 2026-05-26 onboarding redesign introduced a new post-Stripe
+    // landing page (/onboarding/done) that owns personalization + the
+    // M_RETURN trigger for users who came in via iMessage / Telegram
+    // shared bot. Detect channel-onboarding by reading the user's
+    // most-recent unconsumed pending_users row:
+    //
+    //   - channel IS NOT NULL → channel onboarding → /onboarding/done
+    //   - channel IS NULL (BYOB) OR no pending row → /deploying (legacy)
+    //
+    // We key on the MOST RECENT pending row (order by created_at DESC)
+    // so a user with both an old BYOB row and a fresh channel row gets
+    // routed by whichever signup attempt is current. Belt-and-suspenders
+    // against stale rows.
+    //
+    // Stripe substitutes `{CHECKOUT_SESSION_ID}` with the actual session
+    // id on redirect; the destination page uses it to call
+    // /api/checkout/verify (existing) which finalizes the assignment.
+    const { data: latestPending } = await supabase
+      .from("instaclaw_pending_users")
+      .select("id, channel")
+      .eq("user_id", user.id)
+      .is("consumed_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const isChannelOnboarding =
+      !!latestPending && latestPending.channel !== null;
+
+    const successUrl = isChannelOnboarding
+      ? `${origin}/onboarding/done?session=${latestPending.id}&stripe={CHECKOUT_SESSION_ID}`
+      : `${origin}/deploying?session_id={CHECKOUT_SESSION_ID}`;
+
     const checkoutSession = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/deploying?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: successUrl,
       cancel_url: cancelUrl ? `${origin}${cancelUrl}` : `${origin}/plan`,
       // Always collect a payment method — even on $0 trials. Stripe's
       // default for `mode: "subscription"` is already `"always"`, but
