@@ -16,22 +16,38 @@ const SNAPPY = [0.23, 1, 0.32, 1] as const;
 
 // ─── Hero keyword cycle ────────────────────────────────────────────────
 // Each word ladders the "wait, it has its OWN ___?" reaction up a
-// different axis of dedicated infrastructure: physical → financial →
-// cognitive → digital → social → comprehensive → token economy →
-// payments rail → identity. Each maps to a real capability:
+// different axis of dedicated infrastructure: physical → financial
+// flow → financial storage → cognitive → digital → social →
+// comprehensive → token economy → payments rail → identity. Each
+// maps to a real capability:
 //   computer    → dedicated Linode VM (g6-dedicated-2)
+//   income      → recurring revenue flow back to wallet; token
+//                  launches via Bankr partnership shipped today,
+//                  on-chain trading + agent-to-agent service
+//                  marketplaces + bounty platform integrations
+//                  next on the roadmap (mirrors the Has Its Own
+//                  Income card in features.tsx)
 //   wallet      → Bankr EVM wallet on Base mainnet
 //   memory      → gbrain PGLite + workspace files
 //   browser     → Chromium + browser-auto plugin, persistent state
 //   friends     → cross-VM agent-to-agent contact list
 //   skills      → MCP skill system (polymarket, solana, …)
-//   token       → ACP / Bankr token launch capability
+//   token       → ACP / Bankr token launch capability (the asset
+//                  side; income above is the revenue-flow side)
 //   debit card  → spendable on-chain $$ via wallet
 //   soul        → SOUL.md personality + identity persistence
-// Order locked by Cooper 2026-05-24. Do NOT reorder without re-checking
-// the visual rhythm (short → long → short cadence of word lengths).
+// Order locked by Cooper 2026-05-26. Income inserted at position 2
+// (directly after computer) per Cooper's explicit call — placing
+// the most "wait what?" hook second in the cycle hits the wild
+// reaction harder and faster, before the reader settles. Position
+// 3 (after wallet) was the alternative considered; position 2 won
+// because the shock-value sequence (computer -> INCOME) beats the
+// logical-financial-pair sequence (wallet -> income). Do NOT
+// reorder without re-checking the visual rhythm (short → long →
+// short cadence of word lengths).
 const KEYWORDS = [
   "computer",
+  "income",
   "wallet",
   "memory",
   "browser",
