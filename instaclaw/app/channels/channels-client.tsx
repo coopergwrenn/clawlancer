@@ -470,7 +470,9 @@ function TelegramIcon({ size = 30 }: { size?: number }) {
       style={{
         width: size,
         height: size,
-        borderRadius: "50%",
+        // Squircle to match IMessageIcon — both active-channel marks
+        // now read as the same shape family. iOS app-icon convention.
+        borderRadius: size * 0.25,
         overflow: "hidden",
       }}
     >
@@ -481,11 +483,23 @@ function TelegramIcon({ size = 30 }: { size?: number }) {
             <stop offset="100%" stopColor="#1E96C8" />
           </linearGradient>
         </defs>
-        <circle cx="30" cy="30" r="30" fill="url(#ic-telegram-grad)" />
-        <path
-          d="M44.94 17.32 12.93 29.62c-2.18.85-2.16 2.05-.4 2.59l8.21 2.56 19.04-12.01c.9-.5 1.71-.24 1.04.32L25.4 38.14l-.6 9c.85 0 1.21-.39 1.67-.85l4-3.87 8.31 6.15c1.52.85 2.62.4 2.98-1.41l5.41-25.49c.53-2.2-.78-3.19-2.23-2.35z"
-          fill="#ffffff"
-        />
+        {/* Background switched from <circle r=30> to <rect rx=15> so
+            the fill matches the squircle clip on the container.
+            rx=15 = 60 * 0.25, same ratio as the container's borderRadius. */}
+        <rect width="60" height="60" rx="15" fill="url(#ic-telegram-grad)" />
+        {/* Paper plane optically recentered. Source path's geometric
+            bbox spans roughly x:10.75-44.94, y:17.32-49.42 — center
+            (27.85, 33.37) instead of (30, 30). translate(2, -3)
+            shifts toward the icon's true center. Wing detail in the
+            upper-left provides visual weight; with the squircle
+            corners as anchors, this lands the plane optically
+            balanced rather than sliding toward the bottom-right. */}
+        <g transform="translate(2, -3)">
+          <path
+            d="M44.94 17.32 12.93 29.62c-2.18.85-2.16 2.05-.4 2.59l8.21 2.56 19.04-12.01c.9-.5 1.71-.24 1.04.32L25.4 38.14l-.6 9c.85 0 1.21-.39 1.67-.85l4-3.87 8.31 6.15c1.52.85 2.62.4 2.98-1.41l5.41-25.49c.53-2.2-.78-3.19-2.23-2.35z"
+            fill="#ffffff"
+          />
+        </g>
       </svg>
     </span>
   );
