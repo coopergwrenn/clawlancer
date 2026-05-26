@@ -1701,12 +1701,19 @@ html.lenis body {
 }
 
 /* Refraction substrate — same idea as .liquid-glass-btn-root::before.
-   Dark radial halo extending past the card edges gives backdrop-filter
-   something to refract. Without this, the glass reads as opaque white. */
+   Dark radial halo gives backdrop-filter something to refract; without
+   it the glass reads as opaque white.
+
+   inset: 0 (was -8px) so the substrate is exactly card-sized and its
+   border-radius (inherited) clips the colored variants to the card
+   shape. The earlier -8px bleed produced visible green / blue halos
+   extending outside the rounded corners on desktop. The drop-shadow
+   div (.channel-card-shadow, inset: -16px) still extends outside the
+   card — that's the intentional shadow path, separate stacking. */
 .channel-card-root::before {
   content: '';
   position: absolute;
-  inset: -8px;
+  inset: 0;
   border-radius: inherit;
   background: radial-gradient(
     ellipse at 50% 60%,
