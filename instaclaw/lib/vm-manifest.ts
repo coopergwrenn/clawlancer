@@ -1672,8 +1672,27 @@ export const VM_MANIFEST = {
    *
    * IMPORTANT for snapshot bake: the bake VM should reconcile to v113,
    * not v112 — Cooper notified snapshot terminal at bump time.
+   *
+   * v122 — 2026-05-26 (rollout of OpenClaw 2026.5.22 to existing fleet)
+   * Content-identical to v121. The bump is the trigger mechanism: it
+   * forces the 151 cv=121 customer VMs back into the reconcile queue
+   * (via the `lt(config_version, manifest)` filter), where
+   * stepNpmPinDrift detects the 2026.4.26 → 2026.5.22 mismatch and
+   * runs `npm install -g openclaw@2026.5.22` on each VM. This is the
+   * actual fleet-wide OpenClaw upgrade rollout.
+   *
+   * No configSettings, files[], cronJobs, or systemdOverrides changes.
+   *
+   * Rollout discipline: this commit lands the bump, but the reconcile-
+   * fleet cron lock is acquired by the operator IMMEDIATELY before the
+   * commit. The lock pauses the fleet-wide sweep until one cv=121 pool
+   * VM (assigned to Cooper's account via the canonical path) is
+   * verified end-to-end on Telegram. Only after Cooper greenlights the
+   * test agent does the operator release the lock and let the customer
+   * sweep begin. First 5 customer reconciles are monitored before the
+   * remaining ~146 VMs proceed unattended.
    */
-  version: 121,
+  version: 122,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
