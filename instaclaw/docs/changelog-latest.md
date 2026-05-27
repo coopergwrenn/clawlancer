@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-27
 
-Window: `6bf5a70384bcad161fae156cad673cdb9c1e85ce` → `HEAD` (HEAD = `b5b70ddd`)
+Window: `b5b70ddd46a4099a47e7a1a3f575fd71a425616e` → `HEAD` (HEAD = `2f3f2304`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: b5b70ddd46a4099a47e7a1a3f575fd71a425616e -->
+<!-- LAST_GENERATED_SHA: 2f3f230489497fbc78cf09aa84651664d7961d19 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `b5b70ddd` 2026-05-27 — fix(edge-launch): items 1-9 — every remaining bug from the audit [16 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
-- `a2f46817` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `2f3f2304` 2026-05-27 — docs(cloud-init-setup-sh): update stale "channels non-empty" comment [1 files] _(ai-assisted)_
+- `14a943c0` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `b5b70ddd` 2026-05-27 — fix(edge-launch): items 1-9 — every remaining bug from the audit [16 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `2f3f2304` 2026-05-27 — docs(cloud-init-setup-sh): update stale "channels non-empty" comment [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `a2f46817` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `b5b70ddd` 2026-05-27 — [infrastructure, feature, edge, docs] — fix(edge-launch): items 1-9 — every remaining bug from the audit
+- `14a943c0` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `b5b70ddd` 2026-05-27 — fix(edge-launch): items 1-9 — every remaining bug from the audit
+- `2f3f2304` 2026-05-27 — docs(cloud-init-setup-sh): update stale "channels non-empty" comment
 
 ## Appendix — every commit (chronological)
 
-- `a2f46817` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-- `b5b70ddd` 2026-05-27 — fix(edge-launch): items 1-9 — every remaining bug from the audit [16 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `14a943c0` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `2f3f2304` 2026-05-27 — docs(cloud-init-setup-sh): update stale "channels non-empty" comment [1 files] _(ai-assisted)_
