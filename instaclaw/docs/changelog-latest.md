@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-27
 
-Window: `121cb21d165b4caada972a6eb58cd25421ee8959` → `HEAD` (HEAD = `050a4bd0`)
+Window: `050a4bd0e4a90c8d9abf99579bb5bd34e09cf1e7` → `HEAD` (HEAD = `22adf094`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 050a4bd0e4a90c8d9abf99579bb5bd34e09cf1e7 -->
+<!-- LAST_GENERATED_SHA: 22adf09440bbda6d7de4d673ea1d126e8bc72dd4 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `050a4bd0` 2026-05-26 — feat(channels): turn secondary action into a glass pill button [2 files] _(ai-assisted)_
+- `22adf094` 2026-05-26 — copy(channels): Telegram subtitle now mirrors iMessage tone [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `0875f908` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `57cea455` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `050a4bd0` 2026-05-26 — feat(channels): turn secondary action into a glass pill button [2 files] _(ai-assisted)_
+- `22adf094` 2026-05-26 — copy(channels): Telegram subtitle now mirrors iMessage tone [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `0875f908` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `57cea455` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `050a4bd0` 2026-05-26 — feat(channels): turn secondary action into a glass pill button
+- `22adf094` 2026-05-26 — copy(channels): Telegram subtitle now mirrors iMessage tone
 
 ## Appendix — every commit (chronological)
 
-- `0875f908` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-- `050a4bd0` 2026-05-26 — feat(channels): turn secondary action into a glass pill button [2 files] _(ai-assisted)_
+- `57cea455` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `22adf094` 2026-05-26 — copy(channels): Telegram subtitle now mirrors iMessage tone [1 files] _(ai-assisted)_
