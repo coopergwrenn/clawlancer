@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-27
 
-Window: `7111ad20ac214792d701da1620abc9f7fc363803` → `HEAD` (HEAD = `c6f1f767`)
+Window: `c6f1f76775fa96acb5e51ab041ea043992585ec3` → `HEAD` (HEAD = `e9a71f6a`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: c6f1f76775fa96acb5e51ab041ea043992585ec3 -->
+<!-- LAST_GENERATED_SHA: e9a71f6a35840807577cc1f3b695e487d65a1090 -->
 
 ## Summary
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `c6f1f767` 2026-05-27 — feat(base-mcp): wire stepDeployBaseDefiRouting into runFileDriftPass too [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `2adfbb0c` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `e9a71f6a` 2026-05-27 — fix(reconcile): remove toolrouter-client refs that broke the build [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ae614cb9` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `c6f1f767` 2026-05-27 — feat(base-mcp): wire stepDeployBaseDefiRouting into runFileDriftPass too [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `e9a71f6a` 2026-05-27 — fix(reconcile): remove toolrouter-client refs that broke the build [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `2adfbb0c` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `ae614cb9` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `c6f1f767` 2026-05-27 — [reconciler, infrastructure] — feat(base-mcp): wire stepDeployBaseDefiRouting into runFileDriftPass too
+- `e9a71f6a` 2026-05-27 — [reconciler, infrastructure] — fix(reconcile): remove toolrouter-client refs that broke the build
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `c6f1f767` 2026-05-27 — feat(base-mcp): wire stepDeployBaseDefiRouting into runFileDriftPass too
+- `e9a71f6a` 2026-05-27 — fix(reconcile): remove toolrouter-client refs that broke the build
 
 ## Appendix — every commit (chronological)
 
-- `2adfbb0c` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-- `c6f1f767` 2026-05-27 — feat(base-mcp): wire stepDeployBaseDefiRouting into runFileDriftPass too [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ae614cb9` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `e9a71f6a` 2026-05-27 — fix(reconcile): remove toolrouter-client refs that broke the build [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
