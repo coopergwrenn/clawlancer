@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-27
 
-Window: `22adf09440bbda6d7de4d673ea1d126e8bc72dd4` → `HEAD` (HEAD = `a0172849`)
+Window: `a017284956e2e8c4c6f42bf73c37e3722324d2d3` → `HEAD` (HEAD = `f86950aa`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: a017284956e2e8c4c6f42bf73c37e3722324d2d3 -->
+<!-- LAST_GENERATED_SHA: f86950aa12ccb360f51a90538f99c715fb3e0135 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `a0172849` 2026-05-26 — copy(channels): add "not permanent" reassurance below subtitle [1 files] _(ai-assisted)_
+- `f86950aa` 2026-05-26 — copy(channels): consolidate subtitle from 3 lines to 1 [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `3a187020` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `7285cb36` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `a0172849` 2026-05-26 — copy(channels): add "not permanent" reassurance below subtitle [1 files] _(ai-assisted)_
+- `f86950aa` 2026-05-26 — copy(channels): consolidate subtitle from 3 lines to 1 [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `3a187020` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `7285cb36` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `a0172849` 2026-05-26 — copy(channels): add "not permanent" reassurance below subtitle
+- `f86950aa` 2026-05-26 — copy(channels): consolidate subtitle from 3 lines to 1
 
 ## Appendix — every commit (chronological)
 
-- `3a187020` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-- `a0172849` 2026-05-26 — copy(channels): add "not permanent" reassurance below subtitle [1 files] _(ai-assisted)_
+- `7285cb36` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `f86950aa` 2026-05-26 — copy(channels): consolidate subtitle from 3 lines to 1 [1 files] _(ai-assisted)_
