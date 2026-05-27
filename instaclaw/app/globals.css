@@ -1956,48 +1956,63 @@ html.lenis body {
 /* ────────────────────────────────────────────────────────────────── */
 /*
  * Applied to every channel-icon container (iMessage, Telegram,
- * Discord, Slack). Adds two layers of polish on top of the icon's
- * colored background:
+ * Discord, Slack). Three layers of polish:
  *
- *   1. Box-shadow stack — subtle outer drops (grounds the icon on
- *      the card surface) + inset top highlight + inset bottom
- *      darkening. Mimics how light catches a polished glass tile.
+ *   1. Box-shadow stack (5 layers) — outer drops ground the icon on
+ *      the card surface, inset top highlight + inset bottom darkening
+ *      create depth, and an inset 1px hard line at top acts as a rim
+ *      light catching the upper edge.
  *
- *   2. ::after pseudo with linear-gradient — soft white-to-transparent
- *      from top down to ~55%. The "shine" that runs across the top of
- *      the squircle. Matches Cooper's brief verbatim (~20% opacity at
- *      top, transparent at 55%).
+ *   2. ::after pseudo with linear-gradient — white-to-transparent
+ *      from top down to ~60%. The "shine" running across the top of
+ *      the squircle. Peak 0.45 at top — bumped from V1's 0.20 which
+ *      was invisible against colored backgrounds at 30px.
  *
- * Recipe is a deliberate scale-down of the testimonials-avatar orb
- * treatment (components/landing/testimonials.tsx) — same family,
- * smaller scale, no separate specular ellipse (would interact with
- * icon content like the Telegram plane tip).
+ *   3. The top rim-light line in the box-shadow stack is what gives
+ *      the icon the "polished glass" feel vs "gradient-painted square."
+ *      It's the visionOS edge-catch effect.
+ *
+ * Recipe lineage:
+ *   V1 (commit f132cca8) — Cooper said invisible at 30px. Subtle was
+ *     wrong call for icon scale; sub-pixel blurs and 0.20 highlights
+ *     vanish at 30px against the icon's own colored fill.
+ *   V2 (current) — Cooper-prescribed values + top rim light.
+ *     Verified clearly visible at 30px in 4-variant crosshair sweep
+ *     before push.
  *
  * Why linear gradient instead of radial: the icons are squircles, not
  * circles. A radial highlight on a square creates an obviously
  * off-center bright spot that reads as processed. Linear-from-top
  * matches the rectangular shape language and reads as natural
- * lighting from above.
+ * overhead lighting.
  *
  * Opacity interaction: muted Discord/Slack cards apply opacity:0.7-
  * 0.75 to the container, which also dims the gloss+shadow. That's
  * desired — keeps the muted variants visually quieter than active.
  *
  * Slack note: Slack's container has rgba(255,255,255,0.85) bg, so the
- * white gloss is invisible on white. The shadow stack still provides
- * subtle dimensionality — the icon doesn't sit flat on the card.
+ * white gloss is mostly invisible on white. The shadow stack still
+ * provides dimensionality — the icon doesn't sit flat on the card.
  */
 .channel-brand-icon {
   position: relative;
   isolation: isolate;
   box-shadow:
-    /* Outer drops — ground the icon on the card surface */
-    0 1px 1.5px rgba(0, 0, 0, 0.08),
-    0 0.5px 1px rgba(0, 0, 0, 0.05),
-    /* Inset top — light catches the upper edge */
-    inset 0 0.5px 0.5px rgba(255, 255, 255, 0.4),
-    /* Inset bottom — depth, gives the icon weight */
-    inset 0 -0.5px 0.5px rgba(0, 0, 0, 0.12);
+    /* Outer drops — ground the icon on the card surface. V1 was
+       0 1px 1.5px / 0 0.5px 1px; values were invisible at 30px.
+       V2 bumped to readable presence per Cooper's directive. */
+    0 2px 4px rgba(0, 0, 0, 0.15),
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    /* Inset top highlight — 1px/2px/0.55 for visible light-catch
+       at icon scale. */
+    inset 0 1px 2px rgba(255, 255, 255, 0.55),
+    /* Inset bottom — depth, gives the icon weight, balances the
+       highlight. */
+    inset 0 -1px 2px rgba(0, 0, 0, 0.18),
+    /* Top rim light — 1px hard line at the very top edge. The
+       "light catching the upper rim of a glass tile" line. Without
+       this the icon reads as gradient-painted instead of physical. */
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 .channel-brand-icon::after {
@@ -2006,11 +2021,14 @@ html.lenis body {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
+  /* Peak 0.45 at top (V1 was 0.20 and invisible against the colored
+     SVG fills at 30px). Fades through 0.10 at 35% to transparent
+     by 60% down. The "shine" running across the top of the squircle. */
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.20) 0%,
-    rgba(255, 255, 255, 0.05) 30%,
-    rgba(255, 255, 255, 0) 55%
+    rgba(255, 255, 255, 0.45) 0%,
+    rgba(255, 255, 255, 0.10) 35%,
+    rgba(255, 255, 255, 0) 60%
   );
   /* z-index above the inner SVG so the gloss overlays the icon
      content. isolation:isolate on the parent scopes this. */
