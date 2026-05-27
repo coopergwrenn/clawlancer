@@ -160,28 +160,28 @@ export function ChannelsClient() {
               <div className="channel-card-inner-divider mx-5" />
 
               {/* Secondary tap — save our contact first.
-                  Apple-style quiet footnote. All-gray, regular weight,
-                  no coral accent — this is a SECONDARY action; the
-                  primary "iMessage → bot" tap above is the loud one.
-                  "(recommended)" in parens instead of an em-dash per
-                  the standing no-em-dashes rule. */}
-              <a
-                href={VCARD_HREF}
-                className="channel-card-secondary-link px-5 py-3 hover:opacity-80"
-              >
-                <div
-                  className="flex items-center gap-2"
-                  style={{ color: SUBTLE_INK }}
+                  Glass pill button (.channel-card-secondary-pill in
+                  globals.css). Same recipe family as .liquid-glass-pill
+                  scaled to 28px height so it stays subordinate to the
+                  primary iMessage row above. Single tappable element;
+                  "(recommended)" lives inside the pill at lower
+                  opacity so the whole thing reads as one button.
+
+                  .channel-card-secondary-link class preserved on the
+                  <a> so the existing :has() card-surface hover cascade
+                  still fires when the pill is hovered (the whole card
+                  surface lifts subtly, reinforcing that the pill is
+                  part of the card's interaction set). */}
+              <div className="px-5 pt-2 pb-3">
+                <a
+                  href={VCARD_HREF}
+                  className="channel-card-secondary-link channel-card-secondary-pill"
                 >
-                  <span style={{ fontSize: 13, fontWeight: 400 }}>+</span>
-                  <span style={{ fontSize: 13, fontWeight: 400 }}>
-                    save our contact first
-                  </span>
-                  <span style={{ fontSize: 11.5, fontWeight: 400, opacity: 0.85 }}>
-                    (recommended)
-                  </span>
-                </div>
-              </a>
+                  <span className="pill-plus">+</span>
+                  <span className="pill-label">save our contact first</span>
+                  <span className="pill-trail">(recommended)</span>
+                </a>
+              </div>
             </div>
             <div aria-hidden className="channel-card-shadow" />
           </div>

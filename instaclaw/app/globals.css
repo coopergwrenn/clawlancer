@@ -2059,6 +2059,98 @@ html.lenis body {
   transition: opacity 0.15s ease-out;
 }
 
+/* ────────────────────────────────────────────────────────────────── */
+/* CHANNEL CARD SECONDARY PILL — small glass button inside iMessage   */
+/* ────────────────────────────────────────────────────────────────── */
+/*
+ * Used for the "+ save our contact first (recommended)" secondary
+ * action inside the iMessage card. Previously plain text that read
+ * as scroll-past content; now a small glass pill that signals
+ * tappability without competing with the primary CTA above it.
+ *
+ * Recipe: scaled-down variant of .liquid-glass-pill (the SpotsCounter
+ * pill on the landing hero). Same glass-on-glass nested treatment:
+ * sheen gradient + backdrop-filter blur + 4-layer box-shadow stack.
+ * Sized at 28px height (vs 40px for .liquid-glass-pill) so it stays
+ * subordinate to the primary "iMessage row" CTA.
+ *
+ * Color: SUBTLE_INK (#9a9892). Muted gray text per the earlier
+ * decision to not use coral on this row. The pill container provides
+ * the tappability signal; the color stays quiet.
+ *
+ * (recommended) word lives INSIDE the pill at lighter opacity so the
+ * whole thing reads as one button. Decision tradeoff: V2 (trailer
+ * outside the pill) was rejected as visually orphaned — the trailing
+ * footnote next to a button felt like an annotation rather than
+ * part of the same action.
+ *
+ * Defined AFTER .channel-card-secondary-link so the pill's
+ * `display: inline-flex` overrides the link's `display: block` via
+ * source-order cascade. Both classes coexist on the same <a> — the
+ * link class is preserved so the existing :has() card-surface hover
+ * cascades (lines 1873, 1885, 1891) still fire when the pill is
+ * hovered.
+ */
+.channel-card-secondary-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: linear-gradient(-75deg,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.22),
+    rgba(255, 255, 255, 0.06));
+  -webkit-backdrop-filter: blur(3px);
+          backdrop-filter: blur(3px);
+  border: 0;
+  border-radius: 9999px;
+  box-shadow:
+    rgba(0, 0, 0, 0.04) 0px 1px 1px 0px inset,
+    rgba(255, 255, 255, 0.45) 0px -1px 1px 0px inset,
+    rgba(0, 0, 0, 0.10) 0px 2px 2px -1px,
+    rgba(255, 255, 255, 0.20) 0px 0px 1px 2px inset;
+  color: #9a9892;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: -0.1px;
+  white-space: nowrap;
+  text-decoration: none;
+  transition:
+    background-color 0.3s cubic-bezier(0.25, 1, 0.5, 1),
+    box-shadow 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.channel-card-secondary-pill:hover {
+  background-color: rgba(255, 255, 255, 0.4);
+  box-shadow:
+    rgba(0, 0, 0, 0.04) 0px 1px 1px 0px inset,
+    rgba(255, 255, 255, 0.55) 0px -1px 1px 0px inset,
+    rgba(0, 0, 0, 0.12) 0px 1.5px 1.5px -1px,
+    rgba(255, 255, 255, 0.30) 0px 0px 1px 2px inset;
+}
+
+.channel-card-secondary-pill .pill-plus {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.channel-card-secondary-pill .pill-label {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.channel-card-secondary-pill .pill-trail {
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1;
+  opacity: 0.7;
+}
+
 /* Section label */
 .channel-section-label {
   font-family: var(--font-sans, system-ui), system-ui, sans-serif;
