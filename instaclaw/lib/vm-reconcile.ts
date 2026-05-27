@@ -44,6 +44,8 @@ import {
   GBRAIN_SOUL_ROUTING_V1_REQUIRED_SENTINELS,
   GBRAIN_SOUL_ROUTING_V1_START_ANCHOR,
   GBRAIN_SOUL_ROUTING_V1_END_ANCHOR,
+  BASE_DEFI_ROUTING_V1_AGENTS_BLOCK,
+  BASE_DEFI_ROUTING_V1_INSERT_BEFORE_HEADER,
   WORKSPACE_SOUL_MD_V2,
   WORKSPACE_AGENTS_MD_V2,
   WORKSPACE_TOOLS_MD_V2,
@@ -80,6 +82,11 @@ import {
   onVmSkillPath,
   currentSourceMode as currentBaseSkillsSourceMode,
 } from "./base-skills-registry";
+import {
+  buildToolRouterMcpConfig,
+  getToolRouterEnv,
+  type ToolRouterTransport,
+} from "./toolrouter-client";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -263,7 +270,14 @@ const GBRAIN_INSTALL_TIMEOUT_MS = 240_000;
 //                  (commit 9201a3fc) + EnvironmentFile architecture
 //                  (commit c9d3c5b1) for the full "clean 3rd bake"
 //                  trio.
-export const SECRET_VERSION = 4;
+// v5 (2026-05-27): TOOLROUTER_API_KEY enrollment. ToolRouter v1 ships per
+//                   docs/prd/toolrouter-integration.md §7.1+§7.2. Cooper
+//                   self-serve-creates the key at toolrouter.world and
+//                   sets it in Vercel; reconciler picks it up on next
+//                   tick. With this bump, caught-up VMs (sv=4) re-enter
+//                   the queue and receive TOOLROUTER_API_KEY via
+//                   stepEnvVarPush within ~30 min.
+export const SECRET_VERSION = 5;
 
 // ── Result types ──
 
@@ -643,6 +657,16 @@ export async function reconcileVM(
     currentStep = "edgeos-api-key";
     await stepEdgeOSApiKey(ssh, vm, result, dryRun, strict);
 
+    // ── Step 1f: ToolRouter MCP wiring (universal) ──
+    // Writes mcp.servers.toolrouter to ~/.openclaw/openclaw.json so the
+    // agent can call premium SaaS tools (Exa search, Manus research,
+    // Browserbase, AgentMail, StableTravel) via Andy's hosted MCP. v1
+    // uses the platform API key shared across the fleet. Warnings-only
+    // on failure per Rule 39 — ToolRouter is optional paid SaaS, never
+    // blocks cv-bump. PRD: docs/prd/toolrouter-integration.md §7.3.
+    currentStep = "toolrouter";
+    await stepToolRouter(ssh, vm, result, dryRun, strict);
+
     // ── Step 2: Files ──
     currentStep = "files";
     await stepFiles(ssh, vm, manifest, result, dryRun);
@@ -881,6 +905,20 @@ export async function reconcileVM(
     // and the addendum §1 for the three-tier freshness story.
     currentStep = "base-skills-deploy";
     await stepBaseSkills(ssh, vm, result, dryRun);
+
+    // ── Step 8f7: Base DeFi routing block into AGENTS.md ──
+    // Marker-guarded surgical insert of BASE_DEFI_ROUTING_V1 — teaches the
+    // agent which Base ecosystem skill plugin maps to which user intent,
+    // plus routing priority, cost model, and confirmation pattern. Mirrors
+    // stepDeployGbrainSoulProtocol's structure (Python in-place insert,
+    // Rule 22 backup, atomic write, marker-verify), but per Rule 39 all
+    // failures push to result.warnings — the agent works without this
+    // block via skill description-match (proven 2026-05-27 Morpho deposit).
+    //
+    // Must run AFTER stepBaseSkills so the skills the routing block
+    // references are already on disk when the agent reads it.
+    currentStep = "base-defi-routing-deploy";
+    await stepDeployBaseDefiRouting(ssh, result, dryRun);
 
     // ── Step 8g–8m: Deploy heals ──
     // configureOpenClaw silently dropped these on a non-trivial fraction of
@@ -1471,6 +1509,22 @@ export const SECRET_ENV_VAR_SOURCES: SecretEnvVarSource[] = [
   // budget 12s → 120s eliminating 8-plugin cold-boot false-negatives),
   // the next bake runs zero-manual-intervention.
   { envKey: "OPENAI_API_KEY", label: "OpenAI API key (gbrain text-embedding-3-large + ChatGPT OAuth)" },
+  // 2026-05-27: TOOLROUTER_API_KEY enrollment (v1 platform key shared
+  // across fleet). Cooper self-serve-signs-up at toolrouter.world →
+  // creates an API key → `printf 'tr_...' | npx vercel env add
+  // TOOLROUTER_API_KEY production`. Reconciler distributes on next cycle.
+  //
+  // v1.5 (when Andy ships programmatic ToolRouter account-creation API):
+  // each user who connects World ID + AgentBook on the InstaClaw
+  // dashboard gets their own provisioned ToolRouter account + key. The
+  // per-VM key source branches in stepToolRouter — see Task C for the
+  // implementation comment. Marketing hook: "Connect World ID to unlock
+  // free premium search credits for your agent."
+  //
+  // Universal (no partnerGate): every VM gets the key. stepToolRouter
+  // gates on whether the env var is actually set, so VMs run cleanly
+  // even before the key is deployed.
+  { envKey: "TOOLROUTER_API_KEY", label: "ToolRouter platform API key (v1: fleet-shared; v1.5: per-user override)" },
 ];
 
 // Bash payload that does the write. Assembled as a string array so there's no
@@ -9509,6 +9563,197 @@ out({"status": "ok", "inserted_at": inserted_at, "size_before": len(original), "
     return;
   }
   result.errors.push(`gbrain-soul-protocol: unexpected status=${parsed.status}`);
+  return;
+}
+
+/**
+ * stepDeployBaseDefiRouting — Base MCP v1.1.
+ *
+ * Inserts the BASE_DEFI_ROUTING_V1 block into AGENTS.md on existing V2 VMs
+ * that migrated before the block was added to WORKSPACE_AGENTS_MD_V2. Mirrors
+ * stepDeployGbrainSoulProtocol structurally (marker-guarded Python in-place
+ * insert with Rule 22 backup + atomic write + marker-verify) but diverges
+ * in two deliberate ways:
+ *
+ *   1. NO GATES (universal): unlike gbrain's triple-gate (partner allowlist
+ *      + env var + service active), every V2 VM benefits from the routing
+ *      block regardless of partner/tier/service state. The routing block
+ *      teaches the agent which Base ecosystem skill plugin maps to which
+ *      intent — that is universal value for any user who might say "lend my
+ *      USDC on morpho" or "swap to ETH on aerodrome" on Telegram.
+ *
+ *   2. Per CLAUDE.md Rule 39, all failure modes push to result.warnings,
+ *      NOT result.errors. The agent works without the routing block — proven
+ *      2026-05-27 when vm-1043's agent found base-morpho via the SKILL.md
+ *      `description` field, queried Morpho's GraphQL, and executed a
+ *      successful $4.99 USDC deposit via `bankr send` despite the routing
+ *      block not being on disk. The block is a UX optimizer (cross-DEX quote
+ *      guidance, signing-path direction, routing priority, cost model,
+ *      confirmation pattern) — not load-bearing.
+ *
+ * Idempotency: BASE_DEFI_ROUTING_V1 marker grep. Skip if present.
+ *
+ * Anchor: `## Recurring Tasks (Crons) — list first, never duplicate` — a
+ * section heading verified universal across all 4 V2 AGENTS.md files I
+ * sampled (vm-1043, vm-953, vm-777, vm-788). The block lands BETWEEN the
+ * preceding section (`## NEVER IMPROVISE SKILLS`) and Recurring Tasks. If
+ * the anchor is missing (V1 AGENTS.md, hand-edited file), the Python
+ * fallback appends to EOF — never destructive, never overwrites.
+ *
+ * Source of the inserted block: lib/workspace-templates-v2.ts
+ * BASE_DEFI_ROUTING_V1_AGENTS_BLOCK constant. ~1.4KB of markdown including
+ * intent→skill table for 6 protocols, routing priority, cost model, and
+ * confirmation pattern.
+ *
+ * Future change: if the routing-block content needs to be REPLACED rather
+ * than added-once, bump to BASE_DEFI_ROUTING_V2 + write a sibling step that
+ * uses the replace-by-anchor pattern from stepDeployGbrainSoulRouting (v106).
+ */
+async function stepDeployBaseDefiRouting(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // ── Marker probe ──
+  const check = await ssh.execCommand(
+    `grep -c "BASE_DEFI_ROUTING_V1" ~/.openclaw/workspace/AGENTS.md 2>/dev/null || echo 0`,
+  );
+  const present = parseInt((check.stdout || "0").trim(), 10) > 0;
+  if (present) {
+    result.alreadyCorrect.push("base-defi-routing (V1 marker present)");
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push(
+      `[dry-run] base-defi-routing: would insert BASE_DEFI_ROUTING_V1 block before "${BASE_DEFI_ROUTING_V1_INSERT_BEFORE_HEADER}" in AGENTS.md`,
+    );
+    return;
+  }
+
+  // ── Python in-place insert with backup + atomic write + verify ──
+  const cfg = JSON.stringify({
+    agents_path: "~/.openclaw/workspace/AGENTS.md",
+    backup_path: `~/.openclaw/backups/v1-base-defi-routing-${Date.now()}/AGENTS.md`,
+    block: BASE_DEFI_ROUTING_V1_AGENTS_BLOCK,
+    insert_before_header: BASE_DEFI_ROUTING_V1_INSERT_BEFORE_HEADER,
+    marker: "BASE_DEFI_ROUTING_V1",
+  });
+  const PATCH_PY = `
+import json, os, sys
+
+cfg = json.loads(sys.stdin.read())
+path = os.path.expanduser(cfg["agents_path"])
+
+def out(d):
+    print(json.dumps(d))
+    sys.exit(0)
+
+if not os.path.exists(path):
+    out({"status": "missing"})
+
+with open(path) as f:
+    content = f.read()
+original = content
+
+# Idempotency: skip if marker already present (defense in depth — caller
+# also checks, but a race between two reconcile runs could bypass that).
+if cfg["marker"] in content:
+    out({"status": "already-present"})
+
+# Rule 22 backup BEFORE any modification.
+bp = os.path.expanduser(cfg["backup_path"])
+os.makedirs(os.path.dirname(bp), exist_ok=True)
+with open(bp, "w") as f:
+    f.write(original)
+
+# Locate insertion point: line equal to the header. If missing, append
+# to EOF as a fallback — never destructive, never overwrite.
+header = cfg["insert_before_header"]
+lines = content.split("\\n")
+idx = -1
+for i, line in enumerate(lines):
+    if line.strip() == header.strip():
+        idx = i
+        break
+
+block = cfg["block"]
+if idx >= 0:
+    # Insert block + a trailing "---\\n" separator before the header so the
+    # block reads as its own section (matches the gbrain pattern).
+    new_content = "\\n".join(lines[:idx]) + "\\n" + block + "\\n\\n---\\n\\n" + "\\n".join(lines[idx:])
+    inserted_at = "before-header"
+else:
+    new_content = content.rstrip() + "\\n\\n---\\n\\n" + block + "\\n"
+    inserted_at = "appended-eof"
+
+# Atomic write per Rule 22.
+tmp = path + ".tmp"
+with open(tmp, "w") as f:
+    f.write(new_content)
+os.replace(tmp, path)
+
+# Verify marker is now present.
+with open(path) as f:
+    final = f.read()
+if cfg["marker"] not in final:
+    out({"status": "verify-failed", "inserted_at": inserted_at})
+
+out({"status": "ok", "inserted_at": inserted_at, "size_before": len(original), "size_after": len(final)})
+`;
+
+  const scriptB64 = Buffer.from(PATCH_PY, "utf-8").toString("base64");
+  const cfgB64 = Buffer.from(cfg, "utf-8").toString("base64");
+  const cmd = `echo '${cfgB64}' | base64 -d | python3 <(echo '${scriptB64}' | base64 -d)`;
+
+  const r = await ssh.execCommand(cmd, { execOptions: { timeout: 30_000 } });
+  if (r.code !== 0) {
+    // Rule 39: warnings, not errors. Agent works without the block.
+    result.warnings.push(
+      `base-defi-routing python failed rc=${r.code}: ${(r.stderr || r.stdout).slice(0, 200)}`,
+    );
+    return;
+  }
+
+  const out = (r.stdout || "").split("\n").map((l: string) => l.trim()).filter(Boolean);
+  const lastLine = out[out.length - 1] ?? "";
+  let parsed2: { status?: string; inserted_at?: string; size_before?: number; size_after?: number } = {};
+  try {
+    parsed2 = JSON.parse(lastLine);
+  } catch {
+    result.warnings.push(
+      `base-defi-routing: could not parse python output: ${lastLine.slice(0, 200)}`,
+    );
+    return;
+  }
+
+  if (parsed2.status === "missing") {
+    // V1 VM (no AGENTS.md yet) or pre-bootstrap VM. Wait for next cycle —
+    // stepWorkspaceIntegrity / stepMigrateSoulV2 / configureOpenClaw will
+    // create AGENTS.md and the next reconcile picks this back up.
+    result.warnings.push(
+      "base-defi-routing: AGENTS.md missing (V1 / pre-bootstrap); will retry next cycle",
+    );
+    return;
+  }
+  if (parsed2.status === "already-present") {
+    result.alreadyCorrect.push("base-defi-routing (marker found by python)");
+    return;
+  }
+  if (parsed2.status === "verify-failed") {
+    result.warnings.push(
+      `base-defi-routing: verify-after-write failed (inserted_at=${parsed2.inserted_at})`,
+    );
+    return;
+  }
+  if (parsed2.status === "ok") {
+    result.fixed.push(
+      `base-defi-routing: inserted block ${parsed2.inserted_at} (AGENTS.md ${parsed2.size_before} → ${parsed2.size_after} bytes)`,
+    );
+    return;
+  }
+  // Rule 39: warnings, not errors. The routing block is non-load-bearing.
+  result.warnings.push(`base-defi-routing: unexpected status=${parsed2.status}`);
 }
 
 /**

@@ -161,6 +161,64 @@ When you learn a stable fact about your owner worth recalling next session (thei
 // down to the next `## Task Completion Notifications` anchor.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Base DeFi routing — v1 marker pair + block content.
+//
+// Inserted into AGENTS.md to teach the agent which Base ecosystem skill plugin
+// maps to which user intent (Morpho lending, Aerodrome swaps, Avantis perps,
+// etc.) plus the cross-cutting rules: cross-DEX quote comparison, routing
+// priority between `bankr` CLI and protocol-specific skills, cost model, and
+// the confirmation pattern for non-trivial onchain actions.
+//
+// Lives in this file (not as inline content in WORKSPACE_AGENTS_MD_V2) so
+// stepDeployBaseDefiRouting can deploy the SAME canonical content to existing
+// V2 VMs that were migrated before this block was added to the template.
+// Single source of truth: WORKSPACE_AGENTS_MD_V2 interpolates the constant;
+// the reconciler step inserts the constant. No drift possible.
+
+export const BASE_DEFI_ROUTING_V1_BEGIN_MARKER = "<!-- BASE_DEFI_ROUTING_V1 -->";
+export const BASE_DEFI_ROUTING_V1_END_MARKER = "<!-- /BASE_DEFI_ROUTING_V1 -->";
+
+export const BASE_DEFI_ROUTING_V1_AGENTS_BLOCK = `<!-- BASE_DEFI_ROUTING_V1 -->
+## Base DeFi (Base mainnet ecosystem)
+
+For onchain DeFi actions on Base, read the matching skill file then execute via \`bankr\` CLI. Always cross-quote DEXes before non-trivial swaps.
+
+| Intent | Skill |
+|---|---|
+| Lend USDC / view top vaults / check positions | \`~/.openclaw/skills/base-morpho/SKILL.md\` |
+| Supply, borrow, manage collateral | \`~/.openclaw/skills/base-moonwell/SKILL.md\` |
+| Swap, LP, stake for AERO emissions | \`~/.openclaw/skills/base-aerodrome/SKILL.md\` |
+| Uniswap swaps + concentrated-liquidity (v3) | \`~/.openclaw/skills/base-uniswap/SKILL.md\` |
+| Perps (leveraged, USDC margin) | \`~/.openclaw/skills/base-avantis/SKILL.md\` |
+| Virtuals agent tokens + \\$INSTACLAW | \`~/.openclaw/skills/base-virtuals/SKILL.md\` |
+| Common-pair swap, token launch | \`bankr\` CLI (faster than DEX skills) |
+
+**Routing priority:** for simple token operations (USDC↔ETH swap, transfer to address, token launch), use \`bankr\` CLI directly — it's faster than composing the DEX skills. For protocol-specific operations (Morpho deposit, Aerodrome LP, Avantis perps, Moonwell supply/borrow), use the matching skill plugin which documents the exact read/prepare endpoints + signing path.
+
+**Cost model:** Base DeFi operations are gas-only. There is no per-call platform fee from InstaClaw or Bankr on these flows. Gas is sponsored via the Bankr partner dashboard; the user does not see a gas line item. If a \`bankr\` call returns 502 from the signing service, the sponsorship balance may be depleted — surface that to the user, do not silently retry.
+
+**Confirmation pattern:** for any non-trivial onchain action (anything that moves real value, opens a leveraged position, or commits funds to a vault), present the plan to the user FIRST and wait for explicit confirmation before signing. Plan = intent + protocol + amount + expected outcome (APY, slippage, leverage, etc.). Don't make autonomous moves on user funds.
+
+Read the skill on demand — they're not in your bootstrap context. Each documents read endpoints (state discovery), prepare endpoints (unsigned calldata), and the signing path via \`bankr\`. Reply with tx hashes + a https://basescan.org/tx/0x... link so the user can verify the transaction onchain.
+<!-- /BASE_DEFI_ROUTING_V1 -->`;
+
+/**
+ * The header that stepDeployBaseDefiRouting anchors against for insertion.
+ *
+ * Verified universal on all V2 AGENTS.md files (vm-1043, vm-953, vm-777,
+ * vm-788 all have it at line ~86 in their AGENTS.md). The current
+ * WORKSPACE_AGENTS_MD_V2 template also has it. Stable across the V2 trim
+ * canary (2026-05-12) and post-trim variations.
+ *
+ * The Python in-place insert finds this exact header line and inserts the
+ * BASE_DEFI_ROUTING_V1 block immediately BEFORE it. Falls back to EOF
+ * append if the anchor is missing (defensive — never destructive).
+ */
+export const BASE_DEFI_ROUTING_V1_INSERT_BEFORE_HEADER = "## Recurring Tasks (Crons) — list first, never duplicate";
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const GBRAIN_SOUL_ROUTING_V1_BEGIN_MARKER = "<!-- GBRAIN_SOUL_ROUTING_V1 -->";
 export const GBRAIN_SOUL_ROUTING_V1_END_MARKER = "<!-- /GBRAIN_SOUL_ROUTING_V1 -->";
 
@@ -483,23 +541,7 @@ Your **primary** EVM wallet is Bankr. Most of the time it works. Sometimes (main
 
 ---
 
-<!-- BASE_DEFI_ROUTING_V1 -->
-## Base DeFi (Base mainnet ecosystem)
-
-For onchain DeFi actions on Base, read the matching skill file then execute via \`bankr\` CLI (or Sub Account post-v1.5). Always cross-quote DEXes before non-trivial swaps.
-
-| Intent | Skill |
-|---|---|
-| Lend USDC / view top vaults / check positions | \`~/.openclaw/skills/base-morpho/SKILL.md\` |
-| Supply, borrow, manage collateral | \`~/.openclaw/skills/base-moonwell/SKILL.md\` |
-| Swap, LP, stake for AERO emissions | \`~/.openclaw/skills/base-aerodrome/SKILL.md\` |
-| Uniswap swaps + concentrated-liquidity (v3) | \`~/.openclaw/skills/base-uniswap/SKILL.md\` |
-| Perps (leveraged, USDC margin) | \`~/.openclaw/skills/base-avantis/SKILL.md\` |
-| Virtuals agent tokens + \\$INSTACLAW | \`~/.openclaw/skills/base-virtuals/SKILL.md\` |
-| Common-pair swap, token launch | \`bankr\` CLI (faster than DEX skills) |
-
-Read the skill on demand — they're not in your bootstrap context. Each documents read endpoints (state discovery), prepare endpoints (unsigned calldata), and the signing path. Reply with tx hashes + a https://basescan.org/tx/0x... link.
-<!-- /BASE_DEFI_ROUTING_V1 -->
+${BASE_DEFI_ROUTING_V1_AGENTS_BLOCK}
 
 ---
 
