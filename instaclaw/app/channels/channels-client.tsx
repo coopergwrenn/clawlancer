@@ -117,6 +117,24 @@ export function ChannelsClient() {
             >
               i&apos;ll meet you there.
             </span>
+            <br />
+            {/* Tertiary line: quiet reassurance answering "is this permanent?"
+                without sounding like a disclaimer. Smaller / lighter than the
+                two lines above so it reads as a "by the way" annotation, not a
+                third promise. Placement matters — sits BEFORE the cards so the
+                hesitating user reads it AT the moment of doubt, not after
+                they've already committed/bounced. */}
+            <span
+              style={{
+                fontSize: 13,
+                color: SUBTLE_INK,
+                fontWeight: 400,
+                display: "inline-block",
+                marginTop: 6,
+              }}
+            >
+              start with one. add more anytime.
+            </span>
           </p>
 
           {/* ─── ACTIVE: iMessage (two-action card) ───────────────── */}
