@@ -532,21 +532,28 @@ function DiscordIcon({ size = 26 }: { size?: number }) {
     >
       <svg viewBox="0 0 60 60" width={size} height={size} style={{ display: "block" }}>
         <rect width="60" height="60" rx="15" fill="#5865F2" />
-        {/* Mascot path with bbox-center offset baked into the absolute
-            M commands. Same methodology as the Telegram plane:
-            browser SVGGraphicsElement.getBBox() on the original path
-            returned center (31.74, 27.65) — biased upper-right of
-            viewBox center. Required shift to (30, 30): dx=-1.74,
-            dy=+2.35. Only the two absolute moveTo commands need
-            translation (relative c/a/l/m commands carry their own
-            deltas):
-              M42.07 18.4   → M40.33 20.75   (mascot body start)
-              M24.74 32.32  → M23.00 34.67   (left eye start)
-            The right eye uses a relative `m9.74 0` so no offset
-            needed.
-            Verified post-bake getBBox center = (30.00, 30.00). */}
+        {/* Mascot path with EYE-PICKED offset baked into the absolute
+            M commands. Earlier bbox-center math (commit 4236014a)
+            shipped at (-1.74, +2.35) which Cooper read as still
+            right-biased on prod. Re-tested by rendering a 9x9 grid
+            at actual 30px in real card mocks + a focused 5x3 at
+            100px with crosshair overlay.
+
+            Eye-picked at (-3, +2). Mascot's eyes land on the
+            horizontal crosshair; horns extend slightly upper-left;
+            body+chin extend slightly lower-right. Balanced diagonal
+            composition.
+
+            Lesson from earlier attempts: for asymmetric shapes
+            (this mascot has a wider head than body), geometric
+            bbox center isn't optical center. Eye-test at render
+            size wins.
+
+            Bake (-3, +2) into the two absolute moveTo commands:
+              original M 42.07 18.4  → M 39.07 20.4
+              original M 24.74 32.32 → M 21.74 34.32 */}
         <path
-          d="M40.33 20.75a23.6 23.6 0 0 0-5.95-1.85.09.09 0 0 0-.1.04c-.26.46-.55 1.05-.74 1.52a21.86 21.86 0 0 0-6.56 0c-.2-.48-.49-1.06-.76-1.52a.09.09 0 0 0-.1-.04 23.5 23.5 0 0 0-5.95 1.85.08.08 0 0 0-.04.03c-3.8 5.66-4.84 11.18-4.33 16.63 0 .03.02.05.04.07a23.7 23.7 0 0 0 7.16 3.62.09.09 0 0 0 .1-.03 17 17 0 0 0 1.47-2.39.09.09 0 0 0-.05-.12 15.6 15.6 0 0 1-2.23-1.06.09.09 0 0 1-.01-.15c.15-.11.3-.23.44-.35a.09.09 0 0 1 .09-.01c4.68 2.14 9.74 2.14 14.36 0a.09.09 0 0 1 .09.01c.14.12.29.24.45.35a.09.09 0 0 1-.01.15c-.71.42-1.46.78-2.24 1.06a.09.09 0 0 0-.05.12c.43.83.93 1.62 1.47 2.39a.09.09 0 0 0 .1.03 23.6 23.6 0 0 0 7.17-3.62.09.09 0 0 0 .04-.07c.61-6.31-1.02-11.78-4.34-16.63a.07.07 0 0 0-.04-.03zM23.00 34.67c-1.44 0-2.63-1.33-2.63-2.96 0-1.63 1.17-2.96 2.63-2.96 1.48 0 2.66 1.34 2.63 2.96 0 1.63-1.17 2.96-2.63 2.96zm9.74 0c-1.44 0-2.63-1.33-2.63-2.96 0-1.63 1.17-2.96 2.63-2.96 1.48 0 2.66 1.34 2.63 2.96 0 1.63-1.16 2.96-2.63 2.96z"
+          d="M39.07 20.4a23.6 23.6 0 0 0-5.95-1.85.09.09 0 0 0-.1.04c-.26.46-.55 1.05-.74 1.52a21.86 21.86 0 0 0-6.56 0c-.2-.48-.49-1.06-.76-1.52a.09.09 0 0 0-.1-.04 23.5 23.5 0 0 0-5.95 1.85.08.08 0 0 0-.04.03c-3.8 5.66-4.84 11.18-4.33 16.63 0 .03.02.05.04.07a23.7 23.7 0 0 0 7.16 3.62.09.09 0 0 0 .1-.03 17 17 0 0 0 1.47-2.39.09.09 0 0 0-.05-.12 15.6 15.6 0 0 1-2.23-1.06.09.09 0 0 1-.01-.15c.15-.11.3-.23.44-.35a.09.09 0 0 1 .09-.01c4.68 2.14 9.74 2.14 14.36 0a.09.09 0 0 1 .09.01c.14.12.29.24.45.35a.09.09 0 0 1-.01.15c-.71.42-1.46.78-2.24 1.06a.09.09 0 0 0-.05.12c.43.83.93 1.62 1.47 2.39a.09.09 0 0 0 .1.03 23.6 23.6 0 0 0 7.17-3.62.09.09 0 0 0 .04-.07c.61-6.31-1.02-11.78-4.34-16.63a.07.07 0 0 0-.04-.03zM21.74 34.32c-1.44 0-2.63-1.33-2.63-2.96 0-1.63 1.17-2.96 2.63-2.96 1.48 0 2.66 1.34 2.63 2.96 0 1.63-1.17 2.96-2.63 2.96zm9.74 0c-1.44 0-2.63-1.33-2.63-2.96 0-1.63 1.17-2.96 2.63-2.96 1.48 0 2.66 1.34 2.63 2.96 0 1.63-1.16 2.96-2.63 2.96z"
           fill="#ffffff"
         />
       </svg>
@@ -569,34 +576,33 @@ function SlackIcon({ size = 26 }: { size?: number }) {
       }}
     >
       <svg viewBox="0 0 60 60" width={size} height={size} style={{ display: "block" }}>
-        {/* Slack hash — 4 colored rounded blocks with x-shift baked
-            into each rect. Why baked vs g-transform: same approach as
-            Telegram/Discord — keeps offsets in the data, no wrapper.
+        {/* Slack hash — EYE-PICKED offset (dx=-0.5, dy=-0.5) baked into
+            each rect. Earlier shipped (-1.5, 0) overcorrected — Cooper
+            read it as down-and-left on prod. Re-tested via 7x7 grid
+            of dx/dy candidates at 30px in real card mocks + 4x4
+            focused at 100px with crosshair.
 
-            getBBox() returns geometric center (30, 30) — but the right
-            horizontals are WIDER than the left (w=16 vs w=10), so the
-            area-weighted visual centroid is at (30.72, 30). That math
-            suggests dx=-0.72 left, but at 26px render that's sub-pixel
-            and barely visible.
+            (-0.5, -0.5) sits the hash centered on the crosshair
+            intersection with balanced top/bottom and modest
+            compensation for the wider-right bars (yellow w=16,
+            green w=16 vs red w=10, blue w=10 on left).
 
-            Visual sweep at 26px next to iMessage reference: -1.5 reads
-            as balanced; -0.72 indistinguishable from no shift; -2.5
-            overshoots. Picked -1.5 — visible compensation for the
-            wider-right asymmetry, doesn't push the hash into the left
-            edge of the squircle.
+            Earlier -1.5 shift was math-derived "compensate for visual
+            centroid bias" applied too aggressively. Smaller -0.5
+            preserves geometric balance while nudging visual mass
+            toward icon center.
 
-            All x values shifted by -1.5:
-              11   → 9.5    (left horizontal bars)
-              22.5 → 21     (left vertical bars)
-              33   → 31.5   (right horizontals & verticals) */}
-        <rect x="9.5" y="22" width="10" height="4.2" rx="2.1" fill="#E01E5A" />
-        <rect x="21" y="10.5" width="4.2" height="10" rx="2.1" fill="#E01E5A" />
-        <rect x="31.5" y="22" width="16" height="4.2" rx="2.1" fill="#ECB22E" />
-        <rect x="31.5" y="10.5" width="4.2" height="10" rx="2.1" fill="#ECB22E" />
-        <rect x="9.5" y="33.8" width="10" height="4.2" rx="2.1" fill="#36C5F0" />
-        <rect x="21" y="39.5" width="4.2" height="10" rx="2.1" fill="#36C5F0" />
-        <rect x="31.5" y="33.8" width="16" height="4.2" rx="2.1" fill="#2EB67D" />
-        <rect x="31.5" y="39.5" width="4.2" height="10" rx="2.1" fill="#2EB67D" />
+            All x and y shifted by -0.5 from original:
+              x: 11 → 10.5  /  22.5 → 22  /  33 → 32.5
+              y: 22 → 21.5  /  10.5 → 10  /  33.8 → 33.3  /  39.5 → 39 */}
+        <rect x="10.5" y="21.5" width="10" height="4.2" rx="2.1" fill="#E01E5A" />
+        <rect x="22" y="10" width="4.2" height="10" rx="2.1" fill="#E01E5A" />
+        <rect x="32.5" y="21.5" width="16" height="4.2" rx="2.1" fill="#ECB22E" />
+        <rect x="32.5" y="10" width="4.2" height="10" rx="2.1" fill="#ECB22E" />
+        <rect x="10.5" y="33.3" width="10" height="4.2" rx="2.1" fill="#36C5F0" />
+        <rect x="22" y="39" width="4.2" height="10" rx="2.1" fill="#36C5F0" />
+        <rect x="32.5" y="33.3" width="16" height="4.2" rx="2.1" fill="#2EB67D" />
+        <rect x="32.5" y="39" width="4.2" height="10" rx="2.1" fill="#2EB67D" />
       </svg>
     </span>
   );
