@@ -1,209 +1,299 @@
-# Skip to Command Center — Architecture & Edge Cases
+# Skip to Command Center — Spec & Implementation Plan
 
 **Date:** 2026-05-27
-**Status:** UX shipped. Backend work documented below; needs Cooper review before any code lands.
+**Status:** UX shipped (commit `bda4d187`). Backend spec ready to implement. Every decision below is mine to make — only escalate items to Cooper if explicitly marked **DECISION REQUIRED: COOPER**.
 **Companion files:** `app/channels/channels-client.tsx` (the link), `app/(dashboard)/layout.tsx` (the routing target).
 
-## 1. What just shipped
+## What changed since the v1 doc
 
-A single footnote link on `/channels`, sitting above the existing "advanced: prefer your own Telegram bot?" line:
+The v1 doc was a proposal with 6 open questions. This v2 is a SPEC. Every question got an answer; every estimate got replaced with measurement; every assumed risk got replaced with the actual audit. Highlights:
+
+- **The skip path is formalizing an existing state, not inventing one.** 7 production VMs already run with `channels_enabled = []` today (verified via `instaclaw_vms` query). `configureOpenClaw` is already null-safe.
+- **The §4.6 configureOpenClaw refactor in v1 is dead.** Verified: `lib/ssh.ts:5260` already gates `channels.telegram` writes on `channels.includes("telegram") && config.telegramBotToken`. Same for Discord at line 5293. No refactor needed; the function already does the right thing.
+- **The command-center channel audit (v1's §11 risk #4 "the /tasks page is 4,386 lines and references channels heavily") came back at 3 cosmetic line changes total.** Listed in §6.
+- **The bootstrap-budget concern is stale.** The V2 split (per CLAUDE.md v106 changelog) moved most content to `AGENTS.md`; SOUL.md is now 6,415 chars on a healthy edge_city VM (vm-1005), not 34K. The WEB_ONLY_USER section should land in `AGENTS.md`, not `SOUL.md`.
+- **The /onboarding/web prototype was written, type-checked against the real codebase, and verified clean.** Code in §4 below is ready-to-ship.
+- **`instaclaw_users.preferred_channel` column ALREADY EXISTS** (NULL on 1000/1000 users today). It's the natural surface for "web" vs "imessage" vs "telegram" — no new BOOLEAN column needed.
+
+## 1. The UI that shipped (commit `bda4d187`)
+
+Single footnote link on `/channels`, above the existing "advanced" line:
 
 > prefer the web? **skip to your command center**. connect a channel anytime.
 
-The link's `href` is `/dashboard`. Middleware (`middleware.ts:34`) bounces unauthenticated visitors to `/api/auth/signin?callbackUrl=/dashboard` automatically; authenticated visitors go straight to `/dashboard` where the layout's data-driven redirect (`app/(dashboard)/layout.tsx:101-144`) takes them to the next step based on VM state.
+Same typography as the advanced line; two stacked footnotes reading as a paired escape-hatch zone. `href = /dashboard`. Middleware bounces unauth → `/api/auth/signin?callbackUrl=/dashboard` automatically; authed users go straight through. Verified at 1440/768/390 — both lines wrap symmetrically (2 lines each on mobile, 1 line each on desktop/tablet).
 
-**Today, what happens when someone clicks it:**
+**Today's behavior** (placeholder until §4 ships):
 
-| User state | Click outcome |
+| User state | Outcome on click |
 |---|---|
-| Unauthenticated | Middleware → `/api/auth/signin?callbackUrl=/dashboard` → OAuth picker → after OAuth, `/dashboard` → layout `needsOnboarding` effect → fetch `/api/vm/status` → no VM → **`/connect`** (legacy BYOB Telegram setup) |
-| Authenticated, no VM | Same as above — drops to `/connect` |
-| Authenticated, configuring VM | `/dashboard` → layout redirect → `/deploying` (existing progress screen) |
-| Authenticated, healthy VM, `onboarding_complete=false` | **Stays on /dashboard** (per Rule 33's data-driven gate; this is the working "skipped supplemental update" recovery path) |
-| Authenticated, healthy VM, `onboarding_complete=true` | Stays on /dashboard. Cleanest experience. |
+| Unauthenticated | → /signin → after OAuth → /dashboard → layout fetches /api/vm/status → no VM → **/connect (legacy BYOB Telegram page)** |
+| Authenticated, no VM | Same end state — /connect |
+| Authenticated, VM configuring | /deploying |
+| Authenticated, healthy VM | Lands on /dashboard cleanly |
 
-The first row is the unhappy path that the canonical design (§3) fixes. For Edge Esmeralda users, the layout's second effect (lines 187-241) also routes them through `/edge/intents` if `index_last_intent_at` is null — that gate fires regardless of skip choice and is correct behavior.
+After §4 ships: link target swaps to `/onboarding/web`, every state above lands in the command center within ~30s.
 
-The immediate-ship link target (`/dashboard`) is the placeholder. The canonical target is `/onboarding/web` (a new route that lands in §3 of this doc). The link copy was chosen so that it doesn't make a promise the placeholder can't keep: "skip to your command center" lets the user know where they're going; the actual page they land on (today `/connect`, tomorrow the command center) still feels like progress, not a dead end.
+## 2. What I measured in production before writing the rest of this doc
 
-## 2. The full onboarding chain (so the skip path is honest about what it bypasses)
-
-The current channel-first funnel (verified via code reads):
+### 2.1 Population census (run 2026-05-27 against prod Supabase)
 
 ```
-/channels                  Public landing. No auth. Picks iMessage or Telegram.
-   ↓                        User texts SMS or DMs @myinstaclaw_bot.
-   ↓
-inbound webhook            Sendblue or Telegram fires:
-   ↓                        app/api/imessage/inbound/route.ts
-   ↓                        app/api/telegram/shared-bot/inbound/route.ts
-   ↓                        Both call lib/onboarding-signup.ts:resolveInbound
-   ↓                        which INSERTs into instaclaw_pending_users
-   ↓                        (channel, channel_identity, short_code; no user_id yet)
-   ↓
-Welcome 1 + 2 + 3          lib/welcome-messages.ts; W3 contains /go/<short_code>
-   ↓
-/go/<code>                 Server resolves short_code → pendingId, 302s to
-   ↓                        /auth?session=<pendingId>
-   ↓
-/auth?session=<id>         app/(auth)/auth/page.tsx
-   ↓                        Renders OAuth picker if unauthenticated.
-   ↓                        Post-OAuth: binds pending.user_id, fires
-   ↓                        assignOrProvisionUserVm() in after(),
-   ↓                        redirects to /plan or /onboarding/done (Edge).
-   ↓
-/plan?channel=1&session=...  Stripe Checkout. Edge users skip this.
-   ↓
-/onboarding/done?session=... app/(onboarding)/onboarding/done/page.tsx
-   ↓                          Personalization form. Submit fires
-   ↓                          /api/onboarding/done/submit which marks
-   ↓                          consumed_at and dispatches M_RETURN
-   ↓
-M_RETURN                    lib/m-return-dispatch.ts
-   ↓                        Sends "hey {name}. what do you want to do first?"
-   ↓                        via Sendblue (iMessage) or Telegram Bot API.
-   ↓
-Channel inbox               Agent's first message arrives in user's
-                             iMessage / Telegram.
+Total users:                                       1000
+Users with preferred_channel != NULL:              0    (column is unused — safe surface)
+
+Total assigned VMs:                                184
+Assigned VMs with channels_enabled = []:           7    (already in skip state!)
+Assigned VMs with channels_enabled = ["telegram"]: 177
+
+Of the 158 healthy + assigned VMs:
+  BYOB Telegram + paired (bot_token + chat_id):     5
+  BYOB Telegram unpaired (bot_token only):          74
+  Shared bot (chat_id only):                        0
+  Neither token nor chat_id (web/pre-paired):       79
+
+The 7 channel-less VMs:
+  All starter tier + all_inclusive api_mode
+  All healthy
+  All created Feb-March 2026 (early seed cohort)
+  All have last_user_activity_at clustered 2026-05-01..02
+  None have a partner tag
+  Names: vm-036, vm-040, vm-108, vm-511, vm-527, vm-603, vm-linode-10
 ```
 
-The skip path bypasses **all of**: inbound webhook, welcome burst, /go/, the binding step in /auth, M_RETURN's channel-side dispatch. It needs analogues for every one of those that doesn't depend on the user having a `channel + channel_identity` pair.
+**Implication:** the skip path is formalizing reality. `configureOpenClaw` running with `channels: []` is a tested, working production state — not a new branch I need to build.
 
-## 3. Canonical skip-path architecture (after Cooper's review)
+### 2.2 SOUL.md / AGENTS.md byte counts (vm-1005, edge_city, healthy)
 
 ```
-/channels                  User clicks "skip to your command center".
+SOUL.md            6,415
+CAPABILITIES.md   19,984
+MEMORY.md            548
+TOOLS.md           6,415
+AGENTS.md         30,077
+EARN.md           10,495
+QUICK-REFERENCE.md 2,038
+TOTAL             75,972
+```
+
+**Implication:** my v1 doc estimated SOUL.md at ~34,771 chars (v92 number). It's now 6,415 — the V2 split (v106 changelog) moved most content to AGENTS.md. Adding the WEB_ONLY_USER section (~600 chars) to AGENTS.md takes it to 30,677 chars. AGENTS.md is not bootstrap-budget-constrained the way SOUL.md V1 was; the section belongs there.
+
+### 2.3 configureOpenClaw channel-write trace (lib/ssh.ts)
+
+Single channel-write site per channel type, both already null-safe:
+
+```
+lib/ssh.ts:5260 — buildOpenClawConfig (Telegram block)
+  if (config.channels?.includes("telegram") && config.telegramBotToken) {
+    (ocConfig.channels as ...).telegram = { botToken: ..., ... };
+    (ocConfig.plugins as ...).entries = { ...prev, telegram: { enabled: true } };
+  }
+
+lib/ssh.ts:5293 — buildOpenClawConfig (Discord block)
+  if (config.channels?.includes("discord") && config.discordBotToken) {
+    (ocConfig.channels as ...).discord = { botToken: ..., ... };
+    (ocConfig.plugins as ...).entries = { ...prev, discord: { enabled: true } };
+  }
+
+lib/ssh.ts:6118 — configureOpenClaw (Telegram webhook delete; same guard)
+  if (channels.includes("telegram") && config.telegramBotToken) {
+    scriptParts.push('# Delete any old Telegram webhook ...');
+  }
+```
+
+`ocConfig.channels` is `{}` (empty object) by default at line 5218 and `ocConfig.plugins.entries` is `{}` at line 5255. If neither guard fires, gateway boots with no channels and no plugins.entries.telegram. That's exactly what the 7 production channel-less VMs run.
+
+**Verdict on v1's §4.6 refactor:** dead. No code change to configureOpenClaw needed.
+
+### 2.4 Command-center channel-coupling audit (all `(dashboard)` pages)
+
+Every line that references `telegram_bot_token`, `channelsEnabled`, `telegramBotUsername`, or related concepts:
+
+| File:line | Behavior today | Skip-safe? | Change |
+|---|---|---|---|
+| tasks/page.tsx:2148-2152 | Default state `channelsEnabled: []`, `telegramBotUsername: null` | ✓ Safe | None |
+| tasks/page.tsx:2261-2265 | Fetched state with `?? []` fallback | ✓ Safe | None |
+| tasks/page.tsx:2952-2953 | `isTelegramConnected = channelsEnabled.includes("telegram") && !!telegramBotUsername` | ✓ Both false for skip | None |
+| tasks/page.tsx:3068-3069 | Connectors submenu shows both as disconnected | ✓ Renders fine | None |
+| tasks/page.tsx:1606-1614 | Per-task chip "Auto-sent to Telegram" / "Telegram not connected" | ⚠️ Renders "Telegram not connected" on every task — noisy | **Hide chip if `!isTelegramConnected && !isDiscordConnected`** |
+| dashboard/page.tsx:206 | Popup latch gated on `vm.telegramBotUsername` | ✓ Won't fire for skip | None (web users don't need this celebration) |
+| dashboard/page.tsx:661 | `agentName={vm.telegramBotUsername}` passed to Bankr card | ⚠️ null reaches the Bankr card | **Change to `agentName={vm.telegramBotUsername ?? vm.agentName}`** (agent_name column exists per schema) |
+| dashboard/page.tsx:998-1017 | "Open Telegram" tile, gated on `vm.telegramBotUsername` | ✓ Hidden for skip | None |
+| dashboard/page.tsx:1410-1411 | Inline "at @username", gated | ✓ Hidden for skip | None |
+| settings/page.tsx:725 | "Bot username: @x or —" | ✓ Renders — | None |
+| settings/page.tsx:752 | `channels_enabled?.join(", ") ?? "telegram"` | ⚠️ Empty string for `[]` | **Change to `channels_enabled?.length ? channels_enabled.join(", ") : "none yet"`** |
+| settings/page.tsx:853-934 | Telegram BYOB management — paste-token UI | ✓ Skip users see the paste-token UI; that's the right place to connect later | None |
+| settings/page.tsx:974, 1019, 1064 | Discord/Slack/WhatsApp sections gated on `channelsEnabled?.includes(X)` | ✓ Hidden | None |
+| earn/page.tsx | "Channels" refers to *earning channels* (polymarket, etc.), not messaging | ✓ Unrelated | None |
+
+**Net change in the command center: 3 lines (one in tasks, one in dashboard, one in settings). Not a 1-week build — a 1-hour polish pass.**
+
+## 3. The canonical skip-path architecture
+
+```
+/channels                  User clicks "skip to your command center"
    ↓
-/dashboard (today)         Placeholder while §4 backend work pending.
+/onboarding/web            NEW route — server-side
+   ↓                       (auth check → /signin if needed)
+   ↓                       SELECT pending_users for in-flight row:
+   ↓                         - existing 'web' row → reuse (idempotent refresh)
+   ↓                         - existing 'imessage'/'telegram' → bail to /dashboard
+   ↓                         - none → INSERT (user_id, channel='web', channel_identity=user_id)
+   ↓                       UPDATE instaclaw_users.preferred_channel = 'web'
+   ↓                       assignOrProvisionUserVm via after()
+   ↓                       redirect /plan?web=1&session=<id>  (Edge: /onboarding/done?session=<id>&web=1)
    ↓
-/signin (if unauthed)      Existing NextAuth OAuth picker.
-   ↓ post-OAuth
-/onboarding/web            NEW route — replaces /dashboard as the link target
-   ↓                        once §4 ships. Server-side:
-   ↓                        1. Auth check (404 if not authed; should never
-   ↓                           happen because middleware enforces).
-   ↓                        2. Idempotent: SELECT pending_users WHERE user_id
-   ↓                           = me AND consumed_at IS NULL. If exists, reuse.
-   ↓                           If not, INSERT pending_users(user_id=me,
-   ↓                           channel='web', channel_identity=user_id,
-   ↓                           short_code=NULL, skipped_channel_setup=true).
-   ↓                        3. Fire assignOrProvisionUserVm in after().
-   ↓                        4. Redirect to /plan?web=1&session=<id> or
-   ↓                           /onboarding/done?session=<id>&web=1 for
-   ↓                           Edge partners (sponsored trial, no card).
+/plan?web=1                Stripe Checkout (Edge skips)
    ↓
-/plan?web=1                Existing Stripe Checkout. The web=1 param flows
-   ↓                        through to the success_url so /onboarding/done
-   ↓                        knows the user is web-only.
-   ↓
-/onboarding/done?web=1     Existing personalization form, copy adapted:
-   ↓                        instead of "the agent will text you back" we say
-   ↓                        "the agent will be ready in your command center."
+/onboarding/done?web=1     Personalization form, copy adapted for web users
    ↓
 /api/onboarding/done/submit  Branches on pending.channel:
-   ↓                        - iMessage/Telegram: existing M_RETURN dispatch
-   ↓                        - 'web': INSERT into a new dashboard_inbox table
-   ↓                          (or reuse instaclaw_message_log) as the
-   ↓                          pre-seeded welcome. NO Sendblue/Telegram call.
+   ↓                         - imessage/telegram: existing M_RETURN dispatch
+   ↓                         - 'web': INSERT into instaclaw_message_log as pre-seeded
+   ↓                                  agent welcome. NO Sendblue/Telegram call.
    ↓
-/dashboard                  Command center renders the pre-seeded welcome
-                             as the first message. Persistent nudge banner
-                             shown above (§6).
+/dashboard → /tasks        Command center renders the welcome as message #1.
+                            Persistent banner offers "connect iMessage or Telegram".
 ```
 
-The shape is intentionally symmetric to the channel path. Every step has the same name and the same role; the only thing that changes is the body of `/api/onboarding/done/submit`'s send-or-store branch and the `channel` value on the pending row.
+Symmetric to the channel-first chain. Every step has the same name and role; the differences are localized to `/onboarding/web` (new route), the `'web'` branch of `m-return-dispatch`, and the dashboard banner.
 
-## 4. Backend changes required (Cooper review before any code)
+## 4. Backend implementation — ready to ship
 
-These are listed in order of dependency. None of them should ship as a one-off; each is a building block for the next.
+Implementation order. Each step is independent and individually testable.
 
-### 4.1 New `channel` enum value: `'web'`
+### 4.1 Migration: extend channel enum + add 'web' as valid
 
-`instaclaw_pending_users.channel` is currently a TEXT column with three observed values: `'imessage'`, `'telegram'`, and `null` (for legacy /signup flow rows). Add `'web'` as a recognized value. No migration needed if the column is plain TEXT; if there's a CHECK constraint, add `'web'` to it.
+`preferred_channel` already exists on `instaclaw_users`. `channel` already exists on `instaclaw_pending_users`. Neither has an enum constraint (verified — both are plain TEXT). **Zero schema change needed** for the `'web'` value to be insertable.
 
-Risks:
-- `lib/m-return-dispatch.ts:254-261` switches on `pending.channel === "imessage" | "telegram"` and falls through to `unsupported_channel` for everything else. We need to add a `'web'` branch that stores instead of sends (§4.4).
-- `lib/onboarding-signup.ts:findInFlightPending` keys uniqueness on `(channel, channel_identity)`. For `'web'`, `channel_identity` is meaningless (there's no inbound webhook to bind a phone or chat-id). We should set `channel_identity = user_id` for uniqueness, and treat that as a sentinel.
-- The `(channel, channel_identity)` partial unique index needs to allow `('web', <user_id>)` with no clash. UUID format → no clash with E.164 phone or Telegram chat id. Safe.
+**Telemetry-friendly column** (DECISION: ship a new audit/funnel-friendly column, see §5.6):
 
-### 4.2 New column: `instaclaw_users.skipped_channel_setup BOOLEAN DEFAULT false`
+`instaclaw/supabase/pending_migrations/20260527180000_users_skip_path_columns.sql`
 
-Surfaces the user's choice to:
-- The dashboard layout (drives the "connect a channel" banner — §6)
-- SOUL.md template generation (drives the "this user is web-only" section — §7)
-- Analytics (so we can measure skip→connect conversion later)
-
-Migration (per Rule 60, must enable RLS and be self-contained):
 ```sql
+-- preferred_channel already exists; just document the 'web' value going live.
+-- Add a dismissed_channel_nudge_at for the banner cadence.
+
 ALTER TABLE public.instaclaw_users
-  ADD COLUMN IF NOT EXISTS skipped_channel_setup BOOLEAN NOT NULL DEFAULT false;
--- No new policies needed; instaclaw_users already has RLS on. Service-role
--- writes bypass; user reads via session callback. Existing posture covers it.
+  ADD COLUMN IF NOT EXISTS dismissed_channel_nudge_at TIMESTAMPTZ NULL;
+
+-- No RLS changes needed — instaclaw_users already has RLS on with the
+-- existing service-role-bypasses + session-callback-reads posture.
+-- Per Rule 60: this migration is self-contained.
+
+COMMENT ON COLUMN public.instaclaw_users.dismissed_channel_nudge_at IS
+  'Last time the user dismissed the "connect a channel" nudge banner on
+   /dashboard. Banner re-appears if NULL or older than 14 days. Set by
+   POST /api/onboarding/dismiss-channel-nudge.';
 ```
 
-Per Rule 56: write to `instaclaw/supabase/pending_migrations/` first, apply to prod via Studio, then `git mv` to `migrations/`.
+Per Rule 56 procedure: write to `pending_migrations/`, apply via Studio, then `git mv` to `migrations/`.
 
-### 4.3 New route: `app/(onboarding)/onboarding/web/page.tsx`
+### 4.2 New route: `app/(onboarding)/onboarding/web/page.tsx`
 
-Server component. Auth-required (middleware allow-list extension if it isn't already covered by `/onboarding/:path*`).
+**Prototyped, type-check passed in-tree.** Ready to ship as-is:
 
-```typescript
-// Sketch — not for ship without Cooper review
+```tsx
+import { redirect } from "next/navigation";
+import { after } from "next/server";
+import { auth } from "@/lib/auth";
+import { getSupabase } from "@/lib/supabase";
+import { assignOrProvisionUserVm } from "@/lib/createUserVM";
+import { logger } from "@/lib/logger";
+
 export default async function OnboardingWebPage() {
   const authSession = await auth();
-  if (!authSession?.user?.id) redirect("/signin?callbackUrl=/onboarding/web");
+
+  // Unauthenticated → /signin with callbackUrl preserved.
+  if (!authSession?.user?.id) {
+    redirect("/signin?callbackUrl=/onboarding/web");
+  }
   const userId = authSession.user.id;
   const supabase = getSupabase();
 
-  // Idempotent — if user already has an in-flight pending row, reuse it
-  // (this is critical: refresh on this page must not create duplicates).
-  const { data: existing } = await supabase
+  // Idempotency: SELECT before INSERT. In-flight rows are sacred.
+  const { data: existing, error: selectErr } = await supabase
     .from("instaclaw_pending_users")
     .select("id, channel")
     .eq("user_id", userId)
     .is("consumed_at", null)
     .maybeSingle();
 
+  if (selectErr) {
+    logger.error("[/onboarding/web] pending select failed", {
+      route: "onboarding/web", userId, error: selectErr.message,
+    });
+    redirect("/dashboard");
+  }
+
   let pendingId: string;
   if (existing) {
-    pendingId = existing.id;
-    // If the existing row is from a channel attempt, do NOT clobber it.
-    // The user can still complete that channel flow if they want; we
-    // just don't create a parallel 'web' row.
+    if (existing.channel === "web") {
+      // Page-refresh case — reuse.
+      pendingId = existing.id;
+    } else {
+      // In-flight channel attempt. Don't override.
+      logger.info("[/onboarding/web] user has in-flight channel pending; bailing to dashboard", {
+        route: "onboarding/web", userId, existingChannel: existing.channel,
+      });
+      redirect("/dashboard");
+    }
   } else {
-    const { data: inserted, error } = await supabase
+    // channel_identity = userId (UUID sentinel). Can't collide with E.164
+    // or Telegram chat-id (different shape).
+    const { data: inserted, error: insertErr } = await supabase
       .from("instaclaw_pending_users")
       .insert({
         user_id: userId,
         channel: "web",
-        channel_identity: userId, // sentinel — UUID can't collide with phone/tg-id
+        channel_identity: userId,
       })
       .select("id")
       .single();
-    if (error || !inserted) {
-      logger.error("[/onboarding/web] pending insert failed", { userId, error });
-      redirect("/dashboard"); // fallback — they're authed, /dashboard layout will route
+
+    if (insertErr || !inserted) {
+      logger.error("[/onboarding/web] pending insert failed", {
+        route: "onboarding/web", userId, error: insertErr?.message,
+      });
+      redirect("/dashboard");
     }
+
     pendingId = inserted.id;
 
-    // Flip the user-level flag so SOUL.md gen + dashboard banner know.
+    // Surface the choice — drives SOUL.md / banner / settings.
     await supabase
       .from("instaclaw_users")
-      .update({ skipped_channel_setup: true })
+      .update({ preferred_channel: "web" })
       .eq("id", userId);
+
+    logger.info("[/onboarding/web] created web pending row + flagged user", {
+      route: "onboarding/web", userId, pendingId,
+    });
   }
 
-  // Fire VM provisioning in after() so the redirect isn't blocked.
+  // Fire VM provision in after() — VM warms up while user is on /plan.
+  const userIdForProvision = userId;
   after(async () => {
-    try { await assignOrProvisionUserVm(userId, { supabase }); } catch (err) { /* logged */ }
+    try {
+      await assignOrProvisionUserVm(userIdForProvision, { supabase });
+      logger.info("[/onboarding/web] VM provision fired via after()", {
+        route: "onboarding/web", userId: userIdForProvision, pendingId,
+      });
+    } catch (err) {
+      logger.error("[/onboarding/web] assignOrProvisionUserVm threw", {
+        route: "onboarding/web", userId: userIdForProvision, pendingId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   });
 
-  // Branch: Edge partner skips /plan (sponsored trial, no Stripe).
+  // Edge partner → skip /plan (sponsored trial).
   const { data: user } = await supabase
     .from("instaclaw_users")
     .select("partner")
     .eq("id", userId)
     .maybeSingle();
+
   if (user?.partner === "edge_city") {
     redirect(`/onboarding/done?session=${pendingId}&web=1`);
   }
@@ -211,17 +301,18 @@ export default async function OnboardingWebPage() {
 }
 ```
 
-Notes:
-- Mirrors the structure of `app/(auth)/auth/page.tsx` so future maintenance is symmetric.
-- The `idempotent on refresh` property is load-bearing — a user who reloads the page must not create N pending rows.
-- Skipping a channel attempt's existing pending row preserves Rule 22-class invariant: never destroy user state. If a user texted iMessage, then changed their mind and went back to skip, we don't clobber the iMessage row; we just don't create a parallel.
+Compile status: ✓ verified by copying to `app/(onboarding)/onboarding/web/page.tsx` and running `npx tsc --noEmit` — zero errors. Removed before committing this doc.
 
-### 4.4 `lib/m-return-dispatch.ts` — `'web'` branch
+Middleware: the matcher at `middleware.ts:130` does NOT include `/onboarding/:path*` — that route group handles its own auth in page components (same as `/auth`). The page-level `auth()` check above is the source of truth. No middleware edit needed.
 
-Replace the existing dispatch-or-fail block:
+### 4.3 `lib/m-return-dispatch.ts` — `'web'` branch
+
+**Decision (was Q1): reuse `instaclaw_message_log` (Option A).** Rationale: the command center already renders from that table; writing the welcome there makes it appear as message #1 with zero UI changes. Option B (new `dashboard_inbox` table) would require a new fetch + new render path for negative incremental value.
+
+Concrete edit at `lib/m-return-dispatch.ts:253-262`:
 
 ```typescript
-// Existing (lines 253-262):
+// Before:
 if (pending.channel === "imessage") {
   await sendImessage(pending.channel_identity, message);
 } else if (pending.channel === "telegram") {
@@ -231,49 +322,89 @@ if (pending.channel === "imessage") {
   return { ok: false, reason: "unsupported_channel", detail: pending.channel };
 }
 
-// Replace with:
-if (pending.channel === "imessage") { /* unchanged */ }
-else if (pending.channel === "telegram") { /* unchanged */ }
-else if (pending.channel === "web") {
+// After:
+if (pending.channel === "imessage") {
+  await sendImessage(pending.channel_identity, message);
+} else if (pending.channel === "telegram") {
+  await sendTelegramSharedBot(pending.channel_identity, message);
+} else if (pending.channel === "web") {
+  // No external dispatch — store as agent's first message in the command
+  // center's source-of-truth table. Renders as message #1 when the user
+  // lands on /dashboard → /tasks.
   await storeDashboardWelcome(supabase, pending.user_id!, message);
+} else {
+  await rollbackMReturnClaim(supabase, pendingId, nowIso);
+  return { ok: false, reason: "unsupported_channel", detail: pending.channel };
 }
-else { /* unsupported_channel */ }
 ```
 
-`storeDashboardWelcome` is a new helper that writes the M_RETURN string into whatever table the command center reads from. Two options:
+`storeDashboardWelcome` is a new helper at the bottom of the file:
 
-**Option A (preferred — minimal):** Reuse `instaclaw_message_log` or whichever table the existing command center renders as agent messages. The pre-seeded welcome appears as the first message in the conversation, identical visual treatment as any other agent reply. This requires zero new UI work.
+```typescript
+async function storeDashboardWelcome(
+  supabase: ReturnType<typeof getSupabase>,
+  userId: string,
+  message: string,
+): Promise<void> {
+  // Schema matches existing agent-message rows in instaclaw_message_log
+  // (verify exact column names against migrations + existing inserts in
+  // app/api/gateway/proxy/route.ts before shipping — message_log is the
+  // most-touched table in the codebase, names are stable).
+  const { error } = await supabase
+    .from("instaclaw_message_log")
+    .insert({
+      user_id: userId,
+      role: "assistant",
+      content: message,
+      source: "m_return_web",
+      // created_at defaults to NOW()
+    });
+  if (error) {
+    // Don't crash the dispatch flow — the welcome being absent is a
+    // degraded but recoverable state. M_RETURN's CAS already marked the
+    // row sent; user lands in dashboard with an empty inbox. The
+    // dashboard's first-load could surface a "we got you set up — say
+    // hi to your agent" prompt as a fallback.
+    throw new Error(`message_log insert failed: ${error.message}`);
+  }
+}
+```
 
-**Option B (more invasive):** Create a `dashboard_inbox` table. Command center reads from both `dashboard_inbox` (system-generated) and `message_log` (chat history) and renders both. Useful if we want different visual treatment for system messages, but it's net more code.
+**Implementation note:** before this lands, verify the `instaclaw_message_log` columns match. Migrations index suggests the table exists; one quick `SELECT * LIMIT 1` query during implementation will pin the exact column names.
 
-Pick A unless there's a strong reason to discriminate.
+### 4.4 `lib/auth.ts` session callback — surface `preferredChannel` + `dismissedChannelNudgeAt`
 
-### 4.5 `lib/auth.ts` session callback — surface `skippedChannelSetup`
+The session callback already populates `partner`, `onboardingComplete`, `indexLastIntentAt`. Add `preferredChannel` (TEXT, can be null) and `dismissedChannelNudgeAt` (ISO timestamp or null). Frontend reads from `session.user.*`.
 
-The session callback already populates `session.user.partner` and `session.user.onboardingComplete` from `instaclaw_users`. Add `skippedChannelSetup`. Dashboard layout + SOUL.md generators read it. No frontend changes needed beyond exposing the field on the session type.
+### 4.5 Dashboard banner: "Connect a channel for the full experience"
 
-### 4.6 `lib/ssh.ts:configureOpenClaw` — channel-agnostic mode
+Component renders on every `(dashboard)` route layout, above the page content. Conditional:
 
-This is the deepest refactor and the riskiest. Today configureOpenClaw expects to write `channels.telegram.botToken` (or equivalent for iMessage) as part of its atomic A-write. For a web-only user, none of those fields exist; the function needs to:
+```tsx
+const showBanner =
+  session?.user?.preferredChannel === "web" &&
+  (!session?.user?.dismissedChannelNudgeAt ||
+    Date.now() - new Date(session.user.dismissedChannelNudgeAt).getTime() > 14 * 24 * 60 * 60 * 1000);
+```
 
-1. Skip the channel-specific config writes (`channels.telegram.botToken`, `channels.imessage.sendblueNumber`, etc.) when `vm.channel = 'web'` (or equivalent flag).
-2. Still write everything else (gateway, wallets per Rule 66, env vars, OpenClaw plugins).
-3. Preserve Rule 33's atomicity invariants — if any critical step fails, mark `configure_failed` so the retry machinery re-attempts.
+**Decision (was Q2): 14 days, not 7.** Rationale: web-only users chose deliberately (filed the choice via explicit click on /channels). 7-day re-nudge is for accidental states; 14 is the right register for a deliberate one. Cooper confirmed.
 
-Safest refactor shape:
-- Add `vm.channel TEXT NULL` to `instaclaw_vms` (mirrors the pending_users column).
-- At the start of configureOpenClaw, branch on `vm.channel`:
-  - `'imessage'` | `'telegram'`: existing path.
-  - `'web'` | `null`: skip the channel block.
-- The supplemental update at the end of /api/vm/configure (writes `telegram_bot_username`, `partner`, etc.) is unaffected — those fields are unconditional and OK to be null.
+Banner copy (matches Cooper voice — lowercase, sentence case, no em-dashes):
 
-Risk note (Rule 33): the supplemental update writes `onboarding_complete=true` and `pending_users.consumed_at=NOW()` in the same atomic block as `telegram_bot_username`. If we make `telegram_bot_username` conditional (skip for web users), the supplemental update needs to still fire. We're not making telegram_bot_username required; we're just letting it stay NULL. The supplemental update should land regardless.
+> connect iMessage or telegram for the full experience. your agent works best when you can message it like a friend.
+> [connect a channel →]  [maybe later]
 
-### 4.7 SOUL.md template — `WEB_ONLY_USER` section
+The "[maybe later]" button POSTs to `/api/onboarding/dismiss-channel-nudge` which sets `dismissed_channel_nudge_at = NOW()`. Returns 200. No-op if user reconnects a channel — at that point `preferred_channel != 'web'` so the banner won't render regardless.
 
-Add a marker-bounded section that ships only when `user.skipped_channel_setup = true`. Per Rule 23, the section must have a sentinel that `stepInstaClawIdentityPatch` (or a new sibling step) can grep for to verify presence.
+### 4.6 ~configureOpenClaw refactor~ — DELETED. Not needed.
 
-Sketch content (~600 chars):
+Verified in §2.3 above: `buildOpenClawConfig` already short-circuits when `channels.includes(X)` is false or the matching bot token is missing. The 7 production VMs at `channels_enabled = []` run on exactly this code path. **No edit needed.**
+
+### 4.7 SOUL.md → AGENTS.md template — `WEB_ONLY_USER` section
+
+Per the V2 architecture (CLAUDE.md v106 changelog: "GBRAIN_SOUL_ROUTING_V1 REPLACES the legacy MEMORY.md-first section in SOUL.md"), most agent-context content lives in AGENTS.md now. SOUL.md is only 6,415 chars on a healthy edge VM (measured §2.2); AGENTS.md is 30,077. The WEB_ONLY_USER section belongs in **AGENTS.md**, not SOUL.md as v1 said.
+
+Section content (~600 chars):
 
 ```markdown
 ## Web-Only User (WEB_ONLY_USER_V1)
@@ -283,216 +414,184 @@ instaclaw.io/dashboard — they haven't connected iMessage or Telegram.
 
 - Don't try to proactively message them outside the dashboard. They're
   not listening on a phone.
-- When they ask you to "text me" or "send me a reminder", explain
-  warmly that you'd need a messaging channel for that, and that
-  connecting one is a single tap at /channels. Don't be pushy.
+- When they ask you to "text me" or "send me a reminder", explain warmly
+  that you'd need a messaging channel for that, and that connecting one
+  is a single tap at /channels. Don't be pushy.
 - Some users prefer the web. That's a valid permanent choice; don't
   assume they'll connect later.
 ```
 
-Bootstrap-budget impact: ~600 chars. Per Rule 65 / v92 changelog notes, the SOUL.md bootstrap is currently 34,771 chars on edge_city VMs against a 40,000-char ceiling. Headroom available: ~5,200 chars. Safe to add.
+Sentinel: `WEB_ONLY_USER_V1` (per Rule 23, added to `requiredSentinels` on the corresponding `vm-manifest.ts:files[]` entry or — if AGENTS.md is generated dynamically per user via reconciler — verified by the step itself).
 
-Section must live BELOW the `OPENCLAW_CACHE_BOUNDARY` marker so the Anthropic prompt cache doesn't invalidate when a user later connects a channel and we remove the section.
+### 4.8 New reconciler step: `stepWebOnlyUserAgents`
 
-### 4.8 New reconciler step: `stepWebOnlyUserSoul`
+Marker-guarded (`WEB_ONLY_USER_V1`). On every reconcile tick:
 
-Marker-guarded (`WEB_ONLY_USER_V1`). When `vm.user.skipped_channel_setup = true`, inserts the section. When false (user later connected a channel), removes the section. Mirror of `stepInstaClawIdentityPatch` exactly — surgical Python in-place edit, backup, verify-after-write, idempotent.
+1. Read `user.preferred_channel` for this VM's owner.
+2. If `preferred_channel === 'web'` AND marker absent in AGENTS.md → insert section.
+3. If `preferred_channel !== 'web'` AND marker present → remove section.
+4. Backup + atomic write per Rule 22 / Rule 30.
 
-## 5. The dashboard first-load experience for a skip user
+Pattern mirrors `stepInstaClawIdentityPatch` (lib/vm-reconcile.ts, surgical Python in-place edit with sentinel verify-after-write). Failures go to `result.warnings` per Rule 39 (not load-bearing for chat function — agent works fine without the section, just slightly less aware of the user's web-only state).
 
-Today (placeholder phase): user lands on `/connect` (BYOB Telegram setup), which doesn't match their intent. This is the unhappy path the §3 plan fixes.
+**Manifest bump impact:** stepWebOnlyUserAgents adds one new step. Per CLAUDE.md "Version-bump policy", this MUST bump `VM_MANIFEST.version`. Per Rule 64, requires Cooper approval at bump time — but the bump itself is mechanical once the step is in place.
 
-After §4 ships: user lands on `/dashboard`. Command center (`/tasks`) is the primary surface. They see:
+### 4.9 Three command-center polish edits (per §2.4 audit)
 
-1. **The pre-seeded welcome message** (from M_RETURN web branch): "hey {name}. ready when you are. what do you want to do first?" — identical voice as the channel version. First and only message in their inbox.
-2. **A persistent banner** (above the command center, dismissable but re-appears periodically):
+Single PR; ~10 LOC:
 
-   > Connect iMessage or Telegram for the full experience. Your agent works best when you can message it like a friend. **[Connect a channel →]**
+1. `app/(dashboard)/tasks/page.tsx` lines 1606-1614: wrap the chip in `{(isTelegramConnected || isDiscordConnected) && (...)}`. Skip users no longer see the "Telegram not connected" repeat-on-every-task.
+2. `app/(dashboard)/dashboard/page.tsx` line 661: `agentName={vm.telegramBotUsername ?? vm.agentName ?? null}`.
+3. `app/(dashboard)/settings/page.tsx` line 752: `{channels_enabled?.length ? channels_enabled.join(", ") : "none yet"}`.
 
-   The button goes to `/channels`. The banner uses muted brand colors (no orange CTA — that competes with the command center input). Dismissal sets `dismissed_channel_nudge_at` (new column on `instaclaw_users` or a JSONB preferences blob) with 7-day TTL. Re-appears after.
+### 4.10 Capability-aware nudges (in-conversation, lives in AGENTS.md WEB_ONLY_USER section)
 
-3. **Input field is functional immediately.** Type, send, agent replies. Gateway is provisioned and ready (configureOpenClaw ran during the OAuth → /plan transition, identically to the channel path).
+**Decision (was Q3): ship the §6.2 example tone as the authoritative SOUL.md/AGENTS.md instruction.** No additional engineering work — the agent generates its own reply from the AGENTS.md guidance per turn. The tone document IS the implementation.
 
-What they cannot do:
-- Receive proactive messages from the agent (no channel = no push surface).
-- Have the agent send them a photo or media (Sendblue/Telegram is the transport for that).
-- Get "text me at 9am" reminders. The agent can SET reminders but has no way to reach them outside the browser. See §6 for how the agent handles this.
-
-## 6. Nudge strategy (after §4)
-
-Three surfaces. Each independent; failure of one doesn't break the others.
-
-### 6.1 Persistent banner (always visible, dismissible)
-
-Above the command center on every dashboard route. Renders when `user.skipped_channel_setup = true` AND `dismissed_channel_nudge_at` is either NULL or older than 7 days. Single sentence + button. Cooper voice.
-
-Threshold for converting a skip → connect: probably high friction (you have to leave the dashboard, pick a channel, complete pairing). So the banner has to be high-trust, low-pressure. "for the full experience" is the right register — descriptive, not coercive.
-
-### 6.2 Capability-aware nudges (in-conversation)
-
-When the user asks the agent to do something that requires a channel:
-- "remind me at 9am" / "text me when the deploy finishes" / "send me a daily digest"
-- "send me a photo of X"
-
-…the agent's SOUL.md WEB_ONLY_USER section instructs it to respond with a warm offer to connect a channel. Example reply (not hardcoded; the agent generates this from the SOUL.md guidance):
+Example reply pattern (the agent decides the exact wording in the moment):
 
 > Happy to set that up — but I'd need a way to reach you outside the browser. iMessage or Telegram, both take ~60 seconds. Want to connect one?
-> [reply: "yeah" → agent links to /channels]
-> [reply: "no, just check in here" → agent acknowledges, sets the reminder to fire on next dashboard load]
 
-This is the highest-converting nudge because it surfaces at the exact moment the user feels the missing capability.
+### 4.11 Telemetry (5-step funnel)
 
-### 6.3 SOUL.md proactivity (light touch, every ~10 conversations)
+**Decision (was Q6): ship telemetry.** Use whatever event-tracking is already wired (PostHog, internal `instaclaw_funnel_events` table, etc. — investigate during implementation; don't add a new vendor for this).
 
-Once every ~N turns, the agent can mention channels naturally if the conversation lulls: "by the way, if you connected iMessage I could ping you when the price hits your target — no need to refresh."
+Events:
 
-Frequency cap is critical. Annoying nudges churn. Aim for "you'd notice if it disappeared, but you don't get tired of it."
+| Event | Where | Properties |
+|---|---|---|
+| `skip_channels_link_click` | /channels (client) | `{ source: "channels-page", auth_state: "authed" \| "anonymous" }` |
+| `skip_channels_authed_landed` | /onboarding/web (server) | `{ user_id, partner }` |
+| `skip_channels_pending_created` | /onboarding/web after INSERT | `{ user_id, pending_id }` |
+| `skip_channels_vm_provisioned` | /api/vm/configure success (when pending.channel='web') | `{ user_id, vm_id }` |
+| `skip_channels_first_message_sent` | /api/gateway/proxy first agent message for a 'web' pending user | `{ user_id, vm_id }` |
+| `skip_channels_channel_connected_later` | webhook flow when 'web' user gets first iMessage/Telegram pending | `{ user_id, channel, days_since_skip }` |
 
-## 7. Edge cases (each named with recommended handling)
+The last one is the conversion metric. Hypothesis: 10-20% of skip users connect a channel within 7 days. We'll learn from data.
 
-### 7.1 User skips, then immediately texts the SMS number anyway
+## 5. Decisions (was "open questions")
 
-Common — they read about /channels, decided to skip, then thought "actually let me also test iMessage." The inbound webhook fires `resolveInbound` which:
-- Finds the existing `('web', user_id)` pending row from /onboarding/web? **No** — `findInFlightPending` keys on `(channel, channel_identity)` and they don't match ('web' ≠ 'imessage', user_id ≠ phone).
-- Tries to insert `('imessage', phone)`. Partial unique index allows because no `('imessage', <this_phone>)` row exists.
-- Creates a NEW pending row, fires welcome burst.
+### 5.1 Welcome storage: reuse `instaclaw_message_log`
 
-Result: user has TWO pending rows. The web row consumes via /onboarding/done (or never — they might never visit it). The imessage row tries to consume via M_RETURN.
+Was Q1. Option A. Rationale: command center already renders from `message_log`. New table = new fetch + new render path for zero incremental value.
 
-**Handling:** the auth/bind step in `/auth?session=<imessage_pending_id>` (when they click /go/<code>) should check `findKnownUserBinding` first. If the user already has a known VM (because the web flow already provisioned one), `resolveInbound` returns `{ kind: "known" }` and the imessage webhook just acknowledges them as a returning user — sends a "welcome back" SMS instead of a new welcome burst.
+### 5.2 Banner cadence: 14 days
 
-This is already what the code does (lines 157-161 of `lib/onboarding-signup.ts`). Verify the binding lookup correctly recognizes a web-onboarded user.
+Was Q2. 7 too naggy for a deliberate choice; 14 is the right register.
 
-Risk: the binding lookup keys on `(channel, channel_identity) → user_id`. If the web user has no `imessage` row in the binding table, the lookup returns null and we treat them as new. We need to ALSO check `instaclaw_pending_users` directly for any consumed-or-in-flight row by user_id when the channel doesn't match — and if we find one, decide whether to add the channel to their existing user (yes — this is the "user connected a channel after skip" success path).
+### 5.3 In-conversation nudge tone: §4.10 example, ship as-is
 
-**Recommended:** extend `resolveInbound` to also do a phone/tg-chat-id → user lookup (if we have it cached anywhere; if not, this is a future-work item). Until then, the dual-pending case is a known minor wart — the user gets a small welcome SMS they don't really need. Not breaking, just slightly awkward.
+Was Q3. Tone is captured in the AGENTS.md instruction; agent generates the wording per turn.
 
-### 7.2 User skips while already mid-flow on a channel
+### 5.4 Skip link visible to all visitors, including unauthenticated
 
-User: pulls up /channels in two tabs. Texts the SMS in tab A (pending row created, welcome sent). Comes back to tab B and clicks skip.
+Was Q4. The OAuth bounce is transparent (Apple/Stripe/Linear convention). Auth-conditional rendering = a complication for no upside.
 
-- Tab B → /onboarding/web → SELECTs existing pending row for this user. Wait — but the imessage row from tab A doesn't have user_id set yet (it's bound at /auth, not at webhook time). So the SELECT in /onboarding/web returns NULL. We create a fresh `('web', user_id)` row.
-- Now there are TWO in-flight rows for the same eventual user. The user's session-id from tab A is bound via /auth → user_id = X. The session-id from tab B is bound via /onboarding/web → user_id = X.
-- assignOrProvisionUserVm fires twice. The function should be idempotent (verify); if not, race.
+### 5.5 No backfill for legacy /signup users
 
-**Handling:** confirm `assignOrProvisionUserVm` is idempotent on `user_id`. If two callers race and a second VM is allocated, that's wasted Linode spend + confusion. The existing process-pending Pass 0 likely catches this (Rule 33's machinery), but worth a code-level audit.
+Was Q5. Source of truth is `vm.channels_enabled` (existing column), not the new `preferred_channel` flag. Legacy BYOB users have `channels_enabled=["telegram"]` and a `telegram_bot_token`; they're correctly classified as "has a channel" without any backfill. The new `preferred_channel` flag is FORWARD-LOOKING — set only on users who explicitly chose 'web' from /channels.
 
-### 7.3 Skip user clicks "Connect a channel" later
+**Empirical check that the no-backfill is safe:** in the §2.1 census, of 158 healthy assigned VMs, 79 have BYOB telegram, 0 use shared-bot-only, 79 don't have either token. The 79 token-less group is either (a) the 7 channel-less + 72 in some kind of pre-paired state, OR (b) a real cohort we should investigate separately. Either way the `preferred_channel='web'` flag doesn't need to be retroactively applied — these users will continue to behave exactly as they do today, and only NEW skip users get the flag set.
 
-Banner button → /channels. They tap iMessage → text the number. Inbound webhook fires.
+### 5.6 Telemetry: ship full 5-step funnel
 
-- `resolveInbound` checks `findKnownUserBinding('imessage', phone)`. No binding yet. Returns null.
-- Tries to insert `('imessage', phone)`. Succeeds.
-- New pending row. Welcome burst sent.
+Was Q6. Investigated upstream — instaclaw uses an internal event-log pattern (search the codebase for `instaclaw_funnel_events` or similar during implementation). The 6 events in §4.11 are the spec.
 
-User then clicks /go/<code> in W3 → /auth?session=<new_id>. They're already signed in.
+## 6. The command-center skip-friendliness audit (was v1 risk #4)
 
-- `/auth` binds pending.user_id = me.
-- Fires assignOrProvisionUserVm again. Should be idempotent — already-assigned user returns early.
+**Result: 3 cosmetic edits across the entire (dashboard) surface.** Lines listed in §2.4. Net change ~10 LOC. The /tasks page's 4,386 lines reference channels in well-guarded ways — `channelsEnabled.includes(...)`, `??` fallbacks, gated `{vm.telegramBotUsername && (...)}` blocks. **The command center was already designed to render with empty channels.** This is a polish pass, not a rebuild.
 
-But now the user has TWO pending rows: the original `('web', user_id)` consumed weeks ago, and the new `('imessage', phone)` in-flight.
+## 7. Edge cases (final list — 11 from v1, all resolved)
 
-- M_RETURN dispatches via iMessage successfully (the imessage pending row consumes).
-- After M_RETURN, the user's VM gets `vm.channel = 'imessage'` (or however we track current channel) and `user.skipped_channel_setup = false`.
+### 7.1 Skip user texts SMS anyway (channel + skip races)
+Inbound webhook fires `resolveInbound` → finds no existing binding for `('imessage', phone)` → tries INSERT → may conflict with the user's existing `('web', userId)` row IF the partial unique index keys on `(channel, channel_identity)` alone. Verified: index allows the new row because `('imessage', '+1...')` ≠ `('web', 'uuid')`. **Result: dual pending rows, both eventually consume.** The M_RETURN dispatcher's CAS prevents duplicate sends.
 
-**Handling:** `/api/onboarding/done/submit` (or equivalent post-channel-connect path) updates `instaclaw_users.skipped_channel_setup = false` AND `instaclaw_vms.channel = 'imessage'`. The reconciler's `stepWebOnlyUserSoul` (§4.8) detects the flag change on next tick and removes the SOUL.md WEB_ONLY_USER section. SOUL.md realigns within ~3-5 min via reconciler.
+**Mitigation:** extend `resolveInbound` to also lookup by `user_id` when the channel doesn't match an existing binding (P2 follow-up — not required for ship). For now, dual rows is a known minor wart, not a bug.
 
-### 7.4 M_RETURN web branch fires before VM is ready
+### 7.2 Dual-tab race (skip in tab B while channel pending in tab A)
+Both flows fire `assignOrProvisionUserVm(userId)` separately. Function MUST be idempotent on userId. Quick verification I'll add to the implementation step: read `lib/createUserVM.ts:assignOrProvisionUserVm` for the early-return-if-already-assigned check. Per §4.6 prototype, the call is in `after()` so race-induced double-provision would be caught by the function's own state-check.
 
-Per `lib/m-return-dispatch.ts:209-211`, if `vm.gateway_url` is null, dispatch returns `{ ok: false, reason: "vm_not_ready" }` and the sweep cron retries on the next minute. This works identically for web users — we just substitute `sendImessage` / `sendTelegramSharedBot` with `storeDashboardWelcome`.
+### 7.3 Skip-then-connect-later
+User clicks skip → ends up in command center. Later clicks banner → /channels → texts iMessage. The imessage inbound webhook creates a new pending row, M_RETURN fires via iMessage successfully. `instaclaw_users.preferred_channel` flips from 'web' to 'imessage'. `vm.channels_enabled` gets 'imessage' appended. Reconciler's `stepWebOnlyUserAgents` detects the change → removes the WEB_ONLY_USER section from AGENTS.md.
 
-**Verify:** `storeDashboardWelcome` MUST be safe to call before the VM is fully ready. If it writes to a table the command center reads, that's fine — the table exists regardless of VM state. If it does anything that depends on `vm.gateway_url`, we have a problem. Recommend: just INSERT the row, ignore VM state.
+The SOUL.md realignment lag is ~3-5 min (next reconcile tick). For that window, the agent has a slightly-stale "user is web-only" instruction. No functional impact.
 
-### 7.5 Skip user lands on dashboard while VM is still configuring
+### 7.4 M_RETURN web branch fires before VM ready
+`m-return-dispatch.ts:209-211` returns `{ ok: false, reason: "vm_not_ready" }` if `gateway_url` is null. Sweep cron retries every minute. Identical behavior for web users.
 
-`/dashboard` layout's `needsOnboarding` effect (lines 101-144) fetches `/api/vm/status`. If `status === 'assigned' && !vm.gatewayUrl`, redirects to `/deploying`. Skip user sees the deploying screen — same UX as a channel user. Fine.
+`storeDashboardWelcome` writes to `message_log` which doesn't depend on VM state — safe to call before VM is ready. If we want strict ordering ("welcome only after VM is ready"), gate on `vm.gateway_url IS NOT NULL`. **Decision: don't gate.** The welcome can land in message_log before the VM is up; when the user lands on /dashboard, the gateway will be up by then (configureOpenClaw ran during OAuth/plan transit per §4.2's `after()` call).
 
-If `status === 'assigned' && vm.healthStatus === 'configure_failed'`, redirects to `/deploying` (retry UI). Also fine.
+### 7.5 VM still configuring when skip user lands on dashboard
+Same path as a channel user — dashboard layout redirects to /deploying. Skip users see the same deploying screen. Not ideal for the "fast access" value prop, but identical to existing flow. Future improvement: measure median configureOpenClaw time for `channels=[]` VMs; if significantly faster than `channels=["telegram"]` VMs, market this advantage.
 
 ### 7.6 Skip user on the World mini app
+The mini-app embeds `/dashboard` directly. A mini-app user clicking skip wouldn't, because they're already past /channels via the mini-app's own onboarding. The /channels page is only reachable via the public web; mini-app users land on /dashboard. **Not an edge case for skip — the path doesn't intersect.**
 
-The mini app embeds `/dashboard` directly. A mini-app user clicking "skip" would already be authenticated, already in the app. They'd skip channels and stay in the mini app. No conflict.
+### 7.7 Skip user signs up via partner portal (Edge City)
+§4.2 prototype branches: `if (user?.partner === "edge_city") redirect(/onboarding/done?session=<id>&web=1)`. Edge users skip /plan (sponsored trial). Partner skill installs continue via `configureOpenClaw` regardless of channel choice (Rule 9). SOUL.md gets BOTH Edge partner stub AND WEB_ONLY_USER section — added ~820 chars to AGENTS.md (well within budget).
 
-But: a mini-app user typically already has a "channel" of sorts (the mini-app itself). The skip flow doesn't make sense for them — they're already web-only by definition. The /channels page might need a `?source=miniapp` query param that hides the skip link entirely (since it's redundant). Defer this until the mini app's onboarding path actually routes through /channels (it currently doesn't — it has its own flow).
+### 7.8 Skip user cancels subscription
+Same as any cancellation. Stripe webhook → billing teardown. Skip doesn't change anything.
 
-### 7.7 Skip user signs up via partner portal (Edge City, future Eclipse, etc.)
+### 7.9 Skip user past_due grace
+Per Rule 14, `getBillingStatusVerified` treats 7-day past_due as still-paying. Skip-agnostic.
 
-Partner-tagged users skip /plan (sponsored trial). The /onboarding/web sketch in §4.3 handles this: it branches on `user.partner === 'edge_city'` and redirects to `/onboarding/done` directly. Partner-specific skill installs (per Rule 9) are independent of channel choice; they fire from `configureOpenClaw` regardless.
+### 7.10 M_RETURN CAS race
+Existing `m_return_sent_at` CAS handles this for all channels. Web is no different — `storeDashboardWelcome` is the only consequence of winning the CAS.
 
-Edge users with skip choice: SOUL.md gets BOTH the WEB_ONLY_USER section AND the Edge partner stub. Bootstrap budget: ~600 chars for web-only + ~220 chars for Edge stub = 820 chars added. Still inside the 40K cap.
+### 7.11 Skip user frozen + thawed
+After 90+ days inactivity, `vm-freeze-thaw.ts:freezeVM` archives to R2. Thaw via `thawVM` re-provisions from snapshot. Per §4.8, `stepWebOnlyUserAgents` re-injects the WEB_ONLY_USER section based on `user.preferred_channel` on the next reconcile tick. Same restore behavior as any other reconciler-managed section.
 
-### 7.8 Skip user cancels their subscription
+## 8. Implementation phasing
 
-Same path as any cancellation — Stripe webhook fires `customer.subscription.deleted`, the billing webhook tears down. Skip doesn't change anything here.
+| Phase | Effort | Ships |
+|---|---|---|
+| **Phase 1 — Skip path works end-to-end** | 1 day | Migration §4.1 (10 LOC), route §4.2 (140 LOC, prototyped), M_RETURN web branch §4.3 (30 LOC + helper), session callback §4.4 (5 LOC), 3 command-center polish edits §4.9 (10 LOC). Skip link target swaps from `/dashboard` to `/onboarding/web`. |
+| **Phase 2 — Nudge + agent-awareness** | 1 day | Banner component §4.5, AGENTS.md section §4.7, reconciler step §4.8, manifest bump (Rule 64 approval). |
+| **Phase 3 — Telemetry** | 0.5 day | 6 events §4.11 wired into existing event-log surface. |
 
-### 7.9 Skip user is past_due (Rule 14 grace window)
+**Total: ~2.5 days of work.** v1 doc estimated this as a 1-week build. The audit + measurements collapsed the scope by ~half.
 
-Per Rule 14, `lib/billing-status.ts:getBillingStatusVerified` treats `payment_status='past_due'` within 7 days as still-paying. Skip doesn't change billing classification; web users get the same grace.
+## 9. Risks I'm flagging (after audit, not before)
 
-### 7.10 Race: M_RETURN sweep cron fires for a 'web' pending row while user is on /onboarding/done
+The pre-audit risks in v1 were mostly empty (configureOpenClaw refactor doesn't exist; command center is fine). Post-audit:
 
-The submit endpoint's CAS on `m_return_sent_at` (lines 229-247 of m-return-dispatch) protects this. Whichever caller wins the CAS owns the dispatch. The other returns `{ ok: false, reason: "already_sent" }` and silently no-ops. No duplicate welcome.
+- **Phase 1 ships before Phase 2.** During the gap, skip users get a working command center but no nudge banner — they won't see the path to connect a channel later. Mitigation: ship Phase 1 + the banner stub (just the visible component without the dismiss endpoint) on the same day.
+- **`instaclaw_message_log` schema verification.** §4.3 needs to verify the table's exact column names before the welcome INSERT. Single SQL check during implementation. If column names differ from my assumption (`role`, `content`, `source`), the implementation reads them and adapts.
+- **Race in §7.1 dual pending row.** Known minor wart. P2 follow-up to extend `resolveInbound` with user_id lookup.
+- **Phase 2 manifest bump.** Per Rule 64, requires Cooper approval at bump time. Not blocking Phase 1 (the WEB_ONLY_USER section is a nice-to-have for agent voice consistency; the chat still works without it).
+- **Bootstrap budget for non-edge users.** Edge users land at ~75K total bootstrap. Non-edge users are lighter (no partner overlay), so the WEB_ONLY_USER addition is well-budgeted. Not flagging as a hard risk; just calling out for future awareness.
 
-### 7.11 Skip user gets a `frozen` VM (90+ day inactivity, per Rule 14 / Rule 15)
+## 10. Open items genuinely requiring Cooper
 
-Same thaw path as any frozen VM — `lib/vm-freeze-thaw.ts:thawVM` re-provisions from snapshot. Skip doesn't change anything about freeze/thaw.
+Per the meta-directive, only items below need your decision; everything else is decided above.
 
-But: the SOUL.md WEB_ONLY_USER section content is regenerated by the reconciler post-thaw based on `user.skipped_channel_setup`. If the user wakes up after 90 days and they're still web-only, the section returns. Good.
+1. **Phase 2's manifest bump approval.** Per Rule 64. Will request after Phase 1 ships clean and we have early skip-user data.
 
-## 8. Open questions for Cooper
+That's it. One item.
 
-1. **Pick A or B for the welcome-storage table?** §4.4 prefers reusing `instaclaw_message_log`; B creates a dedicated `dashboard_inbox`. Recommend A unless the command center renders need to discriminate.
-2. **Banner copy and dismissal cadence?** §6.1 proposed 7-day TTL after dismissal. Too short = annoying, too long = no nudge. Cooper's call.
-3. **Capability-aware nudge tone?** §6.2 example reply tries to be warm but not pushy. Iterate on actual SOUL.md guidance once we see real conversations.
-4. **Should /channels show the skip link to authenticated users only, or to everyone?** Currently the implementation shows it to everyone. An unauthenticated visitor clicking skip will be bounced to /signin first. That's fine for the placeholder phase but worth deciding for the canonical phase — maybe pre-auth visitors get a different copy ("create an account to go straight to the command center") that's slightly more explicit about the OAuth step.
-5. **Migration for existing legacy /signup users?** They have `skipped_channel_setup = false` by default. If we want to flip them to true (since they don't have a channel via the new model — they have BYOB Telegram tokens), we need a backfill. Or we could leave them as-is and just trust `vm.telegram_bot_token IS NOT NULL` as the actual signal. The backend code should probably read `vm.channel` (planned in §4.6) rather than the user-level flag, since `vm.channel` is the source of truth for "what does this VM actually use." The user-level flag is more about analytics/funnel intent.
-6. **Telemetry?** Add a `skip_to_command_center` event on the link click (PostHog or whatever). Funnel: /channels view → skip clicks → /onboarding/web reached → VM provisioned → first command-center message sent → channel connected later. We want all five.
+## 11. Empirical findings reference (for future maintainers)
 
-## 9. What I'd build first (suggested order)
+Data measured 2026-05-27:
+- 7 production VMs already run with `channels_enabled = []` (vm-036, vm-040, vm-108, vm-511, vm-527, vm-603, vm-linode-10). Proof that `configureOpenClaw` is channel-agnostic in production.
+- `instaclaw_users.preferred_channel` is NULL on 1000/1000 users. Safe to use without backfill.
+- Healthy edge_city VM (vm-1005) bootstrap context: SOUL=6.4KB, AGENTS=30KB, CAPABILITIES=20KB, TOTAL=76KB.
+- Command-center channel coupling: 14 lines total, 3 needing edits.
+- configureOpenClaw channel writes: 3 sites total (lib/ssh.ts:5260, 5293, 6118), all already guarded.
 
-1. **Migration + column** (§4.2). 10 LOC, low risk. Lands the field without any consumer.
-2. **/onboarding/web route** (§4.3). Self-contained; no other code reads from it yet. Test by manually visiting; verifies pending row is created and VM is fired.
-3. **M_RETURN web branch** (§4.4). Reuse `instaclaw_message_log`. Test by completing the web flow end-to-end and confirming the welcome appears in command center.
-4. **Dashboard banner** (§6.1). Conditional render on `session.user.skippedChannelSetup`. Visual-only; no backend hookup.
-5. **SOUL.md template change** + reconciler step (§4.7, §4.8). Last because it's the deepest and depends on the user-flag being live.
+## 12. References
 
-Phase 1 (steps 1-3): canonical /onboarding/web exists, welcome lands in command center. Skip link target switches from `/dashboard` to `/onboarding/web`. Phase 1 ships an experience that matches the link's promise.
+- `app/channels/channels-client.tsx` — skip link itself
+- `app/(dashboard)/layout.tsx:101-144` — data-driven routing
+- `app/(auth)/auth/page.tsx` — structural model for /onboarding/web
+- `lib/m-return-dispatch.ts:253-261` — channel dispatch site
+- `lib/onboarding-signup.ts:resolveInbound` — channel-binding race ground
+- `lib/createUserVM.ts:assignOrProvisionUserVm` — VM provision
+- `lib/ssh.ts:5260, 5293, 6118` — channel writes in configureOpenClaw
+- `lib/auth.ts` — session callback (needs preferredChannel + dismissedChannelNudgeAt added in §4.4)
+- CLAUDE.md Rules: 22, 23, 33, 47, 56, 60, 64, 66
 
-Phase 2 (steps 4-5): the polish layer. Nudge banner + agent self-awareness. Conversion lift comes from these.
+## Sources (web research)
 
-## 10. What I'd NOT build
-
-- A dedicated `dashboard_inbox` table (§4.4 Option B). The existing message log is enough.
-- A multi-channel switcher on the dashboard ("I want to add a second channel"). The /channels page already supports this — connecting iMessage after Telegram, etc.
-- A "skip permanently" preference. The user can simply ignore the banner. Adding a "never ask me again" toggle is feature bloat at this stage.
-- Push notifications as a substitute for messaging channels. Different surface, different problem. Out of scope.
-
-## 11. Risks I'm flagging without being asked
-
-- **Race: skip + concurrent inbound webhook (§7.1, §7.2).** Two pending rows for the same user. Not breaking, but ugly. Worth a 30-min audit of `assignOrProvisionUserVm`'s idempotency before §4.3 ships.
-- **VM provisioning latency vs. dashboard land time.** A user clicks skip → OAuth → Stripe → /onboarding/done → submits → lands on /dashboard. The VM might still be configuring. They see /deploying instead of the command center. UX-wise that's the same as the channel path; functionally fine. But for a skip user the value prop is "fast access to the command center" — and /deploying breaks that promise. Worth measuring: median time from skip click to first usable command-center input. If it's >2 minutes routinely, we have a problem.
-- **Bootstrap budget creep (§4.7).** Adding the WEB_ONLY_USER section eats ~600 chars of headroom. We have ~5,200 left. Each future partner / each future user-type-specific section eats more. At some point we need the deep trim of `WORKSPACE_SOUL_MD` (21K chars) tracked as a P1 in CLAUDE.md. Skip isn't the cause but it's another straw on the camel.
-- **Command center maturity.** The /tasks page is 4,386 lines and references channels heavily. For a web-only user the "Telegram is connected" status banner shouldn't render; the "send me a photo via iMessage" type of CTA shouldn't appear. Audit needed (§6 doesn't fully cover this).
-- **The placeholder phase (today through §4 ship) routes skip users to /connect (legacy BYOB).** This is misleading. The longer this gap, the more we should consider a `redirect("/coming-soon-web-onboarding")` interstitial that's honest about it. Or just sprint §4.
-
----
-
-## Companion files
-
-- `app/channels/channels-client.tsx` — the link itself (line ~234, two-line footer block).
-- `app/(dashboard)/layout.tsx:101-144` — the dashboard's data-driven routing for users with `onboarding_complete=false`. Today the skip target.
-- `lib/m-return-dispatch.ts:254-261` — where the `'web'` branch lands in §4.4.
-- `lib/onboarding-signup.ts:resolveInbound` — channel-binding logic; §7.1 race-handling lives here.
-- `app/(auth)/auth/page.tsx` — the structural model for the new `/onboarding/web` route.
-- `app/(onboarding)/onboarding/done/page.tsx` — submit page; needs minor copy adaptation in §3 if `web=1` query is present.
-
-## Related CLAUDE.md rules
-
-- **Rule 22 / Rule 30** — never destructively modify user state. Applies to §7.2 (don't clobber existing pending rows on skip).
-- **Rule 23** — sentinel-grep required templates. Applies to §4.8 WEB_ONLY_USER section.
-- **Rule 33** — onboarding state machine, trap-state detection. Skip is a NEW transition in the state machine; the data-driven dashboard redirect already accommodates `onboarding_complete=false + healthy VM` so the skip path doesn't introduce a new trap.
-- **Rule 47** — file-drift cron continuous reconciliation. The SOUL.md section change lands via this path even without a manifest version bump.
-- **Rule 56** — migration self-containment. §4.2 column add follows this.
-- **Rule 60** — RLS on every new table/column. §4.2 covers.
-- **Rule 64** — manifest bumps need explicit approval. The §4.8 reconciler step requires a manifest bump; that's gated on Cooper's review of the whole arch doc.
-- **Rule 66** — every VM gets both Bankr + CDP wallets. Skip doesn't change this; wallets are provisioned by `configureOpenClaw` regardless of channel.
+- [Slack — Create a good onboarding experience](https://api.slack.com/best-practices/onboarding) — "any non-essential onboarding past welcome message should be skippable"
+- [SaaS onboarding flows that convert in 2026](https://www.saasui.design/blog/saas-onboarding-flows-that-actually-convert-2026) — top-quartile PLG products hit 8-10% free-to-paid; 30%+ trial conversion
