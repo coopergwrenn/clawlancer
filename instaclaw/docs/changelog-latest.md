@@ -1,9 +1,9 @@
-# Changelog — generated 2026-05-26
+# Changelog — generated 2026-05-27
 
-Window: `34482ed1c85cdfc7e41675b36b6f2f3d2396256d` → `HEAD` (HEAD = `d7c69701`)
+Window: `d7c697011a45033f94db6e35fef1352a3975113a` → `HEAD` (HEAD = `c5c21adc`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: d7c697011a45033f94db6e35fef1352a3975113a -->
+<!-- LAST_GENERATED_SHA: c5c21adcd5bf82f87e1ddd9510290cc4c0c7e709 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `d7c69701` 2026-05-26 — fix(channels): nudge Telegram plane up to (-3, -2) — y was overshot [1 files] _(ai-assisted)_
+- `c5c21adc` 2026-05-26 — feat(channels): visionOS-style gloss on all four channel icons [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `cbcac723` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
+- `2c802963` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `d7c69701` 2026-05-26 — fix(channels): nudge Telegram plane up to (-3, -2) — y was overshot [1 files] _(ai-assisted)_
+- `c5c21adc` 2026-05-26 — feat(channels): visionOS-style gloss on all four channel icons [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `cbcac723` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
+- `2c802963` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `d7c69701` 2026-05-26 — fix(channels): nudge Telegram plane up to (-3, -2) — y was overshot
+- `c5c21adc` 2026-05-26 — feat(channels): visionOS-style gloss on all four channel icons
 
 ## Appendix — every commit (chronological)
 
-- `cbcac723` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
-- `d7c69701` 2026-05-26 — fix(channels): nudge Telegram plane up to (-3, -2) — y was overshot [1 files] _(ai-assisted)_
+- `2c802963` 2026-05-26 — chore(changelog): auto-update [skip ci] [2 files]
+- `c5c21adc` 2026-05-26 — feat(channels): visionOS-style gloss on all four channel icons [2 files] _(ai-assisted)_
