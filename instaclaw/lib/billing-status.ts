@@ -271,3 +271,89 @@ function classify(vm: any, sub: any, verified: boolean, drift: boolean): Billing
     },
   };
 }
+
+/**
+ * Cheap user-level billing check for "should we ASSIGN a VM to this user?"
+ *
+ * Unlike getBillingStatus / getBillingStatusVerified (which key off a
+ * specific vm_id and consult VM-row fields like credit_balance + api_mode),
+ * this helper takes only userId because at assignment time the user has
+ * no VM yet. credit_balance is a per-VM concept that only materializes
+ * AFTER assignment, so we can't check it here.
+ *
+ * Returns billable=true if ANY of:
+ *   - User has an `instaclaw_subscriptions` row with status active/trialing
+ *   - User has a non-null `partner` (edge_city, consensus_2026, etc) —
+ *     sponsored cohorts skip /plan entirely and never get a Stripe sub
+ *
+ * Used by process-pending Pass 1, Pass 3, Pass 3b to gate VM assignment +
+ * retry. The original sub-only check broke channel-first Edge attendees:
+ * they go from /auth → /onboarding/done with no Stripe round-trip, so they
+ * never have a subscription row, and every retry pass skipped them.
+ *
+ * Never throws — returns { billable: false, reason: "lookup_error" } on
+ * any DB error. Callers should default to skipping the user (same as
+ * "no payment signal") so a transient DB hiccup doesn't accidentally
+ * provision free VMs to canceled users.
+ */
+export async function isUserBillableForVmAssignment(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ billable: boolean; reason: string }> {
+  // 1. Partner gate (cheap, hits instaclaw_users only). Partner-tagged users
+  //    are sponsored; they're billable regardless of Stripe state.
+  try {
+    const { data: user, error: userErr } = await supabase
+      .from("instaclaw_users")
+      .select("partner")
+      .eq("id", userId)
+      .maybeSingle();
+    if (userErr) {
+      logger.warn("isUserBillableForVmAssignment: user lookup failed", {
+        userId,
+        error: userErr.message,
+      });
+      return { billable: false, reason: "user_lookup_error" };
+    }
+    const partner = (user as { partner?: string | null } | null)?.partner ?? null;
+    if (partner) {
+      return { billable: true, reason: `partner_${partner}` };
+    }
+  } catch (err) {
+    logger.warn("isUserBillableForVmAssignment: user lookup threw", {
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { billable: false, reason: "user_lookup_exception" };
+  }
+
+  // 2. Subscription gate. Active or trialing → billable.
+  try {
+    const { data: sub, error: subErr } = await supabase
+      .from("instaclaw_subscriptions")
+      .select("status")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (subErr) {
+      logger.warn("isUserBillableForVmAssignment: sub lookup failed", {
+        userId,
+        error: subErr.message,
+      });
+      return { billable: false, reason: "sub_lookup_error" };
+    }
+    const status = (sub as { status?: string | null } | null)?.status ?? null;
+    if (status && ["active", "trialing"].includes(status)) {
+      return { billable: true, reason: `stripe_${status}` };
+    }
+    return {
+      billable: false,
+      reason: status ? `stripe_${status}` : "no_payment_signal",
+    };
+  } catch (err) {
+    logger.warn("isUserBillableForVmAssignment: sub lookup threw", {
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { billable: false, reason: "sub_lookup_exception" };
+  }
+}

@@ -8,6 +8,7 @@ import { logger } from "@/lib/logger";
 import { getProvider } from "@/lib/providers";
 import { bankrWalletLifecycle } from "@/lib/bankr-wallet-lifecycle";
 import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
+import { isUserBillableForVmAssignment } from "@/lib/billing-status";
 import { deleteLinodeInstance } from "@/lib/vm-lifecycle-helpers";
 
 // Prevent Vercel CDN from caching per-user responses
@@ -3431,14 +3432,14 @@ else:
 
     if (stuckVms?.length) {
       for (const svm of stuckVms) {
-        // Verify user has an active subscription before triggering
-        const { data: sub } = await supabase
-          .from("instaclaw_subscriptions")
-          .select("status")
-          .eq("user_id", svm.assigned_to)
-          .single();
-
-        if (!sub || !["active", "trialing"].includes(sub.status)) continue;
+        // Verify user is billable before triggering configure.
+        // P0-3 fix (2026-05-27): partner-tagged sponsored users (edge_city)
+        // have no Stripe sub. Mirrors process-pending Pass 1/3/3b.
+        const billingHC = await isUserBillableForVmAssignment(
+          supabase,
+          svm.assigned_to,
+        );
+        if (!billingHC.billable) continue;
 
         logger.warn("Stuck deployment detected by health cron — triggering configure", {
           route: "cron/health-check",

@@ -593,7 +593,7 @@ export async function assignOrProvisionUserVm(
   const { data: pending, error: pendingErr } = await supabase
     .from("instaclaw_pending_users")
     .select(
-      "tier, api_mode, api_key, default_model, telegram_bot_token, telegram_bot_username, discord_bot_token",
+      "tier, api_mode, api_key, default_model, telegram_bot_token, telegram_bot_username, discord_bot_token, channel, channel_identity",
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
@@ -615,20 +615,79 @@ export async function assignOrProvisionUserVm(
     );
   }
 
+  // ─── Channel-first guard (P0-2 fix, 2026-05-27) ──
+  //
+  // Channel-first users (iMessage via Sendblue, Telegram via @myinstaclaw_bot)
+  // do NOT have a telegram_bot_token. They use shared infrastructure relayed
+  // by the BACKEND (lib/channel-routing.ts). Their VM has no on-VM Telegram
+  // plugin — channels_enabled is empty, gateway runs without a messaging
+  // plugin, and replies flow through /v1/chat/completions.
+  //
+  // The POOL path already handles this gracefully — /api/vm/configure
+  // (lib/ssh.ts:5260+ and route.ts:279) gates the telegram channel on
+  // effectiveTelegramToken being non-null.
+  //
+  // The CLOUD-INIT fallback path (this branch + lib/cloud-init-params.ts +
+  // lib/cloud-init-tarball.ts) is BYOB-only today — it strictly requires
+  // telegram_bot_* in three places (here, buildParamsFromVmRow line 78-79,
+  // assertCloudInitParams line 298-299). A full refactor to support
+  // channel-first cloud-init is a larger surface (the .env emitter, the
+  // openclaw.json emitter, the channels gate in setup.sh).
+  //
+  // For Friday's Edge launch we defer rather than throw: return null and
+  // let the caller treat it as "pool empty, retry next cron tick." The
+  // recovery path is the same as a transient pool exhaustion:
+  //   - /auth's after() logs the null result; user proceeds to /onboarding/done
+  //   - Stripe-checkout callers (/api/checkout/verify) return vmAssigned=false
+  //   - process-pending Pass 1 retries every 10 min (P0-3 fix lets Edge
+  //     partner users through the billing gate)
+  //   - m-return-sweep continues polling; M_RETURN fires once VM exists
+  //
+  // Operational mitigation: bump POOL_TARGET + replenish cadence ahead of
+  // surge so the pool is rarely empty. Per /api/cron/replenish-pool config,
+  // raising POOL_TARGET=30, MAX_PER_RUN=15 and keeping replenish at 5min
+  // covers ~180 attendees/hr peak comfortably.
+  //
+  // P1 followup: extend cloud-init-tarball.ts to emit a channel-first tarball
+  // (skip TELEGRAM_BOT_TOKEN line, skip telegram plugin block, allow empty
+  // channels_enabled). Then this guard can be removed and channel-first
+  // users get the same 5-min cloud-init fallback as BYOB users.
+  if (pending.channel) {
+    logger.warn(
+      "assignOrProvisionUserVm: channel-first user + pool empty — deferring to next pool/cron retry",
+      {
+        route: "lib/createUserVM",
+        userId,
+        channel: pending.channel,
+        identityPrefix:
+          typeof pending.channel_identity === "string"
+            ? pending.channel_identity.slice(0, 6) + "***"
+            : null,
+        cloudInitOnDemandEnabled: useCloudInit,
+      },
+    );
+    return null;
+  }
+
   // Cooper directive 2026-05-15: telegram_bot_* are user-supplied and have
-  // no sane fallback. Throw a clear error rather than silently provisioning
-  // a VM that won't work. process-pending's next cycle retries — by then
-  // the user has hopefully completed the signup wizard's bot-capture step.
+  // no sane fallback for BYOB. Throw a clear error rather than silently
+  // provisioning a VM that won't work. process-pending's next cycle retries
+  // — by then the user has hopefully completed the signup wizard's
+  // bot-capture step. The channel-first guard above already handled the
+  // legitimate null-token-OK case; reaching this throw means BYOB user is
+  // missing a token they should have.
   if (!pending.telegram_bot_token) {
     throw new Error(
-      `assignOrProvisionUserVm: pending_users.telegram_bot_token NULL for userId=${userId}. ` +
+      `assignOrProvisionUserVm: pending_users.telegram_bot_token NULL for userId=${userId} ` +
+        "(BYOB path — channel-first users return null above). " +
         "No sane fallback. User must complete bot-token capture (signup wizard step). " +
         "process-pending will retry next cycle once the value is persisted.",
     );
   }
   if (!pending.telegram_bot_username) {
     throw new Error(
-      `assignOrProvisionUserVm: pending_users.telegram_bot_username NULL for userId=${userId}.`,
+      `assignOrProvisionUserVm: pending_users.telegram_bot_username NULL for userId=${userId} ` +
+        "(BYOB path).",
     );
   }
 

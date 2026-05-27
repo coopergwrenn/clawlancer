@@ -10,7 +10,9 @@
  *   1. Verify Sendblue's HMAC-SHA256 signature.
  *   2. Parse JSON payload (defensively — never crash on weird shape).
  *   3. Classify sender via lib/onboarding-signup.resolveInbound:
- *      - known  → returning user, route to their VM (stub; item 8 owns it)
+ *      - known  → returning user, forward to their VM gateway via
+ *                 lib/channel-routing.forwardInboundToVm and relay the
+ *                 agent's response back through Sendblue
  *      - in_flight → repeat texter mid-signup, skip welcome burst
  *      - new    → first-time, fire Welcome 1+2+3 with variable gaps
  *      - error  → DB problem, return 500 so Sendblue retries
@@ -63,6 +65,7 @@ import {
   WELCOME_GAP_1_TO_2_MS,
   WELCOME_GAP_2_TO_3_MS,
 } from "@/lib/welcome-messages";
+import { forwardInboundToVm } from "@/lib/channel-routing";
 
 export const maxDuration = 300;
 
@@ -164,6 +167,7 @@ export async function POST(req: NextRequest) {
     service,
     wasDowngraded,
     messageType,
+    messageHandle,
     mediaUrl,
     groupId,
   } = extractInbound(payload);
@@ -253,22 +257,34 @@ export async function POST(req: NextRequest) {
       // for a transient DB problem.
       return NextResponse.json({ error: "Internal error" }, { status: 500 });
 
-    case "known":
-      // Returning user texting their agent. Item 8 (M_RETURN dispatcher)
-      // will own the actual gateway POST. For now: log + 200 so Sendblue
-      // doesn't retry. Once item 8 lands, route here will forward via
-      // lib/channel-routing.ts.
-      logger.info("[/api/imessage/inbound] known user (gateway routing pending item 8)", {
+    case "known": {
+      // Returning user texting their agent. Forward to their VM gateway
+      // via lib/channel-routing — POST /v1/chat/completions, agent runs
+      // with full memory/tools, response comes back via sendImessage.
+      //
+      // Fire in after() so we ack Sendblue immediately (5s response budget
+      // per Sendblue docs). The relay can take up to 120s for tool-using
+      // turns; maxDuration=300 above gives plenty of room.
+      logger.info("[/api/imessage/inbound] known user — scheduling gateway relay", {
         route: "imessage/inbound",
         phone: phoneRedacted,
         userId: resolution.userId,
         vmId: resolution.vmId,
-        // content may be null when the user sent media-only; coalesce
-        // to 0 so the log shape is stable.
         contentLength: content?.length ?? 0,
         hasMedia: mediaUrl !== null,
       });
+      after(async () => {
+        await forwardInboundToVm({
+          userId: resolution.userId,
+          channel: "imessage",
+          channelIdentity: fromNumber,
+          text: content ?? "",
+          mediaUrl: mediaUrl ?? undefined,
+          inboundMessageId: messageHandle ?? undefined,
+        });
+      });
       return NextResponse.json({ ok: true, kind: "known" });
+    }
 
     case "in_flight":
       // User has an in-flight signup. Don't re-fire welcome burst —

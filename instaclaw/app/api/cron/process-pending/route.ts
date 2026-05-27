@@ -3,6 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { assignOrProvisionUserVm } from "@/lib/createUserVM";
 import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
 import { wipeVMForNextUser, type VMRecord } from "@/lib/ssh";
+import { isUserBillableForVmAssignment } from "@/lib/billing-status";
 import { logger } from "@/lib/logger";
 
 // Prevent Vercel CDN from caching per-user responses
@@ -379,20 +380,24 @@ export async function GET(req: NextRequest) {
 
       if (existingVm) continue;
 
-      // BILLING CHECK: Never assign a VM without a valid subscription.
-      // Without this, anyone who completes the onboarding wizard (creating a
-      // pending_users row) but skips Stripe checkout gets a free VM.
-      const { data: sub } = await supabase
-        .from("instaclaw_subscriptions")
-        .select("status")
-        .eq("user_id", p.user_id)
-        .single();
-
-      if (!sub || !["active", "trialing"].includes(sub.status)) {
-        logger.warn("Skipping VM assignment — no active subscription", {
+      // BILLING CHECK (Pass 1): Never assign a VM without a valid billing
+      // signal. Without this, anyone who completes the onboarding wizard
+      // (creating a pending_users row) but skips Stripe checkout gets a
+      // free VM.
+      //
+      // Per CLAUDE.md Rule 14 + P0-3 fix (2026-05-27): treat partner-tagged
+      // users (edge_city sponsored cohort, future Eclipse/Devcon, etc) as
+      // billable even without a Stripe sub. Edge channel-first users go
+      // /auth → /onboarding/done with no Stripe round-trip; the prior
+      // sub-only check skipped them on every retry, leaving them with no
+      // VM if /auth's after() failed.
+      const billing = await isUserBillableForVmAssignment(supabase, p.user_id);
+      if (!billing.billable) {
+        logger.warn("Skipping VM assignment — not billable", {
           route: "cron/process-pending",
+          pass: "1",
           userId: p.user_id,
-          subscriptionStatus: sub?.status ?? "none",
+          reason: billing.reason,
         });
         continue;
       }
@@ -654,14 +659,19 @@ export async function GET(req: NextRequest) {
 
       if (hasPending) continue;
 
-      // Verify user has an active subscription (don't configure for cancelled users)
-      const { data: sub } = await supabase
-        .from("instaclaw_subscriptions")
-        .select("status")
-        .eq("user_id", vm.assigned_to)
-        .single();
-
-      if (sub?.status !== "active") continue;
+      // Verify user is billable (don't configure for cancelled users).
+      // P0-3 fix: extended from "active sub only" to include partner-tagged
+      // sponsored users + trialing subs. Same rationale as Pass 1.
+      const billing3 = await isUserBillableForVmAssignment(supabase, vm.assigned_to);
+      if (!billing3.billable) {
+        logger.info("Pass 3: skipping orphan auto-configure — not billable", {
+          route: "cron/process-pending",
+          userId: vm.assigned_to,
+          vmId: vm.id,
+          reason: billing3.reason,
+        });
+        continue;
+      }
 
       logger.info("Auto-configuring orphaned VM with defaults", {
         route: "cron/process-pending",
@@ -729,14 +739,18 @@ export async function GET(req: NextRequest) {
 
   if (stuckDeployVms?.length) {
     for (const vm of stuckDeployVms) {
-      // Verify user has an active subscription
-      const { data: sub } = await supabase
-        .from("instaclaw_subscriptions")
-        .select("status")
-        .eq("user_id", vm.assigned_to)
-        .single();
-
-      if (!sub || !["active", "trialing"].includes(sub.status)) continue;
+      // Verify user is billable (P0-3 fix: includes partner-tagged sponsored
+      // users like edge_city who never get a Stripe sub).
+      const billing3b = await isUserBillableForVmAssignment(supabase, vm.assigned_to);
+      if (!billing3b.billable) {
+        logger.info("Pass 3b: skipping stuck-deploy retry — not billable", {
+          route: "cron/process-pending",
+          userId: vm.assigned_to,
+          vmId: vm.id,
+          reason: billing3b.reason,
+        });
+        continue;
+      }
 
       logger.info("Stuck deployment detected — triggering configure (catch-all)", {
         route: "cron/process-pending",

@@ -49,6 +49,7 @@ import {
   WELCOME_GAP_1_TO_2_MS,
   WELCOME_GAP_2_TO_3_MS,
 } from "@/lib/welcome-messages";
+import { forwardInboundToVm } from "@/lib/channel-routing";
 
 export const maxDuration = 300;
 
@@ -197,12 +198,13 @@ export async function POST(req: NextRequest) {
       // 500 → Telegram retries. They retry up to 3 times with backoff.
       return NextResponse.json({ error: "Internal error" }, { status: 500 });
 
-    case "known":
-      // Returning user. Gateway routing not yet wired (matches the
-      // iMessage handler — same TODO for item 8 extension). For now,
-      // ack so Telegram doesn't retry.
+    case "known": {
+      // Returning user. Forward to their VM gateway via lib/channel-routing
+      // — POST /v1/chat/completions, agent runs with full memory/tools,
+      // response comes back via sendTelegramSharedBot. Fire in after() so
+      // Telegram's webhook gets a 200 within budget.
       logger.info(
-        "[/api/telegram/shared-bot/inbound] known user (gateway routing pending)",
+        "[/api/telegram/shared-bot/inbound] known user — scheduling gateway relay",
         {
           route: "telegram/shared-bot/inbound",
           chatIdPrefix: chatIdRedacted,
@@ -211,7 +213,23 @@ export async function POST(req: NextRequest) {
           textLength: text.length,
         },
       );
+      after(async () => {
+        await forwardInboundToVm({
+          userId: resolution.userId,
+          channel: "telegram",
+          channelIdentity: chatId,
+          text,
+          // Telegram's update_id is a stable per-update identifier; carry
+          // it through so a future de-dup table can use it. v1 has no
+          // dedup store; this is logged-only for now.
+          inboundMessageId:
+            typeof update.update_id === "number"
+              ? String(update.update_id)
+              : undefined,
+        });
+      });
       return NextResponse.json({ ok: true, kind: "known" });
+    }
 
     case "in_flight":
       logger.info(
