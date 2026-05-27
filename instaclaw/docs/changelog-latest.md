@@ -1,16 +1,16 @@
 # Changelog — generated 2026-05-27
 
-Window: `f27f4b9cb526964a390e98cf3922d59dbe1f073e` → `HEAD` (HEAD = `dfbc36c5`)
+Window: `dfbc36c56b2e6db699ea64e14f274de1bbc0dc7d` → `HEAD` (HEAD = `a6500984`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: dfbc36c56b2e6db699ea64e14f274de1bbc0dc7d -->
+<!-- LAST_GENERATED_SHA: a65009848f88af0fbd4429e8781848999e2a168a -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 0
-- **Feature (user-facing):** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,26 +18,25 @@ Total commits: 2
 
 ## What changed for users
 
-_None in this window._
+- `a6500984` 2026-05-27 — feat(channels): add "skip to command center" footnote + arch doc [2 files] _(multi: [feature, docs]; ai-assisted)_
 
 ## What changed under the hood
 
-- `dfbc36c5` 2026-05-27 — feat(base-mcp): v1 — every InstaClaw agent composes Base DeFi natively [18 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `9ea899c6` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `0e1bf5c7` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
+### Reconciler / manifest (0)
 
-- `dfbc36c5` 2026-05-27 — feat(base-mcp): v1 — every InstaClaw agent composes Base DeFi natively [18 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+_(none)_
 
 ### Infrastructure (0)
 
 _(none)_
 
-### Feature (user-facing) (0)
+### Feature (user-facing) (1)
 
-_(none)_
+- `a6500984` 2026-05-27 — feat(channels): add "skip to command center" footnote + arch doc [2 files] _(multi: [feature, docs]; ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,21 +44,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `9ea899c6` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `0e1bf5c7` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `dfbc36c5` 2026-05-27 — [reconciler, infrastructure, docs] — feat(base-mcp): v1 — every InstaClaw agent composes Base DeFi natively
+- `a6500984` 2026-05-27 — [feature, docs] — feat(channels): add "skip to command center" footnote + arch doc
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `dfbc36c5` 2026-05-27 — feat(base-mcp): v1 — every InstaClaw agent composes Base DeFi natively
+- `a6500984` 2026-05-27 — feat(channels): add "skip to command center" footnote + arch doc
 
 ## Appendix — every commit (chronological)
 
-- `9ea899c6` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-- `dfbc36c5` 2026-05-27 — feat(base-mcp): v1 — every InstaClaw agent composes Base DeFi natively [18 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `0e1bf5c7` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `a6500984` 2026-05-27 — feat(channels): add "skip to command center" footnote + arch doc [2 files] _(multi: [feature, docs]; ai-assisted)_
