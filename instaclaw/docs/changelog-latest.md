@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-27
 
-Window: `26875bd59376b9cc8d5bc02020542d2934bf316c` → `HEAD` (HEAD = `ed637317`)
+Window: `ed63731737260316292b8f32b8cc31069e359d45` → `HEAD` (HEAD = `f27f4b9c`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: ed63731737260316292b8f32b8cc31069e359d45 -->
+<!-- LAST_GENERATED_SHA: f27f4b9cb526964a390e98cf3922d59dbe1f073e -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `ed637317` 2026-05-27 — fix(channels): re-center Discord + Slack icons by eye, not math [1 files] _(ai-assisted)_
+- `f27f4b9c` 2026-05-27 — feat(channels): brand-colored auras on Discord + Slack coming-soon cards [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `327944b7` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `c0441a59` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `ed637317` 2026-05-27 — fix(channels): re-center Discord + Slack icons by eye, not math [1 files] _(ai-assisted)_
+- `f27f4b9c` 2026-05-27 — feat(channels): brand-colored auras on Discord + Slack coming-soon cards [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `327944b7` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `c0441a59` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `ed637317` 2026-05-27 — fix(channels): re-center Discord + Slack icons by eye, not math
+- `f27f4b9c` 2026-05-27 — feat(channels): brand-colored auras on Discord + Slack coming-soon cards
 
 ## Appendix — every commit (chronological)
 
-- `327944b7` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-- `ed637317` 2026-05-27 — fix(channels): re-center Discord + Slack icons by eye, not math [1 files] _(ai-assisted)_
+- `c0441a59` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `f27f4b9c` 2026-05-27 — feat(channels): brand-colored auras on Discord + Slack coming-soon cards [2 files] _(ai-assisted)_
