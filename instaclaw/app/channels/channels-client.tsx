@@ -231,9 +231,49 @@ export function ChannelsClient() {
           <div className="h-2.5" />
           <WaitlistCard channel="slack" />
 
-          {/* Footer — BYOB Telegram escape hatch */}
+          {/* Footer — two stacked footnotes in the power-user / escape-
+              hatch zone. Order matters: top to bottom is "broader option
+              first, narrower option second." The skip line is the broader
+              escape hatch (works for any user who doesn't want a
+              messaging channel right now); the advanced line is the
+              narrower power-user fallback (BYOB Telegram bot only).
+
+              Both are single-line, sentence case, lowercase, with one
+              inline underlined link in MUTED_INK and surrounding text in
+              SUBTLE_INK. Same typography as each other so they read as
+              a true paired footnote, not as a heading + body.
+
+              Skip target: /dashboard. Middleware bounces unauth users
+              to /api/auth/signin?callbackUrl=/dashboard automatically;
+              authed users go straight to /dashboard where the layout's
+              data-driven redirect (see app/(dashboard)/layout.tsx) takes
+              them to the right next step based on VM state.
+
+              See instaclaw/docs/prd/skip-to-command-center-architecture-2026-05-27.md
+              for the full backend edge-case analysis. The current target
+              (/dashboard) is the immediate-ship placeholder; the doc
+              names /onboarding/web as the canonical destination once the
+              backend wiring (web channel type, dashboard welcome inbox,
+              nudge banner) ships. */}
           <p
             className="mt-12 text-center"
+            style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
+          >
+            prefer the web?{" "}
+            <Link
+              href="/dashboard"
+              style={{
+                color: MUTED_INK,
+                textDecoration: "underline",
+                textUnderlineOffset: 2,
+              }}
+            >
+              skip to your command center
+            </Link>
+            . connect a channel anytime.
+          </p>
+          <p
+            className="mt-2 text-center"
             style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
           >
             advanced: prefer your own Telegram bot?{" "}
