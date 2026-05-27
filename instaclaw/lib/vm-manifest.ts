@@ -1692,7 +1692,7 @@ export const VM_MANIFEST = {
    * sweep begin. First 5 customer reconciles are monitored before the
    * remaining ~146 VMs proceed unattended.
    */
-  version: 122,
+  version: 123,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
