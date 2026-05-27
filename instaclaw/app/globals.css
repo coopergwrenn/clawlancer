@@ -1951,6 +1951,72 @@ html.lenis body {
     rgba(255, 255, 255, 0.30) 0px 0px 0.8px 1.6px inset;
 }
 
+/* ────────────────────────────────────────────────────────────────── */
+/* CHANNEL BRAND ICON GLOSS — visionOS-inspired glass tile treatment  */
+/* ────────────────────────────────────────────────────────────────── */
+/*
+ * Applied to every channel-icon container (iMessage, Telegram,
+ * Discord, Slack). Adds two layers of polish on top of the icon's
+ * colored background:
+ *
+ *   1. Box-shadow stack — subtle outer drops (grounds the icon on
+ *      the card surface) + inset top highlight + inset bottom
+ *      darkening. Mimics how light catches a polished glass tile.
+ *
+ *   2. ::after pseudo with linear-gradient — soft white-to-transparent
+ *      from top down to ~55%. The "shine" that runs across the top of
+ *      the squircle. Matches Cooper's brief verbatim (~20% opacity at
+ *      top, transparent at 55%).
+ *
+ * Recipe is a deliberate scale-down of the testimonials-avatar orb
+ * treatment (components/landing/testimonials.tsx) — same family,
+ * smaller scale, no separate specular ellipse (would interact with
+ * icon content like the Telegram plane tip).
+ *
+ * Why linear gradient instead of radial: the icons are squircles, not
+ * circles. A radial highlight on a square creates an obviously
+ * off-center bright spot that reads as processed. Linear-from-top
+ * matches the rectangular shape language and reads as natural
+ * lighting from above.
+ *
+ * Opacity interaction: muted Discord/Slack cards apply opacity:0.7-
+ * 0.75 to the container, which also dims the gloss+shadow. That's
+ * desired — keeps the muted variants visually quieter than active.
+ *
+ * Slack note: Slack's container has rgba(255,255,255,0.85) bg, so the
+ * white gloss is invisible on white. The shadow stack still provides
+ * subtle dimensionality — the icon doesn't sit flat on the card.
+ */
+.channel-brand-icon {
+  position: relative;
+  isolation: isolate;
+  box-shadow:
+    /* Outer drops — ground the icon on the card surface */
+    0 1px 1.5px rgba(0, 0, 0, 0.08),
+    0 0.5px 1px rgba(0, 0, 0, 0.05),
+    /* Inset top — light catches the upper edge */
+    inset 0 0.5px 0.5px rgba(255, 255, 255, 0.4),
+    /* Inset bottom — depth, gives the icon weight */
+    inset 0 -0.5px 0.5px rgba(0, 0, 0, 0.12);
+}
+
+.channel-brand-icon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.20) 0%,
+    rgba(255, 255, 255, 0.05) 30%,
+    rgba(255, 255, 255, 0) 55%
+  );
+  /* z-index above the inner SVG so the gloss overlays the icon
+     content. isolation:isolate on the parent scopes this. */
+  z-index: 1;
+}
+
 /* Inner divider for iMessage's two-action card */
 .channel-card-inner-divider {
   height: 1px;

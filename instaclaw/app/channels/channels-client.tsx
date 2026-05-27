@@ -437,7 +437,7 @@ function IMessageIcon({ size = 30 }: { size?: number }) {
   return (
     <span
       aria-hidden
-      className="shrink-0 inline-flex items-center justify-center"
+      className="channel-brand-icon shrink-0 inline-flex items-center justify-center"
       style={{
         width: size,
         height: size,
@@ -466,7 +466,7 @@ function TelegramIcon({ size = 30 }: { size?: number }) {
   return (
     <span
       aria-hidden
-      className="shrink-0 inline-flex items-center justify-center"
+      className="channel-brand-icon shrink-0 inline-flex items-center justify-center"
       style={{
         width: size,
         height: size,
@@ -525,7 +525,7 @@ function DiscordIcon({ size = 26 }: { size?: number }) {
   return (
     <span
       aria-hidden
-      className="shrink-0 inline-flex items-center justify-center"
+      className="channel-brand-icon shrink-0 inline-flex items-center justify-center"
       style={{
         width: size,
         height: size,
@@ -549,7 +549,7 @@ function SlackIcon({ size = 26 }: { size?: number }) {
   return (
     <span
       aria-hidden
-      className="shrink-0 inline-flex items-center justify-center"
+      className="channel-brand-icon shrink-0 inline-flex items-center justify-center"
       style={{
         width: size,
         height: size,
