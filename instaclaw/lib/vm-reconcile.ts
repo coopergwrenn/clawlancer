@@ -434,6 +434,15 @@ export async function runFileDriftPass(
     // manifest version bump. Per Rule 39, stepBaseSkills failures push to
     // result.warnings — never block file-drift completion.
     await stepBaseSkills(wrappedSsh, vm, result, dryRun);
+    // Rule 47 (continuation): the BASE_DEFI_ROUTING_V1 block in AGENTS.md
+    // is a one-shot insert (marker-guarded idempotent). Without this call,
+    // caught-up VMs (cv == manifest.version) would NEVER receive the
+    // routing block because reconcileVM's cv-stale filter excludes them
+    // and stepMigrateSoulV2 already returned alreadyCorrect at V2-marker
+    // time. Adding to file-drift closes that gap — every healthy assigned
+    // VM gets the block within ~15 min of the next file-drift tick. Per
+    // Rule 39, failures push to result.warnings — non-load-bearing.
+    await stepDeployBaseDefiRouting(wrappedSsh, result, dryRun);
   } catch (err) {
     if (isEnospcDetectedError(err)) {
       logger.error("runFileDriftPass: short-circuited on ENOSPC", {
