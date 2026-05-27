@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-27
 
-Window: `2f3f230489497fbc78cf09aa84651664d7961d19` → `HEAD` (HEAD = `7111ad20`)
+Window: `7111ad20ac214792d701da1620abc9f7fc363803` → `HEAD` (HEAD = `c6f1f767`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 7111ad20ac214792d701da1620abc9f7fc363803 -->
+<!-- LAST_GENERATED_SHA: c6f1f76775fa96acb5e51ab041ea043992585ec3 -->
 
 ## Summary
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `7111ad20` 2026-05-27 — feat(base-mcp): v1.1 — stepDeployBaseDefiRouting for existing V2 VMs [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `d55bac17` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `c6f1f767` 2026-05-27 — feat(base-mcp): wire stepDeployBaseDefiRouting into runFileDriftPass too [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2adfbb0c` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `7111ad20` 2026-05-27 — feat(base-mcp): v1.1 — stepDeployBaseDefiRouting for existing V2 VMs [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `c6f1f767` 2026-05-27 — feat(base-mcp): wire stepDeployBaseDefiRouting into runFileDriftPass too [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `d55bac17` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `2adfbb0c` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `7111ad20` 2026-05-27 — [reconciler, infrastructure] — feat(base-mcp): v1.1 — stepDeployBaseDefiRouting for existing V2 VMs
+- `c6f1f767` 2026-05-27 — [reconciler, infrastructure] — feat(base-mcp): wire stepDeployBaseDefiRouting into runFileDriftPass too
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `7111ad20` 2026-05-27 — feat(base-mcp): v1.1 — stepDeployBaseDefiRouting for existing V2 VMs
+- `c6f1f767` 2026-05-27 — feat(base-mcp): wire stepDeployBaseDefiRouting into runFileDriftPass too
 
 ## Appendix — every commit (chronological)
 
-- `d55bac17` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-- `7111ad20` 2026-05-27 — feat(base-mcp): v1.1 — stepDeployBaseDefiRouting for existing V2 VMs [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `2adfbb0c` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `c6f1f767` 2026-05-27 — feat(base-mcp): wire stepDeployBaseDefiRouting into runFileDriftPass too [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
