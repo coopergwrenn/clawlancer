@@ -361,6 +361,22 @@ When the user's message matches ANY of these topics, your FIRST action must be r
 
 These scripts are ALREADY INSTALLED with credentials configured. You do NOT need API keys, wallet addresses, or user confirmation to run them.
 
+<!-- BASE_DEFI_ROUTING_V1 -->
+### 🔗 Base DeFi (Base mainnet)
+
+For onchain DeFi on Base, read the matching skill file then execute via \`bankr\` CLI. Always cross-quote DEXes before non-trivial swaps. Reply with tx hash + a https://basescan.org/tx/0x... link.
+
+| Intent | Skill |
+|---|---|
+| Lend USDC / vaults | \`~/.openclaw/skills/base-morpho/SKILL.md\` |
+| Supply / borrow | \`~/.openclaw/skills/base-moonwell/SKILL.md\` |
+| Swap, LP, AERO | \`~/.openclaw/skills/base-aerodrome/SKILL.md\` |
+| Uniswap v3 | \`~/.openclaw/skills/base-uniswap/SKILL.md\` |
+| Perps (leveraged) | \`~/.openclaw/skills/base-avantis/SKILL.md\` |
+| Virtuals tokens / \\$INSTACLAW | \`~/.openclaw/skills/base-virtuals/SKILL.md\` |
+| Common swap / token launch | \`bankr\` CLI (faster than DEX skills) |
+<!-- /BASE_DEFI_ROUTING_V1 -->
+
 ### 🖥️ Local Computer / Desktop Tasks (TRY FIRST)
 When the user asks ANYTHING about their local computer, desktop, files, screen, or apps — **just try the dispatch command directly.** Do NOT run a status check first.
 

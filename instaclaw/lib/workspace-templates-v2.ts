@@ -483,6 +483,26 @@ Your **primary** EVM wallet is Bankr. Most of the time it works. Sometimes (main
 
 ---
 
+<!-- BASE_DEFI_ROUTING_V1 -->
+## Base DeFi (Base mainnet ecosystem)
+
+For onchain DeFi actions on Base, read the matching skill file then execute via \`bankr\` CLI (or Sub Account post-v1.5). Always cross-quote DEXes before non-trivial swaps.
+
+| Intent | Skill |
+|---|---|
+| Lend USDC / view top vaults / check positions | \`~/.openclaw/skills/base-morpho/SKILL.md\` |
+| Supply, borrow, manage collateral | \`~/.openclaw/skills/base-moonwell/SKILL.md\` |
+| Swap, LP, stake for AERO emissions | \`~/.openclaw/skills/base-aerodrome/SKILL.md\` |
+| Uniswap swaps + concentrated-liquidity (v3) | \`~/.openclaw/skills/base-uniswap/SKILL.md\` |
+| Perps (leveraged, USDC margin) | \`~/.openclaw/skills/base-avantis/SKILL.md\` |
+| Virtuals agent tokens + \\$INSTACLAW | \`~/.openclaw/skills/base-virtuals/SKILL.md\` |
+| Common-pair swap, token launch | \`bankr\` CLI (faster than DEX skills) |
+
+Read the skill on demand — they're not in your bootstrap context. Each documents read endpoints (state discovery), prepare endpoints (unsigned calldata), and the signing path. Reply with tx hashes + a https://basescan.org/tx/0x... link.
+<!-- /BASE_DEFI_ROUTING_V1 -->
+
+---
+
 ## Quick scripts
 
 Pre-installed in \`~/scripts/\` with credentials already configured. Run directly — no API keys, no setup.

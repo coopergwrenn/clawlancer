@@ -72,6 +72,14 @@ import {
 import { buildEnrichedSignupBody } from "./index-signup-enrich";
 import { mintOrReuseApiKey } from "./edgeos-mint";
 import { EDGEOS_TENANT_EDGECITY_PROD } from "./edgeos-auth";
+import {
+  getBaseSkillCatalog,
+  getBaseSkillContent,
+  getBaseSkillReferenceContent,
+  onVmReferencePath,
+  onVmSkillPath,
+  currentSourceMode as currentBaseSkillsSourceMode,
+} from "./base-skills-registry";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -404,6 +412,14 @@ export async function runFileDriftPass(
   try {
     await stepDiskGuard(wrappedSsh, vm, result, dryRun);
     await stepFiles(wrappedSsh, vm, VM_MANIFEST, result, dryRun);
+    // Rule 47 (PRD §4.5/§4.6 + addendum §1.3 tier 2): Base ecosystem skill
+    // plugins need continuous reconciliation too. In vendored mode this is
+    // a no-op (stepFiles + skillsFromRepo already shipped the same content);
+    // in live-fetch / registry-api modes this is where upstream content
+    // changes reach caught-up VMs within one cron cycle (~5 min) without a
+    // manifest version bump. Per Rule 39, stepBaseSkills failures push to
+    // result.warnings — never block file-drift completion.
+    await stepBaseSkills(wrappedSsh, vm, result, dryRun);
   } catch (err) {
     if (isEnospcDetectedError(err)) {
       logger.error("runFileDriftPass: short-circuited on ENOSPC", {
@@ -850,6 +866,21 @@ export async function reconcileVM(
     // modify. SHA-verified; idempotent skip on match.
     currentStep = "edge-overlay-deploy";
     await stepDeployEdgeOverlay(ssh, vm, result, dryRun);
+
+    // ── Step 8f6: Base ecosystem skill plugins (Morpho, Aerodrome, etc.) ──
+    // Owns deployment of every `~/.openclaw/skills/base-*\/SKILL.md` exclusively
+    // (the generic stepSkills also touches them in vendored mode but its
+    // earlier write gets overwritten by ours, idempotent at the bit level).
+    //
+    // Resolves content via lib/base-skills-registry.ts in the active source
+    // mode (vendored | live-fetch | registry-api, controlled by
+    // BASE_SKILLS_SOURCE_MODE env var). The mode flip is a single env-var
+    // change — the agent runtime never knows or cares which mode is active.
+    //
+    // See PRD §4.5 / §4.6 / §4.7 for the source-mode abstraction design,
+    // and the addendum §1 for the three-tier freshness story.
+    currentStep = "base-skills-deploy";
+    await stepBaseSkills(ssh, vm, result, dryRun);
 
     // ── Step 8g–8m: Deploy heals ──
     // configureOpenClaw silently dropped these on a non-trivial fraction of
@@ -9916,6 +9947,156 @@ async function stepDeployEdgeOverlay(
 
   result.fixed.push("INSTACLAW_OVERLAY.md deployed");
   logger.info("INSTACLAW_OVERLAY.md deployed", { route: "vm-reconcile", vmId: vm.id });
+}
+
+/**
+ * stepBaseSkills — deploy every Base ecosystem skill plugin to the VM.
+ *
+ * Owns ~/.openclaw/skills/base-*\/SKILL.md exclusively. The generic
+ * stepSkills step also writes those files in vendored mode (since it
+ * iterates every directory under instaclaw/skills/), but our second write
+ * either no-ops (md5 / sha matches because we resolved the same vendored
+ * content) or wins (live-fetch / registry-api modes return upstream
+ * content that differs from what stepSkills shipped).
+ *
+ * Source of content is controlled by the BASE_SKILLS_SOURCE_MODE env var:
+ *   - "vendored" (default): reads instaclaw/skills/base-<name>/SKILL.md
+ *     from the function's bundled repo (same content stepSkills already
+ *     deployed).
+ *   - "live-fetch": HTTP GET each entry's upstreamUrl; falls back to
+ *     vendored on any failure (Rule 39 — never blocks gateway uptime).
+ *   - "registry-api": placeholder for the future Base registry API; today
+ *     throws RegistryApiNotYetAvailable which the registry module
+ *     catches → falls through to live-fetch → falls through to vendored.
+ *
+ * Failure mode classification (Rule 39): all per-entry failures push to
+ * result.warnings, NEVER result.errors. Rationale: a Morpho skill that's
+ * a few hours stale (or even missing) does not prevent the user's
+ * agent from working. The user just doesn't get DeFi composition for
+ * that one protocol on that one VM until the next reconcile cycle.
+ *
+ * SHA-comparison + atomic-write + verify-after-write mirror
+ * stepDeployEdgeOverlay (Rule 10, Rule 38). References (per-entry
+ * supplementary files under `references/`) are deployed in the same
+ * pattern after the main SKILL.md.
+ *
+ * Idempotency: if on-disk SHA matches resolved SHA, we push to
+ * result.alreadyCorrect and skip the write. Cheap — ~50ms per skill
+ * per VM steady-state.
+ */
+async function stepBaseSkills(
+  ssh: SSHConnection,
+  vm: VMRecord,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  const mode = currentBaseSkillsSourceMode();
+  let catalog;
+  try {
+    catalog = await getBaseSkillCatalog(mode);
+  } catch (err) {
+    result.warnings.push(
+      `base-skills: catalog resolution failed (mode=${mode}): ${((err as Error).message ?? String(err)).slice(0, 200)}`,
+    );
+    return;
+  }
+
+  for (const entry of catalog) {
+    const tag = `base-skill ${entry.name}`;
+    try {
+      const resolved = await getBaseSkillContent(entry, mode);
+      const expectedSha = resolved.sha256;
+      const onVmPath = onVmSkillPath(entry);
+      const parentDir = onVmPath.substring(0, onVmPath.lastIndexOf("/"));
+
+      const probe = await ssh.execCommand(
+        `[ -f ${onVmPath} ] && sha256sum ${onVmPath} | awk '{print $1}' || echo MISSING`,
+      );
+      const onDiskSha = (probe.stdout || "").trim();
+
+      if (onDiskSha === expectedSha) {
+        result.alreadyCorrect.push(`${tag} (${resolved.sourceMode})`);
+      } else if (dryRun) {
+        result.fixed.push(
+          `[dry-run] ${tag} (${onDiskSha === "MISSING" ? "missing" : onDiskSha.slice(0, 8)} → ${expectedSha.slice(0, 8)}, ${resolved.sourceMode})`,
+        );
+      } else {
+        const b64 = Buffer.from(resolved.content, "utf-8").toString("base64");
+        await ssh.execCommand(`mkdir -p ${parentDir}`);
+        const write = await ssh.execCommand(
+          `echo '${b64}' | base64 -d > ${onVmPath}.tmp && mv ${onVmPath}.tmp ${onVmPath} && chmod 0644 ${onVmPath}`,
+        );
+        if (write.code !== 0) {
+          result.warnings.push(
+            `${tag} write failed: ${(write.stderr || write.stdout || "").slice(0, 200)}`,
+          );
+          continue;
+        }
+        const verify = await ssh.execCommand(
+          `sha256sum ${onVmPath} | awk '{print $1}'`,
+        );
+        const verifySha = (verify.stdout || "").trim();
+        if (verifySha !== expectedSha) {
+          result.warnings.push(
+            `${tag} verify mismatch: expected=${expectedSha.slice(0, 12)} got=${verifySha.slice(0, 12)}`,
+          );
+          continue;
+        }
+        result.fixed.push(
+          `${tag} (${resolved.sourceMode}, sha=${expectedSha.slice(0, 8)})`,
+        );
+      }
+
+      // Per-entry reference files (references/*.md, etc.) — same flow,
+      // narrower scope. Sentinel validation does NOT apply to references
+      // (they're typically supplementary docs).
+      for (const ref of entry.references ?? []) {
+        try {
+          const refResolved = await getBaseSkillReferenceContent(entry, ref, mode);
+          const refRemote = onVmReferencePath(entry, ref);
+          const refParent = refRemote.substring(0, refRemote.lastIndexOf("/"));
+          const refProbe = await ssh.execCommand(
+            `[ -f ${refRemote} ] && sha256sum ${refRemote} | awk '{print $1}' || echo MISSING`,
+          );
+          if ((refProbe.stdout || "").trim() === refResolved.sha256) {
+            result.alreadyCorrect.push(`${tag}:${ref.remotePath}`);
+            continue;
+          }
+          if (dryRun) {
+            result.fixed.push(`[dry-run] ${tag}:${ref.remotePath}`);
+            continue;
+          }
+          const refB64 = Buffer.from(refResolved.content, "utf-8").toString("base64");
+          await ssh.execCommand(`mkdir -p ${refParent}`);
+          const refWrite = await ssh.execCommand(
+            `echo '${refB64}' | base64 -d > ${refRemote}.tmp && mv ${refRemote}.tmp ${refRemote} && chmod 0644 ${refRemote}`,
+          );
+          if (refWrite.code !== 0) {
+            result.warnings.push(
+              `${tag}:${ref.remotePath} write failed: ${(refWrite.stderr || refWrite.stdout || "").slice(0, 200)}`,
+            );
+            continue;
+          }
+          result.fixed.push(`${tag}:${ref.remotePath}`);
+        } catch (refErr) {
+          result.warnings.push(
+            `${tag}:${ref.remotePath} resolve failed: ${((refErr as Error).message ?? String(refErr)).slice(0, 200)}`,
+          );
+        }
+      }
+    } catch (err) {
+      // Per Rule 39: warnings, not errors. Could be:
+      //   - Sentinel mismatch (upstream content hollowed out → BaseSkillSentinelError)
+      //   - Vendored file missing (programming bug or deploy issue)
+      //   - SSH command failure (transient)
+      // In all cases the gateway keeps working; the agent reads whatever's
+      // on disk (could be a slightly stale copy or nothing at all — neither
+      // is gateway-fatal).
+      result.warnings.push(
+        `${tag} failed: ${((err as Error).message ?? String(err)).slice(0, 200)}`,
+      );
+    }
+  }
 }
 
 // ─── stepChatGPTOAuthToken (Day 11-15 — closes Day 1-4 end-to-end) ───────

@@ -494,6 +494,84 @@ const BAKE_BOOLEAN_ENVS: BooleanEnvSpec[] = [
   },
 ];
 
+// ──────────────────────────────────────────────────────────────────────────────
+// ENUM ENV VAR VALUE VALIDATION (Rule 61 — enum variant)
+// ──────────────────────────────────────────────────────────────────────────────
+//
+// Same operator-error class as the boolean section above, but for env vars
+// that take one of N specific string values (an enum). Examples:
+//   - BASE_SKILLS_SOURCE_MODE: "vendored" | "live-fetch" | "registry-api"
+//
+// Pattern: code path uses `if (raw === "live-fetch" || raw === "registry-api")
+// return raw; return "vendored";`. If operator typo'd (e.g. "Vendored" with
+// capital V), they get the default silently — exactly the Rule 61 bug class.
+// Pre-bake-check catches it.
+
+interface EnumEnvSpec {
+  name: string;
+  allowedValues: readonly string[];
+  defaultValue: string; // value used when unset / empty
+  requiredOnForBake: boolean;
+  rationale: string;
+}
+
+const BAKE_ENUM_ENVS: EnumEnvSpec[] = [
+  {
+    name: "BASE_SKILLS_SOURCE_MODE",
+    allowedValues: ["vendored", "live-fetch", "registry-api"],
+    defaultValue: "vendored",
+    requiredOnForBake: false, // unset is fine — defaults to vendored, the bake-safe mode
+    rationale:
+      "Controls how lib/base-skills-registry.ts resolves Base skill plugin content. " +
+      "Bake context should always use 'vendored' (or unset) — live-fetch + registry-api " +
+      "depend on upstream availability at bake time. Set to non-vendored only in " +
+      "production after vm-1019 canary + Cooper approval per Rule 64.",
+  },
+];
+
+function checkEnumEnvVarValues(): CheckResult[] {
+  return BAKE_ENUM_ENVS.map(({ name, allowedValues, defaultValue, requiredOnForBake, rationale }) => {
+    const value = process.env[name];
+    const allowedList = allowedValues.map((v) => JSON.stringify(v)).join(", ");
+
+    if (value === undefined || value === "") {
+      return {
+        name: `${name} (default: ${defaultValue})`,
+        severity: requiredOnForBake ? "CRITICAL" : "INFO",
+        passed: !requiredOnForBake,
+        summary: value === undefined ? `unset → "${defaultValue}"` : `empty → "${defaultValue}"`,
+        details: requiredOnForBake
+          ? `${rationale}\nFix: set ${name} to one of ${allowedList}.`
+          : undefined,
+      };
+    }
+
+    if (!allowedValues.includes(value)) {
+      return {
+        name: `${name} (Rule 61 enum validation)`,
+        severity: "CRITICAL",
+        passed: false,
+        summary: `${JSON.stringify(value)} not in ${allowedList}`,
+        details:
+          `${name} is set to a value not in the allowed enum.\n` +
+          `Allowed: ${allowedList}.\n` +
+          `Most likely cause: typo (capitalization, extra whitespace, autocomplete artifact).\n` +
+          `Common Rule-61 trap: silent default — code falls back to '${defaultValue}' and the\n` +
+          `feature you THINK is enabled is actually off.\n` +
+          `Fix (local): edit instaclaw/.env.local and set ${name}=<one of allowed>.\n` +
+          `Fix (Vercel): printf '<value>' | npx vercel env add ${name} production`,
+      };
+    }
+
+    return {
+      name: `${name} (enum value validation)`,
+      severity: "INFO",
+      passed: true,
+      summary: `"${value}" ✓`,
+    };
+  });
+}
+
 function checkBooleanEnvVarValues(): CheckResult[] {
   return BAKE_BOOLEAN_ENVS.map(({ name, requiredOnForBake, rationale }) => {
     const value = process.env[name];
@@ -1136,6 +1214,8 @@ async function main(): Promise<number> {
   push(checkEnvVarsPresent());
   // 2026-05-22 incident response: value validation, not just presence.
   for (const r of checkBooleanEnvVarValues()) push(r);
+  // 2026-05-26: Rule 61 enum variant — BASE_SKILLS_SOURCE_MODE etc.
+  for (const r of checkEnumEnvVarValues()) push(r);
   // 2026-05-24 CDP backup wallet restoration (Cooper P0).
   for (const r of checkCdpReadiness()) push(r);
   push(checkLinodeSnapshotMatch());
