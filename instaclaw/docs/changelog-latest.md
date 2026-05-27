@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-27
 
-Window: `2330afbc909190a2e89e4e5a2128e7ef77091cb8` → `HEAD` (HEAD = `26875bd5`)
+Window: `26875bd59376b9cc8d5bc02020542d2934bf316c` → `HEAD` (HEAD = `ed637317`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 26875bd59376b9cc8d5bc02020542d2934bf316c -->
+<!-- LAST_GENERATED_SHA: ed63731737260316292b8f32b8cc31069e359d45 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `26875bd5` 2026-05-26 — fix(channels): center Slack hash by shifting -1.5 left [1 files] _(ai-assisted)_
+- `ed637317` 2026-05-27 — fix(channels): re-center Discord + Slack icons by eye, not math [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `12710939` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `327944b7` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `26875bd5` 2026-05-26 — fix(channels): center Slack hash by shifting -1.5 left [1 files] _(ai-assisted)_
+- `ed637317` 2026-05-27 — fix(channels): re-center Discord + Slack icons by eye, not math [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `12710939` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `327944b7` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `26875bd5` 2026-05-26 — fix(channels): center Slack hash by shifting -1.5 left
+- `ed637317` 2026-05-27 — fix(channels): re-center Discord + Slack icons by eye, not math
 
 ## Appendix — every commit (chronological)
 
-- `12710939` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-- `26875bd5` 2026-05-26 — fix(channels): center Slack hash by shifting -1.5 left [1 files] _(ai-assisted)_
+- `327944b7` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `ed637317` 2026-05-27 — fix(channels): re-center Discord + Slack icons by eye, not math [1 files] _(ai-assisted)_
