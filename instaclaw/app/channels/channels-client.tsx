@@ -303,7 +303,7 @@ function WaitlistCard({ channel }: { channel: WaitlistChannel }) {
   };
 
   return (
-    <div className="channel-card-root is-muted">
+    <div className={`channel-card-root is-muted is-${channel}`}>
       <div className="channel-card-surface overflow-hidden">
         <button
           type="button"

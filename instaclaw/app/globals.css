@@ -1904,12 +1904,45 @@ html.lenis body {
 
 /* ─── Muted variant (Discord, Slack) — same recipe, lower intensity ── */
 
+/* Default muted substrate — neutral dark. Used as fallback if no
+   per-brand class is applied. */
 .channel-card-root.is-muted::before {
   background: radial-gradient(
     ellipse at 50% 60%,
     rgba(0, 0, 0, 0.06) 0%,
     rgba(0, 0, 0, 0.02) 50%,
     transparent 80%
+  );
+}
+
+/* Per-brand colored substrates for Coming Soon cards. Same radial
+   recipe as the active iMessage/Telegram (ellipse at 28%/50%, fades
+   to dark then transparent) but with peak alpha 0.13 instead of 0.22
+   — about 60% of active intensity. Lets Discord and Slack feel like
+   they belong to the same glass family as the active cards, just
+   visibly quieter (they're coming soon, not active). */
+.channel-card-root.is-muted.is-discord::before {
+  background: radial-gradient(
+    ellipse at 28% 50%,
+    rgba(88, 101, 242, 0.13) 0%,
+    rgba(88, 101, 242, 0.06) 35%,
+    rgba(0, 0, 0, 0.04) 70%,
+    transparent 90%
+  );
+}
+
+/* Slack: warm yellow aura. Picked from a 4-variant iso compare
+   (yellow / pink / multi-color blend / aubergine). Yellow won
+   because (a) it's a Slack brand color, (b) warmest hue blends with
+   the cream page background, (c) clearly distinguishable from
+   Discord's purple so the two muted cards don't blur together. */
+.channel-card-root.is-muted.is-slack::before {
+  background: radial-gradient(
+    ellipse at 28% 50%,
+    rgba(236, 178, 46, 0.13) 0%,
+    rgba(236, 178, 46, 0.06) 35%,
+    rgba(0, 0, 0, 0.04) 70%,
+    transparent 90%
   );
 }
 
