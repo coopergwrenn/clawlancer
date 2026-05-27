@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-27
 
-Window: `a017284956e2e8c4c6f42bf73c37e3722324d2d3` → `HEAD` (HEAD = `f86950aa`)
+Window: `f86950aa12ccb360f51a90538f99c715fb3e0135` → `HEAD` (HEAD = `2330afbc`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: f86950aa12ccb360f51a90538f99c715fb3e0135 -->
+<!-- LAST_GENERATED_SHA: 2330afbc909190a2e89e4e5a2128e7ef77091cb8 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `f86950aa` 2026-05-26 — copy(channels): consolidate subtitle from 3 lines to 1 [1 files] _(ai-assisted)_
+- `2330afbc` 2026-05-26 — fix(channels): center Discord mascot via bbox-center bake [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `7285cb36` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `924b17d5` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `f86950aa` 2026-05-26 — copy(channels): consolidate subtitle from 3 lines to 1 [1 files] _(ai-assisted)_
+- `2330afbc` 2026-05-26 — fix(channels): center Discord mascot via bbox-center bake [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `7285cb36` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `924b17d5` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `f86950aa` 2026-05-26 — copy(channels): consolidate subtitle from 3 lines to 1
+- `2330afbc` 2026-05-26 — fix(channels): center Discord mascot via bbox-center bake
 
 ## Appendix — every commit (chronological)
 
-- `7285cb36` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-- `f86950aa` 2026-05-26 — copy(channels): consolidate subtitle from 3 lines to 1 [1 files] _(ai-assisted)_
+- `924b17d5` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `2330afbc` 2026-05-26 — fix(channels): center Discord mascot via bbox-center bake [1 files] _(ai-assisted)_
