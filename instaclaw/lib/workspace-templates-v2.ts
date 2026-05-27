@@ -218,6 +218,55 @@ Read the skill on demand — they're not in your bootstrap context. Each documen
 export const BASE_DEFI_ROUTING_V1_INSERT_BEFORE_HEADER = "## Recurring Tasks (Crons) — list first, never duplicate";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Web-only user — V1 marker pair + AGENTS.md block.
+//
+// Conditionally inserted into AGENTS.md for users whose preferred_channel
+// is 'web' (set by /onboarding/web when they clicked "skip to your command
+// center" on /channels). Teaches the agent it's chatting through the
+// browser only — no proactive iMessage / Telegram delivery surface — and
+// how to respond when the user asks for "text me at 9am" type requests
+// the channel-less mode can't fulfill.
+//
+// Lives in workspace-templates-v2.ts (not inline in WORKSPACE_AGENTS_MD_V2)
+// because the block is CONDITIONAL per-user: web-only users get it, channel
+// users do not. The template is a shared constant deployed to all VMs;
+// per-user surgical insert/remove happens via the reconciler step
+// stepWebOnlyUserAgents in lib/vm-reconcile.ts (mirrors
+// stepDeployGbrainSoulProtocol's marker-guarded Python in-place edit).
+//
+// State transitions handled by the reconciler step:
+//   - user.preferred_channel = 'web' AND marker absent → insert block
+//   - user.preferred_channel = 'web' AND marker present → already-correct
+//   - user.preferred_channel ≠ 'web' AND marker present → REMOVE block
+//     (handles the user-connected-a-channel-later transition cleanly)
+//   - user.preferred_channel ≠ 'web' AND marker absent → already-correct
+//
+// Cost: ~580 chars added to AGENTS.md for web-only users; ~0 for channel
+// users. Bootstrap-budget impact negligible — measured on vm-1005
+// (healthy edge_city) AGENTS.md is currently 30,077 chars; +580 stays
+// well inside the 40K cap.
+
+export const WEB_ONLY_USER_V1_BEGIN_MARKER = "<!-- WEB_ONLY_USER_V1 -->";
+export const WEB_ONLY_USER_V1_END_MARKER = "<!-- /WEB_ONLY_USER_V1 -->";
+
+export const WEB_ONLY_USER_V1_AGENTS_BLOCK = `<!-- WEB_ONLY_USER_V1 -->
+## Web-Only User
+
+The user is currently chatting with you via the web command center on instaclaw.io/dashboard — they haven't connected iMessage or Telegram.
+
+- Don't try to proactively message them outside the dashboard. They're not listening on a phone.
+- When they ask you to "text me" or "send me a reminder", explain warmly that you'd need a messaging channel for that, and that connecting one is a single tap at /channels. Don't be pushy.
+- Some users prefer the web. That's a valid permanent choice; don't assume they'll connect later.
+
+<!-- /WEB_ONLY_USER_V1 -->`;
+
+// Insert before this header in AGENTS.md (mirrors how BASE_DEFI_ROUTING_V1
+// targets "## Recurring Tasks"). Choosing a header that exists in the V2
+// template; falls back to EOF append if missing per the Python step's
+// "appended-eof" branch.
+export const WEB_ONLY_USER_V1_INSERT_BEFORE_HEADER = "## Memory Protocol";
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const GBRAIN_SOUL_ROUTING_V1_BEGIN_MARKER = "<!-- GBRAIN_SOUL_ROUTING_V1 -->";
 export const GBRAIN_SOUL_ROUTING_V1_END_MARKER = "<!-- /GBRAIN_SOUL_ROUTING_V1 -->";

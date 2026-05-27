@@ -621,13 +621,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         partner: string | null;
         index_last_intent_at: string | null;
         preferred_channel: string | null;
+        dismissed_channel_nudge_at: string | null;
       } | null = null;
 
       if (token.googleId) {
         // Google path (existing — unchanged)
         const { data } = await supabase
           .from("instaclaw_users")
-          .select("id, onboarding_complete, partner, index_last_intent_at, preferred_channel")
+          .select(
+            "id, onboarding_complete, partner, index_last_intent_at, preferred_channel, dismissed_channel_nudge_at",
+          )
           .eq("google_id", token.googleId)
           .single();
         userRow = data
@@ -637,13 +640,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               partner: data.partner as string | null,
               index_last_intent_at: data.index_last_intent_at as string | null,
               preferred_channel: data.preferred_channel as string | null,
+              dismissed_channel_nudge_at:
+                data.dismissed_channel_nudge_at as string | null,
             }
           : null;
       } else if (token.instaclawUserId) {
         // ChatGPT path (new — Credentials provider)
         const { data } = await supabase
           .from("instaclaw_users")
-          .select("id, onboarding_complete, partner, index_last_intent_at, preferred_channel")
+          .select(
+            "id, onboarding_complete, partner, index_last_intent_at, preferred_channel, dismissed_channel_nudge_at",
+          )
           .eq("id", token.instaclawUserId as string)
           .single();
         userRow = data
@@ -653,6 +660,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               partner: data.partner as string | null,
               index_last_intent_at: data.index_last_intent_at as string | null,
               preferred_channel: data.preferred_channel as string | null,
+              dismissed_channel_nudge_at:
+                data.dismissed_channel_nudge_at as string | null,
             }
           : null;
       }
@@ -677,6 +686,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // Drives Phase 2 surfaces — dashboard nudge banner, AGENTS.md
         // WEB_ONLY_USER section, settings page copy.
         session.user.preferredChannel = userRow.preferred_channel ?? null;
+        // dismissedChannelNudgeAt: last time the user clicked [maybe later]
+        // on the /dashboard nudge banner. Banner re-renders if NULL or
+        // older than 14 days (components/dashboard/channel-nudge-banner.tsx
+        // computes the recency check; this field is the source). Set by
+        // POST /api/onboarding/dismiss-channel-nudge. Phase 2 — landed
+        // 2026-05-27 after the underlying column was applied to prod.
+        session.user.dismissedChannelNudgeAt =
+          userRow.dismissed_channel_nudge_at ?? null;
       }
       return session;
     },

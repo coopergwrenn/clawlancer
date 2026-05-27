@@ -46,6 +46,10 @@ import {
   GBRAIN_SOUL_ROUTING_V1_END_ANCHOR,
   BASE_DEFI_ROUTING_V1_AGENTS_BLOCK,
   BASE_DEFI_ROUTING_V1_INSERT_BEFORE_HEADER,
+  WEB_ONLY_USER_V1_AGENTS_BLOCK,
+  WEB_ONLY_USER_V1_BEGIN_MARKER,
+  WEB_ONLY_USER_V1_END_MARKER,
+  WEB_ONLY_USER_V1_INSERT_BEFORE_HEADER,
   WORKSPACE_SOUL_MD_V2,
   WORKSPACE_AGENTS_MD_V2,
   WORKSPACE_TOOLS_MD_V2,
@@ -913,6 +917,21 @@ export async function reconcileVM(
     // references are already on disk when the agent reads it.
     currentStep = "base-defi-routing-deploy";
     await stepDeployBaseDefiRouting(ssh, result, dryRun);
+
+    // ── Step 8f8: WEB_ONLY_USER block in AGENTS.md (per-user conditional) ──
+    // Inserts the WEB_ONLY_USER_V1 marker block when the VM's assigned user
+    // has preferred_channel='web' (i.e., they clicked "skip to your command
+    // center" on /channels). Removes the block when the user transitions
+    // off 'web' (e.g., they connected iMessage/Telegram later). Mirrors
+    // stepDeployGbrainSoulProtocol's marker-guarded Python in-place pattern
+    // (Rule 22 backup, atomic write, marker-verify), but with an explicit
+    // REMOVE branch keyed on the user's current preferred_channel.
+    //
+    // Failures go to result.warnings per Rule 39 — non-load-bearing for
+    // chat function; the agent works fine without the section, just
+    // slightly less aware of the user's web-only context.
+    currentStep = "web-only-user-agents";
+    await stepWebOnlyUserAgents(ssh, vm, result, dryRun);
 
     // ── Step 8g–8m: Deploy heals ──
     // configureOpenClaw silently dropped these on a non-trivial fraction of
@@ -9542,6 +9561,251 @@ out({"status": "ok", "inserted_at": inserted_at, "size_before": len(original), "
   }
   result.errors.push(`gbrain-soul-protocol: unexpected status=${parsed.status}`);
   return;
+}
+
+/**
+ * stepWebOnlyUserAgents — Phase 2 of the "skip to your command center" flow.
+ *
+ * Per-user surgical insert/remove of the WEB_ONLY_USER_V1 marker block in
+ * AGENTS.md, keyed on the assigned user's `preferred_channel` column.
+ *
+ * State machine:
+ *   - user.preferred_channel === 'web' AND marker absent → INSERT block
+ *   - user.preferred_channel === 'web' AND marker present → no-op (correct)
+ *   - user.preferred_channel ≠ 'web' AND marker present → REMOVE block
+ *   - user.preferred_channel ≠ 'web' AND marker absent → no-op (correct)
+ *
+ * The REMOVE branch is what handles the user-connected-a-channel-later
+ * transition: when a previously-web user finishes /channels onboarding,
+ * /api/onboarding/done/submit flips preferred_channel to 'imessage' or
+ * 'telegram'; the next reconcile tick (~3 min) sees the mismatch and
+ * surgically removes the marker block. The agent's voice realigns
+ * within one reconcile cycle.
+ *
+ * Mirrors stepDeployGbrainSoulProtocol's Python in-place pattern (Rule 22
+ * backup, atomic write, marker-verify) but extended with the REMOVE
+ * branch. Failures push to result.warnings per Rule 39 — non-load-bearing
+ * for chat function; the agent works fine without the section, just
+ * slightly less aware of the user's web-only state.
+ *
+ * Cost per reconcile tick: 1 Supabase SELECT (user.preferred_channel by
+ * vm.assigned_to) + 1 SSH grep + (only on transitions) 1 Python edit.
+ * Conservative early-returns for users whose preferred_channel is not
+ * 'web' AND marker absent (the steady-state for ~99% of the fleet).
+ */
+async function stepWebOnlyUserAgents(
+  ssh: SSHConnection,
+  vm: VMRecord,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  // ── Gate 0: must have an assigned user ──
+  if (!vm.assigned_to) {
+    // Pool VMs have no owner; nothing to gate on.
+    return;
+  }
+
+  // ── Gate 1: fetch user.preferred_channel ──
+  const sb = getSupabase();
+  const { data: user, error: userErr } = await sb
+    .from("instaclaw_users")
+    .select("preferred_channel")
+    .eq("id", vm.assigned_to)
+    .maybeSingle();
+
+  if (userErr) {
+    recordHealWarning(
+      result,
+      `web-only-user: user lookup failed (assigned_to=${vm.assigned_to.slice(0, 8)}): ${userErr.message}`,
+    );
+    return;
+  }
+
+  const isWebOnly = (user?.preferred_channel ?? null) === "web";
+
+  // ── Marker probe ──
+  const check = await ssh.execCommand(
+    `grep -c "WEB_ONLY_USER_V1" ~/.openclaw/workspace/AGENTS.md 2>/dev/null || echo 0`,
+  );
+  const markerCount = parseInt((check.stdout || "0").trim(), 10);
+  // Begin + end markers both contain "WEB_ONLY_USER_V1" — count of 2 means
+  // the full block is present; 0 means absent; 1 is a corrupted partial
+  // insert (rare; treat as absent and let the insert path rewrite).
+  const present = markerCount >= 2;
+
+  // ── State machine ──
+  if (isWebOnly && present) {
+    result.alreadyCorrect.push("web-only-user: marker present (web user)");
+    return;
+  }
+  if (!isWebOnly && !present) {
+    // The steady-state for the vast majority of the fleet. Cheap early-out.
+    return;
+  }
+
+  if (dryRun) {
+    if (isWebOnly && !present) {
+      result.fixed.push("[dry-run] web-only-user: would INSERT WEB_ONLY_USER_V1 block");
+    } else {
+      result.fixed.push("[dry-run] web-only-user: would REMOVE WEB_ONLY_USER_V1 block");
+    }
+    return;
+  }
+
+  // ── Python in-place edit (insert OR remove) ──
+  // One script handles both branches based on the `mode` config field.
+  // Rule 22: backup before any modification. Atomic tmp + os.replace.
+  // Marker-verify after write.
+  const cfg = JSON.stringify({
+    agents_path: "~/.openclaw/workspace/AGENTS.md",
+    backup_path: `~/.openclaw/backups/web-only-user-${Date.now()}/AGENTS.md`,
+    block: WEB_ONLY_USER_V1_AGENTS_BLOCK,
+    insert_before_header: WEB_ONLY_USER_V1_INSERT_BEFORE_HEADER,
+    begin_marker: WEB_ONLY_USER_V1_BEGIN_MARKER,
+    end_marker: WEB_ONLY_USER_V1_END_MARKER,
+    mode: isWebOnly ? "insert" : "remove",
+  });
+
+  const PATCH_PY = `
+import json, os, sys
+
+cfg = json.loads(sys.stdin.read())
+path = os.path.expanduser(cfg["agents_path"])
+
+def out(d):
+    print(json.dumps(d))
+    sys.exit(0)
+
+if not os.path.exists(path):
+    out({"status": "missing"})
+
+with open(path) as f:
+    content = f.read()
+original = content
+
+begin = cfg["begin_marker"]
+end = cfg["end_marker"]
+mode = cfg["mode"]
+
+# Rule 22 backup BEFORE any modification.
+bp = os.path.expanduser(cfg["backup_path"])
+os.makedirs(os.path.dirname(bp), exist_ok=True)
+with open(bp, "w") as f:
+    f.write(original)
+
+if mode == "insert":
+    if begin in content:
+        out({"status": "already-present"})
+
+    header = cfg["insert_before_header"]
+    lines = content.split("\\n")
+    idx = -1
+    for i, line in enumerate(lines):
+        if line.strip() == header.strip():
+            idx = i
+            break
+
+    block = cfg["block"]
+    if idx >= 0:
+        new_content = "\\n".join(lines[:idx]) + "\\n" + block + "\\n\\n" + "\\n".join(lines[idx:])
+        inserted_at = "before-header"
+    else:
+        new_content = content.rstrip() + "\\n\\n" + block + "\\n"
+        inserted_at = "appended-eof"
+
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(new_content)
+    os.replace(tmp, path)
+
+    with open(path) as f:
+        final = f.read()
+    if begin not in final or end not in final:
+        out({"status": "verify-failed", "inserted_at": inserted_at})
+    out({"status": "ok-inserted", "inserted_at": inserted_at, "size_before": len(original), "size_after": len(final)})
+
+elif mode == "remove":
+    bi = content.find(begin)
+    if bi < 0:
+        out({"status": "already-absent"})
+    ei = content.find(end, bi)
+    if ei < 0:
+        out({"status": "corrupt-no-end-marker"})
+    # Snap to end of the end-marker line; consume trailing newlines so we
+    # don't leave a stranded blank line.
+    end_of_block = ei + len(end)
+    # Optional trailing newline(s) — consume up to 2 (the block was inserted
+    # with "\\n\\n" after; remove undoes that cleanly).
+    while end_of_block < len(content) and content[end_of_block] == "\\n":
+        end_of_block += 1
+        if end_of_block - (ei + len(end)) >= 2:
+            break
+
+    new_content = content[:bi].rstrip("\\n") + "\\n" + content[end_of_block:]
+
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(new_content)
+    os.replace(tmp, path)
+
+    with open(path) as f:
+        final = f.read()
+    if begin in final or end in final:
+        out({"status": "verify-failed-remove"})
+    out({"status": "ok-removed", "size_before": len(original), "size_after": len(final)})
+
+else:
+    out({"status": "bad-mode", "mode": mode})
+`;
+
+  const scriptB64 = Buffer.from(PATCH_PY, "utf-8").toString("base64");
+  const cfgB64 = Buffer.from(cfg, "utf-8").toString("base64");
+  const cmd = `echo '${cfgB64}' | base64 -d | python3 <(echo '${scriptB64}' | base64 -d)`;
+
+  const r = await ssh.execCommand(cmd, { execOptions: { timeout: 30_000 } });
+  if (r.code !== 0) {
+    recordHealWarning(
+      result,
+      `web-only-user: python failed rc=${r.code}: ${(r.stderr || r.stdout).slice(0, 200)}`,
+    );
+    return;
+  }
+
+  const lines = (r.stdout || "").split("\n").map((l: string) => l.trim()).filter(Boolean);
+  const last = lines[lines.length - 1] || "";
+  let parsed: { status?: string; inserted_at?: string; size_before?: number; size_after?: number };
+  try {
+    parsed = JSON.parse(last);
+  } catch {
+    recordHealWarning(result, `web-only-user: unparseable output: ${last.slice(0, 200)}`);
+    return;
+  }
+
+  if (parsed.status === "missing") {
+    // AGENTS.md doesn't exist yet — earlier reconciler step (stepAgents)
+    // will write it on a later cycle. Skip silently.
+    return;
+  }
+  if (parsed.status === "already-present" || parsed.status === "already-absent") {
+    result.alreadyCorrect.push(`web-only-user: ${parsed.status}`);
+    return;
+  }
+  if (parsed.status === "ok-inserted") {
+    result.fixed.push(
+      `web-only-user: inserted block ${parsed.inserted_at} (AGENTS.md ${parsed.size_before} → ${parsed.size_after} bytes)`,
+    );
+    return;
+  }
+  if (parsed.status === "ok-removed") {
+    result.fixed.push(
+      `web-only-user: removed block (user transitioned off web; AGENTS.md ${parsed.size_before} → ${parsed.size_after} bytes)`,
+    );
+    return;
+  }
+  // Any other status (verify-failed*, corrupt-no-end-marker, bad-mode) is
+  // a real fault — push to warnings (Rule 39) so the operator sees it
+  // without blocking the cv-bump (this isn't load-bearing).
+  recordHealWarning(result, `web-only-user: unexpected status=${parsed.status}`);
 }
 
 /**

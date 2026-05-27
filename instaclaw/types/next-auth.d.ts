@@ -23,6 +23,14 @@ declare module "next-auth" {
       // before this column was populated. Phase 2 banner + AGENTS.md
       // WEB_ONLY_USER section branch on `preferredChannel === 'web'`.
       preferredChannel?: string | null;
+      // Last time the user dismissed the "connect a channel" nudge banner
+      // on /dashboard (ISO 8601 string, or null if never dismissed). The
+      // banner re-appears if null OR older than 14 days. Set by POST
+      // /api/onboarding/dismiss-channel-nudge. The 14-day cadence vs the
+      // 7-day default elsewhere: web-only users chose deliberately at
+      // /channels; 7 is the right cadence for accidental states, 14 for
+      // deliberate ones.
+      dismissedChannelNudgeAt?: string | null;
     };
   }
 }

@@ -28,6 +28,7 @@ import { signOut, useSession } from "next-auth/react";
 import { motion } from "motion/react";
 import OnboardingWizard from "@/components/onboarding-wizard/OnboardingWizard";
 import { AgentbookHatBanner } from "@/components/dashboard/agentbook-hat-banner";
+import { ChannelNudgeBanner } from "@/components/dashboard/channel-nudge-banner";
 
 // Primary items always visible on mobile
 const primaryNav = [
@@ -496,6 +497,14 @@ export default function DashboardLayout({
           when not shown. Visit gating + dismissal persist via
           localStorage + DB column. */}
       <AgentbookHatBanner />
+
+      {/* Channel nudge — shows for users whose preferred_channel is 'web'
+          (clicked "skip to your command center" on /channels) and haven't
+          dismissed in the last 14 days. Renders null otherwise. Mirrors
+          AgentbookHatBanner's design language (translucent strip, height
+          animation, outlined CTA pill). Both banners stack cleanly when
+          both fire (rare). */}
+      <ChannelNudgeBanner />
 
       {/* Content */}
       <main className="max-w-6xl mx-auto px-4 py-12 sm:py-16">{children}</main>
