@@ -51,7 +51,7 @@
 
 import { NextRequest, NextResponse, after } from "next/server";
 import { logger } from "@/lib/logger";
-import { resolveInbound, type SignupChannel } from "@/lib/onboarding-signup";
+import { resolveInbound, detectPartnerFromText, type SignupChannel } from "@/lib/onboarding-signup";
 import { sendImessage, isValidE164 } from "@/lib/sendblue";
 import {
   extractInbound,
@@ -81,18 +81,26 @@ const CHANNEL: SignupChannel = "imessage";
  * a degraded but not broken state — they may reach out again, and
  * the in-flight check stops them from getting a redundant W1.
  */
-async function fireWelcomeBurst(phone: string, shortCode: string): Promise<void> {
+async function fireWelcomeBurst(
+  phone: string,
+  shortCode: string,
+  partner: string | null,
+): Promise<void> {
   const phoneRedacted = phone.slice(0, 6) + "***";
   try {
     await sendImessage(phone, WELCOME_1);
     await new Promise((r) => setTimeout(r, WELCOME_GAP_1_TO_2_MS));
     await sendImessage(phone, WELCOME_2);
     await new Promise((r) => setTimeout(r, WELCOME_GAP_2_TO_3_MS));
-    await sendImessage(phone, welcome3(shortCode));
+    // Welcome 3 carries the partner via ?p=<slug> when detected — the
+    // /go/[code] handler reads it and sets the instaclaw_partner cookie
+    // before redirecting to /auth. See P1-A fix in lib/welcome-messages.
+    await sendImessage(phone, welcome3(shortCode, partner));
     logger.info("[/api/imessage/inbound] welcome burst complete", {
       route: "imessage/inbound",
       phone: phoneRedacted,
       shortCode,
+      partner: partner ?? null,
     });
   } catch (err) {
     logger.error("[/api/imessage/inbound] welcome burst failed mid-flight", {
@@ -300,20 +308,26 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json({ ok: true, kind: "in_flight" });
 
-    case "new":
+    case "new": {
       // First-time stranger. Fire the welcome burst in the background,
       // ack Sendblue immediately. Per spec §6.5.3 the burst uses
       // variable gaps (2s, 500ms), NOT a uniform 900ms default.
+      // P1-A: detect partner keyword in the inbound text → carry through
+      // welcome3's ?p=<slug> so /go sets the cookie. Cold-text Edge
+      // attendees get tagged without ever touching a web page.
+      const detectedPartner = detectPartnerFromText(content);
       logger.info("[/api/imessage/inbound] new user — scheduling welcome burst", {
         route: "imessage/inbound",
         phone: phoneRedacted,
         pendingId: resolution.pendingId,
         shortCode: resolution.shortCode,
+        detectedPartner,
       });
       after(async () => {
-        await fireWelcomeBurst(fromNumber, resolution.shortCode);
+        await fireWelcomeBurst(fromNumber, resolution.shortCode, detectedPartner);
       });
       return NextResponse.json({ ok: true, kind: "new" });
+    }
 
     default: {
       // Exhaustiveness check — every resolution.kind should be handled.

@@ -44,6 +44,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
+import { VALID_PARTNERS } from "@/lib/partner-tag";
+
+/**
+ * Cookie name set when ?p=<slug> is present + valid (P1-A fix, 2026-05-27).
+ *
+ * Mirrors the cookie set by /api/partner/tag and /edge/claim — same name,
+ * same SameSite=Lax, same 7-day TTL. Once set, the signIn callback at
+ * lib/auth.ts:234 reads it and applies tagUserAsPartner during OAuth.
+ *
+ * The web-only partner paths (clicking "Claim" on /edge or /edge-city)
+ * already set this cookie via /api/partner/tag. The cold-text path
+ * (poster QR → text → Welcome 3 link with ?p=) now hits the same
+ * pipeline via this handler. One mechanism, two entry points.
+ */
+const PARTNER_COOKIE = "instaclaw_partner";
+const PARTNER_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7d (survives OAuth roundtrip)
 
 // Short_code format: 4-8 chars, lowercase alphanumeric.
 // Migration column: VARCHAR(8). Generator: 5 chars [a-z0-9].
@@ -200,6 +216,15 @@ export async function GET(
     return redirectWithNoCache(new URL("/?go=invalid", req.url));
   }
 
+  // P1-A: validate `?p=<slug>` partner hint. Source is the inbound
+  // webhook's detectPartnerFromText (cold-text edge attendees). We
+  // re-validate against VALID_PARTNERS so an attacker forwarding a
+  // crafted link can't tag themselves into a partner cohort they
+  // shouldn't be in. Unknown/invalid → null (drop silently).
+  const rawPartner = req.nextUrl.searchParams.get("p");
+  const partnerHint =
+    rawPartner && VALID_PARTNERS.has(rawPartner) ? rawPartner : null;
+
   const supabase = getSupabase();
 
   const { data: pending, error } = await supabase
@@ -239,10 +264,25 @@ export async function GET(
   // Active in-flight signup. Return HTML with OG meta so the link
   // preview card looks branded. Browsers follow the meta-refresh +
   // JS replace to /auth?session=<id> nearly instantly.
+  //
+  // P1-A: when a valid partner hint is present, set the
+  // instaclaw_partner cookie BEFORE the response. The signIn callback
+  // (lib/auth.ts:234) reads this cookie during OAuth and applies
+  // tagUserAsPartner — putting the user on the sponsored path without
+  // ever requiring a web /edge visit.
   logger.info("[/go] resolved to active session; serving OG HTML + redirect", {
     code,
     pendingId: pending.id,
     channel: pending.channel,
+    partnerHint,
   });
-  return htmlResponseWithOg(`/auth?session=${pending.id}`);
+  const response = htmlResponseWithOg(`/auth?session=${pending.id}`);
+  if (partnerHint) {
+    response.cookies.set(PARTNER_COOKIE, partnerHint, {
+      path: "/",
+      maxAge: PARTNER_COOKIE_MAX_AGE_SECONDS,
+      sameSite: "lax",
+    });
+  }
+  return response;
 }

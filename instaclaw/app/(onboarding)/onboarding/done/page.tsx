@@ -19,12 +19,21 @@
  */
 
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { OnboardingDoneClient } from "./done-client";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Stripe Checkout Session IDs are prefixed `cs_test_` or `cs_live_` and
+ * are URL-safe alphanumeric. We validate the shape before forwarding to
+ * /api/checkout/verify so a crafted `?stripe=` query can't trip the
+ * Stripe SDK's URL parser.
+ */
+const STRIPE_SESSION_ID_REGEX = /^cs_(test|live)_[A-Za-z0-9]{20,200}$/;
 
 interface PageProps {
   searchParams: Promise<{ session?: string; stripe?: string }>;
@@ -49,6 +58,71 @@ export default async function OnboardingDonePage({ searchParams }: PageProps) {
   // Send to dashboard — they're authenticated, that's the right home.
   if (!sessionId) {
     redirect("/dashboard");
+  }
+
+  // P1-C (2026-05-27): inline checkout/verify call.
+  //
+  // When Stripe completes Checkout it redirects to
+  // /onboarding/done?session=...&stripe={CHECKOUT_SESSION_ID}. The
+  // billing webhook usually fires within a second, but if it's delayed
+  // or fails the user can be in a half-state (VM ready via /auth's
+  // after(), no subscription row, /onboarding/done submit doesn't
+  // require a sub but downstream lifecycle/billing crons might
+  // misclassify the user).
+  //
+  // Calling /api/checkout/verify here is idempotent: the verify route
+  // checks payment_status, upserts the subscription, and short-circuits
+  // if the VM already exists. Running it server-side via after() means
+  // it lands even if the user closes the tab before the form-submit.
+  //
+  // Edge users never go through Stripe Checkout (their /auth redirect
+  // skips /plan) so stripeSessionId will be null for them — no-op.
+  const rawStripeSessionId =
+    typeof params.stripe === "string" ? params.stripe : null;
+  const stripeSessionId =
+    rawStripeSessionId && STRIPE_SESSION_ID_REGEX.test(rawStripeSessionId)
+      ? rawStripeSessionId
+      : null;
+  if (stripeSessionId) {
+    const baseUrl = process.env.NEXTAUTH_URL ?? "https://instaclaw.io";
+    // Capture the cookie header NOW (sync, in request scope) so the
+    // after() block can forward it. NextAuth cookies are needed for
+    // /api/checkout/verify's auth() to resolve to the current user;
+    // without them the route returns 401 and the upsert is silently
+    // lost. cookies() is a Next.js dynamic API available in server
+    // components.
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    const cookieHeader = cookieStore
+      .getAll()
+      .map((c) => `${c.name}=${c.value}`)
+      .join("; ");
+    const sessionIdForVerify = stripeSessionId;
+    after(async () => {
+      try {
+        const res = await fetch(`${baseUrl}/api/checkout/verify`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            cookie: cookieHeader,
+          },
+          body: JSON.stringify({ sessionId: sessionIdForVerify }),
+        });
+        logger.info("[/onboarding/done] inline checkout/verify fired", {
+          route: "onboarding/done",
+          userId,
+          stripeSessionPrefix: sessionIdForVerify.slice(0, 14),
+          status: res.status,
+        });
+      } catch (err) {
+        logger.error("[/onboarding/done] inline checkout/verify threw", {
+          route: "onboarding/done",
+          userId,
+          stripeSessionPrefix: sessionIdForVerify.slice(0, 14),
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    });
   }
 
   const supabase = getSupabase();

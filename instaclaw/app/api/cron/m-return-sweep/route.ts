@@ -50,11 +50,14 @@ const CRON_LOCK_TTL_SECONDS = 90;
 const RETRY_BATCH_SIZE = 20;
 const CLOSED_TAB_BATCH_SIZE = 20;
 
-// Per spec §6.5.10: sweep claims closed-tab rows between 5min and
-// 10min after creation. 5min gives users time to fill out the form
-// without us racing them; 10min hands off to Pass 6 reclaim.
+// Sweep claims closed-tab rows between 5min and 30min after creation.
+//   - 5min lower bound: gives users time to fill out the form without
+//     us racing them
+//   - 30min upper bound: hands off to Pass 6 reclaim (widened from 10min
+//     on 2026-05-27, P1-D fix for ~1000 Edge attendees who might take a
+//     phone call mid-flow or get distracted)
 const CLOSED_TAB_MIN_AGE_MS = 5 * 60 * 1000;
-const CLOSED_TAB_MAX_AGE_MS = 10 * 60 * 1000;
+const CLOSED_TAB_MAX_AGE_MS = 30 * 60 * 1000;
 
 interface DispatchOutcome {
   pendingId: string;

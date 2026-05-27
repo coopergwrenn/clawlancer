@@ -61,13 +61,28 @@ export interface CreateUserVMParams {
   apiKey?: string | null;
   /** Anthropic model string the agent defaults to (e.g., "anthropic/claude-sonnet-4-6"). */
   defaultModel: string;
-  /** Telegram bot token minted at signup. */
-  telegramBotToken: string;
-  /** Telegram bot username (without @). 5-32 chars [A-Za-z0-9_]. */
-  telegramBotUsername: string;
+  /**
+   * Telegram bot token minted at signup. Nullable from 2026-05-27 — null
+   * is acceptable for channel-first users (iMessage / shared bot) who
+   * don't host an on-VM Telegram plugin. validateCreateUserVMParams
+   * requires it only when channels.includes("telegram").
+   */
+  telegramBotToken: string | null;
+  /**
+   * Telegram bot username (without @). 5-32 chars [A-Za-z0-9_].
+   * Nullable for the same reason as telegramBotToken.
+   */
+  telegramBotUsername: string | null;
   /** Discord bot token. Required iff "discord" is in channels. */
   discordBotToken?: string | null;
-  /** Channel allow-list. Default: ["telegram"]. Non-empty required. */
+  /**
+   * Channel allow-list. Default: ["telegram"].
+   * - BYOB Telegram: ["telegram"]
+   * - Discord-enabled: includes "discord"
+   * - Channel-first (iMessage / shared bot): [] — gateway runs without
+   *   an on-VM messaging plugin; backend relays via lib/channel-routing
+   * Empty array IS valid from 2026-05-27.
+   */
   channels?: string[];
   /** Partner tag (edge_city, consensus_2026, etc.). Null for vanilla users. */
   partner?: string | null;
@@ -154,16 +169,29 @@ export function validateCreateUserVMParams(p: CreateUserVMParams): void {
     throw new Error('createUserVM: apiMode="byok" requires apiKey to be set');
   }
   if (!p.defaultModel) throw new Error("createUserVM: defaultModel required");
-  if (!p.telegramBotToken) throw new Error("createUserVM: telegramBotToken required");
-  if (!p.telegramBotUsername) throw new Error("createUserVM: telegramBotUsername required");
-  if (!TG_BOT_USERNAME_RE.test(p.telegramBotUsername)) {
-    throw new Error(
-      `createUserVM: telegramBotUsername "${p.telegramBotUsername}" doesn't match ${TG_BOT_USERNAME_RE}`,
-    );
-  }
   const channels = p.channels ?? ["telegram"];
-  if (!Array.isArray(channels) || channels.length === 0) {
-    throw new Error("createUserVM: channels must be a non-empty array (default ['telegram'])");
+  if (!Array.isArray(channels)) {
+    throw new Error("createUserVM: channels must be an array");
+  }
+  // Telegram bits required ONLY when on-VM telegram plugin will be loaded.
+  // Channel-first users (iMessage / shared bot) pass channels=[] and null
+  // telegram tokens — they don't host the plugin; backend relays via
+  // lib/channel-routing. Pre-2026-05-27 these were unconditionally required;
+  // the loosened gate enables cloud-init for channel-first signups.
+  if (channels.includes("telegram")) {
+    if (!p.telegramBotToken)
+      throw new Error(
+        "createUserVM: channels includes 'telegram' but telegramBotToken is missing",
+      );
+    if (!p.telegramBotUsername)
+      throw new Error(
+        "createUserVM: channels includes 'telegram' but telegramBotUsername is missing",
+      );
+    if (!TG_BOT_USERNAME_RE.test(p.telegramBotUsername)) {
+      throw new Error(
+        `createUserVM: telegramBotUsername "${p.telegramBotUsername}" doesn't match ${TG_BOT_USERNAME_RE}`,
+      );
+    }
   }
   if (channels.includes("discord") && !p.discordBotToken) {
     throw new Error("createUserVM: channels includes 'discord' but discordBotToken is missing");
@@ -615,80 +643,40 @@ export async function assignOrProvisionUserVm(
     );
   }
 
-  // ─── Channel-first guard (P0-2 fix, 2026-05-27) ──
+  // ─── Channel-first vs BYOB routing ──
   //
-  // Channel-first users (iMessage via Sendblue, Telegram via @myinstaclaw_bot)
-  // do NOT have a telegram_bot_token. They use shared infrastructure relayed
-  // by the BACKEND (lib/channel-routing.ts). Their VM has no on-VM Telegram
-  // plugin — channels_enabled is empty, gateway runs without a messaging
-  // plugin, and replies flow through /v1/chat/completions.
+  // BYOB (legacy /signup → /connect path, pending.channel === null):
+  //   - User created a bot via BotFather, pasted the token at /connect.
+  //   - VM hosts the telegram plugin → channels=["telegram"], token required.
+  //   - Missing token here means the signup wizard didn't capture it →
+  //     throw clearly so the operator + retry logic can fix upstream.
   //
-  // The POOL path already handles this gracefully — /api/vm/configure
-  // (lib/ssh.ts:5260+ and route.ts:279) gates the telegram channel on
-  // effectiveTelegramToken being non-null.
-  //
-  // The CLOUD-INIT fallback path (this branch + lib/cloud-init-params.ts +
-  // lib/cloud-init-tarball.ts) is BYOB-only today — it strictly requires
-  // telegram_bot_* in three places (here, buildParamsFromVmRow line 78-79,
-  // assertCloudInitParams line 298-299). A full refactor to support
-  // channel-first cloud-init is a larger surface (the .env emitter, the
-  // openclaw.json emitter, the channels gate in setup.sh).
-  //
-  // For Friday's Edge launch we defer rather than throw: return null and
-  // let the caller treat it as "pool empty, retry next cron tick." The
-  // recovery path is the same as a transient pool exhaustion:
-  //   - /auth's after() logs the null result; user proceeds to /onboarding/done
-  //   - Stripe-checkout callers (/api/checkout/verify) return vmAssigned=false
-  //   - process-pending Pass 1 retries every 10 min (P0-3 fix lets Edge
-  //     partner users through the billing gate)
-  //   - m-return-sweep continues polling; M_RETURN fires once VM exists
-  //
-  // Operational mitigation: bump POOL_TARGET + replenish cadence ahead of
-  // surge so the pool is rarely empty. Per /api/cron/replenish-pool config,
-  // raising POOL_TARGET=30, MAX_PER_RUN=15 and keeping replenish at 5min
-  // covers ~180 attendees/hr peak comfortably.
-  //
-  // P1 followup: extend cloud-init-tarball.ts to emit a channel-first tarball
-  // (skip TELEGRAM_BOT_TOKEN line, skip telegram plugin block, allow empty
-  // channels_enabled). Then this guard can be removed and channel-first
-  // users get the same 5-min cloud-init fallback as BYOB users.
-  if (pending.channel) {
-    logger.warn(
-      "assignOrProvisionUserVm: channel-first user + pool empty — deferring to next pool/cron retry",
-      {
-        route: "lib/createUserVM",
-        userId,
-        channel: pending.channel,
-        identityPrefix:
-          typeof pending.channel_identity === "string"
-            ? pending.channel_identity.slice(0, 6) + "***"
-            : null,
-        cloudInitOnDemandEnabled: useCloudInit,
-      },
-    );
-    return null;
-  }
-
-  // Cooper directive 2026-05-15: telegram_bot_* are user-supplied and have
-  // no sane fallback for BYOB. Throw a clear error rather than silently
-  // provisioning a VM that won't work. process-pending's next cycle retries
-  // — by then the user has hopefully completed the signup wizard's
-  // bot-capture step. The channel-first guard above already handled the
-  // legitimate null-token-OK case; reaching this throw means BYOB user is
-  // missing a token they should have.
-  if (!pending.telegram_bot_token) {
-    throw new Error(
-      `assignOrProvisionUserVm: pending_users.telegram_bot_token NULL for userId=${userId} ` +
-        "(BYOB path — channel-first users return null above). " +
-        "No sane fallback. User must complete bot-token capture (signup wizard step). " +
-        "process-pending will retry next cycle once the value is persisted.",
-    );
-  }
-  if (!pending.telegram_bot_username) {
-    throw new Error(
-      `assignOrProvisionUserVm: pending_users.telegram_bot_username NULL for userId=${userId} ` +
-        "(BYOB path).",
-    );
+  // Channel-first (iMessage / shared bot, pending.channel !== null):
+  //   - Inbound webhook created the pending row from a phone/chat_id; no
+  //     BotFather token exists for this user.
+  //   - VM runs WITHOUT a telegram plugin → channels=[], tokens=null.
+  //   - Backend relays inbound/outbound via lib/channel-routing.
+  //   - Cloud-init tarball builder handles null tokens + empty channels
+  //     from 2026-05-27 (the P0-2 workaround that returned null here is
+  //     no longer needed).
+  const isChannelFirst = !!pending.channel;
+  if (!isChannelFirst) {
+    // BYOB-only strict checks (Cooper directive 2026-05-15): telegram_bot_*
+    // are user-supplied and have no sane fallback. Throw a clear error
+    // rather than silently provisioning a VM that won't work.
+    if (!pending.telegram_bot_token) {
+      throw new Error(
+        `assignOrProvisionUserVm: pending_users.telegram_bot_token NULL for userId=${userId} ` +
+          "(BYOB path). User must complete bot-token capture (signup wizard step). " +
+          "process-pending will retry next cycle once the value is persisted.",
+      );
+    }
+    if (!pending.telegram_bot_username) {
+      throw new Error(
+        `assignOrProvisionUserVm: pending_users.telegram_bot_username NULL for userId=${userId} ` +
+          "(BYOB path).",
+      );
+    }
   }
 
   const { data: user, error: userErr } = await supabase
@@ -713,13 +701,23 @@ export async function assignOrProvisionUserVm(
   const apiMode = (pending.api_mode ?? "all_inclusive") as "all_inclusive" | "byok";
   const defaultModel = pending.default_model ?? "anthropic/claude-sonnet-4-6";
 
+  // channels: channel-first users have NO on-VM messaging plugin (backend
+  // relays via lib/channel-routing). BYOB users have ["telegram"]; if
+  // discord_bot_token is present, also include "discord".
+  const cloudInitChannels: string[] = isChannelFirst ? [] : ["telegram"];
+  if (!isChannelFirst && pending.discord_bot_token) {
+    cloudInitChannels.push("discord");
+  }
+
   logger.info("assignOrProvisionUserVm: cloud-init path", {
     route: "lib/createUserVM",
     userId,
     tier,
     apiMode,
     partner: user?.partner ?? null,
-    hasDiscord: !!pending.discord_bot_token,
+    isChannelFirst,
+    channelFirstChannel: pending.channel ?? null,
+    cloudInitChannels,
   });
 
   const result = await createUserVMFn(
@@ -729,9 +727,10 @@ export async function assignOrProvisionUserVm(
       apiMode,
       apiKey: pending.api_key,
       defaultModel,
-      telegramBotToken: pending.telegram_bot_token,
-      telegramBotUsername: pending.telegram_bot_username,
+      telegramBotToken: pending.telegram_bot_token ?? null,
+      telegramBotUsername: pending.telegram_bot_username ?? null,
       discordBotToken: pending.discord_bot_token,
+      channels: cloudInitChannels,
       partner: user?.partner ?? null,
       userTimezone: user?.user_timezone ?? null,
     },

@@ -96,14 +96,29 @@ export interface TarballParams {
   callbackToken: string;
 
   // ── Bots ──
-  telegramBotToken: string;
-  telegramBotUsername: string;
+  /**
+   * Telegram bot token. Nullable from 2026-05-27 (channel-first cloud-init
+   * support): when the user opted into the shared bot or iMessage flow,
+   * they have no on-VM Telegram plugin and no per-user bot token. The
+   * BACKEND relays via lib/channel-routing. validateTarballParams gates
+   * the strict shape check on channels.includes("telegram").
+   */
+  telegramBotToken: string | null;
+  /**
+   * Telegram bot username (without @). Nullable for the same reason as
+   * telegramBotToken. buildIdentityMd falls back to "agent" when this is
+   * null/empty; channel-first VMs get a generic identity, BYOB VMs keep
+   * their bot-derived name.
+   */
+  telegramBotUsername: string | null;
   /** Enabled-channels array from vm.channels_enabled (DB column). Drives
    *  conditional emission of channels.* and plugins.entries.* blocks in
-   *  openclaw.json. Default for current production: ["telegram"]. Adding
-   *  "discord" requires discordBotToken to also be set (buildOpenClawConfig
-   *  guards both conditions). REQUIRED — every VM must have at least one
-   *  channel (else the agent has no way to talk to its user). */
+   *  openclaw.json.
+   *  - BYOB Telegram: ["telegram"]
+   *  - Discord-enabled: includes "discord" (requires discordBotToken too)
+   *  - Channel-first (iMessage / shared-bot): [] — gateway runs without
+   *    a messaging plugin; backend relays via lib/channel-routing
+   *  Empty array is valid as of 2026-05-27 (channel-first cloud-init). */
   channels: string[];
   /** Per-user Discord bot token. As of 2026-05-13, 0 of 239 production
    *  VMs have this set — keeping the field for forward-compat without
@@ -295,12 +310,28 @@ export function validateTarballParams(p: TarballParams): void {
   if (p.callbackToken.length < 32 || !HEX_TOKEN_RE.test(p.callbackToken)) {
     throw new Error("cloud-init-tarball: callbackToken must be ≥32 hex chars");
   }
-  if (!p.telegramBotToken) throw new Error("cloud-init-tarball: telegramBotToken required");
-  if (!p.telegramBotUsername) throw new Error("cloud-init-tarball: telegramBotUsername required");
-  if (!TG_BOT_USERNAME_RE.test(p.telegramBotUsername)) {
-    throw new Error(
-      `cloud-init-tarball: telegramBotUsername "${p.telegramBotUsername}" doesn't match ${TG_BOT_USERNAME_RE}`,
-    );
+  // Telegram bits required ONLY when the agent will host the telegram
+  // channel plugin (BYOB path). Channel-first users (iMessage, shared
+  // bot) have channels=[] and run without an on-VM messaging plugin —
+  // backend relays inbound via lib/channel-routing. Pre-2026-05-27 this
+  // check was unconditional; the P0-2 workaround returned null from
+  // assignOrProvisionUserVm for channel-first users to avoid hitting
+  // this throw. Item 5 (2026-05-27) makes the cloud-init path fully
+  // channel-first capable so the workaround can be removed.
+  if (Array.isArray(p.channels) && p.channels.includes("telegram")) {
+    if (!p.telegramBotToken)
+      throw new Error(
+        "cloud-init-tarball: channels includes 'telegram' but telegramBotToken is missing",
+      );
+    if (!p.telegramBotUsername)
+      throw new Error(
+        "cloud-init-tarball: channels includes 'telegram' but telegramBotUsername is missing",
+      );
+    if (!TG_BOT_USERNAME_RE.test(p.telegramBotUsername)) {
+      throw new Error(
+        `cloud-init-tarball: telegramBotUsername "${p.telegramBotUsername}" doesn't match ${TG_BOT_USERNAME_RE}`,
+      );
+    }
   }
   if (!p.defaultModel) throw new Error("cloud-init-tarball: defaultModel required");
   // 2026-05-15: agentbookKey + agentbookAddress are OPTIONAL for the cloud-init
@@ -359,14 +390,13 @@ export function validateTarballParams(p: TarballParams): void {
         "A NULL region at provisioning means createUserVM didn't set vm.region — broken upstream.",
     );
   }
-  // channels: required, must be a non-empty array. An empty channels list
-  // means the agent has no way to talk to its user. buildOpenClawConfig
-  // doesn't crash on empty channels (it just emits no channel blocks), but
-  // the resulting VM is non-functional. Catch this at the boundary.
-  if (!Array.isArray(p.channels) || p.channels.length === 0) {
+  // channels: must be an array. Empty array IS valid as of 2026-05-27
+  // (channel-first cloud-init support) — those VMs run with no on-VM
+  // messaging plugin and the backend relays inbound/outbound via
+  // lib/channel-routing. Non-array still rejected (caller bug).
+  if (!Array.isArray(p.channels)) {
     throw new Error(
-      `cloud-init-tarball: channels required (got ${JSON.stringify(p.channels)}). ` +
-        "A VM with no channels has no way for the agent to talk to its user.",
+      `cloud-init-tarball: channels must be an array (got ${JSON.stringify(p.channels)})`,
     );
   }
   // If discord is in channels, discordBotToken MUST be present (otherwise
@@ -460,7 +490,11 @@ export function validateTarballParams(p: TarballParams): void {
  * or without the "@" prefix); buildIdentityMd handles either.
  */
 export function buildIdentityMdForTarball(p: TarballParams): string {
-  return buildIdentityMd(p.telegramBotUsername);
+  // buildIdentityMd handles null/empty botUsername by defaulting to "agent".
+  // Channel-first VMs have telegramBotUsername=null and get this generic
+  // identity; BYOB VMs keep their bot-derived name (e.g. @cooperbot →
+  // "cooper"). Coerce null to "" so we don't pass null into a string param.
+  return buildIdentityMd(p.telegramBotUsername ?? "");
 }
 
 /**
@@ -561,11 +595,21 @@ export function buildDotEnv(p: TarballParams): string {
     "# the reconciler will detect drift and re-deploy from canonical content.",
     "",
     `GATEWAY_TOKEN=${p.gatewayToken}`,
-    `TELEGRAM_BOT_TOKEN=${p.telegramBotToken}`,
     `INSTACLAW_USER_ID=${p.userId}`,
     `INSTACLAW_VM_NAME=${p.vmName}`,
     `INSTACLAW_NEXTAUTH_URL=${p.nextauthUrl.replace(/\/+$/, "")}`,
   ];
+
+  // TELEGRAM_BOT_TOKEN — conditional from 2026-05-27 (channel-first
+  // cloud-init). Emit ONLY for BYOB users (channels.includes("telegram")
+  // implies telegramBotToken is present per validateTarballParams).
+  // For channel-first users (iMessage / shared bot), this env var is
+  // absent so the gateway's telegram channel plugin never initializes —
+  // which is correct because backend relays the channel via
+  // lib/channel-routing instead of the on-VM plugin.
+  if (p.telegramBotToken) {
+    lines.push(`TELEGRAM_BOT_TOKEN=${p.telegramBotToken}`);
+  }
 
   // 2026-05-15: AGENTBOOK_ADDRESS now conditional. The cloud-init bootstrap+
   // fetch path doesn't know the address at endpoint-fetch time (key generated
@@ -912,14 +956,18 @@ export function buildOpenClawJsonForTarball(p: TarballParams): object {
     apiKey: p.apiKey ?? undefined,
     tier: p.tier,
     model: p.defaultModel,
-    telegramBotToken: p.telegramBotToken,
+    // telegramBotToken + botUsername coerced to undefined when null so
+    // buildOpenClawConfig's "telegram channel only if telegramBotToken"
+    // guard (lib/user-config-types.ts:20) correctly omits the plugin
+    // block for channel-first VMs.
+    telegramBotToken: p.telegramBotToken ?? undefined,
     discordBotToken: p.discordBotToken ?? undefined,
     channels: p.channels,
     braveApiKey: p.braveApiKey ?? undefined,
     gmailProfileSummary: p.gmailProfileSummary ?? undefined,
     userName: p.userName ?? undefined,
     userEmail: p.userEmail ?? undefined,
-    botUsername: p.telegramBotUsername,
+    botUsername: p.telegramBotUsername ?? undefined,
     userTimezone: p.userTimezone ?? undefined,
     worldIdNullifier: p.worldIdNullifier ?? undefined,
     worldIdLevel: p.worldIdLevel ?? undefined,

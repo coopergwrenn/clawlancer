@@ -890,14 +890,23 @@ export async function GET(req: NextRequest) {
   let pass6NoVm = 0;
   let pass6SkippedRace = 0;
 
-  const pass6TenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  // Widened from 10 → 30 min on 2026-05-27 (P1-D fix). Pre-launch sizing
+  // for ~1000 Edge attendees who may take a phone call mid-flow, walk
+  // away for a coffee, or get distracted by a poster conversation. The
+  // 10-min window was too aggressive — it produced "{kind: expired}"
+  // form-submit responses for any thoughtful user. M_RETURN sweep's
+  // CLOSED_TAB_MAX_AGE_MS bumped to match (see m-return-sweep route)
+  // so we don't leave a 10-30 min dead zone where the closed-tab catch-up
+  // doesn't fire AND reclaim hasn't yet kicked in.
+  const PASS_6_RECLAIM_WINDOW_MS = 30 * 60 * 1000;
+  const pass6Threshold = new Date(Date.now() - PASS_6_RECLAIM_WINDOW_MS).toISOString();
 
   const { data: pass6Candidates, error: pass6CandErr } = await supabase
     .from("instaclaw_pending_users")
     .select("*")
     .not("channel", "is", null)
     .is("consumed_at", null)
-    .lt("created_at", pass6TenMinutesAgo)
+    .lt("created_at", pass6Threshold)
     .limit(10);
 
   if (pass6CandErr) {

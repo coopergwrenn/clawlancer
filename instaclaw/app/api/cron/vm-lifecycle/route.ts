@@ -4,6 +4,7 @@ import { wipeVMForNextUser, connectSSH } from "@/lib/ssh";
 import { sendAdminAlertEmail } from "@/lib/email";
 import { getProvider } from "@/lib/providers";
 import { logger } from "@/lib/logger";
+import { isUserBillableForVmAssignment } from "@/lib/billing-status";
 import type { VMRecord } from "@/lib/ssh";
 import {
   PROTECTED_INFRA_LINODE_IDS,
@@ -523,14 +524,16 @@ export async function GET(req: NextRequest) {
       // Safety: skip if user somehow got credits back
       if ((vm.credit_balance ?? 0) > 0) continue;
 
-      // Safety: skip if subscription reactivated
+      // Safety: skip if user is still billable (sub reactivated OR partner
+      // sponsorship still in effect). Edge/Eclipse/etc users never have a
+      // Stripe sub so the legacy sub-only check would mistakenly suspend
+      // them after the hibernate threshold. P0-3 helper covers both cases.
       if (vm.assigned_to) {
-        const { data: sub } = await supabase
-          .from("instaclaw_subscriptions")
-          .select("status")
-          .eq("user_id", vm.assigned_to)
-          .single();
-        if (sub?.status === "active" || sub?.status === "trialing") continue;
+        const billing = await isUserBillableForVmAssignment(
+          supabase,
+          vm.assigned_to,
+        );
+        if (billing.billable) continue;
       }
 
       // Transition: hibernating → suspended

@@ -36,7 +36,7 @@
 
 import { NextRequest, NextResponse, after } from "next/server";
 import { logger } from "@/lib/logger";
-import { resolveInbound, type SignupChannel } from "@/lib/onboarding-signup";
+import { resolveInbound, detectPartnerFromText, type SignupChannel } from "@/lib/onboarding-signup";
 import { verifySigningSecret } from "@/lib/sendblue-webhook";
 import {
   sendTelegramSharedBot,
@@ -78,6 +78,7 @@ interface TelegramUpdate {
 async function fireTelegramWelcomeBurst(
   chatId: string,
   shortCode: string,
+  partner: string | null,
 ): Promise<void> {
   const chatIdRedacted = chatId.slice(0, 4) + "***";
   try {
@@ -85,11 +86,16 @@ async function fireTelegramWelcomeBurst(
     await new Promise((r) => setTimeout(r, WELCOME_GAP_1_TO_2_MS));
     await sendTelegramSharedBot(chatId, WELCOME_2);
     await new Promise((r) => setTimeout(r, WELCOME_GAP_2_TO_3_MS));
-    await sendTelegramSharedBot(chatId, welcome3(shortCode));
+    // Welcome 3 carries partner via ?p=<slug> — /go handler sets cookie
+    // before redirecting to /auth (P1-A fix). For Telegram, the "/start"
+    // deep-link pattern (t.me/myinstaclaw_bot?start=edge) lands here as
+    // text="/start edge" so detectPartnerFromText picks it up naturally.
+    await sendTelegramSharedBot(chatId, welcome3(shortCode, partner));
     logger.info("[/api/telegram/shared-bot/inbound] welcome burst complete", {
       route: "telegram/shared-bot/inbound",
       chatIdPrefix: chatIdRedacted,
       shortCode,
+      partner: partner ?? null,
     });
   } catch (err) {
     logger.error("[/api/telegram/shared-bot/inbound] welcome burst failed", {
@@ -243,7 +249,11 @@ export async function POST(req: NextRequest) {
       );
       return NextResponse.json({ ok: true, kind: "in_flight" });
 
-    case "new":
+    case "new": {
+      // P1-A: detect partner via text content. Telegram deep-links of the
+      // form t.me/myinstaclaw_bot?start=edge arrive here as text="/start
+      // edge" — detectPartnerFromText finds "edge" naturally.
+      const detectedPartner = detectPartnerFromText(text);
       logger.info(
         "[/api/telegram/shared-bot/inbound] new user — scheduling welcome burst",
         {
@@ -251,12 +261,14 @@ export async function POST(req: NextRequest) {
           chatIdPrefix: chatIdRedacted,
           pendingId: resolution.pendingId,
           shortCode: resolution.shortCode,
+          detectedPartner,
         },
       );
       after(async () => {
-        await fireTelegramWelcomeBurst(chatId, resolution.shortCode);
+        await fireTelegramWelcomeBurst(chatId, resolution.shortCode, detectedPartner);
       });
       return NextResponse.json({ ok: true, kind: "new" });
+    }
 
     default: {
       const exhaustive: never = resolution;

@@ -44,15 +44,33 @@ export const WELCOME_2 =
  * that point at themselves (e.g., `feature-branch.vercel.app/go/r7k2x`),
  * not at production. Falls back to instaclaw.io when not set.
  *
+ * When `partner` is set, the link carries a `?p=<partner>` query param.
+ * The /go/[code] handler validates against VALID_PARTNERS and sets the
+ * `instaclaw_partner` cookie before redirecting to /auth — this is the
+ * P1-A fix (2026-05-27) for cold-text Edge attendees who scan a poster
+ * QR and never touch a web partner page. The signIn callback's existing
+ * tagUserAsPartner reads the cookie post-OAuth, so the cookie path is
+ * the single source of truth for partner attribution across web + sms
+ * entries.
+ *
  * @param shortCode 5-char code from short-code.ts
+ * @param partner   optional partner slug (e.g., "edge_city") detected
+ *                  from the inbound text. Must match VALID_PARTNERS at
+ *                  /go time or the cookie is dropped.
  */
-export function welcome3(shortCode: string): string {
+export function welcome3(shortCode: string, partner?: string | null): string {
   const base = process.env.PUBLIC_BASE_URL || "https://instaclaw.io";
   // Strip protocol so the message renders as a plain link in iMessage/Telegram
   // rather than the long https:// prefix. Both surfaces auto-link bare
-  // domains like "instaclaw.io/go/r7k2x" into tap targets.
+  // domains like "instaclaw.io/go/r7k2x" into tap targets. The ?p= query
+  // (when present) auto-links too — iOS and Telegram both treat the full
+  // URL-with-query as one tap target.
   const display = base.replace(/^https?:\/\//, "");
-  return `${display}/go/${shortCode}`;
+  const partnerQuery =
+    partner && partner.length > 0
+      ? `?p=${encodeURIComponent(partner)}`
+      : "";
+  return `${display}/go/${shortCode}${partnerQuery}`;
 }
 
 /**

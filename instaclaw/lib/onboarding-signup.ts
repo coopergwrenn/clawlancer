@@ -28,6 +28,44 @@
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { generateShortCode } from "@/lib/short-code";
+import { VALID_PARTNERS } from "@/lib/partner-tag";
+
+/**
+ * Cold-text partner detection (P1-A fix, 2026-05-27).
+ *
+ * A user who scans a poster QR (e.g., at Edge Esmeralda) texts our line
+ * without ever visiting a /edge web page first — so they have NO
+ * instaclaw_partner cookie when they reach /auth. Without intervention
+ * they'd be routed through /plan and charged $99/mo, defeating the
+ * sponsored-trial model.
+ *
+ * Fix: detect a partner keyword in the inbound text, propagate it via
+ * the welcome3 link's `?p=` query, and let the /go/[code] handler set
+ * the cookie. The signIn callback's tagUserAsPartner (CLAUDE.md Rule 9)
+ * picks up the cookie and writes user.partner post-OAuth.
+ *
+ * Detection is keyword-based on the inbound text — case-insensitive,
+ * word-boundary anchored to avoid false positives ("hedge", "edged").
+ * The poster CTA should read "Text 'edge' to +1 (407) 242-5197" so
+ * attendees follow the script. iOS sms: URI scheme can also pre-fill
+ * the body (`sms:+1...&body=edge`), making the QR a one-tap signal.
+ *
+ * Returns the partner slug or null. Only returns partners in the
+ * VALID_PARTNERS allowlist (defense in depth — the /go handler also
+ * re-validates before setting the cookie).
+ */
+export function detectPartnerFromText(text: string | null | undefined): string | null {
+  if (!text || typeof text !== "string") return null;
+  const lower = text.toLowerCase();
+  // Edge City / Edge Esmeralda — first partner with cold-text inbound.
+  // Word-boundary anchor so we don't match "hedge", "edged", "fledged".
+  if (/\bedge\b|\besmeralda\b|edgecity|edgeesmeralda/.test(lower)) {
+    return VALID_PARTNERS.has("edge_city") ? "edge_city" : null;
+  }
+  // Future partners (eclipse, devcon, etc) plug in here following the
+  // same shape. Add to VALID_PARTNERS in lib/partner-tag.ts first.
+  return null;
+}
 
 export type SignupChannel = "imessage" | "telegram" | "discord" | "slack";
 

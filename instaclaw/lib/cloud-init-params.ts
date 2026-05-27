@@ -75,8 +75,6 @@ export async function buildParamsFromVmRow(
   const vmName = requireStr("name");
   const gatewayToken = requireStr("gateway_token");
   const callbackToken = requireStr("cloud_init_callback_token");
-  const telegramBotToken = requireStr("telegram_bot_token");
-  const telegramBotUsername = requireStr("telegram_bot_username");
   const defaultModel = requireStr("default_model");
   const tier = requireStr("tier");
   const agentRegion = requireStr("region");
@@ -91,15 +89,19 @@ export async function buildParamsFromVmRow(
   }
   const apiMode = apiModeRaw as "all_inclusive" | "byok";
 
-  // ── channels: non-empty array ──
+  // ── channels — empty array IS valid (channel-first cloud-init, 2026-05-27) ──
+  // BYOB VMs have ["telegram"] (or ["telegram","discord"]). Channel-first
+  // VMs (iMessage / shared bot) have [] — they don't host an on-VM
+  // messaging plugin; the backend relays via lib/channel-routing.
+  // Telegram bits only required when "telegram" is in channels (gated below).
   const channels = strArray("channels_enabled");
-  if (channels.length === 0) {
-    throw new Error(
-      `buildParamsFromVmRow: channels_enabled is empty on vm "${vmName}". ` +
-        "A VM with no channels has no way for the agent to talk to its user; " +
-        "upstream createUserVM must populate at least one channel.",
-    );
-  }
+
+  const telegramBotToken = channels.includes("telegram")
+    ? requireStr("telegram_bot_token")
+    : str("telegram_bot_token");
+  const telegramBotUsername = channels.includes("telegram")
+    ? requireStr("telegram_bot_username")
+    : str("telegram_bot_username");
 
   // ── nextauthUrl: from Vercel env ──
   const nextauthUrl = process.env.NEXTAUTH_URL;

@@ -96,6 +96,7 @@ interface PendingRow {
 interface VMRow {
   id: string;
   gateway_url: string | null;
+  gateway_token: string | null;
 }
 
 interface ProfileRow {
@@ -193,9 +194,13 @@ export async function dispatchMReturn(
   }
 
   // ─── 3. Verify VM is ready ──
+  // We need gateway_token alongside gateway_url so we can attempt a
+  // real LLM-backed first message via tryGatewayFirstMessage (P1-B,
+  // 2026-05-27). Both columns must be populated for the gateway path;
+  // if gateway_token is missing we fall through to the template.
   const { data: vmRaw } = await supabase
     .from("instaclaw_vms")
-    .select("id, gateway_url")
+    .select("id, gateway_url, gateway_token")
     .eq("assigned_to", pending.user_id)
     .eq("status", "assigned")
     .maybeSingle();
@@ -247,8 +252,45 @@ export async function dispatchMReturn(
     return { ok: false, reason: "already_sent" };
   }
 
-  // ─── 6. Build + send the message ──
-  const message = buildMReturnMessage(profile);
+  // ─── 6. Build the message — try gateway LLM first, fall back to template ──
+  // P1-B (2026-05-27): the agent's FIRST real message used to be a
+  // server-side template ("hey {name}. {use} mode, {vibe} vibe — got it.
+  // what do you want to do first?"). For the demonstration moment of the
+  // funnel — where the user has just signed up and expects to meet a
+  // real agent — that's flat.
+  //
+  // Strategy: try a real /v1/chat/completions call into the VM gateway
+  // with a "first message" framing prompt. The agent uses its full
+  // SOUL.md / MEMORY.md voice + personalization context we inject. If
+  // the gateway is unreachable, times out, or returns empty, fall back
+  // to buildMReturnMessage (the template) so the user always gets
+  // SOMETHING within seconds.
+  //
+  // tryGatewayFirstMessage NEVER throws — it returns null on any
+  // failure. The fallback path is the same template that ran for the
+  // entire pre-P1-B era, so worst-case parity with the prior shipped
+  // behavior.
+  const gatewayChannel: "imessage" | "telegram" | null =
+    pending.channel === "imessage" || pending.channel === "telegram"
+      ? pending.channel
+      : null;
+  let message: string | null = null;
+  let messageSource: "gateway" | "template" = "template";
+  if (gatewayChannel && vm.gateway_token) {
+    const gw = await tryGatewayFirstMessage(
+      { gateway_url: vm.gateway_url, gateway_token: vm.gateway_token },
+      gatewayChannel,
+      profile,
+      logCtx,
+    );
+    if (gw) {
+      message = gw;
+      messageSource = "gateway";
+    }
+  }
+  if (!message) {
+    message = buildMReturnMessage(profile);
+  }
 
   try {
     if (pending.channel === "imessage") {
@@ -274,6 +316,7 @@ export async function dispatchMReturn(
   logger.info("[m-return-dispatch] sent", {
     ...logCtx,
     channel: pending.channel,
+    messageSource,
     hasName: !!profile.name,
     hasIntendedUse: !!profile.intended_use,
     hasVibe: !!profile.vibe,
@@ -281,6 +324,129 @@ export async function dispatchMReturn(
   });
 
   return { ok: true };
+}
+
+/**
+ * M_RETURN gateway-call timeout. Shorter than channel-routing's 120s
+ * because (a) M_RETURN is the user's FIRST message and silence beyond
+ * ~45s damages the demonstration moment, and (b) we have a same-second
+ * template fallback so timing out cheaply is better than blocking on a
+ * slow tool-using turn.
+ */
+const M_RETURN_GATEWAY_TIMEOUT_MS = 45_000;
+
+/**
+ * Attempt to generate the agent's first message via the VM gateway.
+ *
+ * Returns the assistant's response text on success, or null on ANY
+ * failure (gateway unreachable, timeout, non-200, empty content,
+ * malformed JSON). Caller treats null as "fall back to template."
+ *
+ * Prompt framing: a single user-role message that tells the agent
+ * (a) this is its first interaction, (b) what channel the user is on,
+ * (c) what personalization the user filled in (if any). The agent's
+ * own SOUL.md / BOOTSTRAP.md context handles voice — we don't override
+ * with a system message because that would suppress the agent's
+ * configured identity. Verified live on vm-1028 (2026-05-27): when
+ * called with no system message, the gateway loads the full agent
+ * context (~40K prompt tokens) and produces a personalized response.
+ */
+async function tryGatewayFirstMessage(
+  vm: { gateway_url: string; gateway_token: string },
+  channel: "imessage" | "telegram",
+  profile: ProfileRow,
+  logCtx: { route: string; pendingId: string; trigger: MReturnTrigger },
+): Promise<string | null> {
+  const channelLabel = channel === "imessage" ? "iMessage" : "Telegram";
+
+  // Build a personalization fragment from whatever the user filled in.
+  // Empty/skipped fields are gracefully omitted — the agent handles the
+  // null-context case from its own SOUL.md guidance.
+  const parts: string[] = [];
+  const name = profile.name?.trim();
+  if (name) parts.push(`my name is ${name}`);
+  if (profile.intended_use) parts.push(`i want to use you for ${profile.intended_use}`);
+  const vibe = vibeDisplay(profile.vibe);
+  if (vibe) parts.push(`i prefer a ${vibe} vibe`);
+  const personalization =
+    parts.length > 0
+      ? `quick context: ${parts.join(", ")}.`
+      : `i didn't fill out the optional personalization form — you can ask me anything you need later.`;
+
+  // The framing prompt. Direct, agent-aware, voice-preserving. Caps
+  // length implicitly via max_tokens below.
+  const prompt =
+    `this is the very first message you're sending me — i just finished signup and ` +
+    `came back to ${channelLabel}. ${personalization} ` +
+    `respond in your usual voice. say hi briefly, acknowledge anything i shared, ` +
+    `and close by asking what i'd like to do first. keep it under 4 short sentences.`;
+
+  const gatewayUrl = vm.gateway_url.replace(/\/+$/, "");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), M_RETURN_GATEWAY_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${gatewayUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${vm.gateway_token}`,
+      },
+      body: JSON.stringify({
+        model: "openclaw",
+        // Cap response length: M_RETURN is one bubble. ~512 tokens is
+        // ~1500-2000 chars — well under Sendblue's 5000 cap and
+        // Telegram's 4096 cap.
+        max_tokens: 512,
+        stream: false,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      logger.warn("[m-return-dispatch] gateway returned non-ok; falling back to template", {
+        ...logCtx,
+        status: res.status,
+      });
+      return null;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: any = await res.json();
+    const content = data?.choices?.[0]?.message?.content?.toString().trim();
+    if (!content) {
+      logger.warn("[m-return-dispatch] gateway returned empty content; falling back to template", {
+        ...logCtx,
+        finishReason: data?.choices?.[0]?.finish_reason,
+      });
+      return null;
+    }
+    // Belt-and-suspenders: if the agent produced something pathological
+    // (way over the per-channel cap), prefer the safe template rather
+    // than risk a truncated multi-bubble first impression.
+    if (content.length > 4000) {
+      logger.warn("[m-return-dispatch] gateway response exceeds 4000 chars; falling back to template", {
+        ...logCtx,
+        length: content.length,
+      });
+      return null;
+    }
+    return content;
+  } catch (err) {
+    clearTimeout(timeout);
+    const isAbort =
+      err instanceof Error &&
+      (err.name === "AbortError" || /aborted/i.test(err.message));
+    logger.warn(
+      `[m-return-dispatch] gateway ${isAbort ? "timed out" : "threw"}; falling back to template`,
+      {
+        ...logCtx,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
+    return null;
+  }
 }
 
 /**
