@@ -217,9 +217,7 @@ export function ChannelsClient() {
                       color: MUTED_INK,
                     }}
                   >
-                    open{" "}
-                    <span style={{ fontWeight: 500 }}>@myinstaclaw_bot</span>.
-                    tap start.
+                    open telegram. the agent meets you there.
                   </div>
                 </div>
                 <ChevronArrow color={SUBTLE_INK} />
