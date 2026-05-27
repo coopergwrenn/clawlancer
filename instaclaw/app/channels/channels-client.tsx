@@ -569,15 +569,34 @@ function SlackIcon({ size = 26 }: { size?: number }) {
       }}
     >
       <svg viewBox="0 0 60 60" width={size} height={size} style={{ display: "block" }}>
-        {/* Slack hash — 4 colored rounded blocks */}
-        <rect x="11" y="22" width="10" height="4.2" rx="2.1" fill="#E01E5A" />
-        <rect x="22.5" y="10.5" width="4.2" height="10" rx="2.1" fill="#E01E5A" />
-        <rect x="33" y="22" width="16" height="4.2" rx="2.1" fill="#ECB22E" />
-        <rect x="33" y="10.5" width="4.2" height="10" rx="2.1" fill="#ECB22E" />
-        <rect x="11" y="33.8" width="10" height="4.2" rx="2.1" fill="#36C5F0" />
-        <rect x="22.5" y="39.5" width="4.2" height="10" rx="2.1" fill="#36C5F0" />
-        <rect x="33" y="33.8" width="16" height="4.2" rx="2.1" fill="#2EB67D" />
-        <rect x="33" y="39.5" width="4.2" height="10" rx="2.1" fill="#2EB67D" />
+        {/* Slack hash — 4 colored rounded blocks with x-shift baked
+            into each rect. Why baked vs g-transform: same approach as
+            Telegram/Discord — keeps offsets in the data, no wrapper.
+
+            getBBox() returns geometric center (30, 30) — but the right
+            horizontals are WIDER than the left (w=16 vs w=10), so the
+            area-weighted visual centroid is at (30.72, 30). That math
+            suggests dx=-0.72 left, but at 26px render that's sub-pixel
+            and barely visible.
+
+            Visual sweep at 26px next to iMessage reference: -1.5 reads
+            as balanced; -0.72 indistinguishable from no shift; -2.5
+            overshoots. Picked -1.5 — visible compensation for the
+            wider-right asymmetry, doesn't push the hash into the left
+            edge of the squircle.
+
+            All x values shifted by -1.5:
+              11   → 9.5    (left horizontal bars)
+              22.5 → 21     (left vertical bars)
+              33   → 31.5   (right horizontals & verticals) */}
+        <rect x="9.5" y="22" width="10" height="4.2" rx="2.1" fill="#E01E5A" />
+        <rect x="21" y="10.5" width="4.2" height="10" rx="2.1" fill="#E01E5A" />
+        <rect x="31.5" y="22" width="16" height="4.2" rx="2.1" fill="#ECB22E" />
+        <rect x="31.5" y="10.5" width="4.2" height="10" rx="2.1" fill="#ECB22E" />
+        <rect x="9.5" y="33.8" width="10" height="4.2" rx="2.1" fill="#36C5F0" />
+        <rect x="21" y="39.5" width="4.2" height="10" rx="2.1" fill="#36C5F0" />
+        <rect x="31.5" y="33.8" width="16" height="4.2" rx="2.1" fill="#2EB67D" />
+        <rect x="31.5" y="39.5" width="4.2" height="10" rx="2.1" fill="#2EB67D" />
       </svg>
     </span>
   );
