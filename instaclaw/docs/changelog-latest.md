@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-27
 
-Window: `c6f1f76775fa96acb5e51ab041ea043992585ec3` → `HEAD` (HEAD = `e9a71f6a`)
+Window: `e9a71f6a35840807577cc1f3b695e487d65a1090` → `HEAD` (HEAD = `73b57e81`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: e9a71f6a35840807577cc1f3b695e487d65a1090 -->
+<!-- LAST_GENERATED_SHA: 73b57e816cd046e01d57f75eb352d7581d5a04c1 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `e9a71f6a` 2026-05-27 — fix(reconcile): remove toolrouter-client refs that broke the build [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `ae614cb9` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `73b57e81` 2026-05-27 — feat(skip-channels): Phase 1 — /onboarding/web + M_RETURN web + session.preferredChannel + polish [8 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `889a14a5` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `e9a71f6a` 2026-05-27 — fix(reconcile): remove toolrouter-client refs that broke the build [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `73b57e81` 2026-05-27 — feat(skip-channels): Phase 1 — /onboarding/web + M_RETURN web + session.preferredChannel + polish [8 files] _(multi: [infrastructure, feature]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `ae614cb9` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `889a14a5` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `e9a71f6a` 2026-05-27 — [reconciler, infrastructure] — fix(reconcile): remove toolrouter-client refs that broke the build
+- `73b57e81` 2026-05-27 — [infrastructure, feature] — feat(skip-channels): Phase 1 — /onboarding/web + M_RETURN web + session.preferredChannel + polish
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `e9a71f6a` 2026-05-27 — fix(reconcile): remove toolrouter-client refs that broke the build
+- `73b57e81` 2026-05-27 — feat(skip-channels): Phase 1 — /onboarding/web + M_RETURN web + session.preferredChannel + polish
 
 ## Appendix — every commit (chronological)
 
-- `ae614cb9` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-- `e9a71f6a` 2026-05-27 — fix(reconcile): remove toolrouter-client refs that broke the build [1 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `889a14a5` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `73b57e81` 2026-05-27 — feat(skip-channels): Phase 1 — /onboarding/web + M_RETURN web + session.preferredChannel + polish [8 files] _(multi: [infrastructure, feature]; ai-assisted)_
