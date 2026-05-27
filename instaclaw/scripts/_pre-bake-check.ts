@@ -492,6 +492,12 @@ const BAKE_BOOLEAN_ENVS: BooleanEnvSpec[] = [
     rationale:
       "Gmail personalization popup; intentionally OFF pending Google CASA Tier 2. Surfaced here so a future flip catches operator typos at pre-bake gate.",
   },
+  {
+    name: "TOOLROUTER_ENABLED",
+    requiredOnForBake: false,
+    rationale:
+      "ToolRouter v1 gate. Off in bake until Cooper completes self-serve signup at toolrouter.world and AgentBook registration. Surfaced here so a future flip catches operator typos at pre-bake gate.",
+  },
 ];
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -525,7 +531,18 @@ const BAKE_ENUM_ENVS: EnumEnvSpec[] = [
       "Controls how lib/base-skills-registry.ts resolves Base skill plugin content. " +
       "Bake context should always use 'vendored' (or unset) — live-fetch + registry-api " +
       "depend on upstream availability at bake time. Set to non-vendored only in " +
-      "production after vm-1019 canary + Cooper approval per Rule 64.",
+      "production after canary + Cooper approval per Rule 64.",
+  },
+  {
+    name: "TOOLROUTER_TRANSPORT",
+    allowedValues: ["stdio", "streamable-http"],
+    defaultValue: "stdio",
+    requiredOnForBake: false, // unset → defaults to stdio (Path C, v1 ship)
+    rationale:
+      "Selects ToolRouter MCP transport per docs/prd/toolrouter-integration.md §2.3. " +
+      "v1 ships with 'stdio' (the @worldcoin/toolrouter npm adapter). Flip to " +
+      "'streamable-http' when Andy ships a hosted streamable-http MCP endpoint at " +
+      "toolrouter.world/mcp (Q2 in §6). Reconciler picks up the change on next tick.",
   },
 ];
 

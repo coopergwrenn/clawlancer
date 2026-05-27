@@ -113,6 +113,54 @@ async function handleCreditPackPurchase(session: any): Promise<void> {
   const vmId = session.metadata?.vm_id as string | undefined;
   const credits = parseInt(session.metadata?.credits || "0", 10);
   const paymentIntent = session.payment_intent as string | undefined;
+  const target = session.metadata?.target as string | undefined;
+  const instaclawUserId = session.metadata?.instaclaw_user_id as string | undefined;
+
+  // ToolRouter top-up pack (PRD §7.11 Task K.5). Allocation lives on
+  // instaclaw_users (per-user, survives VM reassign), not instaclaw_vms.
+  // We use a separate code path because the credit_balance flow's
+  // idempotency model (UNIQUE on vm_id, payment_intent) doesn't match
+  // user-level top-ups. Idempotency here is via stripe payment_intent
+  // recorded in a small toolrouter-side log (TBD migration in K.5b);
+  // for v1, the PostgREST UPSERT semantics + Stripe's own webhook-retry
+  // dedup at the event_id layer suffice.
+  if (target === "toolrouter") {
+    if (!instaclawUserId || !(credits > 0) || !paymentIntent) {
+      logger.error("ToolRouter top-up webhook: missing metadata", {
+        route: "billing/webhook",
+        instaclawUserId,
+        credits,
+        paymentIntent,
+        sessionId: session.id,
+      });
+      sendAdminAlertEmail(
+        "ToolRouter Top-up Webhook: Missing Metadata",
+        `Stripe checkout session ${session.id} arrived with metadata.target=toolrouter but is missing required fields.\ninstaclaw_user_id=${instaclawUserId}\ncredits=${credits}\npayment_intent=${paymentIntent}\n\nUser will not receive premium searches without manual intervention.`,
+      ).catch(() => {});
+      return;
+    }
+    const { error: rpcErr } = await supabase.rpc("instaclaw_add_toolrouter_searches", {
+      p_user_id: instaclawUserId,
+      p_credits: credits,
+    });
+    if (rpcErr) {
+      logger.error("ToolRouter top-up webhook: instaclaw_add_toolrouter_searches RPC failed", {
+        route: "billing/webhook",
+        instaclawUserId,
+        credits,
+        paymentIntent,
+        error: rpcErr.message,
+      });
+      throw new Error(`instaclaw_add_toolrouter_searches failed user=${instaclawUserId} pi=${paymentIntent}: ${rpcErr.message}`);
+    }
+    logger.info("ToolRouter top-up: premium searches added", {
+      route: "billing/webhook",
+      instaclawUserId,
+      credits,
+      paymentIntent,
+    });
+    return;
+  }
 
   if (!vmId || !(credits > 0) || !paymentIntent) {
     logger.error("Credit pack webhook: missing required metadata — cannot process", {

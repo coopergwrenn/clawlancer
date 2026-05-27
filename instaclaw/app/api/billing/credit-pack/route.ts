@@ -5,13 +5,17 @@ import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 
 /** Credit pack definitions: credits → Stripe env var key. */
-const CREDIT_PACKS: Record<string, { credits: number; label: string; envKey: string }> = {
-  "50": { credits: 50, label: "50 messages — $5", envKey: "STRIPE_PRICE_CREDIT_50" },
-  "200": { credits: 200, label: "200 messages — $15", envKey: "STRIPE_PRICE_CREDIT_200" },
-  "500": { credits: 500, label: "500 messages — $30", envKey: "STRIPE_PRICE_CREDIT_500" },
-  "media_500": { credits: 500, label: "500 credits — $4.99", envKey: "STRIPE_PRICE_MEDIA_500" },
-  "media_1200": { credits: 1200, label: "1200 credits — $9.99", envKey: "STRIPE_PRICE_MEDIA_1200" },
-  "media_3000": { credits: 3000, label: "3000 credits — $19.99", envKey: "STRIPE_PRICE_MEDIA_3000" },
+const CREDIT_PACKS: Record<string, { credits: number; label: string; envKey: string; target?: "messages" | "media" | "toolrouter" }> = {
+  "50": { credits: 50, label: "50 messages — $5", envKey: "STRIPE_PRICE_CREDIT_50", target: "messages" },
+  "200": { credits: 200, label: "200 messages — $15", envKey: "STRIPE_PRICE_CREDIT_200", target: "messages" },
+  "500": { credits: 500, label: "500 messages — $30", envKey: "STRIPE_PRICE_CREDIT_500", target: "messages" },
+  "media_500": { credits: 500, label: "500 credits — $4.99", envKey: "STRIPE_PRICE_MEDIA_500", target: "media" },
+  "media_1200": { credits: 1200, label: "1200 credits — $9.99", envKey: "STRIPE_PRICE_MEDIA_1200", target: "media" },
+  "media_3000": { credits: 3000, label: "3000 credits — $19.99", envKey: "STRIPE_PRICE_MEDIA_3000", target: "media" },
+  // ToolRouter v1 top-up pack (PRD §7.11 Task K.5). 100 premium searches
+  // for $10. Webhook handler at app/api/billing/webhook/route.ts routes
+  // by metadata.target = "toolrouter" → instaclaw_add_toolrouter_searches.
+  "toolrouter_100": { credits: 100, label: "100 premium searches — $10", envKey: "STRIPE_PRICE_TOOLROUTER_100", target: "toolrouter" },
 };
 
 export async function POST(req: NextRequest) {
@@ -95,6 +99,11 @@ export async function POST(req: NextRequest) {
         instaclaw_user_id: user.id,
         vm_id: vm.id,
         credits: String(packDef.credits),
+        // target distinguishes which balance the webhook credits.
+        // Defaults to "messages" for backward-compat with the 3 legacy
+        // packs that pre-date the field. New ToolRouter pack sets this
+        // explicitly so the webhook can route to instaclaw_add_toolrouter_searches.
+        ...(packDef.target ? { target: packDef.target } : {}),
       },
     });
 

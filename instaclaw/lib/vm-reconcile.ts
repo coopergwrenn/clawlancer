@@ -3201,6 +3201,188 @@ async function stepEdgeOSApiKey(
   });
 }
 
+/**
+ * stepToolRouter — wire the ToolRouter MCP server onto every agent's
+ * runtime (PRD: docs/prd/toolrouter-integration.md §4.5 + §7.3).
+ *
+ * Universal (no partner gate) — ToolRouter brings the agent a paid SaaS
+ * tool catalog (Exa search, Manus research, Browserbase, AgentMail,
+ * StableTravel) behind a single MCP connection. v1 ships with a shared
+ * platform API key from process.env.TOOLROUTER_API_KEY.
+ *
+ * KEY-SOURCE BRANCHING (v1 vs v1.5):
+ *   v1: platform key from TOOLROUTER_API_KEY env. SHARED across fleet.
+ *   v1.5: per-user key from instaclaw_users.toolrouter_api_key if set,
+ *         else platform key. Provisioned via Andy's programmatic
+ *         account-creation API when the user connects their agent to
+ *         AgentKit on the InstaClaw dashboard. Marketing hook: "Connect
+ *         World ID to unlock free premium search credits for your agent."
+ *         The v1.5 branch will live where the `const apiKey = env.apiKey`
+ *         line is below — read the per-user column first, fall through.
+ *
+ * Failure posture (Rule 39):
+ *   ToolRouter is OPTIONAL paid SaaS — an agent without it still has free
+ *   local tools (brave-search, local chromium, curl, gbrain). Every
+ *   failure path pushes to result.warnings via recordHealWarning, NOT
+ *   result.errors. cv-bump is never held by a ToolRouter issue. Same
+ *   posture as stepIndexProvision / stepNodeExporter / stepEdgeOSApiKey.
+ *
+ * Rule 32 — MCP servers ARE hot-reloadable. After `openclaw mcp set
+ * toolrouter`, the runtime picks up the new server on the next gateway
+ * tick without restart. We still verify-after-set per Rule 10 by
+ * re-reading the discriminating field per transport mode.
+ *
+ * Gating env vars (Rule 61 enum + boolean):
+ *   TOOLROUTER_ENABLED         "true"  → wire; else silent skip
+ *   TOOLROUTER_TRANSPORT       "stdio" | "streamable-http" (default stdio)
+ *   TOOLROUTER_API_KEY         tr_... — shape-checked in getToolRouterEnv()
+ *
+ * Idempotency (Rule 10): the verify-after-set check reads the
+ * discriminating field per transport (.command for stdio, .transport
+ * for streamable-http) — both writes are no-ops when already correct.
+ */
+async function stepToolRouter(
+  ssh: SSHConnection,
+  vm: VMRecord & { name?: string | null; assigned_to?: string | null },
+  result: ReconcileResult,
+  dryRun: boolean,
+  strict: boolean,
+): Promise<void> {
+  // ── Gate 1: TOOLROUTER_ENABLED feature flag (Rule 61) ──
+  // Silent skip when disabled — operator hasn't enabled the integration yet.
+  // Cooper's self-serve flow at toolrouter.world produces the API key; once
+  // he sets it in Vercel and flips TOOLROUTER_ENABLED, this step starts firing.
+  const raw = process.env.TOOLROUTER_ENABLED;
+  if (raw !== "true") {
+    if (raw !== undefined && raw !== "" && raw !== "false" && raw !== "0" && raw !== "no") {
+      // Set-but-misconfigured (e.g., "True", "1", trailing newline). Rule 61
+      // pattern — warn loudly so the operator notices the typo.
+      logger.warn("stepToolRouter SKIPPED: TOOLROUTER_ENABLED is set but not 'true'", {
+        route: "stepToolRouter",
+        actual: JSON.stringify(raw),
+        expected: "true",
+      });
+      result.warnings.push(`stepToolRouter skipped: TOOLROUTER_ENABLED='${raw}' (expected 'true')`);
+    }
+    return;
+  }
+
+  // ── Gate 2: strict-mode bypass ──
+  // Mirrors stepIndexProvision: third-party HTTP / network paths skip
+  // strict's 180s budget. The non-strict reconcile-fleet cron picks this
+  // step up on the next ~3-min tick.
+  if (strict) return;
+
+  // ── Gate 3: env config present + valid ──
+  // getToolRouterEnv returns null if the key is unset, empty, or fails
+  // the TOOLROUTER_API_KEY_SHAPE regex. Silent skip when unset (the key
+  // hasn't been deployed yet); warn only in production for missing config.
+  //
+  // [v1.5 KEY-SOURCE BRANCH POINT]: when per-user keys ship, the lookup
+  // becomes:
+  //   const userKey = vm.assigned_to
+  //     ? await getSupabase().from("instaclaw_users").select("toolrouter_api_key")...
+  //     : null;
+  //   const apiKey = userKey ?? env.apiKey;
+  //   const apiUrl = env.apiUrl;
+  // For v1 it's just the platform key.
+  const env = getToolRouterEnv();
+  if (!env) {
+    if (process.env.VERCEL_ENV === "production") {
+      recordHealWarning(
+        result,
+        "toolrouter: TOOLROUTER_API_KEY not set or failed shape check in this environment",
+      );
+    }
+    return;
+  }
+  const apiKey = env.apiKey;
+  const apiUrl = env.apiUrl;
+
+  // ── Gate 4: resolve transport (default stdio per PRD §2.3) ──
+  const transport: ToolRouterTransport =
+    process.env.TOOLROUTER_TRANSPORT === "streamable-http" ? "streamable-http" : "stdio";
+
+  // ── Probe disk for current MCP shape ──
+  // For stdio, the discriminating field is .command (= "toolrouter").
+  // For streamable-http, it's .transport (= "streamable-http").
+  // Mirrors stepIndexProvision lines ~2522-2538.
+  const discriminator = transport === "stdio" ? ".command" : ".transport";
+  const expectedDiscriminatorValue = transport === "stdio" ? "toolrouter" : "streamable-http";
+  let diskOk = false;
+  try {
+    const probe = await ssh.execCommand(
+      `jq -r '.mcp.servers.toolrouter${discriminator} // ""' "$HOME/.openclaw/openclaw.json" 2>/dev/null`,
+    );
+    diskOk = (probe.stdout || "").trim() === expectedDiscriminatorValue;
+  } catch (e: unknown) {
+    recordHealWarning(
+      result,
+      `toolrouter: disk probe failed: ${String((e as Error)?.message ?? e).slice(0, 150)}`,
+    );
+    return;
+  }
+
+  if (diskOk) {
+    result.alreadyCorrect.push("toolrouter: mcp.servers.toolrouter on disk");
+    return;
+  }
+
+  if (dryRun) {
+    result.fixed.push(`[dry-run] toolrouter: would write mcp.servers.toolrouter (transport=${transport})`);
+    return;
+  }
+
+  // ── Write via `openclaw mcp set` (atomic merge, hot-reload-trigger) ──
+  // Tempfile + stdin pattern mirrors stepIndexProvision (avoid argv-quoting
+  // issues with the JSON body). Tempfile path uses vm.id to avoid the
+  // Date.now() race seen in the 2026-05-01 strip-thinking incident.
+  const mcpJson = JSON.stringify(buildToolRouterMcpConfig(apiKey, transport, apiUrl));
+  const tmpPath = `/tmp/toolrouter-mcp-${vm.id}.json`;
+
+  const upload = await ssh.execCommand(`cat > ${tmpPath} && chmod 600 ${tmpPath}`, {
+    stdin: mcpJson,
+  });
+  if (upload.code !== 0) {
+    recordHealWarning(
+      result,
+      `toolrouter: upload mcp.json failed (exit=${upload.code}): ${(upload.stderr || "").slice(0, 150)}`,
+    );
+    return;
+  }
+
+  const setCmd = await ssh.execCommand(
+    `${NVM_PREAMBLE} && openclaw mcp set toolrouter "$(cat ${tmpPath})" 2>&1; SET_RC=$?; rm -f ${tmpPath}; exit $SET_RC`,
+  );
+  if (setCmd.code !== 0) {
+    recordHealWarning(
+      result,
+      `toolrouter: openclaw mcp set failed (exit=${setCmd.code}): ${(setCmd.stdout || "").slice(-200)}`,
+    );
+    return;
+  }
+
+  // ── Verify-after-set (Rule 10): re-read on-disk discriminator ──
+  const verify = await ssh.execCommand(
+    `jq -r '.mcp.servers.toolrouter${discriminator} // "MISSING"' "$HOME/.openclaw/openclaw.json"`,
+  );
+  const verifyValue = (verify.stdout || "").trim();
+  if (verifyValue !== expectedDiscriminatorValue) {
+    recordHealWarning(
+      result,
+      `toolrouter: verify-after-set failed (disk=${verifyValue.slice(0, 50)})`,
+    );
+    return;
+  }
+
+  result.fixed.push(`toolrouter: wired mcp.servers.toolrouter (transport=${transport})`);
+  logger.info("[reconcile] toolrouter: wired", {
+    vmId: vm.id,
+    transport,
+    apiKeyPrefix: apiKey.slice(0, 7),
+  });
+}
+
 async function stepConfigSettings(
   ssh: SSHConnection,
   manifest: typeof VM_MANIFEST,

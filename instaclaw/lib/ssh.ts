@@ -180,6 +180,14 @@ export const AGENTKIT_CLI_PINNED_VERSION = "0.1.3";
 // reconciler reinstalls the addon across the fleet.
 export const PRCTL_SUBREAPER_PINNED_VERSION = "0.1.0";
 
+// ToolRouter MCP adapter (Andy Wang / World Foundation).
+// PRD: instaclaw/docs/prd/toolrouter-integration.md §4.4 + §7.5.
+// Pin policy: re-verify via `npm view @worldcoin/toolrouter version`
+// at implementation/bump time. DO NOT use "latest" — would float on
+// every cold start. Bumps go through Rule 64 canary + Cooper approval.
+// Initial value verified 2026-05-27.
+export const TOOLROUTER_PINNED_VERSION = "0.1.3";
+
 // ── Bankr skill InstaClaw overlay (V1) ──
 // The upstream Bankr skill repo (BankrBot/skills) contains:
 //   - bankr/bankr/SKILL.md — describes both Clanker (EVM) and Raydium LaunchLab
@@ -6417,6 +6425,26 @@ export async function configureOpenClaw(
       `  if [ "$CURRENT" != "${BANKR_CLI_PINNED_VERSION}" ]; then`,
       `    echo "Installing @bankr/cli@${BANKR_CLI_PINNED_VERSION} (current: \${CURRENT:-none})"`,
       `    npm install -g @bankr/cli@${BANKR_CLI_PINNED_VERSION} 2>&1 | tail -3`,
+      `  fi`,
+      `) || true`,
+      ''
+    );
+
+    // Install @worldcoin/toolrouter (pinned) — the stdio MCP adapter that
+    // bridges OpenClaw to ToolRouter's hosted catalog of paid SaaS tools.
+    // PRD: instaclaw/docs/prd/toolrouter-integration.md §4.4 + §7.5.
+    // Pin version per Rule 64 — bumps go through canary + Cooper approval.
+    // The agent's mcp.servers.toolrouter config spawns `toolrouter` (global
+    // bin) per session; the global install eliminates the npx-registry-hit
+    // cold-start cost. Fail-soft so a transient npm failure doesn't block
+    // configure (the agent still has all free local tools).
+    scriptParts.push(
+      '# Install @worldcoin/toolrouter (pinned) for ToolRouter MCP adapter',
+      `${NVM_PREAMBLE} && (`,
+      `  INSTALLED=$(npm list -g --depth=0 2>/dev/null | grep "@worldcoin/toolrouter@" | sed 's/.*@worldcoin\\/toolrouter@//')`,
+      `  if [ "$INSTALLED" != "${TOOLROUTER_PINNED_VERSION}" ]; then`,
+      `    echo "Installing @worldcoin/toolrouter@${TOOLROUTER_PINNED_VERSION} (current: \${INSTALLED:-none})"`,
+      `    npm install -g @worldcoin/toolrouter@${TOOLROUTER_PINNED_VERSION} 2>&1 | tail -3`,
       `  fi`,
       `) || true`,
       ''
