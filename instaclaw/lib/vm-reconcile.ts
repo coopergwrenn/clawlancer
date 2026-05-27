@@ -82,11 +82,6 @@ import {
   onVmSkillPath,
   currentSourceMode as currentBaseSkillsSourceMode,
 } from "./base-skills-registry";
-import {
-  buildToolRouterMcpConfig,
-  getToolRouterEnv,
-  type ToolRouterTransport,
-} from "./toolrouter-client";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -665,16 +660,6 @@ export async function reconcileVM(
     // docs/prd/edge-esmeralda-master-prd-2026-05-19.md.
     currentStep = "edgeos-api-key";
     await stepEdgeOSApiKey(ssh, vm, result, dryRun, strict);
-
-    // ── Step 1f: ToolRouter MCP wiring (universal) ──
-    // Writes mcp.servers.toolrouter to ~/.openclaw/openclaw.json so the
-    // agent can call premium SaaS tools (Exa search, Manus research,
-    // Browserbase, AgentMail, StableTravel) via Andy's hosted MCP. v1
-    // uses the platform API key shared across the fleet. Warnings-only
-    // on failure per Rule 39 — ToolRouter is optional paid SaaS, never
-    // blocks cv-bump. PRD: docs/prd/toolrouter-integration.md §7.3.
-    currentStep = "toolrouter";
-    await stepToolRouter(ssh, vm, result, dryRun, strict);
 
     // ── Step 2: Files ──
     currentStep = "files";
@@ -1518,22 +1503,6 @@ export const SECRET_ENV_VAR_SOURCES: SecretEnvVarSource[] = [
   // budget 12s → 120s eliminating 8-plugin cold-boot false-negatives),
   // the next bake runs zero-manual-intervention.
   { envKey: "OPENAI_API_KEY", label: "OpenAI API key (gbrain text-embedding-3-large + ChatGPT OAuth)" },
-  // 2026-05-27: TOOLROUTER_API_KEY enrollment (v1 platform key shared
-  // across fleet). Cooper self-serve-signs-up at toolrouter.world →
-  // creates an API key → `printf 'tr_...' | npx vercel env add
-  // TOOLROUTER_API_KEY production`. Reconciler distributes on next cycle.
-  //
-  // v1.5 (when Andy ships programmatic ToolRouter account-creation API):
-  // each user who connects World ID + AgentBook on the InstaClaw
-  // dashboard gets their own provisioned ToolRouter account + key. The
-  // per-VM key source branches in stepToolRouter — see Task C for the
-  // implementation comment. Marketing hook: "Connect World ID to unlock
-  // free premium search credits for your agent."
-  //
-  // Universal (no partnerGate): every VM gets the key. stepToolRouter
-  // gates on whether the env var is actually set, so VMs run cleanly
-  // even before the key is deployed.
-  { envKey: "TOOLROUTER_API_KEY", label: "ToolRouter platform API key (v1: fleet-shared; v1.5: per-user override)" },
 ];
 
 // Bash payload that does the write. Assembled as a string array so there's no
