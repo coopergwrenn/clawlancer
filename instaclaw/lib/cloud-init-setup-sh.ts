@@ -1170,10 +1170,13 @@ WSEOF
 # extra min" → "working bot on /dashboard arrival" — strongly preferred
 # given the alternative is 1000 confused users on day-one.
 #
-# Channel-aware: emitted only when telegram is in p.channels. Cloud-
-# init validates channels is non-empty (lib/cloud-init-tarball.ts:357)
-# and current production only has telegram users. Discord-only or future
-# multi-channel signups need a parallel probe; tracked as P1 followup.
+# Channel-aware: emitted only when telegram is in p.channels. As of
+# 2026-05-27 (item 5 fix in lib/cloud-init-tarball.ts), channel-first
+# users (iMessage / shared bot) have channels=[] and skip this probe
+# entirely — their gateway runs with no on-VM messaging plugin and the
+# backend relays inbound via lib/channel-routing. Discord-only or
+# future multi-channel signups still need a parallel probe; tracked as
+# P1 followup.
 #
 # Budget: 300s = 60 attempts × 5s. Bonjour stall + channel init observed
 # up to ~240s (vm-973 → vm-975). 2x p99 doctrine (per fix #6 §1.32) =
