@@ -297,6 +297,28 @@ export async function dispatchMReturn(
       await sendImessage(pending.channel_identity, message);
     } else if (pending.channel === "telegram") {
       await sendTelegramSharedBot(pending.channel_identity, message);
+    } else if (pending.channel === "web") {
+      // No external dispatch for web-only users (the /onboarding/web
+      // skip path). The CAS above already claimed m_return_sent_at so
+      // the sweep cron won't keep retrying, which is what we want.
+      //
+      // Why no storage write: the spec doc's `storeDashboardWelcome`
+      // assumed an instaclaw_message_log table that doesn't exist in
+      // this codebase. The command center reads from instaclaw_tasks
+      // (task-based, not chat-history-based); pre-seeding a task with
+      // a synthetic "Welcome" body is a category violation (tasks are
+      // user-initiated requests). Cleanest UX: web user lands in
+      // /tasks, sees empty inbox + chat input, types their first
+      // message, agent responds. The agent's response IS the M_RETURN
+      // substitute for web — no broadcast needed.
+      //
+      // Phase 2 may surface a one-time greeting via the dashboard's
+      // empty-state UI (separate from this dispatcher), driven off
+      // user.preferred_channel === 'web'. Not Phase 1 scope.
+      logger.info("[m-return-dispatch] web channel — no external dispatch", {
+        ...logCtx,
+        userId: pending.user_id,
+      });
     } else {
       // Discord / Slack not supported in v1 (waitlist only).
       await rollbackMReturnClaim(supabase, pendingId, nowIso);

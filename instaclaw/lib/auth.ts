@@ -620,13 +620,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         onboarding_complete: boolean | null;
         partner: string | null;
         index_last_intent_at: string | null;
+        preferred_channel: string | null;
       } | null = null;
 
       if (token.googleId) {
         // Google path (existing — unchanged)
         const { data } = await supabase
           .from("instaclaw_users")
-          .select("id, onboarding_complete, partner, index_last_intent_at")
+          .select("id, onboarding_complete, partner, index_last_intent_at, preferred_channel")
           .eq("google_id", token.googleId)
           .single();
         userRow = data
@@ -635,13 +636,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               onboarding_complete: data.onboarding_complete as boolean | null,
               partner: data.partner as string | null,
               index_last_intent_at: data.index_last_intent_at as string | null,
+              preferred_channel: data.preferred_channel as string | null,
             }
           : null;
       } else if (token.instaclawUserId) {
         // ChatGPT path (new — Credentials provider)
         const { data } = await supabase
           .from("instaclaw_users")
-          .select("id, onboarding_complete, partner, index_last_intent_at")
+          .select("id, onboarding_complete, partner, index_last_intent_at, preferred_channel")
           .eq("id", token.instaclawUserId as string)
           .single();
         userRow = data
@@ -650,6 +652,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               onboarding_complete: data.onboarding_complete as boolean | null,
               partner: data.partner as string | null,
               index_last_intent_at: data.index_last_intent_at as string | null,
+              preferred_channel: data.preferred_channel as string | null,
             }
           : null;
       }
@@ -667,6 +670,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // The dashboard layout enforces this universally; /deploying's
         // post-provision redirect routes Edge users here too. See FUP-3a.
         session.user.indexLastIntentAt = userRow.index_last_intent_at ?? null;
+        // preferred_channel: 'web' for users who chose "skip to your
+        // command center" on /channels; 'imessage' / 'telegram' set by
+        // /api/onboarding/done/submit at end of channel-first flow; NULL
+        // for legacy users created before this column was populated.
+        // Drives Phase 2 surfaces — dashboard nudge banner, AGENTS.md
+        // WEB_ONLY_USER section, settings page copy.
+        session.user.preferredChannel = userRow.preferred_channel ?? null;
       }
       return session;
     },

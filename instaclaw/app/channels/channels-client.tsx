@@ -243,25 +243,32 @@ export function ChannelsClient() {
               SUBTLE_INK. Same typography as each other so they read as
               a true paired footnote, not as a heading + body.
 
-              Skip target: /dashboard. Middleware bounces unauth users
-              to /api/auth/signin?callbackUrl=/dashboard automatically;
-              authed users go straight to /dashboard where the layout's
-              data-driven redirect (see app/(dashboard)/layout.tsx) takes
-              them to the right next step based on VM state.
+              Skip target: /onboarding/web. The route auth-gates (bounces
+              unauthenticated visitors to /signin?callbackUrl=/onboarding/web),
+              idempotently SELECTs/INSERTs a pending_users row with
+              channel='web', flips instaclaw_users.preferred_channel='web',
+              fires VM provision via after(), then redirects to
+              /plan?web=1&session=<id> (or /onboarding/done for Edge
+              partners). Mirrors /auth's structure exactly — server
+              component, no client JS.
+
+              configureOpenClaw is already null-safe for channel-less
+              users (lib/ssh.ts:5260 gates Telegram writes on
+              channels.includes("telegram") && config.telegramBotToken)
+              so the VM provisions cleanly with channels_enabled=[]. 7
+              production VMs already run in this shape, empirically
+              confirming the path.
 
               See instaclaw/docs/prd/skip-to-command-center-architecture-2026-05-27.md
-              for the full backend edge-case analysis. The current target
-              (/dashboard) is the immediate-ship placeholder; the doc
-              names /onboarding/web as the canonical destination once the
-              backend wiring (web channel type, dashboard welcome inbox,
-              nudge banner) ships. */}
+              for the full spec — population census, configureOpenClaw
+              trace, command-center audit, M_RETURN web-branch handling. */}
           <p
             className="mt-12 text-center"
             style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
           >
             prefer the web?{" "}
             <Link
-              href="/dashboard"
+              href="/onboarding/web"
               style={{
                 color: MUTED_INK,
                 textDecoration: "underline",

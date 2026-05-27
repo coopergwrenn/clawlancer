@@ -1002,6 +1002,7 @@ function TaskCard({
   onPause,
   onResume,
   onTaskUpdated,
+  channelConnected,
 }: {
   task: TaskItem;
   isExpanded: boolean;
@@ -1013,6 +1014,14 @@ function TaskCard({
   onPause: () => void;
   onResume: () => void;
   onTaskUpdated: (updated: TaskItem) => void;
+  // True if the user has at least one messaging channel paired (Telegram
+  // or Discord). Gates the recurring-task delivery chip — skip-to-
+  // command-center users with no channel don't see a perpetual
+  // "Telegram not connected" / "Delivery failed" chip on every recurring
+  // task. The chip surfaces automatically once a channel is connected
+  // (CommandCenterPage re-derives this from session + VM state on the
+  // next render).
+  channelConnected: boolean;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   // Edit mode
@@ -1556,8 +1565,16 @@ function TaskCard({
                     ) : null}
                   </div>
 
-                  {/* Delivery banner — only for latest run of recurring tasks */}
-                  {task.is_recurring && currentRunIndex === 0 && task.last_delivery_status && (
+                  {/* Delivery banner — only for latest run of recurring
+                      tasks. Additionally gated on the user having at
+                      least one messaging channel connected: skip-to-
+                      command-center users have no channel, so a
+                      "Telegram not connected" / "Delivery failed" chip
+                      on every recurring task would be repetitive noise
+                      pointing at a state the user deliberately chose.
+                      When a channel is connected later, the chip
+                      surfaces automatically on the next render. */}
+                  {task.is_recurring && currentRunIndex === 0 && task.last_delivery_status && channelConnected && (
                     <div
                       className="flex items-center gap-2 px-3 py-2 rounded-xl mb-2 text-xs font-medium"
                       style={{
@@ -3312,6 +3329,7 @@ export default function CommandCenterPage() {
                             prev.map((t) => (t.id === updated.id ? updated : t))
                           )
                         }
+                        channelConnected={isTelegramConnected || isDiscordConnected}
                       />
                     ))}
                   </div>

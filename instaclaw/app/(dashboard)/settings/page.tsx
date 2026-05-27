@@ -749,7 +749,7 @@ export default function SettingsPage() {
               Channels
             </span>
             <span className="text-sm capitalize">
-              {vm.channelsEnabled?.join(", ") ?? "telegram"}
+              {vm.channelsEnabled?.length ? vm.channelsEnabled.join(", ") : "none yet"}
             </span>
           </div>
         </div>

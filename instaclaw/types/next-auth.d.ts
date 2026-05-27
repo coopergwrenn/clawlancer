@@ -16,6 +16,13 @@ declare module "next-auth" {
       // ISO 8601 string when present. Drives the /edge/intents mandatory
       // onboarding gate — see app/(dashboard)/layout.tsx + /edge/intents/page.tsx.
       indexLastIntentAt?: string | null;
+      // User's chosen messaging channel preference. 'web' when the user
+      // clicked "skip to your command center" on /channels; 'imessage' or
+      // 'telegram' set at the end of the channel-first onboarding flow
+      // (/api/onboarding/done/submit). NULL for legacy users created
+      // before this column was populated. Phase 2 banner + AGENTS.md
+      // WEB_ONLY_USER section branch on `preferredChannel === 'web'`.
+      preferredChannel?: string | null;
     };
   }
 }
