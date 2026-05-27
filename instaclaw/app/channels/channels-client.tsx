@@ -96,6 +96,15 @@ export function ChannelsClient() {
           </h1>
 
           {/* Subtitle — two-beat with italic serif promise on line 2 */}
+          {/* Consolidated subtitle — single line, single voice. Earlier
+              iteration had three lines (qualifier + italic promise + quiet
+              reassurance) that read as cluttered with three competing
+              voices. The italic "i'll meet you there." was redundant — the
+              same brand promise is delivered TWICE in the card subtitles
+              below ("the agent meets you there" appears in both iMessage
+              and Telegram cards). Removing it deduplicates without losing
+              warmth, and folding the reassurance into the single line
+              reduces the subtitle to one breath. */}
           <p
             className="mb-12"
             style={{
@@ -105,36 +114,7 @@ export function ChannelsClient() {
               maxWidth: 380,
             }}
           >
-            wherever you&apos;d rather text from.
-            <br />
-            <span
-              style={{
-                fontFamily: "var(--font-serif)",
-                fontStyle: "italic",
-                fontSize: 18,
-                color: CARD_INK,
-              }}
-            >
-              i&apos;ll meet you there.
-            </span>
-            <br />
-            {/* Tertiary line: quiet reassurance answering "is this permanent?"
-                without sounding like a disclaimer. Smaller / lighter than the
-                two lines above so it reads as a "by the way" annotation, not a
-                third promise. Placement matters — sits BEFORE the cards so the
-                hesitating user reads it AT the moment of doubt, not after
-                they've already committed/bounced. */}
-            <span
-              style={{
-                fontSize: 13,
-                color: SUBTLE_INK,
-                fontWeight: 400,
-                display: "inline-block",
-                marginTop: 6,
-              }}
-            >
-              start with one. add more anytime.
-            </span>
+            wherever you&apos;d rather text from. add more anytime.
           </p>
 
           {/* ─── ACTIVE: iMessage (two-action card) ───────────────── */}
