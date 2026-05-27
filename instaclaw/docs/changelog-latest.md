@@ -1,16 +1,16 @@
 # Changelog — generated 2026-05-27
 
-Window: `ed63731737260316292b8f32b8cc31069e359d45` → `HEAD` (HEAD = `f27f4b9c`)
+Window: `f27f4b9cb526964a390e98cf3922d59dbe1f073e` → `HEAD` (HEAD = `dfbc36c5`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: f27f4b9cb526964a390e98cf3922d59dbe1f073e -->
+<!-- LAST_GENERATED_SHA: dfbc36c56b2e6db699ea64e14f274de1bbc0dc7d -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
+- **Reconciler / manifest:** 1
 - **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,25 +18,26 @@ Total commits: 2
 
 ## What changed for users
 
-- `f27f4b9c` 2026-05-27 — feat(channels): brand-colored auras on Discord + Slack coming-soon cards [2 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `c0441a59` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `dfbc36c5` 2026-05-27 — feat(base-mcp): v1 — every InstaClaw agent composes Base DeFi natively [18 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `9ea899c6` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
 
-_(none)_
+- `dfbc36c5` 2026-05-27 — feat(base-mcp): v1 — every InstaClaw agent composes Base DeFi natively [18 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
 
 ### Infrastructure (0)
 
 _(none)_
 
-### Feature (user-facing) (1)
+### Feature (user-facing) (0)
 
-- `f27f4b9c` 2026-05-27 — feat(channels): brand-colored auras on Discord + Slack coming-soon cards [2 files] _(ai-assisted)_
+_(none)_
 
 ### Edge City partner (0)
 
@@ -44,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `c0441a59` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `9ea899c6` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `dfbc36c5` 2026-05-27 — [reconciler, infrastructure, docs] — feat(base-mcp): v1 — every InstaClaw agent composes Base DeFi natively
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `f27f4b9c` 2026-05-27 — feat(channels): brand-colored auras on Discord + Slack coming-soon cards
+- `dfbc36c5` 2026-05-27 — feat(base-mcp): v1 — every InstaClaw agent composes Base DeFi natively
 
 ## Appendix — every commit (chronological)
 
-- `c0441a59` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-- `f27f4b9c` 2026-05-27 — feat(channels): brand-colored auras on Discord + Slack coming-soon cards [2 files] _(ai-assisted)_
+- `9ea899c6` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `dfbc36c5` 2026-05-27 — feat(base-mcp): v1 — every InstaClaw agent composes Base DeFi natively [18 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
