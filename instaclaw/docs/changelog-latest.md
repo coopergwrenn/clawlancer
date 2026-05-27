@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-27
 
-Window: `73b57e816cd046e01d57f75eb352d7581d5a04c1` → `HEAD` (HEAD = `c96a56f1`)
+Window: `c96a56f104373dedbf4aed01f28c2d03fae161fe` → `HEAD` (HEAD = `85e85e63`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: c96a56f104373dedbf4aed01f28c2d03fae161fe -->
+<!-- LAST_GENERATED_SHA: 85e85e6396ffd9543da7203368d4ad102d5c3329 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `c96a56f1` 2026-05-27 — feat(skip-channels): Phase 2 — nudge banner + dismiss endpoint + WEB_ONLY_USER reconciler step [7 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
-- `69b89fa8` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `85e85e63` 2026-05-27 — fix(skip-channels): allow 'web' in preferred_channel + pending_users.channel CHECK constraints [1 files] _(ai-assisted)_
+- `dc19a194` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `c96a56f1` 2026-05-27 — feat(skip-channels): Phase 2 — nudge banner + dismiss endpoint + WEB_ONLY_USER reconciler step [7 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `85e85e63` 2026-05-27 — fix(skip-channels): allow 'web' in preferred_channel + pending_users.channel CHECK constraints [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `69b89fa8` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `c96a56f1` 2026-05-27 — [reconciler, infrastructure, feature] — feat(skip-channels): Phase 2 — nudge banner + dismiss endpoint + WEB_ONLY_USER reconciler step
+- `dc19a194` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `c96a56f1` 2026-05-27 — feat(skip-channels): Phase 2 — nudge banner + dismiss endpoint + WEB_ONLY_USER reconciler step
+- `85e85e63` 2026-05-27 — fix(skip-channels): allow 'web' in preferred_channel + pending_users.channel CHECK constraints
 
 ## Appendix — every commit (chronological)
 
-- `69b89fa8` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-- `c96a56f1` 2026-05-27 — feat(skip-channels): Phase 2 — nudge banner + dismiss endpoint + WEB_ONLY_USER reconciler step [7 files] _(multi: [reconciler, infrastructure, feature]; ai-assisted)_
+- `dc19a194` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `85e85e63` 2026-05-27 — fix(skip-channels): allow 'web' in preferred_channel + pending_users.channel CHECK constraints [1 files] _(ai-assisted)_
