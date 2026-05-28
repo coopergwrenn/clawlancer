@@ -38,6 +38,8 @@ import {
 import * as crypto from "crypto";
 import {
   GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK,
+  GBRAIN_MEMORY_PROTOCOL_V1_MARKER,
+  GBRAIN_MEMORY_PROTOCOL_V1_END_MARKER,
   GBRAIN_SOUL_ROUTING_V1_SECTION,
   GBRAIN_SOUL_ROUTING_V1_BEGIN_MARKER,
   GBRAIN_SOUL_ROUTING_V1_KNOWN_OK_SHAS,
@@ -9402,12 +9404,54 @@ out({
  * allowlist grows (consensus_2026, eclipse, etc.), both steps propagate
  * automatically without code changes here.
  *
- * Idempotency: GBRAIN_MEMORY_PROTOCOL_V1 marker check. Skip if present.
+ * Content-drift discipline (2026-05-28): the prior implementation was
+ * INSERT-only (early-return alreadyCorrect on marker presence; Python
+ * also short-circuited on marker). Result: once the markers were on
+ * disk, ANY update to GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK was
+ * silently ignored. The same INSERT-only class bug surfaced in
+ * stepDeployBaseDefiRouting (commit 6cf1d650 fixed it the same way) —
+ * applying the identical content-drift treatment here.
+ *
+ * Three states handled deterministically:
+ *
+ *   1. INSERT (markers absent) — first-time deploy. Anchor-locates
+ *      `## Memory Protocol`; falls back to EOF append if missing.
+ *      Inserts the FULL canonical block (which self-contains its own
+ *      `---\\n\\n` leading and `\\n\\n---` trailing markdown separators).
+ *
+ *   2. REPLACE (markers present, marker-bounded interior differs from
+ *      canonical) — content drift. Splices the marker-bounded interior
+ *      of canonical (stripping the leading/trailing `---` separators
+ *      since those already live on disk from the previous insert) into
+ *      the marker-bounded region. Leaves the on-disk `---` separators
+ *      undisturbed — no duplicate-separator bug.
+ *
+ *   3. NO-OP (markers present, marker-bounded interior matches canonical
+ *      interior) — alreadyCorrect.
+ *
+ * Plus "malformed" (exactly one marker present, somehow) — push to
+ * result.errors and skip; surface to operator for manual review.
+ *
+ * Critical detail vs base-defi: GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK
+ * starts with `---\\n\\n` and ends with `\\n\\n---` (separators baked
+ * INTO the canonical block — see workspace-templates-v2.ts:74). For
+ * REPLACE we splice the marker-bounded interior only; the on-disk
+ * separators stay. For INSERT we use the FULL canonical_block; the
+ * separators come along.
+ *
+ * Failure-mode classification: this step's content is load-bearing
+ * (anti-hallucination directive — agents that don't have it sometimes
+ * lie about saving to memory per Rule 28). All non-success states
+ * push to result.errors so file-drift's pushFailed gate notices and
+ * an operator sees the alert. (Compare with stepDeployBaseDefiRouting,
+ * which uses result.warnings because the routing block is a UX
+ * optimizer — agent works without it.)
  *
  * Rule 22: backs up AGENTS.md to ~/.openclaw/backups/v102-gbrain-soul-
  * protocol-<ts>/AGENTS.md BEFORE any modification.
  *
- * Rule 23: atomic write (tmp + os.replace). Marker-verify after write.
+ * Rule 10: re-reads file after write, byte-compares the marker-bounded
+ * interior against canonical, confirms both markers landed.
  *
  * Source of the inserted block: lib/workspace-templates-v2.ts
  * GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK constant. ~4.1KB of content,
@@ -9437,88 +9481,164 @@ async function stepDeployGbrainSoulProtocol(
     return;
   }
 
-  // ── Marker probe ──
-  const check = await ssh.execCommand(
-    `grep -c "GBRAIN_MEMORY_PROTOCOL_V1" ~/.openclaw/workspace/AGENTS.md 2>/dev/null || echo 0`,
-  );
-  const present = parseInt((check.stdout || "0").trim(), 10) > 0;
-  if (present) {
-    result.alreadyCorrect.push("gbrain-soul-protocol (V1 marker present)");
-    return;
-  }
-
   if (dryRun) {
-    result.fixed.push("[dry-run] gbrain-soul-protocol: would insert GBRAIN_MEMORY_PROTOCOL_V1 block before ## Memory Protocol in AGENTS.md");
+    // Probe state without mutation.
+    const stateProbe = await ssh.execCommand(
+      `if [ ! -f ~/.openclaw/workspace/AGENTS.md ]; then echo "MISSING"; ` +
+        `elif grep -q "${GBRAIN_MEMORY_PROTOCOL_V1_MARKER}" ~/.openclaw/workspace/AGENTS.md; then echo "MARKER_PRESENT"; ` +
+        `else echo "MARKER_ABSENT"; fi`,
+    );
+    const state = (stateProbe.stdout || "").trim();
+    if (state === "MISSING") {
+      result.errors.push("[dry-run] gbrain-soul-protocol: AGENTS.md missing");
+    } else if (state === "MARKER_ABSENT") {
+      result.fixed.push(
+        `[dry-run] gbrain-soul-protocol: would INSERT block before "## Memory Protocol"`,
+      );
+    } else {
+      result.fixed.push(
+        `[dry-run] gbrain-soul-protocol: would compare on-disk marker-bounded interior to canonical (${GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK.length}b block) and REPLACE on drift, no-op on match`,
+      );
+    }
     return;
   }
 
-  // ── Python in-place insert with backup + atomic write + verify ──
+  // ── Content-drift-aware Python: INSERT / REPLACE / NO-OP via marker probe. ──
+  // BEGIN/END marker constants imported from workspace-templates-v2.ts so a
+  // future typo surfaces as a TS compile error.
   const cfg = JSON.stringify({
     agents_path: "~/.openclaw/workspace/AGENTS.md",
     backup_path: `~/.openclaw/backups/v102-gbrain-soul-protocol-${Date.now()}/AGENTS.md`,
     block: GBRAIN_MEMORY_PROTOCOL_V1_AGENTS_BLOCK,
+    begin_marker: GBRAIN_MEMORY_PROTOCOL_V1_MARKER,
+    end_marker: GBRAIN_MEMORY_PROTOCOL_V1_END_MARKER,
     insert_before_header: "## Memory Protocol",
-    marker: "GBRAIN_MEMORY_PROTOCOL_V1",
   });
+
   const PATCH_PY = `
 import json, os, sys
 
 cfg = json.loads(sys.stdin.read())
 path = os.path.expanduser(cfg["agents_path"])
+canonical_block = cfg["block"]
+begin_marker = cfg["begin_marker"]
+end_marker = cfg["end_marker"]
+backup_path = os.path.expanduser(cfg["backup_path"])
 
 def out(d):
     print(json.dumps(d))
     sys.exit(0)
+
+# Extract the marker-bounded interior of canonical_block. For gbrain this is
+# canonical_block stripped of the leading "---\\n\\n" and trailing "\\n\\n---"
+# separators — the on-disk content already has those from the prior insert,
+# so REPLACE only swaps the interior to avoid duplicate-separator stacking.
+canonical_begin_idx = canonical_block.find(begin_marker)
+canonical_end_idx = canonical_block.find(end_marker)
+if canonical_begin_idx < 0 or canonical_end_idx < 0:
+    out({"status": "config-error", "reason": "canonical block missing its own markers"})
+canonical_interior = canonical_block[canonical_begin_idx:canonical_end_idx + len(end_marker)]
+
+def backup_then_atomic_write(content_to_save, new_content):
+    """Rule 22: backup before any mutation, atomic tmp+replace write."""
+    os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+    with open(backup_path, "w") as f:
+        f.write(content_to_save)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(new_content)
+    os.replace(tmp, path)
+
+def verify_block_landed():
+    """Rule 10: re-read post-write, confirm marker-bounded interior matches canonical_interior."""
+    with open(path) as f:
+        final = f.read()
+    b = final.find(begin_marker)
+    e = final.find(end_marker)
+    if b < 0 or e < 0:
+        return None, "markers absent after write"
+    end_inc = e + len(end_marker)
+    interior_on_disk = final[b:end_inc]
+    if interior_on_disk != canonical_interior:
+        return None, "post-write interior bytes mismatch"
+    return final, None
 
 if not os.path.exists(path):
     out({"status": "missing"})
 
 with open(path) as f:
     content = f.read()
-original = content
 
-# Idempotency: skip if marker already present (defense in depth — caller
-# also checks, but a race between two reconcile runs could bypass that).
-if cfg["marker"] in content:
-    out({"status": "already-present"})
+begin_idx = content.find(begin_marker)
+end_idx = content.find(end_marker)
 
-# Rule 22 backup BEFORE any modification.
-bp = os.path.expanduser(cfg["backup_path"])
-os.makedirs(os.path.dirname(bp), exist_ok=True)
-with open(bp, "w") as f:
-    f.write(original)
+# ── Case 1: INSERT (no markers present) ──
+# Use the FULL canonical_block here (separators included). Matches the original
+# gbrain INSERT behavior — the canonical block carries its own \`---\` separators
+# so they end up on disk in the right places.
+if begin_idx < 0 and end_idx < 0:
+    header = cfg["insert_before_header"]
+    lines = content.split("\\n")
+    anchor = -1
+    for i, line in enumerate(lines):
+        if line.strip() == header.strip():
+            anchor = i
+            break
+    if anchor >= 0:
+        # Single newline before/after canonical_block — block contains its own
+        # \`---\\n\\n\` and \`\\n\\n---\` separators.
+        new_content = "\\n".join(lines[:anchor]) + "\\n" + canonical_block + "\\n" + "\\n".join(lines[anchor:])
+        inserted_at = "before-header"
+    else:
+        new_content = content.rstrip() + "\\n\\n" + canonical_block + "\\n"
+        inserted_at = "appended-eof"
 
-# Locate insertion point: line equal to the header. If missing, append
-# to EOF as a fallback — never destructive, never overwrite.
-header = cfg["insert_before_header"]
-lines = content.split("\\n")
-idx = -1
-for i, line in enumerate(lines):
-    if line.strip() == header.strip():
-        idx = i
-        break
+    backup_then_atomic_write(content, new_content)
+    final, err = verify_block_landed()
+    if err is not None:
+        out({"status": "verify-failed", "phase": "insert", "inserted_at": inserted_at, "reason": err})
 
-block = cfg["block"]
-if idx >= 0:
-    new_content = "\\n".join(lines[:idx]) + "\\n" + block + "\\n" + "\\n".join(lines[idx:])
-    inserted_at = "before-header"
-else:
-    new_content = content.rstrip() + "\\n\\n" + block + "\\n"
-    inserted_at = "appended-eof"
+    out({
+        "status": "inserted",
+        "inserted_at": inserted_at,
+        "size_before": len(content),
+        "size_after": len(final),
+        "block_len": len(canonical_block),
+    })
 
-# Atomic write per Rule 22.
-tmp = path + ".tmp"
-with open(tmp, "w") as f:
-    f.write(new_content)
-os.replace(tmp, path)
+# ── Case 2: MALFORMED (exactly one marker present) ──
+if begin_idx < 0 or end_idx < 0:
+    out({
+        "status": "malformed",
+        "begin_present": begin_idx >= 0,
+        "end_present": end_idx >= 0,
+    })
 
-# Verify marker is now present.
-with open(path) as f:
-    final = f.read()
-if cfg["marker"] not in final:
-    out({"status": "verify-failed", "inserted_at": inserted_at})
+# ── Case 3: BOTH MARKERS PRESENT — drift check + REPLACE or NO-OP ──
+# Compare on-disk marker-bounded interior against canonical_interior. The
+# disk's surrounding \`---\` separators (from prior insert) are NOT part of
+# this comparison and stay in place during REPLACE.
+end_idx_inclusive = end_idx + len(end_marker)
+on_disk_interior = content[begin_idx:end_idx_inclusive]
 
-out({"status": "ok", "inserted_at": inserted_at, "size_before": len(original), "size_after": len(final)})
+if on_disk_interior == canonical_interior:
+    out({"status": "already-correct", "interior_len": len(canonical_interior)})
+
+# Content drift detected → splice canonical_interior into the marker-bounded region.
+new_content = content[:begin_idx] + canonical_interior + content[end_idx_inclusive:]
+backup_then_atomic_write(content, new_content)
+
+final, err = verify_block_landed()
+if err is not None:
+    out({"status": "verify-failed", "phase": "replace", "reason": err})
+
+out({
+    "status": "replaced",
+    "old_interior_len": len(on_disk_interior),
+    "new_interior_len": len(canonical_interior),
+    "size_before": len(content),
+    "size_after": len(final),
+})
 `;
 
   const scriptB64 = Buffer.from(PATCH_PY, "utf-8").toString("base64");
@@ -9535,7 +9655,21 @@ out({"status": "ok", "inserted_at": inserted_at, "size_before": len(original), "
 
   const lines = (r.stdout || "").split("\n").map((l: string) => l.trim()).filter(Boolean);
   const lastLine = lines[lines.length - 1] ?? "";
-  let parsed: { status?: string; inserted_at?: string; size_before?: number; size_after?: number } = {};
+  type Parsed = {
+    status?: string;
+    inserted_at?: string;
+    phase?: string;
+    reason?: string;
+    interior_len?: number;
+    block_len?: number;
+    size_before?: number;
+    size_after?: number;
+    old_interior_len?: number;
+    new_interior_len?: number;
+    begin_present?: boolean;
+    end_present?: boolean;
+  };
+  let parsed: Parsed = {};
   try {
     parsed = JSON.parse(lastLine);
   } catch {
@@ -9543,26 +9677,50 @@ out({"status": "ok", "inserted_at": inserted_at, "size_before": len(original), "
     return;
   }
 
-  if (parsed.status === "missing") {
-    result.errors.push("gbrain-soul-protocol: AGENTS.md missing — configureOpenClaw should have created it");
-    return;
+  switch (parsed.status) {
+    case "missing":
+      result.errors.push(
+        "gbrain-soul-protocol: AGENTS.md missing — configureOpenClaw should have created it",
+      );
+      return;
+    case "malformed":
+      result.errors.push(
+        `gbrain-soul-protocol: malformed AGENTS.md (begin_present=${parsed.begin_present}, end_present=${parsed.end_present}); manual fix required`,
+      );
+      return;
+    case "config-error":
+      // Should never happen (would imply the canonical block in TS source is
+      // structurally broken). Treated as an error so we notice.
+      result.errors.push(
+        `gbrain-soul-protocol: canonical block config-error (${parsed.reason ?? "?"})`,
+      );
+      return;
+    case "already-correct":
+      result.alreadyCorrect.push(
+        `gbrain-soul-protocol (content matches canonical interior, ${parsed.interior_len}b)`,
+      );
+      return;
+    case "inserted":
+      result.fixed.push(
+        `gbrain-soul-protocol: INSERTED ${parsed.inserted_at} (${parsed.size_before} → ${parsed.size_after}b, block=${parsed.block_len}b)`,
+      );
+      return;
+    case "replaced":
+      result.fixed.push(
+        `gbrain-soul-protocol: REPLACED (interior ${parsed.old_interior_len} → ${parsed.new_interior_len}b, file ${parsed.size_before} → ${parsed.size_after}b)`,
+      );
+      return;
+    case "verify-failed":
+      result.errors.push(
+        `gbrain-soul-protocol: verify-after-write FAILED (phase=${parsed.phase}, reason=${parsed.reason ?? "unspecified"})`,
+      );
+      return;
+    default:
+      result.errors.push(
+        `gbrain-soul-protocol: unexpected status=${parsed.status} (output: ${lastLine.slice(0, 200)})`,
+      );
+      return;
   }
-  if (parsed.status === "already-present") {
-    result.alreadyCorrect.push("gbrain-soul-protocol (marker found by python)");
-    return;
-  }
-  if (parsed.status === "verify-failed") {
-    result.errors.push(`gbrain-soul-protocol: verify-after-write failed (inserted_at=${parsed.inserted_at})`);
-    return;
-  }
-  if (parsed.status === "ok") {
-    result.fixed.push(
-      `gbrain-soul-protocol: inserted block ${parsed.inserted_at} (AGENTS.md ${parsed.size_before} → ${parsed.size_after} bytes)`,
-    );
-    return;
-  }
-  result.errors.push(`gbrain-soul-protocol: unexpected status=${parsed.status}`);
-  return;
 }
 
 /**
