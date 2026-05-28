@@ -1330,6 +1330,8 @@ def _get_gateway_token():
     return ""
 
 def _call_haiku_for_summary(messages):
+    # STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28 — see constant defined below.
+    if not PERIODIC_SUMMARY_LLM_ENABLED: return None
     gw_token = _get_gateway_token()
     if not gw_token: return None
     parts = []
@@ -1451,6 +1453,45 @@ PERIODIC_SUMMARY_MIN_NEW_MSGS = 3
 PERIODIC_RECENT_DEDUPE_SECONDS = 1800  # 30 min — skip if agent wrote recently
 PRE_ARCHIVE_SUMMARY_RECENT_THRESHOLD = 1800  # 30 min
 
+# ──────────────────────────────────────────────────────────────────────────
+# STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28  (P0 incident kill switch)
+# ──────────────────────────────────────────────────────────────────────────
+# When False, _call_haiku_for_summary and _call_haiku_structured short-circuit
+# to None. Their callers (run_session_end_hook, run_periodic_summary_hook,
+# _ensure_recent_summary_before_archive) already handle None gracefully —
+# they log a telemetry line and skip the summary write. Everything else in
+# strip-thinking.py keeps running:
+#   - thinking-block stripping
+#   - compact_session_in_place_lines (Rule 30 in-place compaction)
+#   - daily_hygiene (disk/backup/browser cache/journal vacuum)
+#   - trim_failed_turns (Rule 22 trim-not-nuke)
+#   - strip_images_from_older_messages
+#   - _extract_large_tool_results_to_cache (Layer 3 memory pointer)
+#   - run_startup_orphan_repair
+#   - session-log.md / MEMORY.md maintenance writes initiated by the AGENT
+#     itself (the script's cron-side LLM-generated content stops; the agent
+#     can still write its own per AGENTS.md instructions).
+#
+# Why this is necessary (2026-05-28):
+#   The proxy at /api/gateway/proxy IGNORES the x-model-override header that
+#   _call_haiku_for_summary and _call_haiku_structured send. Their requests
+#   ("Summarize this conversation...") get routed through the content
+#   classifier in lib/model-router.ts, match SONNET_SIGNALS or even
+#   OPUS_MULTI_AGENT / hasComplexBuild, and are charged at cost=4 (sonnet)
+#   or cost=19 (opus) instead of the expected cost=1 (haiku). The calls are
+#   also logged with call_type='user' and charged against the user's
+#   daily display limit. Net effect on 2026-05-28: 19 paying users hit
+#   their daily cap before noon UTC; vm-1006 burned 19,000 cost_weight on
+#   a 2500 daily budget (7.6x overconsumption) entirely from this bug.
+#
+# Phase 2 of the incident fix introduces a proper call_type taxonomy
+# (x-instaclaw-call-type: infrastructure) with a separate INFRASTRUCTURE_
+# DAILY_BUDGET cap, forced haiku routing, and exemption from the user
+# daily-limit RPC. When Phase 2 lands, the strip-thinking.py call sites
+# will be updated to send the new header AND this kill switch will be
+# flipped back to True via that same PR.
+PERIODIC_SUMMARY_LLM_ENABLED = False
+
 USER_FACTS_MARKER_START = "<!-- INSTACLAW:LATEST_USER_FACTS:START -->"
 USER_FACTS_MARKER_END = "<!-- INSTACLAW:LATEST_USER_FACTS:END -->"
 
@@ -1462,6 +1503,8 @@ def _call_haiku_structured(messages, existing_facts=""):
     {"summary": prose, "user_facts": None}).  Returns None on hard error
     (no gateway token, http failure, empty model response).
     """
+    # STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28 — see constant defined above.
+    if not PERIODIC_SUMMARY_LLM_ENABLED: return None
     gw_token = _get_gateway_token()
     if not gw_token: return None
     parts = []
