@@ -9,6 +9,34 @@ description: Swap tokens and manage liquidity on Uniswap v3 (Base mainnet) — U
 
 **Use this skill when:** the user wants to swap tokens on Base via Uniswap, get a Uniswap price quote for comparison against Aerodrome, or manage Uniswap v3 concentrated-liquidity positions.
 
+<!-- BASE_SKILL_WALLET_LIMITS_V1 -->
+## Wallet Limitations — read before composing any swap that touches ETH
+
+Your Bankr wallet is an **EIP-7702-delegated smart account** that executes via ERC-4337 UserOperations. This has one practical consequence for Uniswap routing on Base: **anything that tries to send native ETH back to your wallet via `transfer()` will revert.**
+
+What this rules out, even if it looks like a normal swap:
+
+- **`IWETH9.withdraw()` (selector `0x2e1a7d4d`)** — the canonical WETH-to-native-ETH unwrap. Reverts with `simulation_reverted` because WETH9 uses `address.transfer(wad)` which forwards 2300 gas; the wallet's `receive()` needs more.
+- **Universal Router `UNWRAP_WETH9` command (0x0c)** — invokes the same WETH9.withdraw() under the hood. Same revert.
+- **SwapRouter02 swap variants that output to native ETH** — internally unwrap. Same revert.
+- **Any path described as "swap to ETH" or "buy native ETH"** — all of them ultimately call WETH9.withdraw.
+
+What works:
+
+- **Swap token → WETH** (any fee tier, any router). WETH lands as a normal ERC-20 in the wallet. Use this for every "I want ETH" request.
+- **Swap token → token** (USDC → cbBTC, USDC → AERO, etc.). No ETH receive step.
+- **Receive native ETH** via a direct transfer (someone sends with `value > 0`). The EVM runs the wallet's `receive()` with the full transaction gas, not the 2300-gas stipend, so it succeeds. It's only the contract-mediated `transfer()` / `send()` pattern (2300 gas) that fails.
+
+When the user asks "swap X for ETH" or "get me some ETH":
+
+1. Quote token → **WETH** (not native ETH). WETH and ETH are 1:1 and interchangeable for every other Base DeFi operation in your skill catalog.
+2. Execute the swap; the wallet receives WETH.
+3. In the reply, tell the user honestly: "You now have X WETH (= the same as X ETH on Base). Gas is sponsored by InstaClaw via Bankr, so you don't need native ETH for transactions. If you want to send actual native ETH off-platform, ask me and I'll explain the workaround."
+
+If they truly need native ETH (e.g., to bridge to another chain that doesn't recognize WETH): the workaround is to swap to USDC, transfer USDC to a self-custodied wallet on the destination side, and convert there. Don't promise an unwrap inside the agent's wallet — it won't work.
+
+<!-- /BASE_SKILL_WALLET_LIMITS_V1 -->
+
 ## What you can do
 
 1. **Quote a swap** — preview output and best fee tier via Quoter

@@ -114,6 +114,8 @@ cast calldata "redeemUnderlying(uint256)" $AMOUNT_WEI
 cast calldata "redeem(uint256)" $SHARES
 ```
 
+**Note on mWETH redeem:** Moonwell's Base markets use mWETH (wrapping the ERC-20 WETH at `0x4200...0006`), not a native-ETH wrapper. `redeem()` and `redeemUnderlying()` return ERC-20 WETH to the wallet — no native ETH receive step, so no Bankr smart-account limitation in play. (If a future Moonwell market on Base wraps native ETH directly à la Compound v2's cEther, its `redeem()` would unwrap and use `transfer()` to send 2300-gas native ETH back — this would revert for Bankr-managed wallets. Treat any new mEther-style market as untested before routing through it.)
+
 ## Signing — broadcast via Bankr
 
 ```bash

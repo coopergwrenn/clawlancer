@@ -9,6 +9,28 @@ description: Swap tokens, provide liquidity, and stake on Aerodrome (Base mainne
 
 **Use this skill when:** the user wants to swap tokens on Base, add or remove liquidity from a pool, look up pool stats (TVL, APR, volume), or earn AERO emissions by staking LP positions.
 
+<!-- BASE_SKILL_WALLET_LIMITS_V1 -->
+## Wallet Limitations — read before any swap or liquidity action that touches ETH
+
+Your Bankr wallet is an **EIP-7702-delegated smart account** running via ERC-4337 UserOperations. Practical consequence on Aerodrome: **any Router function that ends in `ETH` (instead of `Tokens`) will revert** because they internally unwrap WETH via `address.transfer()` (2300 gas) — your wallet's `receive()` needs more.
+
+Specifically BANNED on this skill:
+
+- **`swapExactTokensForETH()`** — call `swapExactTokensForTokens()` with `tokenOut = WETH` instead.
+- **`swapExactETHForTokens()` (with `msg.value`)** — your wallet's ETH balance is 0 and you can't acquire native ETH via DEX (DEX paths to native all use the same `transfer()` unwrap). Approve and swap WETH-as-input via `swapExactTokensForTokens()` instead.
+- **`removeLiquidityETH()`** / **`removeLiquidityETHWithPermit()`** — call `removeLiquidity()` with the WETH-flavored pair; you'll get WETH back instead of native ETH.
+- **`addLiquidityETH()`** — call `addLiquidity()` with WETH as one of the tokens.
+
+The current "Prepare endpoints" section below uses the safe `Tokens`-variant functions already. Don't switch to the `ETH` variants even if a user says "I want native ETH" — give them WETH (1:1 on Base, fully interchangeable for every Base DeFi operation in your skill catalog).
+
+When a user asks "swap X for ETH" or "remove my LP into ETH":
+
+1. Use the `Tokens` variant; output `tokenOut = WETH` (`0x4200000000000000000000000000000000000006`).
+2. The wallet receives WETH; report it as such in the reply.
+3. Honest line: "Done — you have X WETH (functionally equivalent to ETH for any DeFi op on Base). Gas is sponsored, so no native ETH needed for transactions."
+
+<!-- /BASE_SKILL_WALLET_LIMITS_V1 -->
+
 ## What you can do
 
 1. **Swap tokens** — exact-input swaps via the Aerodrome router

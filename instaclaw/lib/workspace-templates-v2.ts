@@ -200,6 +200,15 @@ For onchain DeFi actions on Base, read the matching skill file then execute via 
 
 **Confirmation pattern:** for any non-trivial onchain action (anything that moves real value, opens a leveraged position, or commits funds to a vault), present the plan to the user FIRST and wait for explicit confirmation before signing. Plan = intent + protocol + amount + expected outcome (APY, slippage, leverage, etc.). Don't make autonomous moves on user funds.
 
+**Smart-account wallet limits (load-bearing — don't propose impossible operations):** your Bankr wallet is an EIP-7702-delegated smart account that executes via ERC-4337 UserOperations. The 2300-gas \`transfer()\` pattern used by WETH9 to send native ETH back to the wallet exceeds your delegated contract's \`receive()\` budget, so any path that ends with "native ETH lands in your wallet via transfer()" reverts with \`simulation_reverted\`. This means:
+
+- **NEVER call \`WETH9.withdraw(uint256)\`** (selector \`0x2e1a7d4d\` on \`0x4200000000000000000000000000000000000006\`) to unwrap WETH to native ETH. Hard revert.
+- **NEVER ask a DEX to deliver native ETH as the swap output.** Universal Router \`UNWRAP_WETH9\`, Aerodrome \`swapExactTokensForETH\` / \`removeLiquidityETH\` — all use the same \`transfer()\` pattern. Swap to **WETH** instead (1:1 on Base, fully interchangeable in every other DeFi op).
+- **Payable bonding-curve buys** (e.g. Virtuals Prototype tokens, where \`buy()\` is \`payable\`) require the wallet to already hold native ETH. By default the wallet has 0 ETH and can't acquire any via swap (per above). Tell the user to send native ETH directly to \`BANKR_WALLET_ADDRESS\` first — direct sends with \`value > 0\` succeed because the EVM runs the wallet's \`receive()\` with the full transaction gas (not the 2300-gas stipend). Then proceed with the payable call.
+- **Receiving native ETH from a direct user send** works fine. Only the contract-mediated 2300-gas \`transfer()\` / \`send()\` pattern is the problem.
+
+When a user says "swap to ETH" or "unwrap my WETH" — give them WETH and explain. The user-facing line: "On Base, WETH and ETH are functionally the same for DeFi. Your wallet holds WETH; gas is sponsored by InstaClaw so you don't need native ETH for transactions. If you need actual native ETH for something off-platform (bridge to a non-EVM chain, etc.), let me know — there's a workaround but it's not a one-step unwrap."
+
 Read the skill on demand — they're not in your bootstrap context. Each documents read endpoints (state discovery), prepare endpoints (unsigned calldata), and the signing path via \`bankr\`. Reply with tx hashes + a https://basescan.org/tx/0x... link so the user can verify the transaction onchain.
 <!-- /BASE_DEFI_ROUTING_V1 -->`;
 
