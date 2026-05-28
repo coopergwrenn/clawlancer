@@ -1,45 +1,42 @@
 # Changelog — generated 2026-05-28
 
-Window: `492420f3c2a3a06d5979eef403489387e2944671` → `HEAD` (HEAD = `1a249852`)
-Total commits: 3
+Window: `1a2498523ba33b4d31a279115c502d4638753c56` → `HEAD` (HEAD = `8fe0030e`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 1a2498523ba33b4d31a279115c502d4638753c56 -->
+<!-- LAST_GENERATED_SHA: 8fe0030e72c1b5e314dd5d79d60bdd1199fb49c7 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 2
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 0
-- **Feature (user-facing):** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 2
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-_None in this window._
+- `8fe0030e` 2026-05-28 — fix(signin): bring /signin to /channels visual bar — warm sand + glass pills + lowercase voice [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `a6091be2` 2026-05-28 — fix(reconcile): stepDeployGbrainSoulProtocol handles content drift, not just first-time insert [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `1a249852` 2026-05-28 — chore(v126-bake-prep): bonjour drop-in via manifest + §31 v123/v124/v125 validation [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `898575f4` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `657970b0` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (2)
+### Reconciler / manifest (0)
 
-- `a6091be2` 2026-05-28 — fix(reconcile): stepDeployGbrainSoulProtocol handles content drift, not just first-time insert [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `1a249852` 2026-05-28 — chore(v126-bake-prep): bonjour drop-in via manifest + §31 v123/v124/v125 validation [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+_(none)_
 
 ### Infrastructure (0)
 
 _(none)_
 
-### Feature (user-facing) (0)
+### Feature (user-facing) (1)
 
-_(none)_
+- `8fe0030e` 2026-05-28 — fix(signin): bring /signin to /channels visual bar — warm sand + glass pills + lowercase voice [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -47,24 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `898575f4` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `657970b0` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
 
-## Multi-category commits (2)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `a6091be2` 2026-05-28 — [reconciler, infrastructure] — fix(reconcile): stepDeployGbrainSoulProtocol handles content drift, not just first-time insert
-- `1a249852` 2026-05-28 — [reconciler, infrastructure] — chore(v126-bake-prep): bonjour drop-in via manifest + §31 v123/v124/v125 validation
-
-## AI-assisted commits (2)
+## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `a6091be2` 2026-05-28 — fix(reconcile): stepDeployGbrainSoulProtocol handles content drift, not just first-time insert
-- `1a249852` 2026-05-28 — chore(v126-bake-prep): bonjour drop-in via manifest + §31 v123/v124/v125 validation
+- `8fe0030e` 2026-05-28 — fix(signin): bring /signin to /channels visual bar — warm sand + glass pills + lowercase voice
 
 ## Appendix — every commit (chronological)
 
-- `898575f4` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
-- `a6091be2` 2026-05-28 — fix(reconcile): stepDeployGbrainSoulProtocol handles content drift, not just first-time insert [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `1a249852` 2026-05-28 — chore(v126-bake-prep): bonjour drop-in via manifest + §31 v123/v124/v125 validation [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `657970b0` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `8fe0030e` 2026-05-28 — fix(signin): bring /signin to /channels visual bar — warm sand + glass pills + lowercase voice [1 files] _(ai-assisted)_
