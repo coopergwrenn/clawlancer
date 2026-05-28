@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 
 /**
  * /onboarding/done client — celebration + personalization + handoff.
@@ -39,7 +40,7 @@ const MUTED_INK = "#6b6b6b";
 const SUBTLE_INK = "#9a9892";
 const CARD_BORDER = "rgba(51, 51, 52, 0.08)";
 
-type Channel = "imessage" | "telegram" | "discord" | "slack";
+type Channel = "imessage" | "telegram" | "discord" | "slack" | "web";
 
 type IntendedUse = "work" | "personal" | "both";
 type Vibe = "just-get-things-done" | "chatty-and-warm" | "wry-and-minimal";
@@ -71,6 +72,12 @@ const channelDisplayName = (c: Channel): string => {
       return "Discord";
     case "slack":
       return "Slack";
+    case "web":
+      // Web-only users (skipped /channels via /onboarding/web) land in
+      // the dashboard's command center rather than a messaging app.
+      // "your dashboard" reads naturally in both "head back to X" and
+      // "back to X after this" copy positions.
+      return "your dashboard";
   }
 };
 
@@ -447,7 +454,9 @@ function FormState(props: FormStateProps) {
             e.currentTarget.style.color = MUTED_INK;
           }}
         >
-          skip, just text me back when ready.
+          {channel === "web"
+            ? "skip, i'll meet you in the dashboard."
+            : "skip, just text me back when ready."}
         </button>
       </div>
 
@@ -467,6 +476,7 @@ function FormState(props: FormStateProps) {
 /* ────────────────────────────────────────────────────────────────── */
 
 function PostSubmitState({ channel }: { channel: Channel }) {
+  const isWeb = channel === "web";
   return (
     <div className="text-center">
       <h1
@@ -492,7 +502,9 @@ function PostSubmitState({ channel }: { channel: Channel }) {
           margin: "0 auto 16px",
         }}
       >
-        head back to {channelDisplayName(channel)}.
+        {isWeb
+          ? "your command center is ready."
+          : `head back to ${channelDisplayName(channel)}.`}
       </p>
 
       <p
@@ -505,25 +517,51 @@ function PostSubmitState({ channel }: { channel: Channel }) {
           margin: "0 auto",
         }}
       >
-        i&apos;ll be there.
+        {isWeb ? "tap below to meet your agent." : "i'll be there."}
       </p>
 
-      {/* Subtle visual cue — a coral dot that gently pulses, reinforcing
-          "something is happening." Not a spinner; not a progress bar.
-          Just a small living signal. */}
-      <div className="flex justify-center" aria-hidden>
-        <span
-          style={{
-            display: "inline-block",
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            background: CORAL,
-            boxShadow: `0 0 0 4px rgba(233, 111, 77, 0.12)`,
-            animation: "onboarding-done-pulse 1.6s ease-in-out infinite",
-          }}
-        />
-      </div>
+      {/* Web-only users: a direct CTA to /dashboard since there's no
+          messaging app for them to switch to. Coral pill matching the
+          /channels primary CTA family — same color hierarchy as the
+          rest of onboarding. The pulsing-dot affordance below the
+          channel users' "i'll be there" copy means "your agent is
+          about to message you" — which doesn't apply for web. */}
+      {isWeb ? (
+        <div className="flex justify-center">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-medium transition-snappy"
+            style={{
+              background: CORAL,
+              color: "#ffffff",
+              boxShadow: "0 2px 8px rgba(233, 111, 77, 0.28), inset 0 1px 0 rgba(255,255,255,0.25)",
+              letterSpacing: "-0.2px",
+            }}
+          >
+            open your command center
+            <span aria-hidden style={{ fontSize: 16, marginLeft: 2 }}>→</span>
+          </Link>
+        </div>
+      ) : (
+        /* Subtle visual cue — a coral dot that gently pulses,
+           reinforcing "something is happening." Not a spinner; not a
+           progress bar. Just a small living signal. Applies to channel
+           users where M_RETURN is dispatching to their inbox in
+           the background. */
+        <div className="flex justify-center" aria-hidden>
+          <span
+            style={{
+              display: "inline-block",
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background: CORAL,
+              boxShadow: `0 0 0 4px rgba(233, 111, 77, 0.12)`,
+              animation: "onboarding-done-pulse 1.6s ease-in-out infinite",
+            }}
+          />
+        </div>
+      )}
 
       <style>{`
         @keyframes onboarding-done-pulse {
