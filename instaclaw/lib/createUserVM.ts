@@ -513,10 +513,34 @@ export interface AssignedVmShape {
 export interface AssignOrProvisionResult {
   vmId: string;
   ipAddress: string;
-  /** Discriminator. Callers branch to decide whether to run /api/vm/configure. */
-  path: "pool" | "cloud-init";
+  /**
+   * Discriminator. Callers branch to decide whether to run /api/vm/configure.
+   *
+   * - "pool"       — VM claimed atomically from the ready pool via
+   *                  instaclaw_assign_vm RPC. Fast path (~30s to working).
+   *                  Caller should run /api/vm/configure to wire up
+   *                  channel-specific tokens, gateway, wallets, etc.
+   * - "cloud-init" — pool was empty + CLOUD_INIT_ONDEMAND_ENABLED=true.
+   *                  Slow path (~5-10 min for VM to boot + bonjour to
+   *                  settle). Caller does NOT run configure (cloud-init
+   *                  bakes the same config into the boot script).
+   * - "existing"   — user ALREADY HAS an assigned VM. We refuse to
+   *                  create a duplicate and return the existing row.
+   *                  P1 billing-leak fix (2026-05-28): a signed-in user
+   *                  could open incognito, /start a new Telegram bot,
+   *                  trigger inbound webhook → pending row → /auth →
+   *                  assignOrProvisionUserVm fired a SECOND time on the
+   *                  same user_id, pool-claimed another VM, and the
+   *                  existing-sub branch in /api/billing/checkout skipped
+   *                  Stripe — net result: two VMs under one subscription.
+   *                  Caller should NOT run configure (the existing VM is
+   *                  already configured) — it should route the user
+   *                  to /dashboard or /deploying based on health_status.
+   */
+  path: "pool" | "cloud-init" | "existing";
   /** Partial row. Always includes id + ip_address; pool path includes everything
-   *  the underlying RPC returned; cloud-init includes telegram_bot_username. */
+   *  the underlying RPC returned; cloud-init includes telegram_bot_username;
+   *  existing includes id, ip_address, status, health_status, telegram_bot_username. */
   vm: AssignedVmShape;
 }
 
@@ -543,6 +567,81 @@ export async function assignOrProvisionUserVm(
   const createUserVMFn = deps.createUserVMFn ?? createUserVM;
   const flag = deps.flagOverride ?? process.env.CLOUD_INIT_ONDEMAND_ENABLED ?? "";
   const useCloudInit = flag === "true";
+
+  // ═════════════════════════════════════════════════════════════════════
+  // LAYER 1 — billing-leak guard (P1 fix, 2026-05-28).
+  // ═════════════════════════════════════════════════════════════════════
+  //
+  // Vulnerability: a signed-in user could open incognito, /start a new
+  // Telegram bot, trigger the inbound webhook → pending row → /auth →
+  // assignOrProvisionUserVm fired a SECOND time on the same user_id.
+  // The pool RPC happily claimed another VM (it has no user-existing
+  // check — instaclaw_assign_vm only filters status='ready'); the
+  // existing-sub branch at /api/billing/checkout skipped Stripe; net
+  // result: two VMs under one subscription. Same attack works via the
+  // /onboarding/web skip path, /api/checkout/verify, /api/vm/assign,
+  // and /api/billing/webhook subscription.created — every caller of
+  // this function was a leak.
+  //
+  // The fix lives HERE (the chokepoint) so every caller is protected
+  // without requiring 6 separate edits + 6 chances to miss one. If a
+  // future code path adds a new call site, the guard catches it too.
+  //
+  // What counts as "user already has a VM":
+  //   - status='assigned'    — active VM (any health: healthy,
+  //                            hibernating, suspended, configure_failed,
+  //                            unknown). All of these are "user has a
+  //                            VM — don't create another."
+  //   - status='provisioning'— in-flight cloud-init for this user.
+  //                            Starting a second cloud-init would race.
+  //
+  // What does NOT count (allows new provision):
+  //   - status='terminated'  — VM destroyed, user legitimately needs a
+  //                            new one
+  //   - status='destroyed'   — same
+  //   - status='failed'      — never provisioned successfully; new
+  //                            attempt allowed
+  //   - status='frozen'      — archived to R2. Thaw path (lib/vm-freeze-
+  //                            thaw.ts:thawVM) is the correct recovery,
+  //                            not a fresh provision. This guard
+  //                            doesn't intercept frozen state — the
+  //                            thaw flow is handled separately by the
+  //                            dashboard layout + /deploying retry UI.
+  //
+  // Race-safety note: this is a SELECT-then-POOL-CLAIM pattern, which
+  // is sequentially safe but not concurrent-safe. Two simultaneous
+  // calls could both see no-existing-VM and both pool-claim. The
+  // realistic attack (incognito second browser, separate request)
+  // is sequential and caught here. Concurrent-safe defense needs a
+  // partial UNIQUE INDEX on instaclaw_vms(assigned_to) WHERE
+  // status='assigned' — tracked as a P2 schema follow-up.
+  const { data: existingVm } = await supabase
+    .from("instaclaw_vms")
+    .select("id, ip_address, status, health_status, telegram_bot_username")
+    .eq("assigned_to", userId)
+    .in("status", ["assigned", "provisioning"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingVm) {
+    logger.warn(
+      "assignOrProvisionUserVm: user already has an active VM — refusing to create a duplicate (returning existing)",
+      {
+        route: "lib/createUserVM",
+        userId,
+        existingVmId: String(existingVm.id),
+        existingStatus: existingVm.status,
+        existingHealth: existingVm.health_status,
+      },
+    );
+    return {
+      vmId: String(existingVm.id),
+      ipAddress: String(existingVm.ip_address ?? ""),
+      path: "existing",
+      vm: existingVm as AssignedVmShape,
+    };
+  }
 
   // ═════════════════════════════════════════════════════════════════════
   // POOL FIRST — try pool path regardless of CLOUD_INIT_ONDEMAND_ENABLED.
