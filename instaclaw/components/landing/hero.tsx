@@ -267,12 +267,12 @@ function HeroInner() {
           className="px-4 py-2 text-sm font-medium transition-opacity hover:opacity-70"
           style={{ color: "var(--foreground)" }}
         >
-          Blog
+          blog
         </Link>
         {session ? (
           <span className="liquid-glass-nav-btn-root">
             <Link href="/dashboard" className="liquid-glass-nav-btn">
-              Dashboard
+              dashboard
             </Link>
             <div aria-hidden="true" className="liquid-glass-nav-btn-shadow"></div>
           </span>
@@ -286,11 +286,11 @@ function HeroInner() {
                 opacity: 0.7,
               }}
             >
-              Sign In
+              sign in
             </Link>
             <span className="liquid-glass-nav-btn-root">
               <Link href="/channels" className="liquid-glass-nav-btn">
-                Get Started
+                get started
               </Link>
               <div aria-hidden="true" className="liquid-glass-nav-btn-shadow"></div>
             </span>
