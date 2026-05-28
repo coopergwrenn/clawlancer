@@ -9,7 +9,12 @@ import { repairCorruptedSession, type VMRecord } from "@/lib/ssh";
 import { routeModel, extractLastUserMessage, computeTierBudget, type RoutingContext, type RoutingDecision } from "@/lib/model-router";
 import { TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
 import { shouldFireCircuitBreaker, sendCircuitBreakerAlert, sendCronResumedNotification, resolveTelegramTarget } from "@/lib/cron-guard";
-import { TIER_DISPLAY_LIMITS, HEARTBEAT_CYCLE_CAP as HEARTBEAT_CYCLE_CAP_CONST } from "@/lib/credit-constants";
+import {
+  TIER_DISPLAY_LIMITS,
+  HEARTBEAT_CYCLE_CAP as HEARTBEAT_CYCLE_CAP_CONST,
+  INFRASTRUCTURE_DAILY_BUDGET,
+  INFRASTRUCTURE_FORCED_MODEL,
+} from "@/lib/credit-constants";
 
 // Vercel Pro plan max for serverless functions. Without this, the default is
 // 60s, which silently kills haiku/sonnet calls with 32K context before our
@@ -290,6 +295,55 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // --- Infrastructure call categorization (2026-05-28 incident — CLAUDE.md Rule 69) ---
+    // Callers that are NOT real user messages and should NOT be charged to
+    // the user's daily display limit must send:
+    //
+    //   x-call-kind: infrastructure
+    //   x-model-override: claude-haiku-4-5-20251001   (optional — defense in depth)
+    //
+    // Infrastructure-call semantics:
+    //   - Model is FORCED to INFRASTRUCTURE_FORCED_MODEL (haiku) regardless
+    //     of what the body or x-model-override says. The router is bypassed
+    //     entirely — the prompt content is irrelevant to budget classification.
+    //   - The atomic user-limit RPC (`instaclaw_check_and_increment`) is
+    //     SKIPPED — these calls do not touch instaclaw_daily_usage.message_count.
+    //   - Logged with `call_type='infrastructure'` and
+    //     `routing_reason='infrastructure-explicit'` so dashboards / anomaly
+    //     checks can distinguish them from user calls.
+    //   - Subject to a separate per-VM per-day cap (INFRASTRUCTURE_DAILY_BUDGET,
+    //     500 cost_weight default) enforced by a cheap COUNT() on
+    //     instaclaw_usage_log. Anti-runaway: caps the worst-case if a future
+    //     infrastructure caller goes haywire.
+    //
+    // First example caller: STRIP_THINKING_SCRIPT's periodic-summary cron
+    // (_call_haiku_for_summary, _call_haiku_structured). Before this header
+    // wiring, those calls sent `x-model-override` but the proxy ignored it.
+    // The content classifier in lib/model-router.ts then matched the
+    // summary prompt ("You are summarizing a recent conversation...") against
+    // SONNET_SIGNALS / OPUS_MULTI_AGENT / hasComplexBuild and routed to
+    // sonnet (cost 4) or opus (cost 19). Calls were logged with
+    // `call_type='user'` and charged against the user's daily display limit.
+    // 19 paying users hit their daily cap before noon UTC on 2026-05-28;
+    // vm-1006 burned 19,000 cost_weight on a 2500 daily budget.
+    //
+    // See docs/postmortems/2026-05-28-strip-thinking-summary-overcharge.md
+    // for the full incident write-up.
+    const isInfrastructureCall =
+      typeof callKindHeader === "string" &&
+      callKindHeader.toLowerCase() === "infrastructure";
+    const modelOverrideHeader = req.headers.get("x-model-override");
+    const hasModelOverride =
+      typeof modelOverrideHeader === "string" && modelOverrideHeader.length > 0;
+    if (isInfrastructureCall) {
+      logger.info("proxy: infrastructure call kind active", {
+        route: "gateway/proxy",
+        vmId: vm.id,
+        modelOverride: modelOverrideHeader,
+        gatewayTokenPrefix: gatewayToken.slice(0, 8) + "...",
+      });
+    }
+
     // --- Reject VMs with no api_mode set (misconfigured) ---
     if (!vm.api_mode) {
       logger.error("VM has null api_mode — blocking request", {
@@ -337,6 +391,63 @@ export async function POST(req: NextRequest) {
       isStreaming = parsedBody!.stream === true;
     } catch {
       requestedModel = vm.default_model || "minimax-m2.5";
+    }
+
+    // --- Infrastructure call: force model + budget cap (Rule 69) ---
+    // For infrastructure calls, force model to INFRASTRUCTURE_FORCED_MODEL
+    // (haiku) regardless of what the body or x-model-override says. The
+    // header is informational only — model selection is platform-controlled.
+    // Then run a cheap budget check: sum cost_weight from today's
+    // instaclaw_usage_log rows for this VM with call_type='infrastructure'.
+    // Reject with 429 if the cap is hit. This prevents a runaway
+    // infrastructure caller from burning unbounded resources.
+    if (isInfrastructureCall) {
+      requestedModel = INFRASTRUCTURE_FORCED_MODEL;
+      if (parsedBody) {
+        parsedBody.model = INFRASTRUCTURE_FORCED_MODEL;
+      }
+
+      const todayUtcIso = new Date().toISOString().slice(0, 10) + "T00:00:00Z";
+      const { data: infraRows, error: infraErr } = await supabase
+        .from("instaclaw_usage_log")
+        .select("cost_weight")
+        .eq("vm_id", vm.id)
+        .eq("call_type", "infrastructure")
+        .gte("created_at", todayUtcIso);
+      if (infraErr) {
+        // Soft-fail the budget check — better to let the call through than
+        // hard-block on a transient PostgREST/Supabase glitch. The hard cap
+        // matters most for runaway scenarios, where the next request
+        // (~milliseconds later) would still trip the check anyway.
+        logger.warn("infrastructure budget check failed (soft-pass)", {
+          route: "gateway/proxy",
+          vmId: vm.id,
+          error: String(infraErr.message ?? infraErr),
+        });
+      } else {
+        const todayInfraCost = (infraRows ?? []).reduce(
+          (s, r) => s + Number(r.cost_weight ?? 0),
+          0,
+        );
+        if (todayInfraCost >= INFRASTRUCTURE_DAILY_BUDGET) {
+          logger.error("infrastructure daily budget exhausted — rejecting", {
+            route: "gateway/proxy",
+            vmId: vm.id,
+            todayInfraCost,
+            cap: INFRASTRUCTURE_DAILY_BUDGET,
+          });
+          return NextResponse.json(
+            {
+              type: "error",
+              error: {
+                type: "rate_limit_error",
+                message: `Infrastructure daily budget exhausted for VM ${vm.id} (${todayInfraCost.toFixed(1)}/${INFRASTRUCTURE_DAILY_BUDGET}). Tomorrow's window opens at 00:00 UTC.`,
+              },
+            },
+            { status: 429 },
+          );
+        }
+      }
     }
 
     // --- Strip thinking blocks from conversation history ---
@@ -593,7 +704,7 @@ export async function POST(req: NextRequest) {
       heartbeatDue || heartbeatRecent || heartbeatByContent || isPingMessage
     );
     const isHeartbeat =
-      (strictCanaryBypass || matchPipelineBypass || isManualMessage)
+      (strictCanaryBypass || matchPipelineBypass || isManualMessage || isInfrastructureCall)
         ? false
         : baseHeartbeat;
 
@@ -657,11 +768,42 @@ export async function POST(req: NextRequest) {
     // requests can no longer both pass the check — the second sees the first's
     // increment. If the Anthropic call fails after this, the user "loses" one
     // credit unit — acceptable tradeoff vs the race condition.
+    //
+    // Infrastructure calls (Rule 69) SKIP this RPC entirely — they have their
+    // own per-day budget cap enforced earlier in the request (after the body
+    // parse, before this block). Calling instaclaw_check_and_increment with
+    // an infrastructure call would either (a) double-count it against the
+    // user's daily display limit (the bug we're fixing) or (b) require RPC
+    // signature changes to thread an is_infrastructure param through the
+    // SQL function. Skipping is correct and cheap.
     const checkIncStart = Date.now();
-    const { data: limitResult, error: limitError } = await supabase.rpc(
-      "instaclaw_check_and_increment",
-      { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel, p_is_heartbeat: isHeartbeat, p_timezone: userTz, p_is_virtuals: isVirtuals, p_is_tool_continuation: isToolContinuation }
-    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let limitResult: any = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let limitError: any = null;
+    if (isInfrastructureCall) {
+      // Synthesize an allowed=true result so downstream code that reads
+      // limitResult fields (tier counts, credits_remaining) sees a valid
+      // sentinel shape. cost_weight is the infrastructure cost (1 = haiku).
+      limitResult = {
+        allowed: true,
+        source: "infrastructure",
+        count: 0,
+        limit: INFRASTRUCTURE_DAILY_BUDGET,
+        display_limit: INFRASTRUCTURE_DAILY_BUDGET,
+        credits_remaining: 0,
+        cost_weight: 1,
+        tier_2_calls: 0,
+        tier_3_calls: 0,
+      };
+    } else {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc(
+        "instaclaw_check_and_increment",
+        { p_vm_id: vm.id, p_tier: tier, p_model: requestedModel, p_is_heartbeat: isHeartbeat, p_timezone: userTz, p_is_virtuals: isVirtuals, p_is_tool_continuation: isToolContinuation }
+      );
+      limitResult = rpcData;
+      limitError = rpcErr;
+    }
     profile.check_increment_ms = Date.now() - checkIncStart;
 
     if (limitError) {
@@ -796,7 +938,7 @@ export async function POST(req: NextRequest) {
     // toggles, and per-tier budget (returned by the merged limit check RPC).
     // Advisory only — if routing throws, we proceed with the original model.
     let routingDecision: RoutingDecision | null = null;
-    if (!isHeartbeat && !isVirtuals) {
+    if (!isHeartbeat && !isVirtuals && !isInfrastructureCall) {
       try {
         // Read tier budget from the merged limit check result
         const tierBudget = computeTierBudget(tier, limitResult ? {
@@ -822,6 +964,14 @@ export async function POST(req: NextRequest) {
           isRecurringTask,
           toggles: { deepResearch: hasDeepResearch, webSearch: hasWebSearch },
           tierBudget,
+          // 2026-05-28 Rule 69 defense-in-depth: when a caller sends
+          // x-model-override, plumb it into the router so the router's
+          // existing respectExplicitModel() path takes precedence over
+          // content classification. Strip-thinking et al. now also send
+          // x-call-kind: infrastructure (handled by the early skip above),
+          // but this defense layer catches any future caller that sets
+          // x-model-override without remembering the call-kind header.
+          ...(hasModelOverride ? { explicitModelRequest: modelOverrideHeader! } : {}),
         };
 
         routingDecision = routeModel(routingCtx);
@@ -1510,8 +1660,11 @@ export async function POST(req: NextRequest) {
           vmId: vm.id,
         });
       }
-    } else if (!isHeartbeat && !isVirtuals) {
-      // Non-manual, non-heartbeat call — check if circuit breaker should fire
+    } else if (!isHeartbeat && !isVirtuals && !isInfrastructureCall) {
+      // Non-manual, non-heartbeat, non-infrastructure call — check if circuit
+      // breaker should fire. Infrastructure calls (Rule 69) shouldn't trigger
+      // the cron-circuit-breaker either: they're explicitly opt-in,
+      // budget-capped, and not running on user-attributable cost.
       // Read today's usage row to check first_manual_at and cron_breaker_fired
       supabase
         .from("instaclaw_daily_usage")
@@ -1563,7 +1716,7 @@ export async function POST(req: NextRequest) {
       const logBaseCost = logTier === 1 ? 1 : logTier === 2 ? 4 : logTier === 3 ? 19 : 1;
       if (logModel.includes("minimax")) { /* minimax = 0.2 */ }
       const logCost = logModel.includes("minimax") ? 0.2 : isToolContinuation ? logBaseCost * 0.2 : logBaseCost;
-      const callType = isHeartbeat ? "heartbeat" : isVirtuals ? "virtuals" : isToolContinuation ? "tool_continuation" : "user";
+      const callType = isInfrastructureCall ? "infrastructure" : isHeartbeat ? "heartbeat" : isVirtuals ? "virtuals" : isToolContinuation ? "tool_continuation" : "user";
 
       // Extract first 80 chars of user message for debugging
       let promptHint: string | null = null;
@@ -1607,7 +1760,11 @@ export async function POST(req: NextRequest) {
     }
 
     // --- Increment tier usage (fire-and-forget) ---
-    if (routingDecision && !isHeartbeat) {
+    // Infrastructure calls (Rule 69) do NOT increment tier usage — they have
+    // their own per-day cap enforced earlier in the request, and they should
+    // not count against the user's tier-2/tier-3 sonnet/opus call counters
+    // that the routing layer reads.
+    if (routingDecision && !isHeartbeat && !isInfrastructureCall) {
       const baseCostWeight = routingDecision.tier === 1 ? 1 : routingDecision.tier === 2 ? 4 : 19;
       const costWeight = isToolContinuation ? baseCostWeight * 0.2 : baseCostWeight;
       supabase

@@ -253,6 +253,92 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // ─── Signal 4: per-VM infrastructure call rate (CRITICAL — Rule 69) ───
+    // Surfaces a SINGLE VM whose infrastructure-call cost exceeds
+    // INFRA_RATE_ALERT_THRESHOLD per hour. The expected baseline is single-
+    // digit cost_weight per VM per hour (strip-thinking periodic summary
+    // fires every 2h per session; even at 10 sessions × 2 calls each = 20
+    // cost/hour worst-case at haiku cost=1). Anything over the threshold
+    // suggests:
+    //   - a future cron caller forgot to send `x-call-kind: infrastructure`
+    //     and is being misclassified upstream (the 2026-05-28 incident
+    //     pattern — though we'd catch THAT one via signal 1/3 too)
+    //   - the throttle gates in strip-thinking.py / pre-archive hook are
+    //     no longer firing correctly (regression of the PERIODIC_SUMMARY_
+    //     V1_RESHRINK fix or the dedupe-seconds logic)
+    //   - a legitimate new infrastructure cron is firing too hot and needs
+    //     its own dedup
+    // We surface the top-3 offenders directly in the alert so operators can
+    // act without a SQL session. Added 2026-05-28 (Rule 69, Phase 3).
+    {
+      const INFRA_RATE_ALERT_THRESHOLD = 200; // cost_weight per VM per hour
+      const { data: infraRows, error: infraErr } = await supabase
+        .from("instaclaw_usage_log")
+        .select("vm_id,cost_weight")
+        .eq("call_type", "infrastructure")
+        .gte("created_at", lastHourStart)
+        .lt("created_at", lastHourEnd);
+      if (infraErr) {
+        logger.warn("usage-anomaly-check: infrastructure rate query failed (non-fatal)", {
+          route: `cron/${CRON_NAME}`,
+          error: infraErr.message,
+        });
+      } else if (infraRows && infraRows.length > 0) {
+        const byVm = new Map<string, number>();
+        for (const r of infraRows as Array<{ vm_id: string; cost_weight: string | number | null }>) {
+          byVm.set(r.vm_id, (byVm.get(r.vm_id) ?? 0) + Number(r.cost_weight ?? 0));
+        }
+        const overThreshold = Array.from(byVm.entries())
+          .filter(([, cost]) => cost >= INFRA_RATE_ALERT_THRESHOLD)
+          .sort((a, b) => b[1] - a[1]);
+        if (overThreshold.length > 0) {
+          const top3 = overThreshold.slice(0, 3)
+            .map(([vmId, cost]) => `  ${vmId}: ${cost.toFixed(0)} cost_weight in last hour`)
+            .join("\n");
+          alerts.push({
+            severity: "critical",
+            condition: "infrastructure_rate",
+            subject: `[InstaClaw CRITICAL] ${overThreshold.length} VM(s) exceed infrastructure-call rate ${INFRA_RATE_ALERT_THRESHOLD}/h`,
+            body: [
+              `${overThreshold.length} VM(s) had >= ${INFRA_RATE_ALERT_THRESHOLD} cost_weight of`,
+              `call_type='infrastructure' usage_log rows in the last hour.`,
+              ``,
+              `Expected baseline: single-digit cost_weight per VM per hour`,
+              `(strip-thinking periodic summary at 2h interval, haiku cost=1).`,
+              ``,
+              `Top 3 offenders:`,
+              top3,
+              ``,
+              `Likely causes (in order):`,
+              `  - A NEW infrastructure caller is firing too hot and needs its own throttle`,
+              `  - Strip-thinking dedupe gates regressed (check PERIODIC_RECENT_DEDUPE_SECONDS,`,
+              `    PRE_ARCHIVE_SUMMARY_RECENT_THRESHOLD, last_periodic_summary_ts staleness)`,
+              `  - A VM's session-state is producing thousands of small jsonl files`,
+              `    that each trigger pre-archive summary independently`,
+              ``,
+              `Per-VM cost cap (INFRASTRUCTURE_DAILY_BUDGET=500) caps daily blowout`,
+              `at 500 cost_weight per VM per day — so the hourly rate matters as`,
+              `an early-warning signal, not as a blast-radius cap.`,
+              ``,
+              `Drill-down SQL:`,
+              `  SELECT vm_id, sum(cost_weight) AS cost`,
+              `  FROM instaclaw_usage_log`,
+              `  WHERE created_at > NOW() - INTERVAL '1 hour'`,
+              `    AND call_type = 'infrastructure'`,
+              `  GROUP BY vm_id ORDER BY cost DESC LIMIT 10;`,
+              ``,
+              `Then for the top offender, group by prompt_hint to see which caller:`,
+              `  SELECT substr(prompt_hint, 1, 60) AS hint, count(*), sum(cost_weight)`,
+              `  FROM instaclaw_usage_log`,
+              `  WHERE vm_id = '<top-vm>' AND call_type = 'infrastructure'`,
+              `    AND created_at > NOW() - INTERVAL '1 hour'`,
+              `  GROUP BY hint ORDER BY count(*) DESC;`,
+            ].join("\n"),
+          });
+        }
+      }
+    }
+
     // ─── Dispatch alerts (with per-condition dedup) ───
     const oneHourAgo = new Date(now - ONE_HOUR_MS).toISOString();
     for (const a of alerts) {

@@ -3932,6 +3932,76 @@ The 1-hour dedup is tight enough that operators get woken up on the first 402 of
 
 Code review: any new code path that calls Anthropic's API directly or via the gateway proxy must answer "what happens when Anthropic returns 402?" If the answer doesn't include "admin alert fires," the PR is incomplete.
 
+### Rule 68 — `configure_failed` (and any orphan `health_status`) MUST have a documented sibling recovery path
+
+[Codified after the 2026-05-26 INC-20260526 — see `docs/postmortems/2026-05-26-configure-failed-stuck-users.md`]
+
+When a new `health_status` value is introduced, the PR adding it MUST enumerate every downstream consumer (`health-check`, `reconcile-fleet`, `file-drift`, `process-pending` Pass 2, `stuck-unhealthy-customer-alert`, `stuck-vm-auto-recover`, `reconcile-stuck-vms`) and declare each as INCLUDED or EXCLUDED with reason. EXCLUDED requires a documented sibling recovery path. Without this discipline, an orphan state — a value that no automated path handles — silently traps paying users for weeks (the 2026-05-26 incident left 4 customers stuck for up to 70 days).
+
+### Rule 69 — Proxy call_type taxonomy: every non-user LLM call MUST opt in via explicit header
+
+[Codified after the 2026-05-28 INC-20260528 strip-thinking summary overcharge — see `instaclaw/docs/postmortems/2026-05-28-strip-thinking-summary-overcharge.md`]
+
+The proxy at `app/api/gateway/proxy/route.ts` categorizes every incoming request into a `call_type` that determines (a) which model the request routes to, (b) which budget bucket the request charges against, and (c) which dashboard / monitoring channel the request logs to. The five categories:
+
+| call_type | Trigger | Routing | Budget bucket | Logged column |
+|---|---|---|---|---|
+| `user` | Default — none of the below | Content router (`lib/model-router.ts`) | User's daily display limit (tier-keyed) | `usage_log.call_type='user'` |
+| `tool_continuation` | Body shape matches tool-continuation pattern (existing detection) | Same model as preceding user call | Discounted user budget (0.2x) | `usage_log.call_type='tool_continuation'` |
+| `heartbeat` | Detected by frame shape OR timing fields (existing detection) | Forced minimax | Separate `HEARTBEAT_DAILY_BUDGET=100` | `usage_log.call_type='heartbeat'` |
+| `virtuals` | Body has `model: virtuals-*` (existing detection) | Forced virtuals upstream | Separate `VIRTUALS_DAILY_BUDGET` | `usage_log.call_type='virtuals'` |
+| `infrastructure` | Caller sends `x-call-kind: infrastructure` header | Forced haiku (`INFRASTRUCTURE_FORCED_MODEL`) | Separate `INFRASTRUCTURE_DAILY_BUDGET=500` (per VM per day) | `usage_log.call_type='infrastructure'` |
+
+The five categories are mutually exclusive. A call categorized as `infrastructure` is NOT also categorized as `heartbeat`; the proxy detection order is `infrastructure → heartbeat → virtuals → tool_continuation → user (default)`.
+
+#### Mandatory pattern
+
+When adding any new LLM call site that hits `/api/gateway/proxy`:
+
+1. **Decide the category FIRST**, before writing the call. The call_type determines billing — it is not negotiable after the fact.
+
+2. **For `user` calls** (real user-typed messages reaching the proxy via the gateway): send no special headers. The proxy will detect, route, charge.
+
+3. **For `infrastructure` calls** (any cron / reconciler / script / template-deployed-script that calls the proxy as a platform operation, NOT as the user's typed message): MUST send BOTH:
+   - `x-call-kind: infrastructure` — declares the category
+   - `x-model-override: claude-haiku-4-5-20251001` — defense in depth (even if proxy reads it independently)
+
+4. **For `match-pipeline` calls** (existing Consensus matching pipeline): send `x-call-kind: match-pipeline` (legacy header value; predates this rule). The pipeline is conceptually a user-paid agent task, NOT infrastructure — its existing semantics are preserved.
+
+5. **For `strict-canary` calls** (reconciler canary probes): send `x-strict-canary: true`. Existing behavior.
+
+#### What infrastructure calls SKIP
+
+When the proxy categorizes a call as `infrastructure`:
+- Content router is NOT invoked — the model is forced to `INFRASTRUCTURE_FORCED_MODEL` regardless of prompt content.
+- `instaclaw_check_and_increment` RPC is NOT called — the user's daily display limit is NOT decremented.
+- The cron circuit breaker is NOT evaluated — these calls have no first_manual_at semantics.
+- `instaclaw_increment_tier_usage` is NOT called — these calls don't count toward tier-2/tier-3 quotas.
+- A SEPARATE per-VM per-day budget cap is enforced (`INFRASTRUCTURE_DAILY_BUDGET=500`) via a cheap COUNT() against usage_log. If exceeded, the proxy returns HTTP 429 (anti-runaway, NOT a user-facing error).
+
+#### Defense in depth — `x-model-override`
+
+ANY call (regardless of `x-call-kind`) that sets `x-model-override` has its value plumbed into `routingCtx.explicitModelRequest`, which the existing `respectExplicitModel()` path in `lib/model-router.ts` consults BEFORE the content classifier. This means a future caller who sets `x-model-override: claude-haiku-4-5-20251001` but forgets `x-call-kind: infrastructure` will STILL get routed to haiku (at cost=1) — though the call will be charged against the user's budget (because it has no infrastructure opt-in). The damage is bounded: misclassification costs the user 1 cost_weight instead of 4-19.
+
+#### Banned patterns
+
+- **A new LLM call site without an explicit category decision.** If the PR introducing a new call to `/api/gateway/proxy` does not name which `call_type` the call belongs to and which headers it sends, the PR is incomplete. The 2026-05-28 incident was exactly this: the strip-thinking periodic-summary helper sent `x-model-override` but didn't send `x-call-kind`, and the proxy didn't enforce a default category check.
+- **Content-based categorization for non-user calls.** The content router decides MODEL given a category; it MUST NOT decide CATEGORY. Categories come from headers + frame shape. The pre-2026-05-28 bug was the content classifier picking sonnet/opus for a "summarize" prompt that was actually infrastructure.
+- **Adding a new `call_type` enum value without a sibling Rule entry.** This rule is the canonical taxonomy. Every category needs (a) explicit trigger, (b) routing rule, (c) budget bucket, (d) logged column.
+- **A periodic / cron-driven LLM call without a throttle.** Even within the infrastructure budget cap, callers must implement their own dedupe / interval gates (see strip-thinking's `PERIODIC_SUMMARY_INTERVAL=7200`, `PERIODIC_RECENT_DEDUPE_SECONDS=1800`, etc.). The proxy budget cap is a safety net, not a primary throttle.
+
+#### Detection rule
+
+The `usage-anomaly-check` cron's Signal 4 fires when any VM exceeds 200 cost_weight of `call_type='infrastructure'` in the last hour. This is a per-VM threshold (not fleet-aggregate) chosen at 40x the expected baseline (5 cost_weight per VM per hour at steady state). Per-VM is essential — the 2026-05-28 incident manifested as "many VMs with elevated user costs" rather than "one VM going haywire" and so fleet-wide aggregates were silent.
+
+When Signal 4 fires, the responder drills down via the inline SQL (drill-down query in the alert body) to identify the offending prompt_hint group on the top VM. That tells them exactly which infrastructure caller is misbehaving.
+
+#### Related rules
+
+- **Rule 23** (sentinel-grep required templates): the strip-thinking periodic-summary script has `STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28` and `x-call-kind: infrastructure` as required sentinels. Any future template-only deploy of strip-thinking that lacks both will be rejected by file-drift / stepFiles.
+- **Rule 47** (continuous reconciliation): the 2026-05-28 Phase 2 fix is a file-content change + a proxy code change. The strip-thinking file change propagates via file-drift + the manifest version bump (v125); the proxy code change rolls via the Vercel deploy.
+- **Rule 14** (`lib/billing-status.ts` is the single source of truth for paying-user classification): infrastructure call budgeting is orthogonal to billing-status — even non-paying VMs can make infrastructure calls (within the per-VM cap) because the operations are platform-funded, not user-funded.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
