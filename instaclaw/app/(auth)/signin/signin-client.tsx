@@ -71,7 +71,12 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
       <EdgePartnerBanner />
 
       <div className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md space-y-10">
+        {/* Vertical hierarchy is deliberate. space-y-12 (48px) puts
+            breathing room between the four major sections (wordmark,
+            heading, OAuth, footer trio) so the eye rests between
+            decisions. Within each section the gap is tighter — see
+            inner space-y values. Spacious even on mobile. */}
+        <div className="w-full max-w-md space-y-12">
         {/* Logo */}
         <Link href="/" className="flex items-center justify-center gap-2">
           <Image src="/logo.png" alt="Instaclaw" width={40} height={40} unoptimized style={{ imageRendering: "pixelated" }} />
@@ -120,22 +125,26 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
 
         {/* Auth choices. Google and ChatGPT are equal-weight options.
             Outlined glass pills (not flat white rectangles) — translucent
-            cream bg over the gradient with a backdrop blur for the
-            liquid feel /channels established. Default border is a muted
-            10%-black hairline; hover shifts the border to coral and
-            adds a soft 4px coral glow as the only color cue. No fill
-            color change on hover — keeps the touch target stable.
-            active:scale-[0.98] gives the satisfying press feedback
-            without competing with the hover signal. Brand icons retain
-            their canonical colors (Google's multi-color G; ChatGPT's
-            teal Sparkles) — same convention as /channels' channel
-            cards where iMessage green, Telegram blue, etc. all keep
-            their brand hues. */}
+            white at 35% over the cream-gradient gives a frosted look
+            that catches the coral/blue/green ambient layers underneath
+            without dimming them. backdrop-blur-md (12px) is the same
+            blur depth /channels uses on its disclosure pills, so the
+            glass material feels consistent across the funnel. Border
+            is a 6%-black hairline (softer than the 10% from v1 — too
+            dark against cream) and the inset top-highlight shadow
+            (255/255/255 at 0.5, 1px) gives each pill a subtle convex
+            curl like light catching the top of a glass bead. Hover
+            preserves the inset highlight AND adds a 5px coral ring —
+            warmth gathering on a cold-glass surface rather than
+            replacing it. Tailwind's hover:shadow REPLACES the base
+            box-shadow, so the inset highlight is bundled into the
+            hover shadow's value to avoid losing it. active:scale-[0.98]
+            keeps press feedback. Brand icons retain canonical colors. */}
         <div className="space-y-3">
           {/* Google sign-in */}
           <button
             onClick={() => signIn("google", { callbackUrl })}
-            className="w-full px-6 py-4 rounded-full text-base font-medium transition-all duration-200 cursor-pointer flex items-center justify-center gap-3 border border-black/10 bg-white/60 backdrop-blur-sm hover:border-[#E96F4D] hover:shadow-[0_0_0_4px_rgba(233,111,77,0.06)] active:scale-[0.98]"
+            className="w-full px-6 py-4 rounded-full text-base font-medium transition-all duration-200 cursor-pointer flex items-center justify-center gap-3 border border-black/[0.06] bg-white/35 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] hover:border-[#E96F4D] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_0_0_5px_rgba(233,111,77,0.07)] active:scale-[0.98]"
             style={{ color: CARD_INK }}
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden>
@@ -159,64 +168,89 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
             sign in with Google
           </button>
 
-          {/* ChatGPT sign-in. Sparkles icon stays teal #10a37f — same
-              convention as /channels' channel cards (brand icons keep
-              their canonical colors against the muted glass). */}
-          <button
-            onClick={() => setChatgptModalOpen(true)}
-            className="w-full px-6 py-4 rounded-full text-base font-medium transition-all duration-200 cursor-pointer flex items-center justify-center gap-3 border border-black/10 bg-white/60 backdrop-blur-sm hover:border-[#E96F4D] hover:shadow-[0_0_0_4px_rgba(233,111,77,0.06)] active:scale-[0.98]"
-            style={{ color: CARD_INK }}
-          >
-            <Sparkles className="w-5 h-5" style={{ color: "#10a37f" }} aria-hidden />
-            sign in with ChatGPT
-          </button>
+          {/* ChatGPT sign-in + Plus nudge bundled as one logical unit.
+              The outer space-y-3 (12px) applies between the Google
+              pill and this <div>; inside the unit the nudge sits 8px
+              (mt-2) below the button so it feels attached to the
+              ChatGPT path rather than as a third equal option. */}
+          <div>
+            <button
+              onClick={() => setChatgptModalOpen(true)}
+              className="w-full px-6 py-4 rounded-full text-base font-medium transition-all duration-200 cursor-pointer flex items-center justify-center gap-3 border border-black/[0.06] bg-white/35 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] hover:border-[#E96F4D] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_0_0_5px_rgba(233,111,77,0.07)] active:scale-[0.98]"
+              style={{ color: CARD_INK }}
+            >
+              <Sparkles className="w-5 h-5" style={{ color: "#10a37f" }} aria-hidden />
+              sign in with ChatGPT
+            </button>
+            {/* ChatGPT Plus nudge. Informational, no link — just a
+                gentle aside for the audience who already pays $20/mo
+                for ChatGPT Plus and qualifies for a lower Instaclaw
+                plan price under BYOK billing. Voice mirrors /channels'
+                question-then-benefit shape ("prefer the web?", "have
+                an invite code?"): the rhetorical question primes
+                self-identification; the comma-period rhythm lands the
+                benefit. 12px subtle-ink — one step quieter than the
+                13px footer footnotes below, so this reads as a
+                button-aside rather than a third action. */}
+            <p
+              className="mt-2 text-center"
+              style={{ fontSize: 12, color: SUBTLE_INK, lineHeight: 1.4 }}
+            >
+              have ChatGPT Plus? get a lower plan price.
+            </p>
+          </div>
         </div>
 
-        {/* Invite + support footers. Both mirror /channels' footnote
-            zone exactly: 13px subtle-ink, lowercase, single inline link
-            in muted-ink underlined. The two stacked footnotes read as
-            a paired escape-hatch (broader option first — invite code —
-            then narrower — help). Replaces the SupportFooter component
+        {/* Invite + support footers, paired as one unit. Both mirror
+            /channels' footnote zone exactly: 13px subtle-ink, lowercase,
+            single inline link in muted-ink underlined. Wrapped in a
+            space-y-2 div so they share consistent 8px internal spacing
+            and ONE 48px gap above (from the outer space-y-12) rather
+            than two competing margin sources. Reads as a paired
+            escape-hatch (broader option first — invite code — then
+            narrower — help). Replaces the SupportFooter component
             inline because Cooper-voice on this page means lowercase
             ("need help?") while SupportFooter ships the legacy
             Title-case copy used by 5 other surfaces; flipping the
             shared component would cascade visual changes we don't
             want today. */}
-        <p
-          className="text-center"
-          style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
-        >
-          have an invite code?{" "}
-          <Link
-            href="/signup"
-            className="transition-opacity hover:opacity-70"
-            style={{
-              color: MUTED_INK,
-              textDecoration: "underline",
-              textUnderlineOffset: 2,
-            }}
+        <div className="space-y-2">
+          <p
+            className="text-center"
+            style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
           >
-            use it here
-          </Link>
-          .
-        </p>
-        <p
-          className="mt-2 text-center"
-          style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
-        >
-          need help?{" "}
-          <a
-            href="mailto:help@instaclaw.io"
-            className="transition-opacity hover:opacity-70"
-            style={{
-              color: MUTED_INK,
-              textDecoration: "underline",
-              textUnderlineOffset: 2,
-            }}
+            have an invite code?{" "}
+            <Link
+              href="/signup"
+              className="transition-opacity hover:opacity-70"
+              style={{
+                color: MUTED_INK,
+                textDecoration: "underline",
+                textUnderlineOffset: 2,
+              }}
+            >
+              use it here
+            </Link>
+            .
+          </p>
+          <p
+            className="text-center"
+            style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
           >
-            help@instaclaw.io
-          </a>
-        </p>
+            need help?{" "}
+            <a
+              href="mailto:help@instaclaw.io"
+              className="transition-opacity hover:opacity-70"
+              style={{
+                color: MUTED_INK,
+                textDecoration: "underline",
+                textUnderlineOffset: 2,
+              }}
+            >
+              help@instaclaw.io
+            </a>
+          </p>
+        </div>
         </div>
       </div>
 
