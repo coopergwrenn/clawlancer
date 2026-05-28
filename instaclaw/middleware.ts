@@ -65,6 +65,7 @@ export default auth((req) => {
     "/api/spots",
     "/api/hq",
     "/api/ambassador/badge",
+    "/api/ambassador/validate-referral", // Public — read-only ambassador-code lookup. Returns {valid, discount, ambassadorName} given a referral code; ambassadorName is intentionally surfaced to the user typing the code ("referred by X" UX on /signin's referral expand + legacy /signup field). No DB writes; no PII beyond the public display name. Pre-existing bug exposed by the 2026-05-28 /signin auth-consolidation (Moves 1+2+5): the endpoint was missing from the allowlist since the ambassador system shipped, so /signup's silent fetch had been 401-ing for every unauthenticated user since day one. /signin makes the failure visible (red border + "referral code not found." copy on every valid code) which surfaced the bug. Rule 13 retroactively applied. /api/ambassador/apply + /status are correctly middleware-gated — their internal auth() check matches the middleware 401 outcome.
     "/api/agentbook/lookup",
     "/api/agentbook/register",
     "/api/agentbook/notify-complete",
