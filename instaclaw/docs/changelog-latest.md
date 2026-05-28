@@ -1,42 +1,45 @@
 # Changelog — generated 2026-05-28
 
-Window: `6cf1d6503c8207dae7c63dc4f3af5c634fda4e6b` → `HEAD` (HEAD = `492420f3`)
-Total commits: 2
+Window: `492420f3c2a3a06d5979eef403489387e2944671` → `HEAD` (HEAD = `1a249852`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 492420f3c2a3a06d5979eef403489387e2944671 -->
+<!-- LAST_GENERATED_SHA: 1a2498523ba33b4d31a279115c502d4638753c56 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
+- **Reconciler / manifest:** 2
 - **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 2
 - Merge commits: 0
 
 ## What changed for users
 
-- `492420f3` 2026-05-28 — fix(onboarding-done): add 'web' channel case + dashboard CTA for skip users [1 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `1fa59980` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `a6091be2` 2026-05-28 — fix(reconcile): stepDeployGbrainSoulProtocol handles content drift, not just first-time insert [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `1a249852` 2026-05-28 — chore(v126-bake-prep): bonjour drop-in via manifest + §31 v123/v124/v125 validation [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `898575f4` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (2)
 
-_(none)_
+- `a6091be2` 2026-05-28 — fix(reconcile): stepDeployGbrainSoulProtocol handles content drift, not just first-time insert [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `1a249852` 2026-05-28 — chore(v126-bake-prep): bonjour drop-in via manifest + §31 v123/v124/v125 validation [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
 _(none)_
 
-### Feature (user-facing) (1)
+### Feature (user-facing) (0)
 
-- `492420f3` 2026-05-28 — fix(onboarding-done): add 'web' channel case + dashboard CTA for skip users [1 files] _(ai-assisted)_
+_(none)_
 
 ### Edge City partner (0)
 
@@ -44,15 +47,24 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `1fa59980` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `898575f4` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (1)
+## Multi-category commits (2)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `a6091be2` 2026-05-28 — [reconciler, infrastructure] — fix(reconcile): stepDeployGbrainSoulProtocol handles content drift, not just first-time insert
+- `1a249852` 2026-05-28 — [reconciler, infrastructure] — chore(v126-bake-prep): bonjour drop-in via manifest + §31 v123/v124/v125 validation
+
+## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `492420f3` 2026-05-28 — fix(onboarding-done): add 'web' channel case + dashboard CTA for skip users
+- `a6091be2` 2026-05-28 — fix(reconcile): stepDeployGbrainSoulProtocol handles content drift, not just first-time insert
+- `1a249852` 2026-05-28 — chore(v126-bake-prep): bonjour drop-in via manifest + §31 v123/v124/v125 validation
 
 ## Appendix — every commit (chronological)
 
-- `1fa59980` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
-- `492420f3` 2026-05-28 — fix(onboarding-done): add 'web' channel case + dashboard CTA for skip users [1 files] _(ai-assisted)_
+- `898575f4` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `a6091be2` 2026-05-28 — fix(reconcile): stepDeployGbrainSoulProtocol handles content drift, not just first-time insert [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `1a249852` 2026-05-28 — chore(v126-bake-prep): bonjour drop-in via manifest + §31 v123/v124/v125 validation [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
