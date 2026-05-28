@@ -1,32 +1,36 @@
-# Changelog — generated 2026-05-27
+# Changelog — generated 2026-05-28
 
-Window: `85e85e6396ffd9543da7203368d4ad102d5c3329` → `HEAD` (HEAD = `95480af9`)
-Total commits: 2
+Window: `95480af9438483c2895a379a564873ab33a17fdf` → `HEAD` (HEAD = `41b61ec0`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 95480af9438483c2895a379a564873ab33a17fdf -->
+<!-- LAST_GENERATED_SHA: 41b61ec06391a1e9465bfd2fa56e7643fc5e6e78 -->
 
 ## Summary
 
 - **Manifest version bumps:** 1
-  - Range: v123 → v123
+  - Range: v124 → v124
 - **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
-- Merge commits: 0
+- Merge commits: 1
 
 ## Manifest version timeline
 
-### v123 — 2026-05-27 — `95480af9`
+### v124 — 2026-05-28 — `27885f9b`
 
-feat(v123): bump manifest for skip-to-command-center Phase 2 fleet rollout
+fix(P0): kill-switch periodic-summary LLM calls — burning user budgets fleet-wide
 
-> VM_MANIFEST.version 122 → 123. Rule 64 verification PASSED on vm-1048
-> (autonomous canary substitution since Cooper's named vm-1019 is
-> terminated and vm-1043 is hibernating, excluded from reconcile-fleet's
-> health_status="healthy" filter at route.ts:459).
+> INC-20260528 — strip-thinking.py's periodic-summary cron is sending
+> x-model-override: claude-haiku-4-5-20251001 to /api/gateway/proxy, but
+> the proxy ignores the header. The summary prompt ("You are summarizing
+> a recent conversation...") matches SONNET_SIGNALS (and on some prompts
+> OPUS_MULTI_AGENT / hasComplexBuild) in lib/model-router.ts and gets
+> routed to sonnet (cost 4) or opus (cost 19) instead of haiku (cost 1).
+> Calls are also logged with call_type='user' and charged against the
+> user's daily display limit.
 
 ## What changed for users
 
@@ -34,18 +38,19 @@ _None in this window._
 
 ## What changed under the hood
 
-- `95480af9` 2026-05-27 — feat(v123): bump manifest for skip-to-command-center Phase 2 fleet rollout [2 files] _(**MANIFEST v123**; multi: [reconciler, infrastructure]; ai-assisted)_
-- `ea8ead78` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `4957c3b7` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `27885f9b` 2026-05-28 — fix(P0): kill-switch periodic-summary LLM calls — burning user budgets fleet-wide [3 files] _(**MANIFEST v124**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `41b61ec0` 2026-05-28 — Merge pull request #20 from coopergwrenn/fix/p0-strip-thinking-summary-killswitch [0 files] _(merge)_
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `95480af9` 2026-05-27 — feat(v123): bump manifest for skip-to-command-center Phase 2 fleet rollout [2 files] _(**MANIFEST v123**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `27885f9b` 2026-05-28 — fix(P0): kill-switch periodic-summary LLM calls — burning user budgets fleet-wide [3 files] _(**MANIFEST v124**; multi: [reconciler, infrastructure]; ai-assisted)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `41b61ec0` 2026-05-28 — Merge pull request #20 from coopergwrenn/fix/p0-strip-thinking-summary-killswitch [0 files] _(merge)_
 
 ### Feature (user-facing) (0)
 
@@ -57,21 +62,22 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `ea8ead78` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `4957c3b7` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `95480af9` 2026-05-27 — [reconciler, infrastructure] — feat(v123): bump manifest for skip-to-command-center Phase 2 fleet rollout
+- `27885f9b` 2026-05-28 — [reconciler, infrastructure] — fix(P0): kill-switch periodic-summary LLM calls — burning user budgets fleet-wide
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `95480af9` 2026-05-27 — feat(v123): bump manifest for skip-to-command-center Phase 2 fleet rollout
+- `27885f9b` 2026-05-28 — fix(P0): kill-switch periodic-summary LLM calls — burning user budgets fleet-wide
 
 ## Appendix — every commit (chronological)
 
-- `ea8ead78` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
-- `95480af9` 2026-05-27 — feat(v123): bump manifest for skip-to-command-center Phase 2 fleet rollout [2 files] _(**MANIFEST v123**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `4957c3b7` 2026-05-27 — chore(changelog): auto-update [skip ci] [2 files]
+- `27885f9b` 2026-05-28 — fix(P0): kill-switch periodic-summary LLM calls — burning user budgets fleet-wide [3 files] _(**MANIFEST v124**; multi: [reconciler, infrastructure]; ai-assisted)_
+- `41b61ec0` 2026-05-28 — Merge pull request #20 from coopergwrenn/fix/p0-strip-thinking-summary-killswitch [0 files] _(merge)_
