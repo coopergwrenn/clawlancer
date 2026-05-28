@@ -1,18 +1,18 @@
 # Changelog — generated 2026-05-28
 
-Window: `8fe0030e72c1b5e314dd5d79d60bdd1199fb49c7` → `HEAD` (HEAD = `0d3b4914`)
+Window: `0d3b4914bcbb49a7ece9a552e56195b67c758023` → `HEAD` (HEAD = `ef7979c7`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 0d3b4914bcbb49a7ece9a552e56195b67c758023 -->
+<!-- LAST_GENERATED_SHA: ef7979c7f0418d3aec516214239e787f4589704c -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `87253fb8` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
-- `0d3b4914` 2026-05-28 — docs(incident): full investigation of Bankr 502 — wallet-specific to wlt_3jwnjot9w2dtoy1q, not service-wide [1 files] _(ai-assisted)_
+- `ef7979c7` 2026-05-28 — fix(billing P1): block duplicate VM provision for same user_id [1 files] _(ai-assisted)_
+- `e07418f4` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `ef7979c7` 2026-05-28 — fix(billing P1): block duplicate VM provision for same user_id [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -43,18 +43,17 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `87253fb8` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
-- `0d3b4914` 2026-05-28 — docs(incident): full investigation of Bankr 502 — wallet-specific to wlt_3jwnjot9w2dtoy1q, not service-wide [1 files] _(ai-assisted)_
+- `e07418f4` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `0d3b4914` 2026-05-28 — docs(incident): full investigation of Bankr 502 — wallet-specific to wlt_3jwnjot9w2dtoy1q, not service-wide
+- `ef7979c7` 2026-05-28 — fix(billing P1): block duplicate VM provision for same user_id
 
 ## Appendix — every commit (chronological)
 
-- `87253fb8` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
-- `0d3b4914` 2026-05-28 — docs(incident): full investigation of Bankr 502 — wallet-specific to wlt_3jwnjot9w2dtoy1q, not service-wide [1 files] _(ai-assisted)_
+- `e07418f4` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `ef7979c7` 2026-05-28 — fix(billing P1): block duplicate VM provision for same user_id [1 files] _(ai-assisted)_
