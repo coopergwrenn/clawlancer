@@ -45,6 +45,8 @@ import {
   GBRAIN_SOUL_ROUTING_V1_START_ANCHOR,
   GBRAIN_SOUL_ROUTING_V1_END_ANCHOR,
   BASE_DEFI_ROUTING_V1_AGENTS_BLOCK,
+  BASE_DEFI_ROUTING_V1_BEGIN_MARKER,
+  BASE_DEFI_ROUTING_V1_END_MARKER,
   BASE_DEFI_ROUTING_V1_INSERT_BEFORE_HEADER,
   WEB_ONLY_USER_V1_AGENTS_BLOCK,
   WEB_ONLY_USER_V1_BEGIN_MARKER,
@@ -9809,139 +9811,201 @@ else:
 }
 
 /**
- * stepDeployBaseDefiRouting — Base MCP v1.1.
+ * stepDeployBaseDefiRouting — Base MCP v1.1 + content-drift discipline (2026-05-28).
  *
- * Inserts the BASE_DEFI_ROUTING_V1 block into AGENTS.md on existing V2 VMs
- * that migrated before the block was added to WORKSPACE_AGENTS_MD_V2. Mirrors
- * stepDeployGbrainSoulProtocol structurally (marker-guarded Python in-place
- * insert with Rule 22 backup + atomic write + marker-verify) but diverges
- * in two deliberate ways:
+ * Owns the BASE_DEFI_ROUTING_V1 marker-bounded block in AGENTS.md fleet-wide.
+ * Handles three states deterministically:
  *
- *   1. NO GATES (universal): unlike gbrain's triple-gate (partner allowlist
- *      + env var + service active), every V2 VM benefits from the routing
- *      block regardless of partner/tier/service state. The routing block
- *      teaches the agent which Base ecosystem skill plugin maps to which
- *      intent — that is universal value for any user who might say "lend my
- *      USDC on morpho" or "swap to ETH on aerodrome" on Telegram.
+ *   1. **INSERT** (markers absent) — first-time deploy. Locates the
+ *      `## Recurring Tasks (Crons) — list first, never duplicate` anchor and
+ *      inserts the canonical block immediately before it. Fallback to EOF
+ *      append if the anchor is missing (defensive — V1 AGENTS.md or hand-
+ *      edited files).
  *
- *   2. Per CLAUDE.md Rule 39, all failure modes push to result.warnings,
- *      NOT result.errors. The agent works without the routing block — proven
- *      2026-05-27 when vm-1043's agent found base-morpho via the SKILL.md
- *      `description` field, queried Morpho's GraphQL, and executed a
- *      successful $4.99 USDC deposit via `bankr send` despite the routing
- *      block not being on disk. The block is a UX optimizer (cross-DEX quote
- *      guidance, signing-path direction, routing priority, cost model,
- *      confirmation pattern) — not load-bearing.
+ *   2. **REPLACE** (markers present, content differs from canonical) — block
+ *      drift. Splices `canonical_block` into the marker-bounded region. This
+ *      is the load-bearing fix delivered 2026-05-28 — the prior INSERT-only
+ *      implementation silently ignored every content update once the markers
+ *      were on disk, so the WETH wallet-limits subsection added to the
+ *      canonical block did not reach any existing fleet VM. Discovered when
+ *      vm-880 (healthy, file-drift-eligible) was running with a 2278-byte
+ *      stale block on disk while the canonical was 4202 bytes.
  *
- * Idempotency: BASE_DEFI_ROUTING_V1 marker grep. Skip if present.
+ *   3. **NO-OP** (markers present, content matches canonical) — alreadyCorrect.
+ *      Cheap: read on-disk block, byte-compare to canonical, return.
  *
- * Anchor: `## Recurring Tasks (Crons) — list first, never duplicate` — a
- * section heading verified universal across all 4 V2 AGENTS.md files I
- * sampled (vm-1043, vm-953, vm-777, vm-788). The block lands BETWEEN the
- * preceding section (`## NEVER IMPROVISE SKILLS`) and Recurring Tasks. If
- * the anchor is missing (V1 AGENTS.md, hand-edited file), the Python
- * fallback appends to EOF — never destructive, never overwrites.
+ * Universal — no partner / env / service gates. Every V2 VM benefits.
  *
- * Source of the inserted block: lib/workspace-templates-v2.ts
- * BASE_DEFI_ROUTING_V1_AGENTS_BLOCK constant. ~1.4KB of markdown including
- * intent→skill table for 6 protocols, routing priority, cost model, and
- * confirmation pattern.
+ * Failure-mode classification (Rule 39): all errors push to result.warnings,
+ * not result.errors. Agent works without the routing block (it's a
+ * UX-optimizer for cross-DEX quote guidance, signing-path direction, cost
+ * model, and confirmation pattern). The exception: post-write verify-failed
+ * pushes to result.errors because at that point we've made a write that
+ * didn't take and the on-disk state is inconsistent with our assertion.
  *
- * Future change: if the routing-block content needs to be REPLACED rather
- * than added-once, bump to BASE_DEFI_ROUTING_V2 + write a sibling step that
- * uses the replace-by-anchor pattern from stepDeployGbrainSoulRouting (v106).
+ * Rule 22 discipline: backup BEFORE any modification (to
+ * `~/.openclaw/backups/v1-base-defi-routing-<ts>/AGENTS.md`), atomic
+ * tmp+replace write, verify-after-write byte-compares the resulting block
+ * against canonical and confirms BOTH markers landed.
+ *
+ * Rule 23: BEGIN/END marker constants are imported from
+ * workspace-templates-v2.ts (single source of truth) — Python script
+ * receives them via cfg so a typo would surface as a TS compile error.
+ *
+ * Single-marker degenerate state (only begin OR only end present in AGENTS.md)
+ * → "malformed" + warnings. Don't try to recover; an operator needs to see
+ * this. In practice this never happens unless a previous reconcile crashed
+ * mid-write (atomic write makes this nearly impossible).
  */
 async function stepDeployBaseDefiRouting(
   ssh: SSHConnection,
   result: ReconcileResult,
   dryRun: boolean,
 ): Promise<void> {
-  // ── Marker probe ──
-  const check = await ssh.execCommand(
-    `grep -c "BASE_DEFI_ROUTING_V1" ~/.openclaw/workspace/AGENTS.md 2>/dev/null || echo 0`,
-  );
-  const present = parseInt((check.stdout || "0").trim(), 10) > 0;
-  if (present) {
-    result.alreadyCorrect.push("base-defi-routing (V1 marker present)");
-    return;
-  }
-
   if (dryRun) {
-    result.fixed.push(
-      `[dry-run] base-defi-routing: would insert BASE_DEFI_ROUTING_V1 block before "${BASE_DEFI_ROUTING_V1_INSERT_BEFORE_HEADER}" in AGENTS.md`,
+    // Dry-run: probe state without mutation. The Python below would handle
+    // the same logic but in dry-run we'd rather surface "what we'd do"
+    // without running the script (so operators don't accumulate empty
+    // backup dirs from --dry-run reconciles).
+    const probe = await ssh.execCommand(
+      `if [ ! -f ~/.openclaw/workspace/AGENTS.md ]; then echo "MISSING"; ` +
+        `elif grep -q "${BASE_DEFI_ROUTING_V1_BEGIN_MARKER}" ~/.openclaw/workspace/AGENTS.md; then echo "MARKER_PRESENT"; ` +
+        `else echo "MARKER_ABSENT"; fi`,
     );
+    const state = (probe.stdout || "").trim();
+    if (state === "MISSING") {
+      result.warnings.push("[dry-run] base-defi-routing: AGENTS.md missing");
+    } else if (state === "MARKER_ABSENT") {
+      result.fixed.push(
+        `[dry-run] base-defi-routing: would INSERT block before "${BASE_DEFI_ROUTING_V1_INSERT_BEFORE_HEADER}"`,
+      );
+    } else {
+      // MARKER_PRESENT — we can't cheaply check drift without reading the
+      // file. Surface "may replace if drift" rather than guessing.
+      result.fixed.push(
+        `[dry-run] base-defi-routing: would compare on-disk block to canonical (${BASE_DEFI_ROUTING_V1_AGENTS_BLOCK.length}b) and REPLACE on drift, no-op on match`,
+      );
+    }
     return;
   }
 
-  // ── Python in-place insert with backup + atomic write + verify ──
+  // ── Content-drift-aware Python: INSERT / REPLACE / NO-OP via marker probe. ──
+  // All three branches go through Rule 22 backup-then-atomic-write-then-verify.
   const cfg = JSON.stringify({
     agents_path: "~/.openclaw/workspace/AGENTS.md",
     backup_path: `~/.openclaw/backups/v1-base-defi-routing-${Date.now()}/AGENTS.md`,
     block: BASE_DEFI_ROUTING_V1_AGENTS_BLOCK,
+    begin_marker: BASE_DEFI_ROUTING_V1_BEGIN_MARKER,
+    end_marker: BASE_DEFI_ROUTING_V1_END_MARKER,
     insert_before_header: BASE_DEFI_ROUTING_V1_INSERT_BEFORE_HEADER,
-    marker: "BASE_DEFI_ROUTING_V1",
   });
+
   const PATCH_PY = `
 import json, os, sys
 
 cfg = json.loads(sys.stdin.read())
 path = os.path.expanduser(cfg["agents_path"])
+canonical_block = cfg["block"]
+begin_marker = cfg["begin_marker"]
+end_marker = cfg["end_marker"]
+backup_path = os.path.expanduser(cfg["backup_path"])
 
 def out(d):
     print(json.dumps(d))
     sys.exit(0)
+
+def backup_then_atomic_write(content_to_save, new_content):
+    """Rule 22: backup before any mutation, atomic tmp+replace write."""
+    os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+    with open(backup_path, "w") as f:
+        f.write(content_to_save)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(new_content)
+    os.replace(tmp, path)
+
+def verify_block_landed():
+    """Rule 10: re-read post-write, confirm both markers + canonical content present."""
+    with open(path) as f:
+        final = f.read()
+    b = final.find(begin_marker)
+    e = final.find(end_marker)
+    if b < 0 or e < 0:
+        return None, "markers absent after write"
+    end_inc = e + len(end_marker)
+    block_on_disk = final[b:end_inc]
+    if block_on_disk != canonical_block:
+        return None, "post-write block bytes mismatch"
+    return final, None
 
 if not os.path.exists(path):
     out({"status": "missing"})
 
 with open(path) as f:
     content = f.read()
-original = content
 
-# Idempotency: skip if marker already present (defense in depth — caller
-# also checks, but a race between two reconcile runs could bypass that).
-if cfg["marker"] in content:
-    out({"status": "already-present"})
+begin_idx = content.find(begin_marker)
+end_idx = content.find(end_marker)
 
-# Rule 22 backup BEFORE any modification.
-bp = os.path.expanduser(cfg["backup_path"])
-os.makedirs(os.path.dirname(bp), exist_ok=True)
-with open(bp, "w") as f:
-    f.write(original)
+# ── Case 1: INSERT (no markers present) ──
+if begin_idx < 0 and end_idx < 0:
+    header = cfg["insert_before_header"]
+    lines = content.split("\\n")
+    anchor = -1
+    for i, line in enumerate(lines):
+        if line.strip() == header.strip():
+            anchor = i
+            break
+    if anchor >= 0:
+        new_content = "\\n".join(lines[:anchor]) + "\\n" + canonical_block + "\\n\\n---\\n\\n" + "\\n".join(lines[anchor:])
+        inserted_at = "before-header"
+    else:
+        new_content = content.rstrip() + "\\n\\n---\\n\\n" + canonical_block + "\\n"
+        inserted_at = "appended-eof"
 
-# Locate insertion point: line equal to the header. If missing, append
-# to EOF as a fallback — never destructive, never overwrite.
-header = cfg["insert_before_header"]
-lines = content.split("\\n")
-idx = -1
-for i, line in enumerate(lines):
-    if line.strip() == header.strip():
-        idx = i
-        break
+    backup_then_atomic_write(content, new_content)
+    final, err = verify_block_landed()
+    if err is not None:
+        out({"status": "verify-failed", "phase": "insert", "inserted_at": inserted_at, "reason": err})
 
-block = cfg["block"]
-if idx >= 0:
-    # Insert block + a trailing "---\\n" separator before the header so the
-    # block reads as its own section (matches the gbrain pattern).
-    new_content = "\\n".join(lines[:idx]) + "\\n" + block + "\\n\\n---\\n\\n" + "\\n".join(lines[idx:])
-    inserted_at = "before-header"
-else:
-    new_content = content.rstrip() + "\\n\\n---\\n\\n" + block + "\\n"
-    inserted_at = "appended-eof"
+    out({
+        "status": "inserted",
+        "inserted_at": inserted_at,
+        "size_before": len(content),
+        "size_after": len(final),
+        "block_len": len(canonical_block),
+    })
 
-# Atomic write per Rule 22.
-tmp = path + ".tmp"
-with open(tmp, "w") as f:
-    f.write(new_content)
-os.replace(tmp, path)
+# ── Case 2: MALFORMED (exactly one marker present) ──
+if begin_idx < 0 or end_idx < 0:
+    out({
+        "status": "malformed",
+        "begin_present": begin_idx >= 0,
+        "end_present": end_idx >= 0,
+    })
 
-# Verify marker is now present.
-with open(path) as f:
-    final = f.read()
-if cfg["marker"] not in final:
-    out({"status": "verify-failed", "inserted_at": inserted_at})
+# ── Case 3: BOTH MARKERS PRESENT — drift check + REPLACE or NO-OP ──
+end_idx_inclusive = end_idx + len(end_marker)
+on_disk_block = content[begin_idx:end_idx_inclusive]
 
-out({"status": "ok", "inserted_at": inserted_at, "size_before": len(original), "size_after": len(final)})
+if on_disk_block == canonical_block:
+    out({"status": "already-correct", "block_len": len(canonical_block)})
+
+# Content drift detected → REPLACE the marker-bounded region.
+new_content = content[:begin_idx] + canonical_block + content[end_idx_inclusive:]
+backup_then_atomic_write(content, new_content)
+
+final, err = verify_block_landed()
+if err is not None:
+    out({"status": "verify-failed", "phase": "replace", "reason": err})
+
+out({
+    "status": "replaced",
+    "old_block_len": len(on_disk_block),
+    "new_block_len": len(canonical_block),
+    "size_before": len(content),
+    "size_after": len(final),
+})
 `;
 
   const scriptB64 = Buffer.from(PATCH_PY, "utf-8").toString("base64");
@@ -9950,18 +10014,32 @@ out({"status": "ok", "inserted_at": inserted_at, "size_before": len(original), "
 
   const r = await ssh.execCommand(cmd, { execOptions: { timeout: 30_000 } });
   if (r.code !== 0) {
-    // Rule 39: warnings, not errors. Agent works without the block.
+    // Rule 39: warnings (not errors) on transient Python failures. The block
+    // is non-load-bearing; we'll retry next file-drift cycle.
     result.warnings.push(
       `base-defi-routing python failed rc=${r.code}: ${(r.stderr || r.stdout).slice(0, 200)}`,
     );
     return;
   }
 
-  const out = (r.stdout || "").split("\n").map((l: string) => l.trim()).filter(Boolean);
-  const lastLine = out[out.length - 1] ?? "";
-  let parsed2: { status?: string; inserted_at?: string; size_before?: number; size_after?: number } = {};
+  const lines = (r.stdout || "").split("\n").map((l: string) => l.trim()).filter(Boolean);
+  const lastLine = lines[lines.length - 1] ?? "";
+  type Parsed = {
+    status?: string;
+    inserted_at?: string;
+    phase?: string;
+    reason?: string;
+    block_len?: number;
+    size_before?: number;
+    size_after?: number;
+    old_block_len?: number;
+    new_block_len?: number;
+    begin_present?: boolean;
+    end_present?: boolean;
+  };
+  let parsed: Parsed = {};
   try {
-    parsed2 = JSON.parse(lastLine);
+    parsed = JSON.parse(lastLine);
   } catch {
     result.warnings.push(
       `base-defi-routing: could not parse python output: ${lastLine.slice(0, 200)}`,
@@ -9969,33 +10047,50 @@ out({"status": "ok", "inserted_at": inserted_at, "size_before": len(original), "
     return;
   }
 
-  if (parsed2.status === "missing") {
-    // V1 VM (no AGENTS.md yet) or pre-bootstrap VM. Wait for next cycle —
-    // stepWorkspaceIntegrity / stepMigrateSoulV2 / configureOpenClaw will
-    // create AGENTS.md and the next reconcile picks this back up.
-    result.warnings.push(
-      "base-defi-routing: AGENTS.md missing (V1 / pre-bootstrap); will retry next cycle",
-    );
-    return;
+  switch (parsed.status) {
+    case "missing":
+      // Pre-bootstrap VM (no AGENTS.md). configureOpenClaw / stepMigrateSoulV2
+      // will create AGENTS.md; the next cycle picks this back up.
+      result.warnings.push(
+        "base-defi-routing: AGENTS.md missing (pre-bootstrap); will retry next cycle",
+      );
+      return;
+    case "malformed":
+      // Single-marker state — strongly suggests a previous reconcile crashed
+      // mid-write or someone hand-edited the file. Surface as warning so an
+      // operator notices; don't auto-recover.
+      result.warnings.push(
+        `base-defi-routing: malformed AGENTS.md (begin_present=${parsed.begin_present}, end_present=${parsed.end_present}); skip — manual fix required`,
+      );
+      return;
+    case "already-correct":
+      result.alreadyCorrect.push(
+        `base-defi-routing (content matches canonical, ${parsed.block_len}b)`,
+      );
+      return;
+    case "inserted":
+      result.fixed.push(
+        `base-defi-routing: INSERTED ${parsed.inserted_at} (${parsed.size_before} → ${parsed.size_after}b, block=${parsed.block_len}b)`,
+      );
+      return;
+    case "replaced":
+      result.fixed.push(
+        `base-defi-routing: REPLACED (block ${parsed.old_block_len} → ${parsed.new_block_len}b, file ${parsed.size_before} → ${parsed.size_after}b)`,
+      );
+      return;
+    case "verify-failed":
+      // Rule 10: verify-after-write failed — we wrote bytes that didn't take.
+      // Push to errors (not warnings) so file-drift's pushFailed gate notices.
+      result.errors.push(
+        `base-defi-routing: verify-after-write FAILED (phase=${parsed.phase}, reason=${parsed.reason ?? "unspecified"})`,
+      );
+      return;
+    default:
+      result.warnings.push(
+        `base-defi-routing: unexpected status=${parsed.status} (output: ${lastLine.slice(0, 200)})`,
+      );
+      return;
   }
-  if (parsed2.status === "already-present") {
-    result.alreadyCorrect.push("base-defi-routing (marker found by python)");
-    return;
-  }
-  if (parsed2.status === "verify-failed") {
-    result.warnings.push(
-      `base-defi-routing: verify-after-write failed (inserted_at=${parsed2.inserted_at})`,
-    );
-    return;
-  }
-  if (parsed2.status === "ok") {
-    result.fixed.push(
-      `base-defi-routing: inserted block ${parsed2.inserted_at} (AGENTS.md ${parsed2.size_before} → ${parsed2.size_after} bytes)`,
-    );
-    return;
-  }
-  // Rule 39: warnings, not errors. The routing block is non-load-bearing.
-  result.warnings.push(`base-defi-routing: unexpected status=${parsed2.status}`);
 }
 
 /**
