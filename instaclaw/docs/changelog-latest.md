@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-28
 
-Window: `2d31b98fbfefd862496611b43864a555c68e182f` → `HEAD` (HEAD = `74afb9b4`)
+Window: `74afb9b445072792277782d3cc39c573b13c6511` → `HEAD` (HEAD = `96b52c16`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 74afb9b445072792277782d3cc39c573b13c6511 -->
+<!-- LAST_GENERATED_SHA: 96b52c162cafb0aa72b310e1d163c5b972e41a77 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `74afb9b4` 2026-05-28 — fix(signin): v2 polish — frosted glass, ChatGPT Plus nudge, breathing room [1 files] _(ai-assisted)_
+- `96b52c16` 2026-05-28 — fix(signin): v3 — real liquid glass pills (wabi recipe verbatim port) [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `f3f8c5e1` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `0bbae9e4` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `74afb9b4` 2026-05-28 — fix(signin): v2 polish — frosted glass, ChatGPT Plus nudge, breathing room [1 files] _(ai-assisted)_
+- `96b52c16` 2026-05-28 — fix(signin): v3 — real liquid glass pills (wabi recipe verbatim port) [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `f3f8c5e1` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `0bbae9e4` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `74afb9b4` 2026-05-28 — fix(signin): v2 polish — frosted glass, ChatGPT Plus nudge, breathing room
+- `96b52c16` 2026-05-28 — fix(signin): v3 — real liquid glass pills (wabi recipe verbatim port)
 
 ## Appendix — every commit (chronological)
 
-- `f3f8c5e1` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
-- `74afb9b4` 2026-05-28 — fix(signin): v2 polish — frosted glass, ChatGPT Plus nudge, breathing room [1 files] _(ai-assisted)_
+- `0bbae9e4` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `96b52c16` 2026-05-28 — fix(signin): v3 — real liquid glass pills (wabi recipe verbatim port) [2 files] _(ai-assisted)_
