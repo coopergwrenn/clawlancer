@@ -775,6 +775,13 @@ async function run() {
       // a future bake at 2026.5.20 picks up the compat fix automatically.
       // Source: lib/vm-manifest.ts:2200-2209 — files[] requiredSentinels.
       "STRIP_THINKING_v2026_5_20_COMPAT_v1",
+      // v124 (2026-05-28, commit 27885f9b): periodic-summary LLM kill switch.
+      // Fix for the fleet-wide credit overcharge that hit 19 paying users
+      // 2026-05-28. Postmortem: docs/postmortems/2026-05-28-strip-thinking-
+      // summary-overcharge.md. The constant is checked here for presence;
+      // its actual value (must be True per Phase 2 fix, NOT False from
+      // Phase 1 emergency state) is checked separately in §31a below.
+      "STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28",
     ];
     for (const sent of RULE23_SENTINELS) {
       const found = (await exec(c, `grep -c -F ${JSON.stringify(sent)} ~/.openclaw/scripts/strip-thinking.py 2>/dev/null`)).stdout.trim();
@@ -1463,6 +1470,182 @@ async function run() {
     const bunPathSeen = /\.bun\/bin/.test(dropInsCat) || /\.bun\/bin/.test(gwEnv);
     record("openclaw-gateway has ~/.bun/bin on PATH (for gbrain shebang)", "P1", ["bake", "test"],
       bunPathSeen, bunPathSeen ? "" : "no drop-in or runtime env contains .bun/bin");
+
+    // ─── 31. v123/v124/v125 manifest bump checks (post-v122 bake) ─────────
+    // Added 2026-05-28 ahead of v126 bake. Every check maps directly to a
+    // specific commit/incident:
+    //
+    //   - v123 (commit 95480af9): skip-to-command-center fleet rollout.
+    //     Reconciler-only; no on-VM artifacts to verify here (stepWebOnlyUserAgents
+    //     runs at per-user assignment, not on the bake VM).
+    //
+    //   - v124 (commit 27885f9b): strip-thinking periodic-summary LLM kill switch.
+    //     19 paying users hit fleet-wide credit overcharge 2026-05-28.
+    //     Postmortem: docs/postmortems/2026-05-28-strip-thinking-summary-overcharge.md.
+    //     Snapshot MUST ship with PERIODIC_SUMMARY_LLM_ENABLED = True (the
+    //     Phase 2 final state); False would mean we're shipping a snapshot
+    //     at the Phase 1 emergency-kill state, silently disabling memory
+    //     management on every fresh VM.
+    //
+    //   - v125 (commit 3e73be06): CLAUDE.md Rule 69 — proxy call_type taxonomy.
+    //     Strip-thinking now sends x-call-kind: infrastructure +
+    //     x-model-override: claude-haiku-4-5-20251001 so the proxy routes to
+    //     haiku (cost=1) and bills a separate per-VM per-day
+    //     INFRASTRUCTURE_DAILY_BUDGET=500 instead of the user's daily display
+    //     limit. Without the header, the content router upgrades to sonnet/
+    //     opus and charges the user (the 2026-05-28 incident root cause).
+    //
+    //   - Base DeFi MCP integration (commits dfbc36c5, 7111ad20, c6f1f767):
+    //     6 base-* skills + AGENTS.md BASE_DEFI_ROUTING_V1 block.
+    //
+    //   - WETH9 wallet-limits (commit 2f0b77a6): smart-account can't unwrap
+    //     WETH via WETH9.withdraw() (selector 0x2e1a7d4d) — content lives in
+    //     base-uniswap + base-aerodrome SKILL.md.
+    //
+    //   - Bonjour drop-in baked into snapshot (Rule 62 P1 followup, 2026-05-28
+    //     manifest addition): 99-disable-bonjour.conf now in
+    //     vm-manifest.ts:files[] so fresh pool VMs ship with bonjour disabled
+    //     from snapshot boot, not at user assignment.
+
+    // 31a — v124 strip-thinking PERIODIC_SUMMARY_LLM_ENABLED value check.
+    // Sentinel (the constant name) is checked in RULE23_SENTINELS above; this
+    // adds the value check. Must be True (Phase 2 final), NOT False (Phase 1
+    // emergency-kill that the postmortem documents).
+    const periodicEnabled = (await exec(c,
+      `grep -oE "PERIODIC_SUMMARY_LLM_ENABLED\\s*=\\s*(True|False)" ~/.openclaw/scripts/strip-thinking.py 2>/dev/null | head -1`,
+    )).stdout.trim();
+    record("v124: PERIODIC_SUMMARY_LLM_ENABLED = True (Phase 2 final state, not Phase 1 emergency)",
+      "P0", ["bake", "test"],
+      /=\s*True\s*$/.test(periodicEnabled),
+      `got: ${periodicEnabled || "missing"}`);
+
+    // 31b — v125 (Rule 69) x-call-kind: infrastructure header at every
+    // strip-thinking call site. Without this, the proxy categorizes as 'user',
+    // bills the user's daily display limit, and content-routes to sonnet/opus
+    // (the 2026-05-28 incident root cause). Both _call_haiku_for_summary AND
+    // run_session_end_hook send the header → expect ≥2 occurrences.
+    const xCallKindCount = parseInt(
+      (await exec(c,
+        `grep -c "x-call-kind: infrastructure" ~/.openclaw/scripts/strip-thinking.py 2>/dev/null || echo 0`,
+      )).stdout.trim() || "0",
+      10,
+    );
+    record("v125 (Rule 69): x-call-kind: infrastructure header at all strip-thinking LLM call sites",
+      "P0", ["bake", "test"],
+      xCallKindCount >= 2,
+      `${xCallKindCount} occurrences (expected ≥2 — one per call site)`);
+
+    // 31c — v125 (Rule 69) x-model-override defense-in-depth.
+    // Even if x-call-kind is somehow missing (regression), x-model-override
+    // forces routing to haiku (cost=1) via routingCtx.explicitModelRequest.
+    // Both call sites should send the header → expect ≥2.
+    const xModelOverrideCount = parseInt(
+      (await exec(c,
+        `grep -c "x-model-override:" ~/.openclaw/scripts/strip-thinking.py 2>/dev/null || echo 0`,
+      )).stdout.trim() || "0",
+      10,
+    );
+    record("v125 (Rule 69): x-model-override header at all strip-thinking LLM call sites",
+      "P0", ["bake", "test"],
+      xModelOverrideCount >= 2,
+      `${xModelOverrideCount} occurrences (expected ≥2)`);
+    const haikuModelCount = parseInt(
+      (await exec(c,
+        `grep -c "claude-haiku-4-5-20251001" ~/.openclaw/scripts/strip-thinking.py 2>/dev/null || echo 0`,
+      )).stdout.trim() || "0",
+      10,
+    );
+    record("v125 (Rule 69): claude-haiku-4-5-20251001 is the forced model",
+      "P0", ["bake", "test"],
+      haikuModelCount >= 2,
+      `${haikuModelCount} occurrences (expected ≥2)`);
+
+    // 31d — Base DeFi 6 skill files (commits dfbc36c5 + follow-ups).
+    // Each of base-aerodrome, base-avantis, base-moonwell, base-morpho,
+    // base-uniswap, base-virtuals must have SKILL.md present on disk. The
+    // bake VM deploys these via stepBaseSkills during reconcile-run-audit;
+    // pre-bake-cleanup --keep-skills (default) preserves them; snapshot
+    // captures them; fresh VMs from snapshot have them on first boot.
+    for (const skill of [
+      "base-aerodrome", "base-avantis", "base-moonwell",
+      "base-morpho", "base-uniswap", "base-virtuals",
+    ]) {
+      const present = (await exec(c, `test -f ~/.openclaw/skills/${skill}/SKILL.md && echo Y || echo N`)).stdout.trim() === "Y";
+      record(`Base DeFi: ~/.openclaw/skills/${skill}/SKILL.md present`,
+        "P0", ["bake", "test"], present,
+        present ? "" : "missing — Base MCP integration won't function on this VM");
+    }
+
+    // 31e — Base DeFi AGENTS.md routing block (commit dfbc36c5).
+    // stepDeployBaseDefiRouting INSERTS BASE_DEFI_ROUTING_V1_BEGIN/END markers
+    // into AGENTS.md. The bake VM's reconcile MUST execute this step (called
+    // twice in reconcileVM — orchestrator lines 446 + 921). Both markers must
+    // be present (BEGIN + END count = 2).
+    const baseDefiMarkers = parseInt(
+      (await exec(c,
+        `grep -cE "BASE_DEFI_ROUTING_V1_(BEGIN|END)" ~/.openclaw/workspace/AGENTS.md 2>/dev/null || echo 0`,
+      )).stdout.trim() || "0",
+      10,
+    );
+    record("Base DeFi: AGENTS.md contains BASE_DEFI_ROUTING_V1 markers (BEGIN+END)",
+      "P0", ["bake", "test"],
+      baseDefiMarkers >= 2,
+      `markers=${baseDefiMarkers} (expected ≥2 — one BEGIN, one END)`);
+
+    // 31f — WETH wallet-limits content (commit 2f0b77a6).
+    // The EIP-7702-delegated smart account can't call IWETH9.withdraw (selector
+    // 0x2e1a7d4d) — internal address.transfer() forwards 2300 gas, wallet
+    // receive() needs more. Content lives in base-uniswap + base-aerodrome
+    // SKILL.md (verified by Bankr 502 incident triage 2026-05-28 —
+    // docs/incidents/2026-05-28-bankr-502-outage.md timeline). At least 2
+    // base-* SKILL.md files must mention IWETH9 OR 2e1a7d4d OR EIP-7702.
+    const wethFiles = parseInt(
+      (await exec(c,
+        `grep -lE "IWETH9|2e1a7d4d|EIP-7702-delegated" ~/.openclaw/skills/base-*/SKILL.md 2>/dev/null | wc -l`,
+      )).stdout.trim() || "0",
+      10,
+    );
+    record("WETH limit: ≥2 base-*/SKILL.md files mention IWETH9/2e1a7d4d/EIP-7702",
+      "P0", ["bake", "test"],
+      wethFiles >= 2,
+      `${wethFiles} files match (expected ≥2 — base-uniswap + base-aerodrome at minimum)`);
+
+    // 31g — Bonjour drop-in baked into snapshot (Rule 62 P1 followup, 2026-05-28).
+    // Before this change: drop-in only written by configureOpenClaw at user
+    // assignment, so fresh pool VMs had a window where bonjour was NOT
+    // disabled (vm-1019 2026-05-23 6-min first-message latency smoking gun).
+    // After: vm-manifest.ts:files[] writes 99-disable-bonjour.conf during
+    // reconcile, so the bake VM ships it into the snapshot. This check
+    // verifies the file is on disk on the bake/soak VM.
+    //
+    // Note: §3 above checks the systemdOverrides Environment=
+    // OPENCLAW_DISABLE_BONJOUR=true line in the override.conf (different
+    // mechanism, same goal). The drop-in is the load-bearing one for fresh
+    // pool VMs that haven't been configureOpenClaw'd yet — override.conf
+    // can be missing the env line and the drop-in still kills bonjour.
+    const bonjourDropIn = (await exec(c,
+      `test -f ~/.config/systemd/user/openclaw-gateway.service.d/99-disable-bonjour.conf && echo Y || echo N`,
+    )).stdout.trim();
+    record("Rule 62: 99-disable-bonjour.conf drop-in present (snapshot-baked)",
+      "P0", ["bake", "test"],
+      bonjourDropIn === "Y",
+      bonjourDropIn === "Y" ? "" : "drop-in absent — fresh VMs will see bonjour stall window before configureOpenClaw writes it");
+    if (bonjourDropIn === "Y") {
+      // Defensive: verify the canonical Environment= line is in the file.
+      // Catches a partial-write / disk-error scenario where the file exists
+      // but is empty or truncated (same anti-pattern as cloud-init §1.0.7
+      // line 316-321 defense).
+      const bonjourEnvLine = parseInt(
+        (await exec(c,
+          `grep -c "^Environment=OPENCLAW_DISABLE_BONJOUR=true" ~/.config/systemd/user/openclaw-gateway.service.d/99-disable-bonjour.conf 2>/dev/null || echo 0`,
+        )).stdout.trim() || "0",
+        10,
+      );
+      record("Rule 62: 99-disable-bonjour.conf has canonical Environment= line",
+        "P0", ["bake", "test"],
+        bonjourEnvLine >= 1,
+        `count=${bonjourEnvLine} (expected ≥1 — partial-write would leave 0)`);
+    }
   } finally {
     c.end();
   }
