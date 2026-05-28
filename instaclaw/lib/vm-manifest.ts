@@ -24,6 +24,10 @@ import {
   MEMORY_SNAPSHOT_SCRIPT,
 } from "./agent-intelligence";
 import { WORKSPACE_EARN_MD } from "./earn-md-template";
+import {
+  DAILY_RESTART_SERVICE_UNIT,
+  DAILY_RESTART_TIMER_UNIT,
+} from "./systemd-templates";
 
 // ── File entry types ──
 
@@ -2643,6 +2647,64 @@ export const VM_MANIFEST = {
         "",
       ].join("\n"),
       mode: "create_if_missing",
+    },
+
+    // ─── Daily gateway restart timer (Rule 70, 2026-05-28) ───
+    //
+    // openclaw-gateway accumulates in-memory state degradation over long
+    // uptime — see the 2026-05-28 vm-1028 typing IR. After ~9h of accumulated
+    // Telegram fetch timeouts and transport aborts, reactions sometimes drop
+    // and typing keepalive can stop firing on schedule. A graceful
+    // SIGTERM-clean restart fully cures it. To get ahead of this on every
+    // VM, every day, automatically: deploy a systemd user timer that fires
+    // a oneshot try-restart of openclaw-gateway at 09:00 UTC ± 30min.
+    //
+    // Two-file shape (mirrors the standard systemd timer pattern):
+    //   - .service: the oneshot work (try-restart openclaw-gateway).
+    //   - .timer: the schedule (OnCalendar + RandomizedDelaySec + Persistent).
+    //
+    // mode: "overwrite" — file-drift (Rule 47) is the authoritative writer.
+    // Any operator who SSHes in and manually edits the unit files will see
+    // their changes reverted within ~15 minutes. This is intentional: the
+    // schedule and behaviour of fleet-wide hygiene timers must be a code-
+    // managed property, not a per-VM operator decision.
+    //
+    // The companion reconciler step `stepEnableDailyRestartTimer` in
+    // lib/vm-reconcile.ts owns systemd-side concerns: daemon-reload after
+    // any unit-content change, `systemctl --user enable --now` on first
+    // install, and timer restart when the schedule itself changes (detected
+    // via md5 of expected vs cached content). The split (file-drift writes
+    // content, reconciler step manages systemd state) avoids the two from
+    // fighting each other.
+    //
+    // requiredSentinels guard against stale-module-cache regressions per
+    // Rule 23. If the template constant is somehow served stale by a
+    // long-running deploy bundle and any of these substrings is missing
+    // from the in-memory content, stepFiles refuses to write and surfaces
+    // the failure — preserving any correct on-disk version. The sentinels
+    // are deliberately chosen to be the load-bearing strings: schedule,
+    // jitter, missed-run handling, safe-restart variant, oneshot type.
+    {
+      remotePath: "~/.config/systemd/user/openclaw-daily-restart.service",
+      source: "inline",
+      content: DAILY_RESTART_SERVICE_UNIT,
+      mode: "overwrite",
+      requiredSentinels: [
+        "Type=oneshot",
+        "try-restart openclaw-gateway.service",
+      ],
+    },
+    {
+      remotePath: "~/.config/systemd/user/openclaw-daily-restart.timer",
+      source: "inline",
+      content: DAILY_RESTART_TIMER_UNIT,
+      mode: "overwrite",
+      requiredSentinels: [
+        "OnCalendar=*-*-* 09:00:00 UTC",
+        "RandomizedDelaySec=1800",
+        "Persistent=true",
+        "WantedBy=timers.target",
+      ],
     },
   ] as ManifestFileEntry[],
 

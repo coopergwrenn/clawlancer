@@ -68,6 +68,7 @@ import { logger } from "./logger";
 import { decryptSecret, DecryptError, KeyMissingError } from "./openai-oauth-encryption";
 import { TIER_DISPLAY_LIMITS } from "./credit-constants";
 import { wrapSSHForEnospcDetection, isEnospcDetectedError } from "./enospc-guard";
+import { DAILY_RESTART_TIMER_UNIT } from "./systemd-templates";
 import {
   callIndexSignup,
   // 2026-05-23 helper: re-fetches SimpleFi /citizens at signup time and
@@ -446,6 +447,14 @@ export async function runFileDriftPass(
     // VM gets the block within ~15 min of the next file-drift tick. Per
     // Rule 39, failures push to result.warnings — non-load-bearing.
     await stepDeployBaseDefiRouting(wrappedSsh, result, dryRun);
+    // Rule 70: daily gateway hygiene timer. Lives in file-drift (not just
+    // reconcileVM) for the same reason as the routing block above — caught-
+    // up VMs would otherwise never get the timer enabled if the manifest
+    // version isn't bumped. stepFiles already wrote the unit files above;
+    // this step's job is the systemd-side enable + verify + marker update.
+    // Per Rule 39, failures push to result.warnings — the timer not firing
+    // is a missed hygiene cycle, not a customer-visible outage.
+    await stepEnableDailyRestartTimer(wrappedSsh, result, dryRun);
   } catch (err) {
     if (isEnospcDetectedError(err)) {
       logger.error("runFileDriftPass: short-circuited on ENOSPC", {
@@ -804,6 +813,17 @@ export async function reconcileVM(
     // ── Step 8c: Systemd unit overrides (KillMode, crash-loop breaker, Chrome cleanup) ──
     currentStep = "systemd-unit";
     await stepSystemdUnit(ssh, manifest, result, dryRun);
+
+    // ── Step 8c1: Daily gateway hygiene timer (Rule 70, 2026-05-28) ──
+    // Enables the systemd timer that fires a graceful try-restart of
+    // openclaw-gateway at 09:00 UTC ± 30min daily. Unit-file content is
+    // owned by stepFiles via vm-manifest.ts:files[]; this step owns the
+    // systemd state (daemon-reload, enable --now, restart-for-rearm on
+    // schedule changes, marker md5 caching). Also wired into file-drift
+    // so caught-up VMs receive it without a manifest version bump. Per
+    // Rule 39 — hygiene timer failures are warnings, not cv-blocking errors.
+    currentStep = "daily-restart-timer";
+    await stepEnableDailyRestartTimer(ssh, result, dryRun);
 
     // ── Step 8c2: prctl-subreaper install + systemd drop-in ──
     // Independent of stepSystemdUnit's override.conf — writes its own
@@ -7619,6 +7639,237 @@ async function stepGatewayWatchdogTimer(
     result.fixed.push(`gw-watchdog: stopped + disabled (was enabled=${isEnabled} active=${isActive})`);
   } catch (err) {
     recordHealWarning(result, `gw-watchdog: ${String(err).slice(0, 200)}`);
+  }
+}
+
+/**
+ * stepEnableDailyRestartTimer — manage systemd state for the Rule 70 daily
+ * gateway hygiene timer.
+ *
+ * What this step DOES NOT do: write the unit files themselves. That's owned
+ * exclusively by `stepFiles` via the `vm-manifest.ts:files[]` entries that
+ * reference `DAILY_RESTART_SERVICE_UNIT` / `DAILY_RESTART_TIMER_UNIT`. file-
+ * drift propagates content changes fleet-wide every ~15 min per Rule 47.
+ *
+ * What this step DOES: read what's on disk, ensure systemd has loaded the
+ * latest version, ensure the timer is enabled + active, and force a timer
+ * restart when the schedule (or any directive) actually changed so the new
+ * `OnCalendar` re-arms — daemon-reload alone re-reads the unit file but
+ * systemd keeps the previously-computed next-fire timestamp, so a schedule
+ * change wouldn't take effect until after the OLD next-fire had elapsed.
+ *
+ * Split rationale: keeping content (file-drift) and state (this step) in
+ * different reconciler steps avoids a class of bug where the writer and the
+ * state manager fight each other across cron ticks. file-drift writes
+ * unconditionally on every pass; this step reads on-disk md5 and compares
+ * to a per-VM marker (`~/.openclaw/.daily-restart-deployed-md5`) to detect
+ * "the content just changed under us" without needing to know what changed.
+ *
+ * Rule 39 classification: hygiene timer failures push to `result.warnings`,
+ * never to `result.errors`. A VM whose daily-restart timer is disabled still
+ * serves user messages normally — the only impact is that long-uptime state
+ * degradation (the IR class this exists to prevent) isn't being cured
+ * automatically. That's worth surfacing in the warnings stream but isn't
+ * worth holding cv-bump for.
+ *
+ * Idempotent: steady state (enabled, active, on-disk md5 matches marker) is
+ * detected and short-circuits to `alreadyCorrect` with one round trip.
+ */
+async function stepEnableDailyRestartTimer(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  try {
+    // Compute the md5 of the template constant in process memory. This is
+    // the "expected" content as of this currently-running deploy bundle.
+    // Per Rule 23, the manifest entry's requiredSentinels guard against the
+    // template constant itself being stale (Vercel nft cache, etc.), so by
+    // the time we reach this step, we can trust this hash represents the
+    // operator's intent for this VM.
+    const expectedTimerMd5 = crypto
+      .createHash("md5")
+      .update(DAILY_RESTART_TIMER_UNIT)
+      .digest("hex");
+
+    // Single round trip captures every signal we need to make a decision:
+    //   svc / tmr  — file existence (file-drift may not have written yet)
+    //   en / act   — current systemd state for the timer
+    //   mk         — marker md5 (last successfully-deployed-and-enabled content)
+    //   dsk        — md5 of the timer file content on disk right now
+    // The `2>&1 | grep -q "^...$"` pattern matches stepGatewayWatchdogTimer's
+    // exact-match probe — `is-enabled` and `is-active` exit codes alone are
+    // not sufficient (some systemd states return code 0 with stdout like
+    // "static" or "activating" that we shouldn't treat as healthy enabled).
+    const probe = await ssh.execCommand(
+      `${HEAL_DBUS_PREFIX} && ` +
+      `svc=$([ -f $HOME/.config/systemd/user/openclaw-daily-restart.service ] && echo 1 || echo 0); ` +
+      `tmr=$([ -f $HOME/.config/systemd/user/openclaw-daily-restart.timer ] && echo 1 || echo 0); ` +
+      `en=$(systemctl --user is-enabled openclaw-daily-restart.timer 2>&1 | grep -q "^enabled$" && echo 1 || echo 0); ` +
+      `act=$(systemctl --user is-active openclaw-daily-restart.timer 2>&1 | grep -q "^active$" && echo 1 || echo 0); ` +
+      `mk=$([ -f $HOME/.openclaw/.daily-restart-deployed-md5 ] && cat $HOME/.openclaw/.daily-restart-deployed-md5 || echo NONE); ` +
+      `dsk=$([ -f $HOME/.config/systemd/user/openclaw-daily-restart.timer ] && md5sum $HOME/.config/systemd/user/openclaw-daily-restart.timer | awk '{print $1}' || echo NONE); ` +
+      `echo "svc=$svc tmr=$tmr en=$en act=$act mk=$mk dsk=$dsk"`
+    );
+    const m = probe.stdout.match(/svc=(\d) tmr=(\d) en=(\d) act=(\d) mk=(\S+) dsk=(\S+)/);
+    if (!m) {
+      recordHealWarning(
+        result,
+        `daily-restart: probe parse failed: ${probe.stdout.slice(0, 200)}`
+      );
+      return;
+    }
+    const hasSvc = m[1] === "1";
+    const hasTmr = m[2] === "1";
+    const isEnabled = m[3] === "1";
+    const isActive = m[4] === "1";
+    const markerMd5 = m[5];
+    const diskMd5 = m[6];
+
+    // The reconciler runs every ~3 min, file-drift every ~15 min. On the
+    // first ~3 reconcile ticks after a new VM is provisioned (and on every
+    // reconcile of a healthy VM whose file-drift sample hasn't included it
+    // yet for the new manifest content), the unit files may not be on
+    // disk. This is not a failure — file-drift will write them on its next
+    // run. Bail out as alreadyCorrect (transient, self-healing).
+    if (!hasSvc || !hasTmr) {
+      result.alreadyCorrect.push(
+        `daily-restart: unit files not yet deployed (svc=${hasSvc} tmr=${hasTmr}); file-drift will write`
+      );
+      return;
+    }
+
+    // If the on-disk timer content doesn't match what we expect from the
+    // current template constant, file-drift simply hasn't propagated the
+    // most recent change to this VM yet. Bail out — acting on stale content
+    // would risk enabling a unit whose schedule is about to be rewritten
+    // within minutes. Idempotent: next tick after file-drift catches up,
+    // the diskMd5 matches expectedTimerMd5 and we proceed normally.
+    if (diskMd5 !== expectedTimerMd5) {
+      result.alreadyCorrect.push(
+        `daily-restart: on-disk md5 ${diskMd5.slice(0, 8)} doesn't match expected ${expectedTimerMd5.slice(0, 8)}; file-drift will sync`
+      );
+      return;
+    }
+
+    // The marker file records the md5 we LAST observed during a successful
+    // enable cycle. If it differs from what's currently on disk, file-drift
+    // wrote new content since we last acted — even if the timer is already
+    // enabled and active, we need to daemon-reload and restart-to-rearm so
+    // the new OnCalendar / RandomizedDelaySec actually takes effect.
+    const contentChanged = markerMd5 !== diskMd5;
+
+    // Steady-state happy path: timer enabled + active, on-disk content
+    // matches what we last enabled, no change required. One round trip and
+    // we're done.
+    if (isEnabled && isActive && !contentChanged) {
+      result.alreadyCorrect.push("daily-restart: timer enabled, active, current");
+      return;
+    }
+
+    if (dryRun) {
+      result.fixed.push(
+        `[dry-run] daily-restart: would daemon-reload + ` +
+        `${isEnabled && contentChanged ? "restart-for-rearm" : "enable --now"} ` +
+        `(enabled=${isEnabled} active=${isActive} contentChanged=${contentChanged})`
+      );
+      return;
+    }
+
+    // daemon-reload is necessary AND sufficient to pick up new unit-file
+    // content. It's idempotent — systemd no-ops when no unit changed since
+    // the last reload. We pay the ~50ms cost unconditionally because the
+    // cost of skipping a needed reload (stale schedule) is worse than the
+    // cost of an unneeded reload.
+    const reload = await ssh.execCommand(
+      `${HEAL_DBUS_PREFIX} && systemctl --user daemon-reload`
+    );
+    if (reload.code !== 0) {
+      recordHealWarning(
+        result,
+        `daily-restart: daemon-reload failed: ${(reload.stderr || reload.stdout).slice(0, 200)}`
+      );
+      return;
+    }
+
+    // `enable --now` is the idempotent "ensure enabled AND active" verb.
+    // Safe whether the timer was previously disabled, partially enabled
+    // (symlink missing), or fully enabled. Failure here typically means
+    // the timer was masked (operator intentionally), the unit file has a
+    // syntax error (would be caught by sentinels in manifest entries, so
+    // shouldn't happen), or dbus is unavailable for some reason. None of
+    // these are customer-immediate-impact, so warn (Rule 39).
+    const enable = await ssh.execCommand(
+      `${HEAL_DBUS_PREFIX} && systemctl --user enable --now openclaw-daily-restart.timer 2>&1`
+    );
+    if (enable.code !== 0) {
+      recordHealWarning(
+        result,
+        `daily-restart: enable failed: ${(enable.stderr || enable.stdout).slice(0, 200)}`
+      );
+      return;
+    }
+
+    // If the timer was already enabled when we entered the step but the
+    // content changed, `enable --now` alone won't re-arm — systemd's timer
+    // logic uses the previously-stored next-fire timestamp. Force a
+    // restart to recompute next-fire from the new OnCalendar. Cheap (the
+    // timer is a stub that just schedules; no work runs at restart).
+    if (isEnabled && contentChanged) {
+      const restart = await ssh.execCommand(
+        `${HEAL_DBUS_PREFIX} && systemctl --user restart openclaw-daily-restart.timer`
+      );
+      if (restart.code !== 0) {
+        recordHealWarning(
+          result,
+          `daily-restart: restart-for-rearm failed: ${(restart.stderr || restart.stdout).slice(0, 200)}`
+        );
+        return;
+      }
+    }
+
+    // Verify is-active actually came up. The enable command can exit 0
+    // (symlink created) but the unit fail to start (e.g., systemd in some
+    // degraded user-bus state). Don't trust the exit code — re-probe.
+    const verify = await ssh.execCommand(
+      `${HEAL_DBUS_PREFIX} && systemctl --user is-active openclaw-daily-restart.timer`
+    );
+    if (verify.stdout.trim() !== "active") {
+      recordHealWarning(
+        result,
+        `daily-restart: timer not active after enable: ${verify.stdout.trim().slice(0, 100)}`
+      );
+      return;
+    }
+
+    // Update the marker. Subsequent reconcile ticks will see marker == disk
+    // and short-circuit to alreadyCorrect until the next time file-drift
+    // writes new content. `mkdir -p ~/.openclaw` is defensive (the dir
+    // exists on every fleet VM by construction, but a manual `rm -rf` on
+    // a corrupted VM during recovery shouldn't crash this step). Any
+    // ENOSPC during the marker write would be caught by Rule 37's
+    // wrapSSHForEnospcDetection — see runFileDriftPass for the wrapping.
+    await ssh.execCommand(
+      `mkdir -p $HOME/.openclaw && echo "${diskMd5}" > $HOME/.openclaw/.daily-restart-deployed-md5`
+    );
+
+    result.fixed.push(
+      `daily-restart: timer ${isEnabled && contentChanged ? "restarted for new schedule" : "enabled + started"} ` +
+      `(was enabled=${isEnabled} active=${isActive} contentChanged=${contentChanged})`
+    );
+  } catch (err) {
+    // Catch-all for any unexpected throw (network blip, ssh wrapper, etc).
+    // Per Rule 39, this is hygiene infrastructure — never customer-blocking.
+    // EnospcDetectedError thrown by the Rule 37 wrapper propagates upward
+    // through this catch because we re-throw it; let the outer file-drift /
+    // reconcileVM handler classify it.
+    if (isEnospcDetectedError(err)) {
+      throw err;
+    }
+    recordHealWarning(
+      result,
+      `daily-restart: unexpected error: ${String(err).slice(0, 200)}`
+    );
   }
 }
 

@@ -43,6 +43,10 @@ import {
   PUSH_HEARTBEAT_SH, SILENCE_WATCHDOG_SCRIPT, BOOTSTRAP_MAX_CHARS,
 } from "./vm-manifest";
 import { reconcileVM } from "./vm-reconcile";
+import {
+  DAILY_RESTART_SERVICE_UNIT,
+  DAILY_RESTART_TIMER_UNIT,
+} from "./systemd-templates";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -8804,6 +8808,42 @@ export async function configureOpenClaw(
       '    fi',
       '  fi',
       'fi',
+      '',
+      '# ── Daily gateway restart timer (CLAUDE.md Rule 70) ──',
+      '# Deploy the two systemd user units that schedule a graceful',
+      '# try-restart of openclaw-gateway at 09:00 UTC ± 30min daily.',
+      '# At steady state these files are also maintained by the file-drift',
+      '# cron (Rule 47) via vm-manifest.ts:files[]; writing them here at',
+      '# configure time guarantees they exist in the snapshot bake AND on',
+      '# every fresh provision from minute zero, without relying on the',
+      '# next file-drift / reconciler tick. Idempotent: if file-drift has',
+      '# already written equivalent content, mv overwrites with the same',
+      '# bytes (no-op semantically). Sentinel for grep-based auditing on',
+      '# the VM is the [Unit] block + Description= text from the templates.',
+      `DAILY_RESTART_SVC_B64='${Buffer.from(DAILY_RESTART_SERVICE_UNIT, "utf-8").toString("base64")}'`,
+      `DAILY_RESTART_TMR_B64='${Buffer.from(DAILY_RESTART_TIMER_UNIT, "utf-8").toString("base64")}'`,
+      'mkdir -p ~/.config/systemd/user',
+      'echo "$DAILY_RESTART_SVC_B64" | base64 -d > ~/.config/systemd/user/openclaw-daily-restart.service',
+      'echo "$DAILY_RESTART_TMR_B64" | base64 -d > ~/.config/systemd/user/openclaw-daily-restart.timer',
+      '# daemon-reload to register the new units with systemd. enable --now',
+      '# both creates the WantedBy=timers.target symlink AND starts the timer.',
+      '# Failure here is non-fatal for configureOpenClaw — the reconciler',
+      '# step (stepEnableDailyRestartTimer) will retry on the next ~3 min',
+      '# tick. The `|| true` is intentional: a partial configureOpenClaw is',
+      '# worse than a missing timer.',
+      'systemctl --user daemon-reload 2>/dev/null || true',
+      'systemctl --user enable --now openclaw-daily-restart.timer 2>/dev/null || true',
+      '# Log outcome so configureOpenClaw operator logs include the result.',
+      'if systemctl --user is-active openclaw-daily-restart.timer 2>&1 | grep -q "^active$"; then',
+      '  echo "DAILY_RESTART_TIMER_ENABLED"',
+      'else',
+      '  echo "DAILY_RESTART_TIMER_NOT_ACTIVE (reconciler will retry)"',
+      'fi',
+      '# Seed the marker file used by stepEnableDailyRestartTimer so its',
+      '# first reconcile tick short-circuits to alreadyCorrect instead of',
+      '# performing a redundant daemon-reload + enable cycle.',
+      'mkdir -p ~/.openclaw',
+      'md5sum ~/.config/systemd/user/openclaw-daily-restart.timer 2>/dev/null | awk \'{print $1}\' > ~/.openclaw/.daily-restart-deployed-md5 2>/dev/null || true',
       '',
       'echo "OPENCLAW_CONFIGURE_DONE"'
     );

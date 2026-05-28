@@ -4002,6 +4002,97 @@ When Signal 4 fires, the responder drills down via the inline SQL (drill-down qu
 - **Rule 47** (continuous reconciliation): the 2026-05-28 Phase 2 fix is a file-content change + a proxy code change. The strip-thinking file change propagates via file-drift + the manifest version bump (v125); the proxy code change rolls via the Vercel deploy.
 - **Rule 14** (`lib/billing-status.ts` is the single source of truth for paying-user classification): infrastructure call budgeting is orthogonal to billing-status — even non-paying VMs can make infrastructure calls (within the per-VM cap) because the operations are platform-funded, not user-funded.
 
+### Rule 70 — Every gateway gets a daily try-restart at 09:00 UTC ± 30min for state hygiene
+
+Every `openclaw-gateway` user service in the fleet MUST be triggered by a systemd user timer to perform a graceful `try-restart` once per day, scheduled at 09:00 UTC with `RandomizedDelaySec=1800` jitter (uniform random across a 30-minute window). The intent is preventive state hygiene — gateway in-memory state degrades silently over multi-day uptime (Telegram fetch timeouts accumulate as unresolved transport handles, OpenAI codex_stream connection pools fragment, typing keepalive intervals fire late under aggressive event-loop pressure), and the cheapest sufficient remediation is "restart it once a day during global low traffic."
+
+#### Why this rule exists
+
+The 2026-05-28 vm-1028 typing IR diagnosed a real-but-non-deterministic UX regression: reactions dropped on some user messages and typing indicators died mid-turn on others. Three days of journal forensics, debug instrumentation patches, and live message tests proved the keepalive architecture is structurally sound (44 keepalive fires at exactly 3.0s intervals during a 132s LLM call), the reaction code path executes (logged at every send-message entry), and the openai-codex stream emits deltas correctly (~700 stream events per turn in the journal). The bug is real but not reproducible on a freshly-restarted gateway — only on one that's been running for ~9h+.
+
+`gateway-restart-on-error` paths exist (Rule 16 / Rule 17) but they're crash-driven, not hygiene-driven. By the time they fire, the user has already seen broken UX. A clock-driven preventive restart guarantees no gateway runs degraded for more than 24h, no matter what subtle leak accumulates.
+
+#### The two-unit shape
+
+The implementation is two `systemd --user` units deployed via `vm-manifest.ts:files[]`:
+
+- **`~/.config/systemd/user/openclaw-daily-restart.service`** — `Type=oneshot`, single `ExecStart=/bin/systemctl --user try-restart openclaw-gateway.service`. The unit body is the constant `DAILY_RESTART_SERVICE_UNIT` in `lib/systemd-templates.ts`.
+- **`~/.config/systemd/user/openclaw-daily-restart.timer`** — `OnCalendar=*-*-* 09:00:00 UTC`, `RandomizedDelaySec=1800`, `Persistent=true`. The unit body is the constant `DAILY_RESTART_TIMER_UNIT` in the same file.
+
+Manifest entries use `mode: "overwrite"` (file-drift is the authoritative writer — Rule 47) and carry `requiredSentinels` (Rule 23) to refuse stale-cache deploys: the timer's sentinels are `OnCalendar=*-*-* 09:00:00 UTC`, `RandomizedDelaySec=1800`, `Persistent=true`, `WantedBy=timers.target`; the service's are `Type=oneshot`, `try-restart openclaw-gateway.service`.
+
+Reconciler step `stepEnableDailyRestartTimer` (called from BOTH `reconcileVM` and `runFileDriftPass`) owns the systemd state side: daemon-reload after any content change, `enable --now` on first install, force-restart-the-timer when on-disk content md5 differs from the cached marker at `~/.openclaw/.daily-restart-deployed-md5` (so a schedule change actually re-arms instead of waiting for the next OLD-schedule fire). configureOpenClaw also writes the unit files and enables the timer at provision time so the snapshot bake captures it.
+
+#### The 25 edge cases enumerated and how each is handled
+
+The design intent: future engineers should not have to re-derive these.
+
+1. **Mid-conversation user.** `RandomizedDelaySec=1800` spreads restarts across 30 minutes — a user actively chatting at 09:00:00 UTC sharp has a 0.05% chance their VM fires at that exact second. If unlucky, the openclaw-gateway SIGTERM → start cycle is ~13 seconds; their Telegram message queues and the agent picks up on next start. Worst case: one-message delay.
+2. **Hibernating VM.** `try-restart` is a no-op on a stopped unit. The intentional `suspended/hibernating` state is preserved. (Critically distinct from `restart`, which would START a stopped gateway.)
+3. **Crashed VM in StartLimit cooldown.** Same as hibernating — `try-restart` no-ops on the failed state, doesn't add to the restart counter.
+4. **Race with `reconcile-fleet` running stepGatewayRestart simultaneously.** systemd serializes operations on the same unit — whichever lands first wins; the second is a no-op or queued. No corruption.
+5. **Thundering herd.** ~160 healthy fleet VMs ÷ 1800s = ~1 restart per 11 seconds. Below Telegram getUpdates rate limit (per-bot), below every LLM provider's per-second cap.
+6. **Clock skew / Linode-side reboot at the scheduled time.** `Persistent=true` replays the most recent missed firing on next boot. Bounded — does not replay a backlog.
+7. **DST / timezone drift.** Explicit `UTC` suffix on `OnCalendar` makes the schedule immune to per-customer `user_timezone` config or any system-tz mishap.
+8. **Cloud-init not yet run.** configureOpenClaw runs as part of cloud-init / provisioning; the unit files + enable land in the same script. Fresh VMs come up with the timer already armed.
+9. **Pool VMs (not yet assigned).** Timer fires on pool VMs too. Harmless — `try-restart` on a not-actively-conversing gateway is sub-second.
+10. **Service masked by operator.** `enable --now` exits non-zero; `stepEnableDailyRestartTimer` pushes to `result.warnings` per Rule 39. cv-bump proceeds; operator unmask required.
+11. **Daily-restart service itself crashes.** Oneshot with `Type=oneshot`, no `Restart=`, so a failure exits silently. Does NOT affect openclaw-gateway.
+12. **Race with `stepGatewayRestart` health-verify wait.** systemd serializes; harmless. The timer-driven restart is graceful so health comes back within the health-verify budget.
+13. **Race with file-drift writing new content.** `stepEnableDailyRestartTimer` compares on-disk md5 to expected (template constant) md5 and short-circuits to `alreadyCorrect` if mismatched — i.e., "file-drift hasn't synced yet, retry next tick." Idempotent.
+14. **Schedule change** (operator edits the template constant). file-drift writes new content within 15 min, reconciler step detects md5 marker mismatch, daemon-reload + restart timer to re-arm with new `OnCalendar`. Self-propagating.
+15. **gbrain interaction.** gbrain runs in its own systemd unit (`gbrain.service`) — completely unaffected by our restart of `openclaw-gateway`.
+16. **Memory-snapshot pre-stop hook.** Daily restart runs ExecStopPost=memory-snapshot.sh automatically. Bonus: free daily memory snapshot.
+17. **`linger=no` on the openclaw user.** User services don't run after logout. Out of scope for this rule — the existing fleet provisioning REQUIRES linger=yes (cron jobs depend on it). Coverage script catches linger=no as a separate audit signal.
+18. **Per-VM verification.** `journalctl --user -u openclaw-daily-restart.service --since today` shows the most recent fire. `systemctl --user list-timers openclaw-daily-restart.timer` shows the next scheduled fire.
+19. **Fleet-wide verification.** Optional `scripts/_coverage-daily-restart.ts` audit script SSH-probes N random VMs and verifies (a) timer enabled, (b) last trigger within 24h, (c) marker md5 matches expected. P1 followup.
+20. **Rollback path.** Revert the manifest commits. file-drift reverts file content within 15 min; the reconciler does not auto-disable the timer (one-way self-healing only). For full disable: SSH the fleet and run `systemctl --user disable --now openclaw-daily-restart.timer` (one-shot fleet script).
+21. **Emergency disable.** Same as rollback — SSH fleet push.
+22. **Per-VM opt-out.** Deferred. If ever needed, gate on a marker file like `~/.openclaw/.no-daily-restart` via an `ExecStartPre=`.
+23. **Manual test.** `systemctl --user start openclaw-daily-restart.service` triggers the oneshot immediately. Used for vm-1028 live verification on 2026-05-28.
+24. **Schedule reconsideration.** Edit `OnCalendar` in `lib/systemd-templates.ts:DAILY_RESTART_TIMER_UNIT` AND the matching `requiredSentinels` in `lib/vm-manifest.ts:files[]` for the timer entry. file-drift + reconciler step propagate the change fleet-wide within ~15 min.
+25. **Frequency reconsideration.** If daily proves insufficient (state degrades within hours), change `OnCalendar` to `*-*-* 09,21:00:00 UTC` (twice-daily) and widen `RandomizedDelaySec` proportionally. If daily proves excessive, change to a weekday-only or weekly cadence — but document the choice in this rule body.
+
+#### Mandatory pattern
+
+- All systemd unit body content lives EXACTLY in `lib/systemd-templates.ts`. No literal unit-body strings in any other file.
+- Manifest entries for both unit files MUST carry `requiredSentinels` covering load-bearing strings: schedule, jitter, persistence, try-restart semantic, oneshot type. Per Rule 23, missing sentinels refuse to deploy.
+- `stepEnableDailyRestartTimer` failures push to `result.warnings`, never `result.errors`. Per Rule 39, the daily restart not firing is a missed hygiene cycle, not a customer-blocking outage. cv-bump proceeds.
+- The reconciler step MUST be called from BOTH `reconcileVM` (covers cv-stale VMs) AND `runFileDriftPass` (covers caught-up cv-current VMs). Without the file-drift call site, the timer would never enable on caught-up VMs unless the manifest version is bumped — Rule 47 territory.
+- configureOpenClaw writes unit files + enables the timer at provision time so the snapshot bake captures it and fresh provisions don't wait for the first reconciler tick.
+
+#### Banned patterns
+
+- **Using `Restart=` on the daily-restart.service**. The unit is intentionally oneshot. Adding `Restart=on-failure` would cause it to retry indefinitely if `try-restart` failed for any reason, hammering systemd.
+- **Using `ExecStart=systemctl restart openclaw-gateway` instead of `try-restart`.** This would START stopped gateways (hibernating customers, crashed customers in cooldown, freshly-provisioned VMs that intentionally haven't started yet). The semantic difference is load-bearing — verified against the 25 edge cases above.
+- **Pushing daily-restart failures to `result.errors`.** A failed enable doesn't affect the customer-immediate experience; pushing to errors would hold cv-bump and create lying-DB-LOW (Rule 23 inverse) drift. Per Rule 39, this is hygiene infrastructure.
+- **Editing the unit files directly via SSH without updating the template constants in `lib/systemd-templates.ts`.** file-drift reverts within 15 min; the operator change is lost. Always go through the manifest path.
+- **Changing the schedule (`OnCalendar`) without updating the matching `requiredSentinels`** in the manifest entry. file-drift would still write the new content, but Rule 23 sentinels would falsely-pass — defeating the stale-cache guard. Sentinels must track schedule changes.
+- **Adding any other ExecStart= to the service** beyond the try-restart. The timer is for openclaw-gateway hygiene, not a general cron-replacement.
+- **Disabling the timer per-VM without documenting why.** If a specific VM truly should not restart (some long-lived experiment, etc.), file a P1 follow-up to add the marker-file opt-out (edge case #22). Until then, expect the timer to fire.
+
+#### Detection rule
+
+PR review checklist for any change touching `lib/systemd-templates.ts`, the manifest entries for the daily-restart units, `stepEnableDailyRestartTimer`, or its two call sites in `lib/vm-reconcile.ts`:
+
+1. Did the change preserve `try-restart` (not `restart`)?
+2. Did the change preserve `RandomizedDelaySec=1800` (or wider — never narrower without a thundering-herd analysis)?
+3. Did the change preserve `Persistent=true`?
+4. Did the change preserve the `UTC` suffix on `OnCalendar`?
+5. If `OnCalendar` changed: did the matching manifest `requiredSentinels` also change?
+6. Did the change preserve Rule 39 classification (warnings, not errors)?
+7. Did the change preserve the file-drift call site of `stepEnableDailyRestartTimer`? (Without it, caught-up VMs never receive subsequent schedule changes.)
+
+If any answer is no → the PR is incomplete or potentially regressive.
+
+#### Related rules
+
+- **Rule 23** (sentinel-grep required templates): the manifest entries enforce content correctness via sentinels.
+- **Rule 32** (`openclaw config set` exit-0 ≠ runtime applied): same "verify after write" discipline applied to systemd state — reconciler step re-probes is-active after enable.
+- **Rule 39** (distinguish critical-step failures from optional-sidecar failures): hygiene timer failures are warnings.
+- **Rule 47** (continuous reconciliation, not version-gated): the file-drift call site of `stepEnableDailyRestartTimer` closes the cv-current gap.
+- **Rule 56** (migration files must be self-contained): the analog here is "manifest entries + template constants must be self-contained" — no operator clicks required for the timer to install.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
