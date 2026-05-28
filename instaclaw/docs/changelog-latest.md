@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-28
 
-Window: `08e61dfbd359e2a0520d9e862dd39275a22a2629` → `HEAD` (HEAD = `fee24ed9`)
+Window: `fee24ed97d9ce9f49db7d8f466baa18c6aed8cf1` → `HEAD` (HEAD = `dddd7a10`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: fee24ed97d9ce9f49db7d8f466baa18c6aed8cf1 -->
+<!-- LAST_GENERATED_SHA: dddd7a10bdc45ad9163ed265b25e3953bd1164a7 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `fee24ed9` 2026-05-28 — fix(signup): convert /signup to a thin redirect to /signin (Move 3) [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `dddd7a10` 2026-05-28 — fix(routing): dashboard no-VM → /channels; /channels legacy-setup → /signin?cb=/connect (Moves 6+4) [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `ecbd9119` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `bbe63191` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `fee24ed9` 2026-05-28 — fix(signup): convert /signup to a thin redirect to /signin (Move 3) [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `dddd7a10` 2026-05-28 — fix(routing): dashboard no-VM → /channels; /channels legacy-setup → /signin?cb=/connect (Moves 6+4) [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,21 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `ecbd9119` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `fee24ed9` 2026-05-28 — [feature, edge] — fix(signup): convert /signup to a thin redirect to /signin (Move 3)
+- `bbe63191` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `fee24ed9` 2026-05-28 — fix(signup): convert /signup to a thin redirect to /signin (Move 3)
+- `dddd7a10` 2026-05-28 — fix(routing): dashboard no-VM → /channels; /channels legacy-setup → /signin?cb=/connect (Moves 6+4)
 
 ## Appendix — every commit (chronological)
 
-- `ecbd9119` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
-- `fee24ed9` 2026-05-28 — fix(signup): convert /signup to a thin redirect to /signin (Move 3) [1 files] _(multi: [feature, edge]; ai-assisted)_
+- `bbe63191` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `dddd7a10` 2026-05-28 — fix(routing): dashboard no-VM → /channels; /channels legacy-setup → /signin?cb=/connect (Moves 6+4) [2 files] _(ai-assisted)_
