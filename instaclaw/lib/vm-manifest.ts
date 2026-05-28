@@ -1692,6 +1692,50 @@ export const VM_MANIFEST = {
    * sweep begin. First 5 customer reconciles are monitored before the
    * remaining ~146 VMs proceed unattended.
    *
+   * v125 — 2026-05-28 (Phase 2: proxy call_type taxonomy — Rule 69)
+   * Phase 2 of the strip-thinking summary overcharge incident. With v124's
+   * kill switch the bleeding stopped; this version puts the periodic
+   * summary back on a CORRECT path:
+   *
+   *   1. lib/credit-constants.ts adds INFRASTRUCTURE_DAILY_BUDGET = 500
+   *      and INFRASTRUCTURE_FORCED_MODEL = "claude-haiku-4-5-20251001".
+   *
+   *   2. app/api/gateway/proxy/route.ts learns two headers:
+   *        x-call-kind: infrastructure  → forces haiku, skips the user
+   *          daily-limit RPC, skips the content router, skips the cron-
+   *          circuit-breaker, logs with call_type='infrastructure', and
+   *          enforces a per-VM per-day cap via a cheap COUNT() on
+   *          instaclaw_usage_log against INFRASTRUCTURE_DAILY_BUDGET.
+   *        x-model-override: <model>  → defense-in-depth. When present
+   *          for non-infrastructure calls, threaded into the router's
+   *          existing respectExplicitModel() path via the routingCtx.
+   *          explicitModelRequest field. Catches future callers who
+   *          set the override header but forget the call-kind header.
+   *
+   *   3. STRIP_THINKING_SCRIPT's two LLM call sites (_call_haiku_for_
+   *      summary, _call_haiku_structured) now send BOTH headers. The
+   *      v124 PERIODIC_SUMMARY_LLM_ENABLED kill switch flips back to
+   *      True via this same PR — it is safe to re-enable because the
+   *      proxy now respects the taxonomy.
+   *
+   *   4. Two new Rule 23 sentinels (replacing v124's two): the
+   *      STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28 marker stays as the
+   *      forensic anchor, and "x-call-kind: infrastructure" proves the
+   *      deployed file has the Phase 2 header wiring. The old
+   *      "PERIODIC_SUMMARY_LLM_ENABLED = False" sentinel was removed —
+   *      the constant is now True, so the value-bound sentinel would
+   *      false-positive-fail against the correct Phase 2 template.
+   *
+   * No configSettings / cronJobs / systemdOverrides changes — pure
+   * file-content + proxy-code bump. Propagation via file-drift (15-min)
+   * + reconcile-fleet (3-min, picks up cv<125). No gateway restart.
+   *
+   * Phase 3 (this same PR or sibling): usage-anomaly-check learns to
+   * alert on per-VM infrastructure call rate. A test scenario codifies
+   * "new dev adds LLM call without x-call-kind header → caught" so the
+   * taxonomy can't silently regress. CLAUDE.md Rule 69 documents the
+   * full call_type taxonomy contract.
+   *
    * v124 — 2026-05-28 (P0 strip-thinking periodic-summary kill switch)
    * STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28. Sets PERIODIC_SUMMARY_LLM_
    * ENABLED = False in the embedded STRIP_THINKING_SCRIPT (lib/ssh.ts).
@@ -1734,7 +1778,7 @@ export const VM_MANIFEST = {
    * file-content bump. Propagation via file-drift (15-min) + reconcile-
    * fleet (3-min, picks up cv<124). No gateway restart required.
    */
-  version: 124,
+  version: 125,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -2270,16 +2314,21 @@ export const VM_MANIFEST = {
         "STRIP_THINKING_v2026_5_20_COMPAT_v1",
         "SKIP_ACTIVE_SESSION:",
         // v124 (2026-05-28): STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28.
-        // P0 kill switch for the periodic-summary Haiku call. With proxy
-        // routing currently ignoring x-model-override, those calls were
-        // being upgraded to sonnet/opus (4-19x cost) and charged to user
-        // daily budget. Disabled until Phase 2 ships call_type taxonomy.
-        // The unique-comment sentinel proves the kill switch line is in
-        // the deployed file; the variable sentinel proves the constant
-        // is what _call_haiku_for_summary / _call_haiku_structured
-        // actually read at runtime.
+        // The unique-comment marker proves the strip-thinking summary
+        // pipeline has been touched by the 2026-05-28 incident fix. Even
+        // after the kill switch is flipped back to True (Phase 2, v125),
+        // the marker stays as the canonical "this script knows about
+        // the bug" anchor for forensic searches.
+        //
+        // v125 (2026-05-28): "x-call-kind: infrastructure" sentinel. The
+        // strip-thinking LLM helpers now send this header so the proxy
+        // categorizes them correctly (forced haiku, separate budget,
+        // skips user limit RPC, logs as 'infrastructure'). Pre-fix stale
+        // templates won't have the header string in their curl args, so
+        // this sentinel proves the file is the Phase 2 version, not the
+        // pre-incident or Phase 1 kill-switched version.
         "STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28",
-        "PERIODIC_SUMMARY_LLM_ENABLED = False",
+        "x-call-kind: infrastructure",
       ],
     },
     {

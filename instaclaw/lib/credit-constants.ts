@@ -52,6 +52,39 @@ export const HEARTBEAT_DAILY_BUDGET = 100;
 export const HEARTBEAT_CYCLE_CAP = 10;
 
 /**
+ * Infrastructure calls (call_type='infrastructure') have a separate daily
+ * budget in cost-weight units, distinct from both the user's display limit
+ * and the heartbeat budget. Set generously (500) so legitimate periodic
+ * tasks have plenty of headroom — Expected steady-state per VM:
+ *   - strip-thinking periodic summary at PERIODIC_SUMMARY_INTERVAL=7200s
+ *     (2 hours) per session × ~5 active sessions × 1 cost_weight (haiku)
+ *     = ~60 cost_weight/day worst-case
+ *   - pre-archive summary triggered on session-cap events: typically
+ *     <10/day fleet-side
+ *   - Any future infrastructure caller is also bounded by this cap
+ * The cap exists primarily as a runaway-prevention measure. If a future
+ * bug causes infrastructure calls to fire in a loop, the per-day cap
+ * forces a hard stop at 500 cost_weight (~$0.125 worth of Anthropic
+ * haiku usage on our infrastructure account) instead of allowing
+ * unbounded burn.
+ *
+ * Added: 2026-05-28 (incident: STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28).
+ * See CLAUDE.md Rule 69 (call_type taxonomy) and docs/postmortems/
+ * 2026-05-28-strip-thinking-summary-overcharge.md.
+ */
+export const INFRASTRUCTURE_DAILY_BUDGET = 500;
+
+/**
+ * The canonical model for infrastructure calls. Forced regardless of the
+ * x-model-override header value (which is a defense-in-depth signal, not
+ * a routing override for infrastructure calls). The proxy uses this so
+ * that even if a buggy infrastructure caller forgets to set x-model-
+ * override, OR sets it to an expensive model by mistake, the request is
+ * still routed to haiku at cost=1.
+ */
+export const INFRASTRUCTURE_FORCED_MODEL = "claude-haiku-4-5-20251001";
+
+/**
  * Resolve model cost weight from a model string.
  * Matches on substring (e.g. "claude-sonnet-4-6" → 4).
  */

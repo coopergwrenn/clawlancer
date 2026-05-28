@@ -1341,7 +1341,11 @@ def _call_haiku_for_summary(messages):
     convo = "\\n".join(parts)
     payload = json.dumps({"model":"claude-haiku-4-5-20251001","max_tokens":300,"messages":[{"role":"user","content":"Summarize this conversation in 3-5 sentences. Focus on what the user wanted, key decisions, and what is still open.\\n\\nConversation:\\n" + convo + "\\n\\nWrite ONLY the summary."}]})
     try:
-        result = _sp.run(["curl","-s","--max-time","30","-H","Authorization: Bearer " + gw_token,"-H","Content-Type: application/json","-H","x-model-override: claude-haiku-4-5-20251001","-d",payload,"https://instaclaw.io/api/gateway/proxy"], capture_output=True, text=True, timeout=35)
+        # x-call-kind: infrastructure marks this as a platform-internal call.
+        # The proxy forces haiku, skips the content router, skips the user's
+        # daily-limit RPC, and logs with call_type='infrastructure'. See
+        # app/api/gateway/proxy/route.ts and CLAUDE.md Rule 69.
+        result = _sp.run(["curl","-s","--max-time","30","-H","Authorization: Bearer " + gw_token,"-H","Content-Type: application/json","-H","x-call-kind: infrastructure","-H","x-model-override: claude-haiku-4-5-20251001","-d",payload,"https://instaclaw.io/api/gateway/proxy"], capture_output=True, text=True, timeout=35)
         if result.returncode != 0: return None
         resp = json.loads(result.stdout)
         content = resp.get("content", [])
@@ -1484,13 +1488,17 @@ PRE_ARCHIVE_SUMMARY_RECENT_THRESHOLD = 1800  # 30 min
 #   their daily cap before noon UTC; vm-1006 burned 19,000 cost_weight on
 #   a 2500 daily budget (7.6x overconsumption) entirely from this bug.
 #
-# Phase 2 of the incident fix introduces a proper call_type taxonomy
-# (x-instaclaw-call-type: infrastructure) with a separate INFRASTRUCTURE_
-# DAILY_BUDGET cap, forced haiku routing, and exemption from the user
-# daily-limit RPC. When Phase 2 lands, the strip-thinking.py call sites
-# will be updated to send the new header AND this kill switch will be
-# flipped back to True via that same PR.
-PERIODIC_SUMMARY_LLM_ENABLED = False
+# PHASE 2 — re-enabled 2026-05-28 (same PR as the proxy fix):
+#   The proxy at /api/gateway/proxy now reads x-call-kind: infrastructure,
+#   forces the model to INFRASTRUCTURE_FORCED_MODEL (haiku), bypasses the
+#   content classifier entirely, skips the user's daily-limit RPC, logs
+#   with call_type='infrastructure', and enforces a separate per-VM per-
+#   day cap (INFRASTRUCTURE_DAILY_BUDGET = 500 cost_weight). Both LLM
+#   call sites below (_call_haiku_for_summary, _call_haiku_structured)
+#   send the new header along with x-model-override as defense in depth.
+#   Flipping this back to True is safe — calls now correctly route to
+#   haiku at cost=1 and do NOT touch user budget.
+PERIODIC_SUMMARY_LLM_ENABLED = True
 
 USER_FACTS_MARKER_START = "<!-- INSTACLAW:LATEST_USER_FACTS:START -->"
 USER_FACTS_MARKER_END = "<!-- INSTACLAW:LATEST_USER_FACTS:END -->"
@@ -1538,10 +1546,13 @@ def _call_haiku_structured(messages, existing_facts=""):
         "messages": [{"role": "user", "content": prompt_text}],
     })
     try:
+        # x-call-kind: infrastructure — see _call_haiku_for_summary above
+        # for the proxy-side semantics + Rule 69 reference.
         result = _sp.run(
             ["curl", "-s", "--max-time", "30",
              "-H", "Authorization: Bearer " + gw_token,
              "-H", "Content-Type: application/json",
+             "-H", "x-call-kind: infrastructure",
              "-H", "x-model-override: claude-haiku-4-5-20251001",
              "-d", payload,
              "https://instaclaw.io/api/gateway/proxy"],
