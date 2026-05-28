@@ -10,6 +10,14 @@ import {
   CLOUD_INIT_PHASES,
 } from "@/components/onboarding/deploying-phase-accordion";
 
+// Brand constants — paired with /channels (channels-client.tsx:33-37).
+// /signin uses the same set. If these change at /channels, change here too.
+const CORAL = "#E96F4D";
+const CREAM_BG = "#f8f7f4";
+const CARD_INK = "#333334";
+const MUTED_INK = "#6b6b6b";
+const SUBTLE_INK = "#9a9892";
+
 type StepStatus = "pending" | "active" | "done" | "error";
 
 interface DeployStep {
@@ -176,11 +184,15 @@ function DeployingPageContent() {
   // Non-Edge users keep the unchanged /dashboard destination.
   const deploySuccessDestination = isEdge ? "/edge/intents" : "/dashboard";
   const [steps, setSteps] = useState<DeployStep[]>([
-    { id: "payment", label: "Payment confirmed", status: "done" },
-    { id: "assign", label: "Assigning server", status: "active" },
-    { id: "configure", label: "Configuring your agent", status: "pending" },
-    { id: "telegram", label: "Connecting Telegram bot", status: "pending" },
-    { id: "health", label: "Health check", status: "pending" },
+    // Step labels are user-visible status text. Lowercase + sentence
+    // case to match /channels' voice. "Telegram" stays capitalized as
+    // a brand name (same convention as /channels' "iMessage" /
+    // "Telegram" card titles).
+    { id: "payment", label: "payment confirmed", status: "done" },
+    { id: "assign", label: "assigning server", status: "active" },
+    { id: "configure", label: "configuring your agent", status: "pending" },
+    { id: "telegram", label: "connecting Telegram bot", status: "pending" },
+    { id: "health", label: "health check", status: "pending" },
   ]);
   const [configureFailed, setConfigureFailed] = useState(false);
   const [configureAttempts, setConfigureAttempts] = useState(0);
@@ -718,7 +730,24 @@ function DeployingPageContent() {
 
       <div
         className="min-h-screen flex flex-col"
-        style={{ background: "#f8f7f4" }}
+        style={{
+          color: CARD_INK,
+          /* Warm-sand atmosphere — verbatim from /channels (channels-
+           * client.tsx:58-64). Layered radial gradients (coral 18% top
+           * / blue 14% bottom-left / faint green 8% top-right) over
+           * cream linear base. Pairs /deploying visually with /channels
+           * + /signin so the funnel reads as one continuous surface
+           * rather than three separate screens. The pulsing step
+           * indicators + progress bar coral elements sit naturally on
+           * this background. */
+          background: `
+            radial-gradient(1200px 700px at 50% -10%, rgba(233, 111, 77, 0.18), transparent 65%),
+            radial-gradient(900px 600px at 8% 95%, rgba(34, 158, 217, 0.14), transparent 70%),
+            radial-gradient(700px 500px at 95% 25%, rgba(31, 173, 62, 0.08), transparent 75%),
+            linear-gradient(180deg, #f5f3ee 0%, #f8f7f4 60%, #f9f7f2 100%),
+            ${CREAM_BG}
+          `,
+        }}
       >
         <EdgePartnerBanner />
         {/* Step Indicator */}
@@ -830,20 +859,53 @@ function DeployingPageContent() {
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-16">
-          {/* Title */}
+          {/* Title — typography matches /channels' "pick a channel."
+              and /signin's "sign in." (serif clamp, line-height 1.0,
+              letter-spacing -1.8px). Lowercase + period; the new copy
+              "your agent is coming to life." replaces the previous
+              "Deploying Your Instance" Title Case + frames the wait as
+              a poetic moment rather than a system status string.
+
+              The 8-phrase rotating subtitle (SUBTITLE_MESSAGES + the
+              RotatingSubtitle crossfade component, still defined above
+              for potential future reuse) is replaced by a single
+              static line "give me about a minute." — reconciles the
+              desktop/mobile copy mismatch we had + drops the AI-all-
+              caps / ellipsis register that didn't match Cooper voice.
+
+              The cowboy ROTATING_MESSAGES for individual step phases
+              (Taming the claw..., etc.) are UNCHANGED — they're
+              step-internal voice and out of scope for this pass. */}
           <div className="mb-12 text-center">
             <h1
-              className="text-4xl font-normal tracking-[-0.5px] mb-3"
-              style={{ fontFamily: "var(--font-serif)", color: "#333334" }}
+              className="font-normal mb-3"
+              style={{
+                fontFamily: "var(--font-serif)",
+                fontSize: "clamp(44px, 12vw, 60px)",
+                lineHeight: 1.0,
+                letterSpacing: "-1.8px",
+                color: CARD_INK,
+              }}
             >
-              Deploying Your Instance
+              your agent is coming to life.
             </h1>
-            <p className="text-base">
-              <RotatingSubtitle messages={SUBTITLE_MESSAGES} />
+            <p
+              className="mx-auto"
+              style={{
+                fontSize: 17,
+                lineHeight: 1.5,
+                color: MUTED_INK,
+                maxWidth: 380,
+              }}
+            >
+              give me about a minute.
             </p>
             {polling && !configureFailed && (
-              <p className="text-xs mt-3" style={{ color: "#999999" }}>
-                This takes about a minute. Please don&apos;t leave this screen.
+              <p
+                className="mt-3"
+                style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
+              >
+                this takes about a minute. please don&apos;t leave this screen.
               </p>
             )}
           </div>
@@ -1040,15 +1102,27 @@ function DeployingPageContent() {
             </div>
           </div>
 
-          {/* ---- Contact Support ---- */}
+          {/* ---- Contact Support — Cooper voice, lowercase, drops the
+                 redundant "Contact" word. Matches /channels' footnote
+                 style + the new /signin "need help?" footer. ---- */}
           <div className="max-w-lg w-full mb-6 flex justify-center">
-            <a
-              href="mailto:help@instaclaw.io"
-              className="text-xs font-medium transition-opacity hover:opacity-80"
-              style={{ color: "#999999" }}
+            <p
+              className="text-center"
+              style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
             >
-              Having trouble? Contact help@instaclaw.io
-            </a>
+              having trouble?{" "}
+              <a
+                href="mailto:help@instaclaw.io"
+                className="transition-opacity hover:opacity-70"
+                style={{
+                  color: MUTED_INK,
+                  textDecoration: "underline",
+                  textUnderlineOffset: 2,
+                }}
+              >
+                help@instaclaw.io
+              </a>
+            </p>
           </div>
 
           {/* ---- "Check anyway" escape hatch (60s) ---- */}

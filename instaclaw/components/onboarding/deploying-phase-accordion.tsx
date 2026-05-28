@@ -26,7 +26,7 @@
  *
  * Design (per 2026-05-22 spec approved by Cooper):
  *   - Default state: COLLAPSED. User opts in to expand.
- *   - Closed pill button: glass style + "What's happening right now?" + chevron
+ *   - Closed pill button: glass style + "what's happening right now?" + chevron
  *   - Open: smooth height transition (~250ms), list of phases in glass card
  *   - Each phase row: orb (8x8) + label. Orb vocabulary matches the main
  *     5-step list — green check (done), orange pulsing (active), gray glass
@@ -339,7 +339,7 @@ export function DeployingPhaseAccordion({
         aria-expanded={open}
         aria-controls="deploying-phase-accordion-body"
       >
-        <span>What&apos;s happening right now?</span>
+        <span>what&apos;s happening right now?</span>
         <ChevronDown
           className="transition-transform duration-200"
           style={{
