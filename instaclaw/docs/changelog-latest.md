@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-28
 
-Window: `ef7979c7f0418d3aec516214239e787f4589704c` → `HEAD` (HEAD = `2d31b98f`)
+Window: `2d31b98fbfefd862496611b43864a555c68e182f` → `HEAD` (HEAD = `74afb9b4`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 2d31b98fbfefd862496611b43864a555c68e182f -->
+<!-- LAST_GENERATED_SHA: 74afb9b445072792277782d3cc39c573b13c6511 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `2d31b98f` 2026-05-28 — fix(deploying): bring to /channels visual bar — warm sand + lowercase voice [2 files] _(ai-assisted)_
+- `74afb9b4` 2026-05-28 — fix(signin): v2 polish — frosted glass, ChatGPT Plus nudge, breathing room [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `d4d7cb1a` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `f3f8c5e1` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `2d31b98f` 2026-05-28 — fix(deploying): bring to /channels visual bar — warm sand + lowercase voice [2 files] _(ai-assisted)_
+- `74afb9b4` 2026-05-28 — fix(signin): v2 polish — frosted glass, ChatGPT Plus nudge, breathing room [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `d4d7cb1a` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `f3f8c5e1` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `2d31b98f` 2026-05-28 — fix(deploying): bring to /channels visual bar — warm sand + lowercase voice
+- `74afb9b4` 2026-05-28 — fix(signin): v2 polish — frosted glass, ChatGPT Plus nudge, breathing room
 
 ## Appendix — every commit (chronological)
 
-- `d4d7cb1a` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
-- `2d31b98f` 2026-05-28 — fix(deploying): bring to /channels visual bar — warm sand + lowercase voice [2 files] _(ai-assisted)_
+- `f3f8c5e1` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `74afb9b4` 2026-05-28 — fix(signin): v2 polish — frosted glass, ChatGPT Plus nudge, breathing room [1 files] _(ai-assisted)_
