@@ -94,11 +94,26 @@ export default function DashboardLayout({
   // healthy VM, redirects back) → dashboard. Eight users hit this between
   // 2026-05-10 and 2026-05-12 — see Rule 33.
   //
+  // 2026-05-28 Move 6: no-VM fallback retargeted /connect → /channels.
+  // /connect is the legacy BYOB Telegram bot creation page; /channels is the
+  // modern channel picker (iMessage / Telegram shared / Discord+Slack
+  // waitlist / "skip to your command center" web-only path). A user who
+  // signs in via /signin (not via /channels) and lands on /dashboard with no
+  // VM was being shoved into the BYOB-only path, never seeing the new flow.
+  // /channels covers all those options PLUS the web skip (which routes back
+  // through /onboarding/web for the silent-provision path).
+  //
   // Disambiguate by VM state:
   //   - has usable VM (healthy + gateway_url) → stay on dashboard, let them in
   //   - VM exists but configure_failed → /deploying (where they see retry UI)
   //   - VM exists but still configuring (no gateway_url yet) → /deploying
-  //   - no VM at all → /connect (genuine new-user path)
+  //   - no VM at all → /channels (modern new-user entrypoint, post-Move 6)
+  //
+  // Network-error failsafes (lines 111 + 139) still send to /connect — they
+  // run when /api/vm/status is unreachable, which is "I don't know what
+  // state the user is in" rather than "I know they have no VM". /connect
+  // works as a known-good landing in that degraded case (it renders its
+  // own client UI regardless of API availability).
   useEffect(() => {
     if (!needsOnboarding) return;
     let cancelled = false;
@@ -107,7 +122,9 @@ export default function DashboardLayout({
         const res = await fetch("/api/vm/status");
         if (cancelled) return;
         if (!res.ok) {
-          // 401/5xx — conservatively send to /connect, same as before
+          // 401/5xx — conservatively send to /connect (failsafe; /channels
+          // would also work here but we preserve the pre-Move-6 failsafe to
+          // bound the blast radius of this change).
           router.replace("/connect");
           return;
         }
@@ -133,8 +150,13 @@ export default function DashboardLayout({
           router.replace("/deploying");
           return;
         }
-        // No VM (pending/no_user) → onboarding flow
-        router.replace("/connect");
+        // No VM (pending/no_user) → modern channel picker (Move 6).
+        // From /channels users can pick iMessage / Telegram shared-bot /
+        // "skip to your command center" web path. The legacy BYOB Telegram
+        // route is still reachable via /channels' "use the legacy setup"
+        // footnote (which now points to /signin?callbackUrl=/connect — see
+        // Move 4 in the same auth-consolidation commit).
+        router.replace("/channels");
       } catch {
         if (!cancelled) router.replace("/connect");
       }

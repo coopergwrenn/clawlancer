@@ -284,8 +284,18 @@ export function ChannelsClient() {
             style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
           >
             advanced: prefer your own Telegram bot?{" "}
+            {/* 2026-05-28 Move 4: was /signup. After Move 3 made /signup a
+                thin redirect to /signin, this link going to /signup would
+                bounce through /signup → /signin → (if authed) /dashboard
+                → /channels — a loop back to where the user started. The
+                actual intent here is "send me to BYOB Telegram bot
+                creation," which lives on /connect. /signin?callbackUrl=
+                /connect threads the auth gate AND lands on /connect for
+                both new accounts (Google OAuth creates the user row, then
+                bounces to /connect) and returning users (already-authed
+                /signin server-redirects straight to the callbackUrl). */}
             <Link
-              href="/signup"
+              href="/signin?callbackUrl=/connect"
               style={{
                 color: MUTED_INK,
                 textDecoration: "underline",
