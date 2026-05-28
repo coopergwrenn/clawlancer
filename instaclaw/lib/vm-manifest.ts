@@ -1691,8 +1691,50 @@ export const VM_MANIFEST = {
    * test agent does the operator release the lock and let the customer
    * sweep begin. First 5 customer reconciles are monitored before the
    * remaining ~146 VMs proceed unattended.
+   *
+   * v124 — 2026-05-28 (P0 strip-thinking periodic-summary kill switch)
+   * STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28. Sets PERIODIC_SUMMARY_LLM_
+   * ENABLED = False in the embedded STRIP_THINKING_SCRIPT (lib/ssh.ts).
+   * Disables the Haiku call inside _call_haiku_for_summary and
+   * _call_haiku_structured (both return None early). Callers — session-
+   * end hook, periodic-summary cron, pre-archive safety net — already
+   * handle None gracefully (log telemetry and skip the summary write).
+   * Every other strip-thinking responsibility (thinking-strip, in-place
+   * compaction, daily_hygiene, trim_failed_turns, image strip, Layer 3
+   * tool-cache extract, startup orphan-repair) keeps running normally.
+   *
+   * Incident: the periodic Haiku call sends x-model-override: claude-
+   * haiku-4-5-20251001, but the proxy at /api/gateway/proxy ignores the
+   * header. The summary prompt ("You are summarizing a recent
+   * conversation...") then matches SONNET_SIGNALS (and on some prompts
+   * OPUS_MULTI_AGENT / hasComplexBuild) in lib/model-router.ts, so the
+   * call gets routed to sonnet (cost 4) or opus (cost 19) instead of
+   * the expected haiku (cost 1). The proxy also logs the call as
+   * call_type='user' and charges it against the user's daily display
+   * limit. 19 paying users hit their daily cap before noon UTC on
+   * 2026-05-28; vm-1006 burned 19,000 cost_weight on a 2500 budget.
+   *
+   * Two new Rule 23 sentinels gate the deployment:
+   *   - STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28 (load-bearing marker)
+   *   - PERIODIC_SUMMARY_LLM_ENABLED = False (the runtime constant
+   *     the LLM helpers actually read).
+   * Pre-fix stale templates lack both — file-drift refuses to deploy
+   * them, surfacing the regression loudly per the Rule 23 contract.
+   *
+   * Phase 2 (separate PR): proxy gets an explicit call_type taxonomy
+   * (x-instaclaw-call-type: infrastructure) with forced-haiku routing,
+   * separate INFRASTRUCTURE_DAILY_BUDGET cap, and exemption from the
+   * user daily-limit RPC. When Phase 2 lands, that same PR flips
+   * PERIODIC_SUMMARY_LLM_ENABLED back to True and updates the call
+   * sites to send the new header. Until then, agents can still write
+   * their own session-log.md / MEMORY.md per AGENTS.md instructions
+   * (just no LLM-generated cron-side backfill).
+   *
+   * No configSettings / cronJobs / systemdOverrides changes — pure
+   * file-content bump. Propagation via file-drift (15-min) + reconcile-
+   * fleet (3-min, picks up cv<124). No gateway restart required.
    */
-  version: 123,
+  version: 124,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -2227,6 +2269,17 @@ export const VM_MANIFEST = {
         // See CLAUDE.md Rule 65.
         "STRIP_THINKING_v2026_5_20_COMPAT_v1",
         "SKIP_ACTIVE_SESSION:",
+        // v124 (2026-05-28): STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28.
+        // P0 kill switch for the periodic-summary Haiku call. With proxy
+        // routing currently ignoring x-model-override, those calls were
+        // being upgraded to sonnet/opus (4-19x cost) and charged to user
+        // daily budget. Disabled until Phase 2 ships call_type taxonomy.
+        // The unique-comment sentinel proves the kill switch line is in
+        // the deployed file; the variable sentinel proves the constant
+        // is what _call_haiku_for_summary / _call_haiku_structured
+        // actually read at runtime.
+        "STRIP_THINKING_LLM_KILL_SWITCH_2026_05_28",
+        "PERIODIC_SUMMARY_LLM_ENABLED = False",
       ],
     },
     {
