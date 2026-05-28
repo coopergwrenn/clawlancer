@@ -597,6 +597,225 @@ html.lenis body {
   pointer-events: none;
 }
 
+/* ─── Liquid Glass SIGNIN pill (.liquid-glass-signin) ────────────────
+   Full-width variant of .liquid-glass-btn for /signin's OAuth pills.
+   Verbatim port of the wabi 5-ingredient recipe, retuned for:
+   - Full container width (root: display:flex; width:100%)
+   - Slimmer 56px height (vs 68px hero CTA — two pills stacked)
+   - 24px horizontal padding (room for brand icon + label)
+   - 16px font (matches existing signin body text size)
+   - Coral-tinted hover — "heat appearing on cold glass" instead of
+     wabi's default brighter-cool-tone lift. Background picks up a
+     coral tint at 8%; outer drop shadow picks up a coral tint at
+     25%; inset highlights stay neutral so the GLASS reads as
+     touched, not the button as recolored.
+
+   The 3 DOM elements per button — verbatim mirror of .liquid-glass-btn:
+     .liquid-glass-signin-root    (wrapper + refraction substrate ::before)
+       .liquid-glass-signin       (transparent surface + sheen + 4-layer
+                                    box-shadow + conic-gradient ::after rim)
+       .liquid-glass-signin-shadow (sibling div outside stacking context,
+                                    masked-ring shadow proxy)
+
+   Without the refraction substrate (root::before) backdrop-filter has
+   nothing to blur on the /signin cream-coral-blue gradient at the
+   button center — the surface reads flat. v1 / v2 failures both came
+   from this missing substrate. Independent class — does NOT inherit
+   from .liquid-glass-btn. */
+
+.liquid-glass-signin-root {
+  position: relative;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  border-radius: 9999px;
+  z-index: 2;
+  isolation: isolate;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.15px;
+  line-height: 24px;
+  color: #333334;
+}
+
+/* Refraction substrate — soft dark radial gradient behind the button
+   so backdrop-filter: blur(2px) has something to refract. The cream
+   /signin bg has SOME color from the radial coral/blue/green layers,
+   but the buttons sit in a relatively flat zone (center viewport) so
+   the substrate amplifies the refraction. -4px overhang lets the
+   halo extend visibly past the pill edges. */
+.liquid-glass-signin-root::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    ellipse at 50% 60%,
+    rgba(0, 0, 0, 0.10) 0%,
+    rgba(0, 0, 0, 0.03) 50%,
+    transparent 80%
+  );
+  z-index: -1;
+  pointer-events: none;
+}
+
+.liquid-glass-signin {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 56px;
+  padding: 0 24px;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: linear-gradient(-75deg,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.20),
+    rgba(255, 255, 255, 0.05));
+  -webkit-backdrop-filter: blur(2px);
+          backdrop-filter: blur(2px);
+  border: 0;
+  border-radius: 9999px;
+  box-shadow:
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+    rgba(0, 0, 0, 0.2) 0px 4px 2px -2px,
+    rgba(255, 255, 255, 0.2) 0px 0px 1.6px 4px inset;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  z-index: 2;
+  transition:
+    transform 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    box-shadow 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    background-color 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    backdrop-filter 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Conic-gradient rim — dark stops at 0/50/100 catch the top/bottom
+   edges where light would glance off real glass. mask-composite:exclude
+   renders only the ring, not the fill. Verbatim from .liquid-glass-btn::after. */
+.liquid-glass-signin::after {
+  content: '';
+  position: absolute;
+  inset: -0.5px 0 0 -0.5px;
+  width: calc(100% + 1px);
+  height: calc(100% + 1px);
+  padding: 1px;
+  background-image:
+    conic-gradient(from -75deg at 50% 50%,
+      rgba(0, 0, 0, 0.5),
+      rgba(0, 0, 0, 0) 5%,
+      rgba(0, 0, 0, 0) 40%,
+      rgba(0, 0, 0, 0.5) 50%,
+      rgba(0, 0, 0, 0) 60%,
+      rgba(0, 0, 0, 0) 95%,
+      rgba(0, 0, 0, 0.5)),
+    linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  box-shadow: rgba(255, 255, 255, 0.5) 0px 0px 0px 0.5px inset;
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.liquid-glass-signin > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Sibling shadow proxy — masked-ring ring sitting BELOW the button,
+   OUTSIDE the surface's stacking context so its dark gradient doesn't
+   bleed through the transparent surface. inset -12px overhang.
+   filter:blur(2px). The ::after paints only a bottom-right-biased
+   ring. */
+.liquid-glass-signin-shadow {
+  position: absolute;
+  inset: -12px;
+  filter: blur(2px);
+  pointer-events: none;
+  overflow: visible;
+  transition: filter 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+  z-index: 0;
+}
+
+.liquid-glass-signin-shadow::after {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: 14px;
+  right: 0;
+  bottom: 0;
+  width: calc(100% - 28px);
+  height: calc(100% - 28px);
+  padding: 2px;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.1));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  border-radius: 9999px;
+  pointer-events: none;
+  transition:
+    top 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    background-image 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Hover — coral warmth ON cold glass.
+   Background picks up coral at 8% (subtle wash), outer drop shadow
+   picks up coral at 25% (warmth gathering below the button), inset
+   highlights stay NEUTRAL (the glass material itself doesn't change
+   — only the heat-signal layers do). Drop shadow ring lifts (top:18→14)
+   so the button reads as "rising toward your hand" instead of merely
+   highlighted. */
+.liquid-glass-signin:hover {
+  background-color: rgba(233, 111, 77, 0.08);
+  box-shadow:
+    rgba(0, 0, 0, 0.05) 0px 2px 2px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -2px 2px 0px inset,
+    rgba(233, 111, 77, 0.25) 0px 2.4px 0.8px -1.6px,
+    rgba(255, 255, 255, 0.5) 0px 0px 0.8px 1.6px inset;
+}
+
+.liquid-glass-signin-root:has(.liquid-glass-signin:hover) .liquid-glass-signin-shadow {
+  filter: blur(1px);
+}
+
+.liquid-glass-signin-root:has(.liquid-glass-signin:hover) .liquid-glass-signin-shadow::after {
+  top: 14px;
+  background-image: linear-gradient(rgba(233, 111, 77, 0.30), rgba(233, 111, 77, 0.12));
+}
+
+.liquid-glass-signin:active {
+  transform: translateY(1px) scale(0.99);
+  transition-duration: 0.15s;
+}
+
+.liquid-glass-signin-root:has(.liquid-glass-signin:active) .liquid-glass-signin-shadow::after {
+  top: 18px;
+  opacity: 0.75;
+}
+
+.liquid-glass-signin:focus-visible {
+  outline: 2px solid rgba(220, 103, 67, 0.6);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-glass-signin {
+    transition: none;
+  }
+}
+
 /* ─── Liquid Glass ORB (.liquid-glass-orb) ───────────────────────────
    Same wabi recipe as .liquid-glass-pill — refraction substrate +
    -75deg sheen + 4-layer box-shadow + conic-gradient rim + sibling

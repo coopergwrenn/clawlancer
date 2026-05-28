@@ -123,50 +123,64 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
           </p>
         </div>
 
-        {/* Auth choices. Google and ChatGPT are equal-weight options.
-            Outlined glass pills (not flat white rectangles) — translucent
-            white at 35% over the cream-gradient gives a frosted look
-            that catches the coral/blue/green ambient layers underneath
-            without dimming them. backdrop-blur-md (12px) is the same
-            blur depth /channels uses on its disclosure pills, so the
-            glass material feels consistent across the funnel. Border
-            is a 6%-black hairline (softer than the 10% from v1 — too
-            dark against cream) and the inset top-highlight shadow
-            (255/255/255 at 0.5, 1px) gives each pill a subtle convex
-            curl like light catching the top of a glass bead. Hover
-            preserves the inset highlight AND adds a 5px coral ring —
-            warmth gathering on a cold-glass surface rather than
-            replacing it. Tailwind's hover:shadow REPLACES the base
-            box-shadow, so the inset highlight is bundled into the
-            hover shadow's value to avoid losing it. active:scale-[0.98]
-            keeps press feedback. Brand icons retain canonical colors. */}
+        {/* Auth choices. Google and ChatGPT are equal-weight options
+            rendered as REAL liquid-glass pills — same material as
+            /channels' channel cards, the home-page CTAs, and the spots
+            counter. The visual recipe is in app/globals.css under
+            .liquid-glass-signin (port of wabi's 5-ingredient liquid
+            glass: refraction substrate, transparent surface with
+            -75deg sheen, 4-layer box-shadow, conic-gradient rim,
+            sibling drop-shadow ring). Two earlier passes failed
+            because they tried to fake glass with bg-white/X opacity +
+            backdrop-blur-md + a tailwind hover ring — that reads as a
+            flat white card with a faint border, NOT as glass floating
+            in atmosphere. The 3-DOM-element architecture (root +
+            surface + sibling shadow) is the recipe that actually works
+            on this product; we use it everywhere else and we use it
+            here.
+
+            Architecture per button:
+              <div .liquid-glass-signin-root>
+                <button .liquid-glass-signin>icon + label</button>
+                <div .liquid-glass-signin-shadow aria-hidden />
+              </div>
+
+            The root wraps + provides the refraction substrate ::before;
+            the button is the transparent surface; the sibling shadow
+            div sits OUTSIDE the surface's stacking context so its dark
+            gradient doesn't bleed through. Hover state is owned by CSS
+            (.liquid-glass-signin:hover) — coral tint at 8% bg + coral
+            drop-shadow at 25% — "heat appearing on cold glass" rather
+            than the wabi-default brighter-cool-tone lift. */}
         <div className="space-y-3">
           {/* Google sign-in */}
-          <button
-            onClick={() => signIn("google", { callbackUrl })}
-            className="w-full px-6 py-4 rounded-full text-base font-medium transition-all duration-200 cursor-pointer flex items-center justify-center gap-3 border border-black/[0.06] bg-white/35 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] hover:border-[#E96F4D] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_0_0_5px_rgba(233,111,77,0.07)] active:scale-[0.98]"
-            style={{ color: CARD_INK }}
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden>
-              <path
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.10z"
-                fill="#4285F4"
-              />
-              <path
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                fill="#34A853"
-              />
-              <path
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                fill="#FBBC05"
-              />
-              <path
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                fill="#EA4335"
-              />
-            </svg>
-            sign in with Google
-          </button>
+          <div className="liquid-glass-signin-root">
+            <button
+              onClick={() => signIn("google", { callbackUrl })}
+              className="liquid-glass-signin"
+            >
+              <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.10z"
+                  fill="#4285F4"
+                />
+                <path
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  fill="#34A853"
+                />
+                <path
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                  fill="#FBBC05"
+                />
+                <path
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  fill="#EA4335"
+                />
+              </svg>
+              sign in with Google
+            </button>
+            <div aria-hidden className="liquid-glass-signin-shadow" />
+          </div>
 
           {/* ChatGPT sign-in + Plus nudge bundled as one logical unit.
               The outer space-y-3 (12px) applies between the Google
@@ -174,14 +188,16 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
               (mt-2) below the button so it feels attached to the
               ChatGPT path rather than as a third equal option. */}
           <div>
-            <button
-              onClick={() => setChatgptModalOpen(true)}
-              className="w-full px-6 py-4 rounded-full text-base font-medium transition-all duration-200 cursor-pointer flex items-center justify-center gap-3 border border-black/[0.06] bg-white/35 backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] hover:border-[#E96F4D] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_0_0_5px_rgba(233,111,77,0.07)] active:scale-[0.98]"
-              style={{ color: CARD_INK }}
-            >
-              <Sparkles className="w-5 h-5" style={{ color: "#10a37f" }} aria-hidden />
-              sign in with ChatGPT
-            </button>
+            <div className="liquid-glass-signin-root">
+              <button
+                onClick={() => setChatgptModalOpen(true)}
+                className="liquid-glass-signin"
+              >
+                <Sparkles className="w-5 h-5 shrink-0" style={{ color: "#10a37f" }} aria-hidden />
+                sign in with ChatGPT
+              </button>
+              <div aria-hidden className="liquid-glass-signin-shadow" />
+            </div>
             {/* ChatGPT Plus nudge. Informational, no link — just a
                 gentle aside for the audience who already pays $20/mo
                 for ChatGPT Plus and qualifies for a lower Instaclaw
