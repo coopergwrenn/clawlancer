@@ -67,11 +67,39 @@ function sanitizeCallbackUrl(raw: string | undefined): string {
   return decoded;
 }
 
+/**
+ * Sanitize the ?ref= query param — the referral code passed through
+ * by ambassador campaign URLs (e.g. /signin?ref=cooper-1 directly,
+ * or /signup?ref=cooper-1 which Move 3's redirect rewrites to
+ * /signin?ref=cooper-1).
+ *
+ * Allowed shape: alphanumeric + hyphen + underscore, 1-64 chars.
+ * Matches the format ambassadors generate via the admin tools.
+ * Anything outside that shape is rejected to prevent stored-XSS
+ * vectors via the input's value re-render — the input would echo
+ * arbitrary user-controlled strings into the DOM otherwise.
+ *
+ * Returns undefined if no ref is provided OR the value is malformed
+ * (treated equivalently — the client just doesn't auto-open the
+ * referral expand on mount). The validate-referral endpoint also
+ * rejects malformed codes server-side, so this is defense in depth.
+ */
+function sanitizeRef(raw: string | undefined): string | undefined {
+  if (!raw || typeof raw !== "string") return undefined;
+  const trimmed = raw.trim().slice(0, 64);
+  if (!trimmed) return undefined;
+  if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) return undefined;
+  return trimmed;
+}
+
 export default async function SignInPage({
   searchParams,
 }: {
   // Next 15: searchParams arrives as a Promise in server components.
-  searchParams: Promise<{ callbackUrl?: string | string[] }>;
+  searchParams: Promise<{
+    callbackUrl?: string | string[];
+    ref?: string | string[];
+  }>;
 }) {
   const params = await searchParams;
   // searchParams values are string | string[]; we only use the first.
@@ -79,6 +107,14 @@ export default async function SignInPage({
     ? params.callbackUrl[0]
     : params.callbackUrl;
   const callbackUrl = sanitizeCallbackUrl(rawCallback);
+
+  // Ref param (Move 2): passed through from ambassador campaign URLs
+  // or from /signup?ref= via Move 3's redirect. Sanitized server-side
+  // (alphanumeric/hyphen/underscore, ≤64 chars) and handed to the
+  // client as `initialRef` — the client uses it to auto-open the
+  // referral expand and pre-fill the input on mount.
+  const rawRef = Array.isArray(params.ref) ? params.ref[0] : params.ref;
+  const initialRef = sanitizeRef(rawRef);
 
   const session = await auth();
   if (session?.user?.id) {
@@ -89,5 +125,5 @@ export default async function SignInPage({
     redirect(callbackUrl);
   }
 
-  return <SignInClient callbackUrl={callbackUrl} />;
+  return <SignInClient callbackUrl={callbackUrl} initialRef={initialRef} />;
 }

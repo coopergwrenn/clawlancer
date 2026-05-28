@@ -1,7 +1,7 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
@@ -18,23 +18,52 @@ const CARD_INK = "#333334";
 const MUTED_INK = "#6b6b6b";
 const SUBTLE_INK = "#9a9892";
 
+// localStorage key for cross-visit ref preservation (legacy /signup
+// behavior — a user who arrived at /signup?ref=X last week, didn't
+// sign up, comes back this week to /signin: we restore their ref so
+// the ambassador still gets credit on signup).
+const REFERRAL_STORAGE_KEY = "instaclaw_ref";
+
 /**
  * /signin client view.
  *
- * Receives `callbackUrl` as a prop from the server component wrapper.
- * The wrapper parses + validates ?callbackUrl=, checks the NextAuth
- * session, and redirects authenticated users to callbackUrl BEFORE
- * this component ever renders. By the time we mount, we know:
+ * Receives `callbackUrl` + `initialRef` as props from the server
+ * component wrapper. The wrapper parses + validates ?callbackUrl=
+ * and ?ref=, checks the NextAuth session, and redirects authenticated
+ * users to callbackUrl BEFORE this component ever renders. By the
+ * time we mount, we know:
  *
  *   - User is NOT authenticated (server redirected if they were)
  *   - callbackUrl is safe (relative path, not /signin itself)
+ *   - initialRef (if present) matches /^[a-zA-Z0-9_-]{1,64}$/
  *
  * No useSearchParams here; no Suspense boundary needed. The previous
  * client-only implementation used useSearchParams + Suspense; W5
  * (2026-05-22 audit fix) moved the session check + URL parsing to
  * the server, which also dropped the suspended-on-mount flicker.
+ *
+ * Referral expand (Move 2 + 5, 2026-05-28):
+ *
+ * The footer "have an invite code? use it here." toggles a pill-
+ * shaped input below the OAuth buttons. When a user arrives with
+ * ?ref= (or has localStorage.instaclaw_ref from a previous visit),
+ * the expand auto-opens with the code pre-filled and validated.
+ * The validated code is written to /api/invite/store as a cookie
+ * BEFORE the OAuth call, so lib/auth.ts's Google signIn callback
+ * (and the ChatGPT modal's eventual signIn() call) can read it
+ * during user creation and apply the 25%-off referral discount.
+ *
+ * This consolidates /signup's only remaining unique feature into
+ * /signin, so /signup can be a thin redirect (Move 3) without
+ * losing the ambassador attribution flow.
  */
-export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
+export function SignInClient({
+  callbackUrl,
+  initialRef,
+}: {
+  callbackUrl: string;
+  initialRef?: string;
+}) {
   // ChatGPT-as-signin opens the device-code modal in signup mode. The
   // modal handles the full polling + identity-resolution + signIn() flow
   // (chatgpt-connect-modal.tsx + lib/openai-signup-*). On success the
@@ -42,6 +71,159 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
   // which establishes a NextAuth session via the Credentials provider
   // and redirects to callbackUrl.
   const [chatgptModalOpen, setChatgptModalOpen] = useState(false);
+
+  // Referral expand state. Toggled by the footer button below.
+  // - referralExpanded: is the input visible?
+  // - referralCode: current input value
+  // - referralValid: null = unknown, true = ambassador-validated,
+  //   false = unrecognized (gates the pre-OAuth /api/invite/store
+  //   call so a typo doesn't burn the user's signup with a phantom
+  //   referrer)
+  // - referralName: ambassador display name on success
+  // - inputFocused: drives the focus-ring + neutral-border styling
+  //   without mutating the DOM (we need state-driven render so the
+  //   validation-color rules override the focus-color rules cleanly)
+  const [referralExpanded, setReferralExpanded] = useState(false);
+  const [referralCode, setReferralCode] = useState("");
+  const [referralValid, setReferralValid] = useState<boolean | null>(null);
+  const [referralName, setReferralName] = useState("");
+  const [inputFocused, setInputFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Hydrate on mount. ?ref= (passed via initialRef prop) wins over
+  // localStorage — represents the user's most recent intent (they
+  // just clicked an ambassador link). localStorage is the fallback
+  // for users who saw an ambassador link in a previous visit and
+  // are returning now without the URL param. Either source: pre-
+  // fill input, open expand, validate immediately. Empty source:
+  // expand stays collapsed, footer toggle is the only way in.
+  useEffect(() => {
+    let code: string | null = null;
+    if (initialRef) {
+      code = initialRef;
+    } else {
+      try {
+        code = localStorage.getItem(REFERRAL_STORAGE_KEY);
+      } catch {
+        /* localStorage unavailable (SSR snapshot, private mode) */
+      }
+    }
+    if (code) {
+      setReferralCode(code);
+      setReferralExpanded(true);
+      validateReferral(code);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRef]);
+
+  // Validate against /api/ambassador/validate-referral. Called on:
+  //   - mount (when ?ref= or localStorage hydrates the input)
+  //   - input blur
+  //   - Enter key in input
+  // NOT called on every keystroke — /signup's pattern did that and
+  // hammered the API for nothing. Out-of-order responses are
+  // tolerated: the latest response wins via the standard React
+  // state update.
+  async function validateReferral(code: string) {
+    const trimmed = code.trim();
+    if (!trimmed) {
+      setReferralValid(null);
+      setReferralName("");
+      return;
+    }
+    try {
+      const res = await fetch("/api/ambassador/validate-referral", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: trimmed }),
+      });
+      const data = (await res.json()) as {
+        valid?: boolean;
+        ambassadorName?: string;
+      };
+      setReferralValid(!!data.valid);
+      setReferralName(data.ambassadorName || "");
+      // Persist on success — mirror /signup's legacy behavior so a
+      // user who validates then doesn't sign in immediately retains
+      // the code on next visit.
+      if (data.valid) {
+        try {
+          localStorage.setItem(REFERRAL_STORAGE_KEY, trimmed);
+        } catch {
+          /* private mode */
+        }
+      }
+    } catch {
+      setReferralValid(false);
+      setReferralName("");
+    }
+  }
+
+  // Pre-OAuth referral cookie write. Sets instaclaw_referral_code via
+  // /api/invite/store so that lib/auth.ts's Google signIn callback
+  // can read it from the request cookies and apply the 25%-off
+  // referral during user-row INSERT. Gated on referralValid === true:
+  // an unvalidated or invalid code is silently dropped (same
+  // graceful fallback /signup had). Non-fatal — if the fetch fails
+  // the OAuth still proceeds, the user just signs in without
+  // the referral applied.
+  async function storeReferralBeforeOAuth() {
+    if (referralCode.trim() && referralValid === true) {
+      try {
+        await fetch("/api/invite/store", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ referralCode: referralCode.trim() }),
+        });
+      } catch {
+        /* non-fatal — let auth proceed without referral */
+      }
+    }
+  }
+
+  async function handleGoogleClick() {
+    await storeReferralBeforeOAuth();
+    signIn("google", { callbackUrl });
+  }
+
+  async function handleChatGPTClick() {
+    await storeReferralBeforeOAuth();
+    setChatgptModalOpen(true);
+  }
+
+  // Footer toggle handler. Toggle pattern (open ↔ close) so the
+  // user can dismiss the expand if they changed their mind. State
+  // (code, validity) is preserved across collapses so re-opening
+  // restores the previous input — no surprise resets. On open we
+  // focus the input via requestAnimationFrame so the DOM has
+  // settled by the time .focus() runs.
+  function toggleReferralExpand() {
+    setReferralExpanded((prev) => {
+      const next = !prev;
+      if (next) {
+        requestAnimationFrame(() => inputRef.current?.focus());
+      }
+      return next;
+    });
+  }
+
+  // Border color is state-driven so validation results override focus
+  // styling without DOM mutations fighting React re-renders. The
+  // precedence: valid (green) > invalid (red) > focused (coral) >
+  // default neutral. Focus ring only when neutral so a valid/invalid
+  // pill doesn't get a noisy coral halo on top of its result color.
+  const inputBorderColor =
+    referralValid === true
+      ? "rgba(34, 197, 94, 0.5)"
+      : referralValid === false && referralCode.trim()
+        ? "rgba(193, 92, 92, 0.4)"
+        : inputFocused
+          ? CORAL
+          : "rgba(0, 0, 0, 0.08)";
+  const inputBoxShadow =
+    inputFocused && referralValid === null
+      ? "0 0 0 3px rgba(233, 111, 77, 0.10)"
+      : "none";
 
   return (
     <div
@@ -88,16 +270,22 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
           </span>
         </Link>
 
-        {/* Heading + subtitle. Voice mirrors /channels exactly: lowercase,
-            sentence case, period at end. The subtitle's two-beat
-            ("welcome back. or come in for the first time.") covers both
-            sign-in and signup intents without making either feel like
-            the secondary option. Typography spec is copied verbatim
-            from /channels' "pick a channel." headline (serif clamp,
-            line-height 1.0, letter-spacing -1.8px) so the two pages
-            feel like spread pages of one book rather than separate
-            screens. */}
-        <div className="text-center space-y-4">
+        {/* Heading only — no subtitle (Move 1, 2026-05-28). The prior
+            two-beat subtitle ("welcome back. or come in for the first
+            time.") tried to serve both returning and new users at
+            once and landed wrong on both: returning users read
+            "welcome back" then a confusing "or come in for the
+            first time"; new users read "welcome back" first as if
+            they'd been here before. Google OAuth on this page handles
+            both new accounts (lib/auth.ts:194-548 INSERTs the user
+            row on first sign-in) and returning users transparently,
+            so the dual-audience copy was solving a problem that
+            doesn't exist at the auth layer. Dropping it removes
+            noise; the headline + buttons + footnotes communicate
+            everything needed. Typography spec preserved verbatim
+            from the pre-Move-1 version (serif clamp, line-height
+            1.0, letter-spacing -1.8px). */}
+        <div className="text-center">
           <h1
             className="font-normal"
             style={{
@@ -110,17 +298,6 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
           >
             sign in.
           </h1>
-          <p
-            className="mx-auto"
-            style={{
-              fontSize: 17,
-              lineHeight: 1.5,
-              color: MUTED_INK,
-              maxWidth: 380,
-            }}
-          >
-            welcome back. or come in for the first time.
-          </p>
         </div>
 
         {/* Auth choices. Google and ChatGPT are equal-weight options
@@ -153,10 +330,12 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
             drop-shadow at 25% — "heat appearing on cold glass" rather
             than the wabi-default brighter-cool-tone lift. */}
         <div className="space-y-3">
-          {/* Google sign-in */}
+          {/* Google sign-in. handleGoogleClick wraps the signIn() call
+              with a pre-OAuth /api/invite/store cookie write when a
+              valid referral code is present in the expand below. */}
           <div className="liquid-glass-signin-root">
             <button
-              onClick={() => signIn("google", { callbackUrl })}
+              onClick={handleGoogleClick}
               className="liquid-glass-signin"
             >
               <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden>
@@ -186,11 +365,14 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
               The outer space-y-3 (12px) applies between the Google
               pill and this <div>; inside the unit the nudge sits 8px
               (mt-2) below the button so it feels attached to the
-              ChatGPT path rather than as a third equal option. */}
+              ChatGPT path rather than as a third equal option.
+              handleChatGPTClick wraps setChatgptModalOpen with the
+              same pre-OAuth referral-store call so the cookie is set
+              before the modal's eventual signIn() call. */}
           <div>
             <div className="liquid-glass-signin-root">
               <button
-                onClick={() => setChatgptModalOpen(true)}
+                onClick={handleChatGPTClick}
                 className="liquid-glass-signin"
               >
                 <Sparkles className="w-5 h-5 shrink-0" style={{ color: "#10a37f" }} aria-hidden />
@@ -215,11 +397,109 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
               have ChatGPT Plus? get a lower plan price.
             </p>
           </div>
+
+          {/* Referral expand (Move 2, 2026-05-28). Third sibling in
+              the OAuth space-y-3 group — reads as "still part of the
+              OAuth flow, here's the optional layer for users who came
+              with a code" rather than a separate form field. Hidden
+              by default; opened by the "have an invite code? use it
+              here." footer button below OR auto-opened on mount if
+              ?ref= (initialRef prop) or localStorage carries a code.
+
+              Input is a flatter, lower-opacity sibling of the OAuth
+              pill (border-radius 9999px to match material vocabulary,
+              48px height vs 56px buttons to read as subordinate, bg
+              white/0.5 vs the OAuth buttons' transparent + sheen so
+              text is readable while the gradient still shows
+              through). Border color is state-driven:
+
+                valid    → green   (rgba(34,197,94,0.5))
+                invalid  → red     (rgba(193,92,92,0.4))  — quiet, not alarming
+                focused  → coral   (matches the OAuth hover hue)
+                default  → neutral (6%-black hairline, matches OAuth buttons)
+
+              Validation runs on blur + Enter (NOT on every keystroke
+              — /signup did that and was wasteful). On success, the
+              code is also written to localStorage.instaclaw_ref so a
+              user who validates without signing in retains the code
+              on next visit (legacy /signup behavior). */}
+          {referralExpanded && (
+            <div className="pt-1">
+              <input
+                ref={inputRef}
+                type="text"
+                value={referralCode}
+                placeholder="enter your referral code"
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                aria-label="referral code"
+                className="w-full outline-none transition-all duration-200"
+                style={{
+                  background: "rgba(255, 255, 255, 0.5)",
+                  backdropFilter: "blur(2px)",
+                  WebkitBackdropFilter: "blur(2px)",
+                  border: `1px solid ${inputBorderColor}`,
+                  borderRadius: 9999,
+                  padding: "12px 20px",
+                  fontSize: 15,
+                  color: CARD_INK,
+                  boxShadow: inputBoxShadow,
+                  textAlign: "center",
+                }}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => {
+                  setInputFocused(false);
+                  validateReferral(referralCode);
+                }}
+                onChange={(e) => {
+                  setReferralCode(e.target.value);
+                  // Clear stale validation while the user is typing —
+                  // re-checked on blur. Skip the state update when
+                  // already null so we don't trigger useless re-renders.
+                  if (referralValid !== null) {
+                    setReferralValid(null);
+                    setReferralName("");
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    validateReferral(referralCode);
+                  }
+                }}
+              />
+              {/* Validation message — 12px subtle-ink, matches the
+                  ChatGPT Plus nudge style above so the two aside-
+                  notes carry the same visual weight. Mirrors
+                  /signup's success ("✓ 25% off your first month...")
+                  but at the quieter voice level appropriate to /signin
+                  (/signup's was 14px green banner; ours is a 12px
+                  subtle line — the OAuth buttons are still the
+                  hero). */}
+              {referralValid === true && referralName && (
+                <p
+                  className="mt-2 text-center"
+                  style={{ fontSize: 12, color: SUBTLE_INK, lineHeight: 1.4 }}
+                >
+                  ✓ referred by {referralName}.
+                </p>
+              )}
+              {referralValid === false && referralCode.trim() && (
+                <p
+                  className="mt-2 text-center"
+                  style={{ fontSize: 12, color: SUBTLE_INK, lineHeight: 1.4 }}
+                >
+                  referral code not found.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Invite + support footers, paired as one unit. Both mirror
             /channels' footnote zone exactly: 13px subtle-ink, lowercase,
-            single inline link in muted-ink underlined. Wrapped in a
+            single inline trigger in muted-ink underlined. Wrapped in a
             space-y-2 div so they share consistent 8px internal spacing
             and ONE 48px gap above (from the outer space-y-12) rather
             than two competing margin sources. Reads as a paired
@@ -229,24 +509,39 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
             ("need help?") while SupportFooter ships the legacy
             Title-case copy used by 5 other surfaces; flipping the
             shared component would cascade visual changes we don't
-            want today. */}
+            want today.
+
+            Move 5 (2026-05-28): the "use it here" anchor was a
+            <Link href="/signup">. After Move 3 made /signup a thin
+            redirect to /signin, that link would have produced a
+            no-op loop (/signin → /signup → /signin same page). It's
+            now a <button> that toggles the referral expand defined
+            in the OAuth group above. Text flips to "hide" when the
+            expand is open — visible signal for the toggle's
+            reciprocal action without breaking the lowercase voice. */}
         <div className="space-y-2">
           <p
             className="text-center"
             style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
           >
             have an invite code?{" "}
-            <Link
-              href="/signup"
-              className="transition-opacity hover:opacity-70"
+            <button
+              type="button"
+              onClick={toggleReferralExpand}
+              aria-expanded={referralExpanded}
+              className="transition-opacity hover:opacity-70 cursor-pointer"
               style={{
                 color: MUTED_INK,
                 textDecoration: "underline",
                 textUnderlineOffset: 2,
+                background: "transparent",
+                border: 0,
+                padding: 0,
+                font: "inherit",
               }}
             >
-              use it here
-            </Link>
+              {referralExpanded ? "hide" : "use it here"}
+            </button>
             .
           </p>
           <p
