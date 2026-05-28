@@ -7,7 +7,16 @@ import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { ChatGPTConnectModal } from "@/components/dashboard/chatgpt-connect-modal";
 import { EdgePartnerBanner } from "@/components/marketing/edge-partner-banner";
-import { SupportFooter } from "@/components/marketing/support-footer";
+
+// Brand constants — copied from /channels to keep the two pages
+// visually paired. /channels is the design-language reference for the
+// entire onboarding funnel (2026-05 polish pass). If these values
+// change there, change here too.
+const CORAL = "#E96F4D";
+const CREAM_BG = "#f8f7f4";
+const CARD_INK = "#333334";
+const MUTED_INK = "#6b6b6b";
+const SUBTLE_INK = "#9a9892";
 
 /**
  * /signin client view.
@@ -38,8 +47,21 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
     <div
       className="min-h-screen flex flex-col"
       style={{
-        background: "#f8f7f4",
-        color: "#333334",
+        color: CARD_INK,
+        /* Warm-sand atmosphere — verbatim from /channels (lines 58-64
+         * of channels-client.tsx). Layered radial gradients (coral 18%
+         * top / blue 14% bottom-left / faint green 8% top-right) over
+         * the cream linear base. Establishes the funnel's identity
+         * before the user reads a word. Pairs /signin visually with
+         * /channels so the OAuth bounce mid-skip-flow doesn't feel
+         * like a context switch. */
+        background: `
+          radial-gradient(1200px 700px at 50% -10%, rgba(233, 111, 77, 0.18), transparent 65%),
+          radial-gradient(900px 600px at 8% 95%, rgba(34, 158, 217, 0.14), transparent 70%),
+          radial-gradient(700px 500px at 95% 25%, rgba(31, 173, 62, 0.08), transparent 75%),
+          linear-gradient(180deg, #f5f3ee 0%, #f8f7f4 60%, #f9f7f2 100%),
+          ${CREAM_BG}
+        `,
       }}
     >
       {/* EdgePartnerBanner. Closes the brand seam between /edge/setup
@@ -61,41 +83,62 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
           </span>
         </Link>
 
-        {/* Heading. Neutral wording so the page reads correctly for BOTH
-            first-time signups (Edge attendees hitting /signin via
-            /edge/setup) and returning users hitting /signin to sign
-            back in. The buttons say "Sign in with X" and the flows
-            create-or-link the account underneath — the user doesn't
-            need to know whether they're signing in or signing up. The
-            subtitle says "or create" to make that intent explicit. */}
-        <div className="text-center space-y-3">
+        {/* Heading + subtitle. Voice mirrors /channels exactly: lowercase,
+            sentence case, period at end. The subtitle's two-beat
+            ("welcome back. or come in for the first time.") covers both
+            sign-in and signup intents without making either feel like
+            the secondary option. Typography spec is copied verbatim
+            from /channels' "pick a channel." headline (serif clamp,
+            line-height 1.0, letter-spacing -1.8px) so the two pages
+            feel like spread pages of one book rather than separate
+            screens. */}
+        <div className="text-center space-y-4">
           <h1
-            className="text-4xl sm:text-5xl font-normal tracking-[-1px]"
-            style={{ fontFamily: "var(--font-serif)" }}
+            className="font-normal"
+            style={{
+              fontFamily: "var(--font-serif)",
+              fontSize: "clamp(44px, 12vw, 60px)",
+              lineHeight: 1.0,
+              letterSpacing: "-1.8px",
+              color: CARD_INK,
+            }}
           >
-            Sign in
+            sign in.
           </h1>
-          <p className="text-base" style={{ color: "#6b6b6b" }}>
-            Sign in or create your Instaclaw account.
+          <p
+            className="mx-auto"
+            style={{
+              fontSize: 17,
+              lineHeight: 1.5,
+              color: MUTED_INK,
+              maxWidth: 380,
+            }}
+          >
+            welcome back. or come in for the first time.
           </p>
         </div>
 
         {/* Auth choices. Google and ChatGPT are equal-weight options.
-            Stacked vertically with matching styling: white bg, subtle
-            border, identical padding + radius. The user picks one. No
-            "preferred" treatment, no "or" separator. Both first-class. */}
+            Outlined glass pills (not flat white rectangles) — translucent
+            cream bg over the gradient with a backdrop blur for the
+            liquid feel /channels established. Default border is a muted
+            10%-black hairline; hover shifts the border to coral and
+            adds a soft 4px coral glow as the only color cue. No fill
+            color change on hover — keeps the touch target stable.
+            active:scale-[0.98] gives the satisfying press feedback
+            without competing with the hover signal. Brand icons retain
+            their canonical colors (Google's multi-color G; ChatGPT's
+            teal Sparkles) — same convention as /channels' channel
+            cards where iMessage green, Telegram blue, etc. all keep
+            their brand hues. */}
         <div className="space-y-3">
           {/* Google sign-in */}
           <button
             onClick={() => signIn("google", { callbackUrl })}
-            className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-3 hover:bg-[#fafafa]"
-            style={{
-              background: "#ffffff",
-              color: "#333334",
-              border: "1px solid rgba(0, 0, 0, 0.1)",
-            }}
+            className="w-full px-6 py-4 rounded-full text-base font-medium transition-all duration-200 cursor-pointer flex items-center justify-center gap-3 border border-black/10 bg-white/60 backdrop-blur-sm hover:border-[#E96F4D] hover:shadow-[0_0_0_4px_rgba(233,111,77,0.06)] active:scale-[0.98]"
+            style={{ color: CARD_INK }}
           >
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden>
               <path
                 d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.10z"
                 fill="#4285F4"
@@ -113,47 +156,66 @@ export function SignInClient({ callbackUrl }: { callbackUrl: string }) {
                 fill="#EA4335"
               />
             </svg>
-            Sign in with Google
+            sign in with Google
           </button>
 
-          {/* ChatGPT sign-in. Equal weight to Google. Sparkles icon
-              matches the existing /settings ChatGPT-connection panel +
-              the modal's brand cue. We deliberately don't ship
-              OpenAI's logo mark for trademark hygiene; Sparkles reads
-              as "AI-flavored auth" without ambiguity. */}
+          {/* ChatGPT sign-in. Sparkles icon stays teal #10a37f — same
+              convention as /channels' channel cards (brand icons keep
+              their canonical colors against the muted glass). */}
           <button
             onClick={() => setChatgptModalOpen(true)}
-            className="w-full px-6 py-4 rounded-lg text-base font-semibold transition-all cursor-pointer flex items-center justify-center gap-3 hover:bg-[#fafafa]"
-            style={{
-              background: "#ffffff",
-              color: "#333334",
-              border: "1px solid rgba(0, 0, 0, 0.1)",
-            }}
+            className="w-full px-6 py-4 rounded-full text-base font-medium transition-all duration-200 cursor-pointer flex items-center justify-center gap-3 border border-black/10 bg-white/60 backdrop-blur-sm hover:border-[#E96F4D] hover:shadow-[0_0_0_4px_rgba(233,111,77,0.06)] active:scale-[0.98]"
+            style={{ color: CARD_INK }}
           >
-            <Sparkles className="w-5 h-5" style={{ color: "#10a37f" }} />
-            Sign in with ChatGPT
+            <Sparkles className="w-5 h-5" style={{ color: "#10a37f" }} aria-hidden />
+            sign in with ChatGPT
           </button>
         </div>
 
-        {/* Link to signup */}
-        <p className="text-sm text-center" style={{ color: "#6b6b6b" }}>
-          Have an invite code?{" "}
+        {/* Invite + support footers. Both mirror /channels' footnote
+            zone exactly: 13px subtle-ink, lowercase, single inline link
+            in muted-ink underlined. The two stacked footnotes read as
+            a paired escape-hatch (broader option first — invite code —
+            then narrower — help). Replaces the SupportFooter component
+            inline because Cooper-voice on this page means lowercase
+            ("need help?") while SupportFooter ships the legacy
+            Title-case copy used by 5 other surfaces; flipping the
+            shared component would cascade visual changes we don't
+            want today. */}
+        <p
+          className="text-center"
+          style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
+        >
+          have an invite code?{" "}
           <Link
             href="/signup"
-            className="underline transition-opacity hover:opacity-70"
-            style={{ color: "#333334" }}
+            className="transition-opacity hover:opacity-70"
+            style={{
+              color: MUTED_INK,
+              textDecoration: "underline",
+              textUnderlineOffset: 2,
+            }}
           >
-            Use it here
+            use it here
           </Link>
+          .
         </p>
-
-        {/* Support footer (F3). Small centered line, deferential
-            opacity, inherits the parent's muted gray color. */}
         <p
-          className="text-[12px] text-center"
-          style={{ color: "#6b6b6b" }}
+          className="mt-2 text-center"
+          style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
         >
-          <SupportFooter />
+          need help?{" "}
+          <a
+            href="mailto:help@instaclaw.io"
+            className="transition-opacity hover:opacity-70"
+            style={{
+              color: MUTED_INK,
+              textDecoration: "underline",
+              textUnderlineOffset: 2,
+            }}
+          >
+            help@instaclaw.io
+          </a>
         </p>
         </div>
       </div>
