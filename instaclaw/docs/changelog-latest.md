@@ -1,15 +1,15 @@
 # Changelog — generated 2026-05-29
 
-Window: `d3c0d9fcc8dc6f01361bddf3448dc3d020483c15` → `HEAD` (HEAD = `b8558429`)
+Window: `b8558429c457376924f47e795a9300f7c9efa1e7` → `HEAD` (HEAD = `c811a659`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: b8558429c457376924f47e795a9300f7c9efa1e7 -->
+<!-- LAST_GENERATED_SHA: c811a65939ca896efde5a2fd3c610a2bf34ea4f8 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `b8558429` 2026-05-29 — fix(openclaw-patches): re-anchor pi-ai-reasoning-router for OpenClaw 2026.5.22 [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `3acbb696` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+- `c811a659` 2026-05-29 — feat(session): expose chatgptPlanType + connectedChatGPT on session.user [2 files] _(ai-assisted)_
+- `cfb68b42` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `b8558429` 2026-05-29 — fix(openclaw-patches): re-anchor pi-ai-reasoning-router for OpenClaw 2026.5.22 [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `c811a659` 2026-05-29 — feat(session): expose chatgptPlanType + connectedChatGPT on session.user [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `3acbb696` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `b8558429` 2026-05-29 — [reconciler, infrastructure] — fix(openclaw-patches): re-anchor pi-ai-reasoning-router for OpenClaw 2026.5.22
+- `cfb68b42` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `b8558429` 2026-05-29 — fix(openclaw-patches): re-anchor pi-ai-reasoning-router for OpenClaw 2026.5.22
+- `c811a659` 2026-05-29 — feat(session): expose chatgptPlanType + connectedChatGPT on session.user
 
 ## Appendix — every commit (chronological)
 
-- `3acbb696` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
-- `b8558429` 2026-05-29 — fix(openclaw-patches): re-anchor pi-ai-reasoning-router for OpenClaw 2026.5.22 [2 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `cfb68b42` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+- `c811a659` 2026-05-29 — feat(session): expose chatgptPlanType + connectedChatGPT on session.user [2 files] _(ai-assisted)_
