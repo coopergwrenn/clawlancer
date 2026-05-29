@@ -283,7 +283,7 @@ function provisionCreateInstance(): BakeStep {
   return {
     id: "provision-create-instance",
     phase: "provision",
-    description: "Create Linode g6-nanode-1 from LINODE_SNAPSHOT_ID",
+    description: "Create Linode g6-dedicated-2 from LINODE_SNAPSHOT_ID (matches prod fleet)",
     estimated_seconds: 60,
     retryable: false, // Re-running would create a duplicate VM. Resume should skip.
     recovery_hint: "If this fails, no Linode VM is created. Re-run.",
@@ -1113,7 +1113,12 @@ function soakProvision(): BakeStep {
       const inst = await createInstance({
         label,
         region: ctx.state.bake_vm.region,
-        type: "g6-nanode-1",
+        // 2026-05-29: switched g6-nanode-1 → g6-dedicated-2 to match production
+        // fleet hardware class (see step-spec.ts:bake_vm.type for the rationale).
+        // Soak VM must run on the same hardware as the snapshot will deploy to,
+        // otherwise the post-bake-validate timing/health checks are sampling a
+        // different I/O envelope than real users will experience.
+        type: "g6-dedicated-2",
         image: ctx.state.new_snapshot.image_id,
         root_pass: generateRandomRootPassword(),
         authorized_keys: [sshKey],

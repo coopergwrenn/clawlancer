@@ -349,7 +349,16 @@ export function emptyState(run_id: string, source_snapshot_id: string): BakeStat
       ip_address: null,
       label: "",
       region: "us-east",
-      type: "g6-nanode-1",
+      // 2026-05-29: switched g6-nanode-1 → g6-dedicated-2 to match the production
+      // fleet hardware class. The nanode's $5/mo shared CPU has highly variable
+      // I/O under contention (empirically: gbrain init --pglite measured 11s-118s
+      // across 5 fresh us-east nanodes, and bake attempts #5 + #6 timed out at the
+      // script's 60s hard limit). Production VMs run g6-dedicated-2 ($29/mo
+      // dedicated 2 vCPU); baking on the same class guarantees the snapshot's
+      // install steps run under representative I/O conditions. Bake VM lives ~30
+      // min so the price delta is ~$0.025 vs ~$0.004 — negligible vs the cost of
+      // shipping a snapshot that was built on inferior hardware than it deploys to.
+      type: "g6-dedicated-2",
     },
     synthetic_vm: { inserted: false, id: "" },
     cron_lock: { acquired: false, acquired_at: null },
