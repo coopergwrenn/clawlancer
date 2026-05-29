@@ -44,6 +44,22 @@ const args = process.argv.slice(2);
 const partnerArg = args.includes("--partner") ? args[args.indexOf("--partner") + 1] : "edge_city";
 const verbose = args.includes("--verbose");
 
+// 2026-05-29: --exclude-vms / GBRAIN_COVERAGE_EXCLUDE_VMS — operator-known
+// VMs to skip from the coverage sample. Use sparingly and document the
+// reason out-of-band (e.g., privacy-bridge SSH-blocked VM whose gbrain
+// state we can't verify but is healthy at the gateway layer). The env-var
+// form is what scripts/_pre-bake-check.ts inherits when it shells out to
+// this script; the CLI flag is for ad-hoc manual runs.
+const excludeFlagIdx = args.indexOf("--exclude-vms");
+const excludeVmsArg =
+  excludeFlagIdx >= 0 ? args[excludeFlagIdx + 1] : process.env.GBRAIN_COVERAGE_EXCLUDE_VMS;
+const EXCLUDE_VMS = new Set(
+  (excludeVmsArg || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
+
 type Arch = "http-sidecar" | "stdio" | "none" | "unknown";
 type Status = "gbrained" | "missing_gbrain" | "missing_key" | "partial" | "ssh_err";
 
@@ -166,8 +182,13 @@ async function main() {
     console.error("query failed:", error.message);
     process.exit(1);
   }
-  const fleet = (vms ?? []).filter((v: any) => v.ip_address);
+  const fleetPre = (vms ?? []).filter((v: any) => v.ip_address);
+  const excluded = fleetPre.filter((v: any) => EXCLUDE_VMS.has(v.name)).map((v: any) => v.name);
+  const fleet = fleetPre.filter((v: any) => !EXCLUDE_VMS.has(v.name));
   console.log(`Fleet: ${fleet.length} VMs (partner=${partnerArg}, assigned+healthy)`);
+  if (excluded.length > 0) {
+    console.log(`Excluded ${excluded.length} VM(s) per --exclude-vms / GBRAIN_COVERAGE_EXCLUDE_VMS: ${excluded.join(", ")}`);
+  }
   if (fleet.length === 0) {
     console.log("No VMs to probe. Done.");
     return;
