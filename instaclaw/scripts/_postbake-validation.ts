@@ -1577,13 +1577,26 @@ async function run() {
     }
 
     // 31e — Base DeFi AGENTS.md routing block (commit dfbc36c5).
-    // stepDeployBaseDefiRouting INSERTS BASE_DEFI_ROUTING_V1_BEGIN/END markers
+    // stepDeployBaseDefiRouting INSERTS the markers from
+    // workspace-templates-v2.ts:
+    //   BASE_DEFI_ROUTING_V1_BEGIN_MARKER = "<!-- BASE_DEFI_ROUTING_V1 -->"
+    //   BASE_DEFI_ROUTING_V1_END_MARKER   = "<!-- /BASE_DEFI_ROUTING_V1 -->"
     // into AGENTS.md. The bake VM's reconcile MUST execute this step (called
     // twice in reconcileVM — orchestrator lines 446 + 921). Both markers must
     // be present (BEGIN + END count = 2).
+    //
+    // 2026-05-29 v126 bake fix: the prior regex was
+    // `BASE_DEFI_ROUTING_V1_(BEGIN|END)` which looked for the literal strings
+    // `BASE_DEFI_ROUTING_V1_BEGIN` / `BASE_DEFI_ROUTING_V1_END` — but those
+    // suffixes don't appear in the marker text itself (only in the constant
+    // names in workspace-templates-v2.ts). False-positive P0 blocked the
+    // bake even though the reconciler had inserted the markers correctly.
+    // Switched to counting the canonical sub-string `BASE_DEFI_ROUTING_V1`,
+    // which appears in BOTH the BEGIN (`<!-- BASE_DEFI_ROUTING_V1 -->`) and
+    // END (`<!-- /BASE_DEFI_ROUTING_V1 -->`) markers. Expected count = 2.
     const baseDefiMarkers = parseInt(
       (await exec(c,
-        `grep -cE "BASE_DEFI_ROUTING_V1_(BEGIN|END)" ~/.openclaw/workspace/AGENTS.md 2>/dev/null || echo 0`,
+        `grep -cE "BASE_DEFI_ROUTING_V1" ~/.openclaw/workspace/AGENTS.md 2>/dev/null || echo 0`,
       )).stdout.trim() || "0",
       10,
     );
