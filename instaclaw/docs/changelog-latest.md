@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-29
 
-Window: `c7644ee69b9cfd800cff73c010ef94c162c7fc0b` → `HEAD` (HEAD = `6e34d8f1`)
+Window: `6e34d8f100b1218ade8a575a6e0cd452c551e547` → `HEAD` (HEAD = `40c35a3a`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 6e34d8f100b1218ade8a575a6e0cd452c551e547 -->
+<!-- LAST_GENERATED_SHA: 40c35a3ac9f4a7786ade04bc78a14dfe0c5e6fe1 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `6e34d8f1` 2026-05-29 — feat(plan): enterprise section redesign — Option D layout + glass pill + new headline/subtitle [2 files] _(ai-assisted)_
+- `40c35a3a` 2026-05-29 — plan: enterprise section — switch back to two-column layout [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `d15f5797` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+- `b25159c7` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `6e34d8f1` 2026-05-29 — feat(plan): enterprise section redesign — Option D layout + glass pill + new headline/subtitle [2 files] _(ai-assisted)_
+- `40c35a3a` 2026-05-29 — plan: enterprise section — switch back to two-column layout [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `d15f5797` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+- `b25159c7` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `6e34d8f1` 2026-05-29 — feat(plan): enterprise section redesign — Option D layout + glass pill + new headline/subtitle
+- `40c35a3a` 2026-05-29 — plan: enterprise section — switch back to two-column layout
 
 ## Appendix — every commit (chronological)
 
-- `d15f5797` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
-- `6e34d8f1` 2026-05-29 — feat(plan): enterprise section redesign — Option D layout + glass pill + new headline/subtitle [2 files] _(ai-assisted)_
+- `b25159c7` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+- `40c35a3a` 2026-05-29 — plan: enterprise section — switch back to two-column layout [1 files] _(ai-assisted)_
