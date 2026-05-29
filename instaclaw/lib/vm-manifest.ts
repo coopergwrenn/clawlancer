@@ -1696,6 +1696,52 @@ export const VM_MANIFEST = {
    * sweep begin. First 5 customer reconciles are monitored before the
    * remaining ~146 VMs proceed unattended.
    *
+   * v126 — 2026-05-29 (v126 snapshot baseline — pre-bake manifest bump)
+   * Pure manifest version bump. No configSettings, files[], cronJobs,
+   * systemdOverrides, or step-sequence changes. Content-identical to v125.
+   *
+   * Purpose: bump the manifest BEFORE the snapshot bake so the bake's
+   * reconcile-run-audit phase advances the bake VM from the source
+   * snapshot's cv (122) → cv=126, and the resulting snapshot ships at
+   * cv=126 — matching the current manifest version rather than lagging
+   * it by one (as the prior 2026-05-29 attempt at cv=125 did).
+   *
+   * Process discipline: bump the manifest version FIRST, then bake.
+   * Reverse order — bake first against the current manifest, then bump
+   * to N+1 during cutover — produces a snapshot that already lags the
+   * manifest on day 0 (workable; the file-drift cron heals new VMs
+   * within ~15 min, but the snapshot is "behind" the moment it ships).
+   * Cooper's call after the 2026-05-29 attempt-4 bake: do not ship
+   * snapshots that lag.
+   *
+   * Operational contract trade-off (lib/ssh.ts:9192–9196 says
+   * "LINODE_SNAPSHOT_CV must always be < VM_MANIFEST.version" — strict
+   * `<`, so the reconciler runs at least once post-configure, preserving
+   * the Rule 23 lying-DB defense): with this bump, the bake produces a
+   * snapshot at cv=126 and cutover will set LINODE_SNAPSHOT_CV=126,
+   * making the runtime state `126 == 126` and momentarily violating the
+   * strict-`<` clause. The trade is intentional and bounded:
+   *   (a) the snapshot was JUST validated end-to-end by the bake's
+   *       reconcile-run-audit + post-bake-validate + soak-validate
+   *       phases — exactly the defense the contract was protecting.
+   *       Fresh VMs from this snapshot are at cv=126 with verified
+   *       cv=126 content; there is no drift to detect.
+   *   (b) the file-drift cron runs stepFiles continuously on every
+   *       healthy+assigned VM regardless of cv (per Rule 47), so
+   *       any subsequent template change reaches new VMs within
+   *       ~15 min independent of the lt(cv, manifest) filter.
+   *   (c) the next routine manifest change (v127, expected within
+   *       days as new manifest content lands) restores the strict-`<`
+   *       gap naturally. No separate "restore the gap" PR is needed
+   *       for routine ops.
+   *
+   * Propagation: file-drift (15 min) re-runs stepFiles on every healthy
+   * + assigned VM regardless of cv. reconcile-fleet (3 min) picks up
+   * cv<126 — pulling in any VM still at cv=125 or earlier from the
+   * just-completed v125 propagation. Both paths are no-ops content-wise
+   * for this version; the bump's only behavioral effect is changing
+   * which VMs the cron iterates.
+   *
    * v125 — 2026-05-28 (Phase 2: proxy call_type taxonomy — Rule 69)
    * Phase 2 of the strip-thinking summary overcharge incident. With v124's
    * kill switch the bleeding stopped; this version puts the periodic
@@ -1782,7 +1828,7 @@ export const VM_MANIFEST = {
    * file-content bump. Propagation via file-drift (15-min) + reconcile-
    * fleet (3-min, picks up cv<124). No gateway restart required.
    */
-  version: 125,
+  version: 126,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
