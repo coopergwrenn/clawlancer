@@ -1042,81 +1042,242 @@ export default function PlanPage() {
           ) : "start free trial"}
         </button>
 
-        {/* Enterprise section — quiet, confident, self-selecting.
-            Sits below the primary CTA so the tier-selection decision
-            flow isn't interrupted; the user who needs this section
-            has already scrolled past the three tiers and is looking
-            for an alternative path. No card boundary (lives in the
-            warm-sand atmosphere directly — the visual distinction
-            from the tier cards above is the LACK of a card, not a
-            different card style). Two-column on desktop, stacked on
-            mobile. Restraint over flash. No "Enterprise" eyebrow
-            label, no "Contact Sales" CTA, no client logos, no
-            urgency cues. The headline is declarative
-            ("if it's bigger than one agent."), which is
-            self-selecting: the wrong audience skips past, the right
-            audience leans in.
-            CTA links to https://cal.com/cooperwrenn (founder's Cal
-            link — this audience hates SDR funnels; direct line to
-            engineering is the closer). Glass pill via the
-            .liquid-glass-signin class (recipe from /signin's OAuth
-            buttons) — secondary to the primary coral CTA above; the
-            material is premium without competing for the same
-            attention. */}
+        {/* Enterprise section — Option D redesign (2026-05-29 visual
+            polish, Cooper-approved structure). Replaces the prior
+            asymmetric 2-col layout (text-heavy left, em-dash bullet
+            list right) which read as fine print rather than a
+            deliberate alternative offer.
+            New composition (top to bottom, all centered axis):
+              1. Coral hairline — 64×1px, 35% opacity, acts as a
+                 quiet "new chapter" cue. Echoes the coral CTA and
+                 coral selected-tier price above without adding a
+                 heavy container.
+              2. Glass eyebrow pill — ".liquid-glass-eyebrow" (small
+                 26px-tall variant of .liquid-glass-pill, globals.css)
+                 with lowercase "enterprise." text. Immediately
+                 categorizes the section without the headline having
+                 to do all the work.
+              3. Headline — serif clamp(32, 5vw, 44px), -0.6px tracking.
+                 Self-selecting; the wrong audience skips past, the
+                 right audience leans in.
+              4. Body — 16px MUTED_INK, max-width 32rem, centered.
+              5. Capability 2×2 grid (1×4 on <640px) — each cell is
+                 a serif label + 13-14px sans descriptor. NO em-dash
+                 prefix (the prior treatment Cooper called out as
+                 markdown-y). The label/descriptor split gives each
+                 capability typographic weight without bullet noise.
+              6. Glass-pill "book a call. →" CTA — same
+                 .liquid-glass-signin recipe as before (Cooper
+                 explicitly preserved). Centered.
+            No card boundary — the section lives in the warm-sand
+            atmosphere. The hairline + eyebrow pill + generous
+            top-padding (mt-32) handle the visual transition without
+            a panel competing with the Pro tier card above.
+            CTA links to https://cal.com/cooperwrenn — founder Cal
+            link, this audience hates SDR funnels; direct line to
+            engineering is the closer. */}
         <section
           aria-labelledby="enterprise-heading"
-          className="mt-20 pb-4 grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-12"
+          className="mt-32 pb-8 text-center"
         >
-          <div>
-            <h2
-              id="enterprise-heading"
-              className="font-normal mb-4"
-              style={{
-                fontFamily: "var(--font-serif)",
-                fontSize: "clamp(28px, 4.5vw, 36px)",
-                lineHeight: 1.05,
-                letterSpacing: "-0.5px",
-                color: CARD_INK,
-              }}
-            >
-              if it&apos;s bigger than one agent.
-            </h2>
-            <p
-              style={{
-                fontSize: 16,
-                lineHeight: 1.6,
-                color: MUTED_INK,
-                maxWidth: "28rem",
-              }}
-            >
-              running a fund. building a defi product. scaling agents
-              across a team. the tiers above won&apos;t quite fit — and
-              that&apos;s fine. let&apos;s talk about what will.
-            </p>
+          {/* Coral hairline — quiet chapter break. 64px wide × 1px ×
+              ~35% coral. Echoes the coral CTA + selected-tier price
+              above so the section reads as "of this page" rather
+              than "appended". */}
+          <div
+            aria-hidden
+            className="mx-auto mb-12"
+            style={{
+              width: 64,
+              height: 1,
+              background: "rgba(233, 111, 77, 0.35)",
+            }}
+          />
+
+          {/* Glass eyebrow pill — 26px tall .liquid-glass-eyebrow.
+              "enterprise." lowercase, period to match the page's
+              wabi-sabi voice convention. Sits 24px above the
+              headline as a quiet category label. */}
+          <div className="flex justify-center mb-6">
+            <span className="liquid-glass-eyebrow-root">
+              <span
+                className="liquid-glass-eyebrow"
+                style={{ color: MUTED_INK }}
+              >
+                enterprise.
+              </span>
+            </span>
           </div>
 
-          <div className="flex flex-col gap-6">
-            {/* Capability beats. Em-dash prefix (not checkmarks — those
-                read as feature-comparison-table copy; em-dashes are
-                quieter typography that lets the words breathe). Four
-                beats not three: each maps to one of the four buyer
-                archetypes Cooper named (crypto fund / defi protocol /
-                private deployment / team-of-many-agents). */}
-            <ul
-              className="space-y-2.5"
-              style={{
-                fontSize: 14,
-                lineHeight: 1.6,
-                color: MUTED_INK,
-              }}
-            >
-              <li>— private cloud or your own infrastructure</li>
-              <li>— multi-agent coordination across your team</li>
-              <li>— custom skills, built around your product</li>
-              <li>— direct support from the people who built it</li>
-            </ul>
+          {/* Headline (Cooper-picked, 2026-05-29). Question/answer
+              two-beat: "need more?" prompts self-selection,
+              "we'll go custom." answers with the offer. Doesn't
+              reference the tiers above — works as a standalone
+              statement, would read sensibly even if this section
+              lived on its own page. Same lowercase + period
+              cadence as the page H1 ("choose a plan."). */}
+          <h2
+            id="enterprise-heading"
+            className="font-normal mb-3 mx-auto"
+            style={{
+              fontFamily: "var(--font-serif)",
+              fontSize: "clamp(32px, 5vw, 44px)",
+              lineHeight: 1.05,
+              letterSpacing: "-0.6px",
+              color: CARD_INK,
+              maxWidth: "42rem",
+            }}
+          >
+            need more? we&apos;ll go custom.
+          </h2>
 
-            <div className="liquid-glass-signin-root" style={{ maxWidth: 240 }}>
+          {/* Subtitle (Cooper-picked, 2026-05-29). Names the
+              three audience archetypes so the right reader
+              self-selects. Same 17px MUTED_INK style as the page
+              H1's subtitle ("3 days free. cancel anytime.") to
+              maintain the type-pair register. Replaces the prior
+              5-sentence body paragraph — the page-H1 + subtitle
+              pattern Cooper referenced doesn't include a body
+              between subtitle and next section; that role is now
+              carried by the 2×2 capability grid below + the
+              "book a call." CTA. */}
+          <p
+            className="mx-auto mb-16"
+            style={{
+              fontSize: 17,
+              lineHeight: 1.5,
+              color: MUTED_INK,
+              maxWidth: "32rem",
+            }}
+          >
+            for businesses, teams, and serious power users.
+          </p>
+
+          {/* Capability grid — 2×2 on ≥640px, 1×4 on mobile.
+              Label/descriptor pairs (no em-dash, no checkmark, no
+              bullet) — serif label + sans descriptor. The four
+              capabilities still map to Cooper's four buyer archetypes
+              (crypto fund / defi protocol / private deployment /
+              team-of-many-agents) but rewritten as title+body so
+              each gets typographic weight. */}
+          <div
+            className="mx-auto mb-16 grid grid-cols-1 sm:grid-cols-2 text-left"
+            style={{
+              maxWidth: "36rem",
+              gap: "32px 56px",
+            }}
+          >
+            <div>
+              <p
+                className="font-normal"
+                style={{
+                  fontFamily: "var(--font-serif)",
+                  fontSize: 20,
+                  letterSpacing: "-0.3px",
+                  color: CARD_INK,
+                  lineHeight: 1.2,
+                  margin: "0 0 6px",
+                }}
+              >
+                private cloud
+              </p>
+              <p
+                style={{
+                  fontSize: 14,
+                  lineHeight: 1.5,
+                  color: MUTED_INK,
+                  margin: 0,
+                }}
+              >
+                your own infrastructure.
+              </p>
+            </div>
+            <div>
+              <p
+                className="font-normal"
+                style={{
+                  fontFamily: "var(--font-serif)",
+                  fontSize: 20,
+                  letterSpacing: "-0.3px",
+                  color: CARD_INK,
+                  lineHeight: 1.2,
+                  margin: "0 0 6px",
+                }}
+              >
+                multi-agent coordination
+              </p>
+              <p
+                style={{
+                  fontSize: 14,
+                  lineHeight: 1.5,
+                  color: MUTED_INK,
+                  margin: 0,
+                }}
+              >
+                across your team.
+              </p>
+            </div>
+            <div>
+              <p
+                className="font-normal"
+                style={{
+                  fontFamily: "var(--font-serif)",
+                  fontSize: 20,
+                  letterSpacing: "-0.3px",
+                  color: CARD_INK,
+                  lineHeight: 1.2,
+                  margin: "0 0 6px",
+                }}
+              >
+                custom skills
+              </p>
+              <p
+                style={{
+                  fontSize: 14,
+                  lineHeight: 1.5,
+                  color: MUTED_INK,
+                  margin: 0,
+                }}
+              >
+                built around your product.
+              </p>
+            </div>
+            <div>
+              <p
+                className="font-normal"
+                style={{
+                  fontFamily: "var(--font-serif)",
+                  fontSize: 20,
+                  letterSpacing: "-0.3px",
+                  color: CARD_INK,
+                  lineHeight: 1.2,
+                  margin: "0 0 6px",
+                }}
+              >
+                direct support
+              </p>
+              <p
+                style={{
+                  fontSize: 14,
+                  lineHeight: 1.5,
+                  color: MUTED_INK,
+                  margin: 0,
+                }}
+              >
+                from the people who built it.
+              </p>
+            </div>
+          </div>
+
+          {/* CTA — glass pill, centered. .liquid-glass-signin recipe
+              preserved verbatim (Cooper explicitly approved this
+              treatment). max-width 240 keeps the pill from spanning
+              full-width — secondary to the primary coral CTA above. */}
+          <div className="flex justify-center">
+            <div
+              className="liquid-glass-signin-root"
+              style={{ maxWidth: 240 }}
+            >
               <Link
                 href="https://cal.com/cooperwrenn"
                 target="_blank"
@@ -1128,7 +1289,10 @@ export default function PlanPage() {
                   letterSpacing: "-0.15px",
                 }}
               >
-                book a call. <span aria-hidden style={{ marginLeft: 4 }}>→</span>
+                book a call.{" "}
+                <span aria-hidden style={{ marginLeft: 4 }}>
+                  →
+                </span>
               </Link>
               <div aria-hidden className="liquid-glass-signin-shadow" />
             </div>
