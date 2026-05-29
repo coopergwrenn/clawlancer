@@ -2588,7 +2588,7 @@ html.lenis body {
   display: flex;
   width: 100%;
   align-items: center;
-  border-radius: 12px;
+  border-radius: 9999px;
   z-index: 2;
   isolation: isolate;
   font-family: var(--font-serif);
@@ -2606,12 +2606,13 @@ html.lenis body {
    coral halo provides the "the button is part of the same coral
    substrate" reading — as if the coral material extends slightly
    past the button edge and the button is a raised pad. -6px
-   overhang lets the halo extend visibly past the 12px-radius pill. */
+   overhang lets the halo extend visibly past the pill edges
+   (root is 9999px; this halo matches at 9999px). */
 .liquid-glass-coral-root::before {
   content: '';
   position: absolute;
   inset: -6px;
-  border-radius: 14px;
+  border-radius: 9999px;
   background: radial-gradient(
     ellipse at 50% 60%,
     rgba(120, 40, 20, 0.18) 0%,
@@ -2643,7 +2644,7 @@ html.lenis body {
       rgba(255, 250, 245, 0.04)),
     linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34);
   border: 0;
-  border-radius: 12px;
+  border-radius: 9999px;
   /* 4-layer box-shadow — wabi pattern, warm-palette substitutions:
      1. Subtle top-edge inset darkening (suggests light from above
         creates a thin shadow at the top inset)
@@ -2736,7 +2737,7 @@ html.lenis body {
     linear-gradient(#000, #000);
   -webkit-mask-composite: xor;
           mask-composite: exclude;
-  border-radius: 12px;
+  border-radius: 9999px;
   pointer-events: none;
   transition:
     top 0.4s cubic-bezier(0.25, 1, 0.5, 1),

@@ -988,13 +988,16 @@ export default function PlanPage() {
             .liquid-glass-signin with hue-matched palette (cream
             sheen instead of pure white, burgundy rim darks instead
             of pure black, coral-warm drop instead of black drop).
-            Constraints: 440px max-width centered, 12px border-radius
-            (matches .liquid-glass-card on Pro tier), serif typography
-            (19px Instrument Serif, -0.3px tracking) for register
-            consistency with the page H1 ("choose a plan.") and the
-            sibling glass CTA ("book a call."). Edge variant via
-            .is-edge class on root substitutes olive base + olive-
-            tinted rim/substrate/shadow. */}
+            Constraints: 440px max-width centered, full-pill border-
+            radius (9999px) so the shape matches every other primary
+            CTA across the project (Claim My Agent on the landing
+            hero, book a call. sibling below, OAuth pills on /signin)
+            instead of standing out as a 12px outlier. Serif
+            typography (19px Instrument Serif, -0.3px tracking) for
+            register consistency with the page H1 ("choose a plan.")
+            and the sibling glass CTA ("book a call."). Edge variant
+            via .is-edge class on root substitutes olive base +
+            olive-tinted rim/substrate/shadow. */}
         <div
           className={`liquid-glass-coral-root mx-auto${isEdge ? " is-edge" : ""}`}
           style={{ maxWidth: 440 }}
