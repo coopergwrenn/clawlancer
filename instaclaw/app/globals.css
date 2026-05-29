@@ -2661,11 +2661,11 @@ html.lenis body {
 .cta-larry {
   /* Sizing is driven by CSS variables so the @keyframes can use the
      same frame-width without hardcoded duplication. Width:height
-     ratio MUST be 256:113 (the sprite's per-frame source dimensions)
-     so Larry doesn't stretch. --cta-larry-w can be tuned independently
-     of the keyframe math. */
+     ratio MUST be 256:104 (the sprite v2's per-frame source dimensions
+     after body-bottom-center alignment) so Larry doesn't stretch.
+     --cta-larry-w can be tuned independently of the keyframe math. */
   --cta-larry-w: 96px;
-  --cta-larry-h: 42px; /* 96 * 113 / 256 = 42.4 ≈ 42 */
+  --cta-larry-h: 39px; /* 96 * 104 / 256 = 39 (sprite v2 aspect) */
 
   position: absolute;
   bottom: 88%;
