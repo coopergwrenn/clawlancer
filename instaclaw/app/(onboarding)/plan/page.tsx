@@ -1078,12 +1078,13 @@ export default function PlanPage() {
             engineering is the closer. */}
         <section
           aria-labelledby="enterprise-heading"
-          className="mt-32 pb-8 text-center"
+          className="mt-32 pb-8"
         >
           {/* Coral hairline — quiet chapter break. 64px wide × 1px ×
               ~35% coral. Echoes the coral CTA + selected-tier price
               above so the section reads as "of this page" rather
-              than "appended". */}
+              than "appended". Sits full-width above the two-column
+              grid as the section-start signal. */}
           <div
             aria-hidden
             className="mx-auto mb-12"
@@ -1094,207 +1095,222 @@ export default function PlanPage() {
             }}
           />
 
-          {/* Glass eyebrow pill — 26px tall .liquid-glass-eyebrow.
-              "enterprise." lowercase, period to match the page's
-              wabi-sabi voice convention. Sits 24px above the
-              headline as a quiet category label. */}
-          <div className="flex justify-center mb-6">
-            <span className="liquid-glass-eyebrow-root">
-              <span
-                className="liquid-glass-eyebrow"
-                style={{ color: MUTED_INK }}
-              >
-                enterprise.
-              </span>
-            </span>
-          </div>
-
-          {/* Headline (Cooper-picked, 2026-05-29). Question/answer
-              two-beat: "need more?" prompts self-selection,
-              "we'll go custom." answers with the offer. Doesn't
-              reference the tiers above — works as a standalone
-              statement, would read sensibly even if this section
-              lived on its own page. Same lowercase + period
-              cadence as the page H1 ("choose a plan."). */}
-          <h2
-            id="enterprise-heading"
-            className="font-normal mb-3 mx-auto"
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontSize: "clamp(32px, 5vw, 44px)",
-              lineHeight: 1.05,
-              letterSpacing: "-0.6px",
-              color: CARD_INK,
-              maxWidth: "42rem",
-            }}
-          >
-            need more? we&apos;ll go custom.
-          </h2>
-
-          {/* Subtitle (Cooper-picked, 2026-05-29). Names the
-              three audience archetypes so the right reader
-              self-selects. Same 17px MUTED_INK style as the page
-              H1's subtitle ("3 days free. cancel anytime.") to
-              maintain the type-pair register. Replaces the prior
-              5-sentence body paragraph — the page-H1 + subtitle
-              pattern Cooper referenced doesn't include a body
-              between subtitle and next section; that role is now
-              carried by the 2×2 capability grid below + the
-              "book a call." CTA. */}
-          <p
-            className="mx-auto mb-16"
-            style={{
-              fontSize: 17,
-              lineHeight: 1.5,
-              color: MUTED_INK,
-              maxWidth: "32rem",
-            }}
-          >
-            for businesses, teams, and serious power users.
-          </p>
-
-          {/* Capability grid — 2×2 on ≥640px, 1×4 on mobile.
-              Label/descriptor pairs (no em-dash, no checkmark, no
-              bullet) — serif label + sans descriptor. The four
-              capabilities still map to Cooper's four buyer archetypes
-              (crypto fund / defi protocol / private deployment /
-              team-of-many-agents) but rewritten as title+body so
-              each gets typographic weight. */}
-          <div
-            className="mx-auto mb-16 grid grid-cols-1 sm:grid-cols-2 text-left"
-            style={{
-              maxWidth: "36rem",
-              gap: "32px 56px",
-            }}
-          >
+          {/* Two-column split (2026-05-29 Cooper feedback — restored
+              from Option D centered single-column). Desktop (md
+              ≥768px): left = pitch (eyebrow + headline + subtitle),
+              right = what-you-get (2×2 grid + CTA). Mobile (<768px):
+              collapses to single column; left stacks on top of right
+              via natural grid-cols-1 source order. items-start so
+              short left column doesn't vertically center against the
+              taller right column. */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16 items-start">
+            {/* LEFT COLUMN — the pitch. Eyebrow + headline + subtitle.
+                Left-aligned in its column (dropped the mx-auto +
+                flex-justify-center wrappers used by the prior
+                centered layout). */}
             <div>
-              <p
-                className="font-normal"
-                style={{
-                  fontFamily: "var(--font-serif)",
-                  fontSize: 20,
-                  letterSpacing: "-0.3px",
-                  color: CARD_INK,
-                  lineHeight: 1.2,
-                  margin: "0 0 6px",
-                }}
-              >
-                private cloud
-              </p>
-              <p
-                style={{
-                  fontSize: 14,
-                  lineHeight: 1.5,
-                  color: MUTED_INK,
-                  margin: 0,
-                }}
-              >
-                your own infrastructure.
-              </p>
-            </div>
-            <div>
-              <p
-                className="font-normal"
-                style={{
-                  fontFamily: "var(--font-serif)",
-                  fontSize: 20,
-                  letterSpacing: "-0.3px",
-                  color: CARD_INK,
-                  lineHeight: 1.2,
-                  margin: "0 0 6px",
-                }}
-              >
-                multi-agent coordination
-              </p>
-              <p
-                style={{
-                  fontSize: 14,
-                  lineHeight: 1.5,
-                  color: MUTED_INK,
-                  margin: 0,
-                }}
-              >
-                across your team.
-              </p>
-            </div>
-            <div>
-              <p
-                className="font-normal"
-                style={{
-                  fontFamily: "var(--font-serif)",
-                  fontSize: 20,
-                  letterSpacing: "-0.3px",
-                  color: CARD_INK,
-                  lineHeight: 1.2,
-                  margin: "0 0 6px",
-                }}
-              >
-                custom skills
-              </p>
-              <p
-                style={{
-                  fontSize: 14,
-                  lineHeight: 1.5,
-                  color: MUTED_INK,
-                  margin: 0,
-                }}
-              >
-                built around your product.
-              </p>
-            </div>
-            <div>
-              <p
-                className="font-normal"
-                style={{
-                  fontFamily: "var(--font-serif)",
-                  fontSize: 20,
-                  letterSpacing: "-0.3px",
-                  color: CARD_INK,
-                  lineHeight: 1.2,
-                  margin: "0 0 6px",
-                }}
-              >
-                direct support
-              </p>
-              <p
-                style={{
-                  fontSize: 14,
-                  lineHeight: 1.5,
-                  color: MUTED_INK,
-                  margin: 0,
-                }}
-              >
-                from the people who built it.
-              </p>
-            </div>
-          </div>
-
-          {/* CTA — glass pill, centered. .liquid-glass-signin recipe
-              preserved verbatim (Cooper explicitly approved this
-              treatment). max-width 240 keeps the pill from spanning
-              full-width — secondary to the primary coral CTA above. */}
-          <div className="flex justify-center">
-            <div
-              className="liquid-glass-signin-root"
-              style={{ maxWidth: 240 }}
-            >
-              <Link
-                href="https://cal.com/cooperwrenn"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="liquid-glass-signin"
-                style={{
-                  textDecoration: "none",
-                  fontFamily: "inherit",
-                  letterSpacing: "-0.15px",
-                }}
-              >
-                book a call.{" "}
-                <span aria-hidden style={{ marginLeft: 4 }}>
-                  →
+              {/* Glass eyebrow pill — 26px tall .liquid-glass-eyebrow.
+                  "enterprise." lowercase, period to match the page's
+                  wabi-sabi voice convention. Sits 24px above the
+                  headline as a quiet category label. */}
+              <div className="mb-6">
+                <span className="liquid-glass-eyebrow-root">
+                  <span
+                    className="liquid-glass-eyebrow"
+                    style={{ color: MUTED_INK }}
+                  >
+                    enterprise.
+                  </span>
                 </span>
-              </Link>
-              <div aria-hidden className="liquid-glass-signin-shadow" />
+              </div>
+
+              {/* Headline (Cooper-picked, 2026-05-29). Question/answer
+                  two-beat: "need more?" prompts self-selection,
+                  "we'll go custom." answers with the offer. Doesn't
+                  reference the tiers above — works as a standalone
+                  statement, would read sensibly even if this section
+                  lived on its own page. Same lowercase + period
+                  cadence as the page H1 ("choose a plan."). */}
+              <h2
+                id="enterprise-heading"
+                className="font-normal mb-3"
+                style={{
+                  fontFamily: "var(--font-serif)",
+                  fontSize: "clamp(32px, 5vw, 44px)",
+                  lineHeight: 1.05,
+                  letterSpacing: "-0.6px",
+                  color: CARD_INK,
+                }}
+              >
+                need more? we&apos;ll go custom.
+              </h2>
+
+              {/* Subtitle (Cooper-picked, 2026-05-29). Names the
+                  three audience archetypes so the right reader
+                  self-selects. Same 17px MUTED_INK style as the page
+                  H1's subtitle ("3 days free. cancel anytime.") to
+                  maintain the type-pair register. */}
+              <p
+                style={{
+                  fontSize: 17,
+                  lineHeight: 1.5,
+                  color: MUTED_INK,
+                  maxWidth: "28rem",
+                }}
+              >
+                for businesses, teams, and serious power users.
+              </p>
+            </div>
+
+            {/* RIGHT COLUMN — what you get. 2×2 capability grid +
+                book-a-call CTA stacked vertically inside a flex
+                column. Both left-aligned (matching column rhythm),
+                CTA constrained to maxWidth: 240 so it doesn't span
+                the full column. */}
+            <div className="flex flex-col gap-10">
+              {/* Capability grid — 2×2 on ≥640px, 1×4 on mobile.
+                  Label/descriptor pairs (no em-dash, no checkmark, no
+                  bullet) — serif label + sans descriptor. The four
+                  capabilities still map to Cooper's four buyer archetypes
+                  (crypto fund / defi protocol / private deployment /
+                  team-of-many-agents) but rewritten as title+body so
+                  each gets typographic weight. */}
+              <div
+                className="grid grid-cols-1 sm:grid-cols-2"
+                style={{
+                  gap: "28px 40px",
+                }}
+              >
+                <div>
+                  <p
+                    className="font-normal"
+                    style={{
+                      fontFamily: "var(--font-serif)",
+                      fontSize: 20,
+                      letterSpacing: "-0.3px",
+                      color: CARD_INK,
+                      lineHeight: 1.2,
+                      margin: "0 0 6px",
+                    }}
+                  >
+                    private cloud
+                  </p>
+                  <p
+                    style={{
+                      fontSize: 14,
+                      lineHeight: 1.5,
+                      color: MUTED_INK,
+                      margin: 0,
+                    }}
+                  >
+                    your own infrastructure.
+                  </p>
+                </div>
+                <div>
+                  <p
+                    className="font-normal"
+                    style={{
+                      fontFamily: "var(--font-serif)",
+                      fontSize: 20,
+                      letterSpacing: "-0.3px",
+                      color: CARD_INK,
+                      lineHeight: 1.2,
+                      margin: "0 0 6px",
+                    }}
+                  >
+                    multi-agent coordination
+                  </p>
+                  <p
+                    style={{
+                      fontSize: 14,
+                      lineHeight: 1.5,
+                      color: MUTED_INK,
+                      margin: 0,
+                    }}
+                  >
+                    across your team.
+                  </p>
+                </div>
+                <div>
+                  <p
+                    className="font-normal"
+                    style={{
+                      fontFamily: "var(--font-serif)",
+                      fontSize: 20,
+                      letterSpacing: "-0.3px",
+                      color: CARD_INK,
+                      lineHeight: 1.2,
+                      margin: "0 0 6px",
+                    }}
+                  >
+                    custom skills
+                  </p>
+                  <p
+                    style={{
+                      fontSize: 14,
+                      lineHeight: 1.5,
+                      color: MUTED_INK,
+                      margin: 0,
+                    }}
+                  >
+                    built around your product.
+                  </p>
+                </div>
+                <div>
+                  <p
+                    className="font-normal"
+                    style={{
+                      fontFamily: "var(--font-serif)",
+                      fontSize: 20,
+                      letterSpacing: "-0.3px",
+                      color: CARD_INK,
+                      lineHeight: 1.2,
+                      margin: "0 0 6px",
+                    }}
+                  >
+                    direct support
+                  </p>
+                  <p
+                    style={{
+                      fontSize: 14,
+                      lineHeight: 1.5,
+                      color: MUTED_INK,
+                      margin: 0,
+                    }}
+                  >
+                    from the people who built it.
+                  </p>
+                </div>
+              </div>
+
+              {/* CTA — glass pill, left-aligned inside right column.
+                  .liquid-glass-signin recipe preserved verbatim
+                  (Cooper explicitly approved this treatment).
+                  max-width 240 keeps the pill from spanning the full
+                  column width — secondary to the primary coral CTA
+                  above. */}
+              <div
+                className="liquid-glass-signin-root"
+                style={{ maxWidth: 240 }}
+              >
+                <Link
+                  href="https://cal.com/cooperwrenn"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="liquid-glass-signin"
+                  style={{
+                    textDecoration: "none",
+                    fontFamily: "inherit",
+                    letterSpacing: "-0.15px",
+                  }}
+                >
+                  book a call.{" "}
+                  <span aria-hidden style={{ marginLeft: 4 }}>
+                    →
+                  </span>
+                </Link>
+                <div aria-hidden className="liquid-glass-signin-shadow" />
+              </div>
             </div>
           </div>
         </section>
