@@ -2543,3 +2543,332 @@ html.lenis body {
   text-transform: uppercase;
   color: rgba(51, 51, 52, 0.42);
 }
+
+/* ─── Liquid Glass CORAL CTA (.liquid-glass-coral) ───────────────────
+   2026-05-29 — Primary trial-CTA on /plan. Cooper's prior full-bleed
+   coral bar with rounded-lg read as a 2019 SaaS template against the
+   rest of the page's wabi-sabi register (glass cards, serif type,
+   warm-sand gradient). New recipe layers the liquid-glass material
+   vocabulary on top of the coral base instead of replacing it —
+   coral stays the primary signal, glass adds the material quality.
+
+   Adaptation from .liquid-glass-signin (white-on-cream): the wabi
+   recipe assumes a near-neutral substrate so the white sheen reads
+   as specular light. On a saturated warm base (coral) the same
+   pure-white sheen desaturates to a chalky pink film. The fix is a
+   hue-matched palette:
+
+     wabi recipe                 → coral variant
+     pure-white sheen rgba(255)  → cream sheen rgba(255,250,245)
+     black rim   rgba(0,0,0)     → burgundy rim rgba(80,30,15)
+     bright rim  rgba(255,255,255) → cream bright rgba(255,250,245)
+     black drop  rgba(0,0,0)     → coral-warm drop rgba(180,70,40)
+     dark substrate rgba(0,0,0)  → deep-coral substrate rgba(120,40,20)
+
+   The cream tint (#FFFAF5) is one hue step warmer than the lightest
+   coral gradient stop (#e8845e) — sheen pulls the highlight toward
+   the coral's own brighter neighbor, not toward pink. Burgundy rim
+   reads as "deep coral in shadow" instead of cartoon outline.
+   Coral-warm drop continues the warm palette into the cast shadow.
+
+   The 3 DOM elements — verbatim mirror of .liquid-glass-signin:
+     .liquid-glass-coral-root   (wrapper + refraction substrate ::before)
+       .liquid-glass-coral      (transparent-tinted surface + coral
+                                  gradient + cream sheen + warm rim)
+       .liquid-glass-coral-shadow (sibling outside stacking context,
+                                  warm-coral masked-ring drop)
+
+   The .is-edge modifier on the root cascades to all three children;
+   substitutes olive base + olive-tinted rim/substrate/shadow.
+   Independent class — does NOT inherit from .liquid-glass-signin
+   or .liquid-glass-btn. */
+
+.liquid-glass-coral-root {
+  position: relative;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  border-radius: 12px;
+  z-index: 2;
+  isolation: isolate;
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 400;
+  letter-spacing: -0.3px;
+  line-height: 24px;
+  color: #ffffff;
+}
+
+/* Refraction substrate — deep-coral radial behind the button. The
+   /plan page's warm-sand gradient is relatively flat in the
+   CTA zone (between the tier cards and the enterprise hairline),
+   so backdrop-filter has little to refract on its own. The deeper
+   coral halo provides the "the button is part of the same coral
+   substrate" reading — as if the coral material extends slightly
+   past the button edge and the button is a raised pad. -6px
+   overhang lets the halo extend visibly past the 12px-radius pill. */
+.liquid-glass-coral-root::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 14px;
+  background: radial-gradient(
+    ellipse at 50% 60%,
+    rgba(120, 40, 20, 0.18) 0%,
+    rgba(120, 40, 20, 0.05) 50%,
+    transparent 80%
+  );
+  z-index: -1;
+  pointer-events: none;
+}
+
+.liquid-glass-coral {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 56px;
+  padding: 0 24px;
+  /* Stacked backgrounds: cream sheen on top, coral gradient below.
+     Both share the -75deg axis so the highlight reinforces the
+     coral gradient's existing diagonal directionality. Cream
+     (#FFFAF5) at peak 0.22α adds luminance without bleaching coral. */
+  background-color: #DC6743;
+  background-image:
+    linear-gradient(-75deg,
+      rgba(255, 250, 245, 0.04),
+      rgba(255, 250, 245, 0.22),
+      rgba(255, 250, 245, 0.04)),
+    linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34);
+  border: 0;
+  border-radius: 12px;
+  /* 4-layer box-shadow — wabi pattern, warm-palette substitutions:
+     1. Subtle top-edge inset darkening (suggests light from above
+        creates a thin shadow at the top inset)
+     2. Cream bottom-edge highlight (light wrapping around the
+        bottom curve catches the rim — the "smile" of glass)
+     3. Coral-warm ambient drop (the cast shadow keeps the warm
+        family instead of jumping to neutral black)
+     4. Cream inner rim glow (subtle illumination diffusing inward
+        from the bright top-right + bottom-left rim segments) */
+  box-shadow:
+    rgba(80, 30, 15, 0.16) 0px 1px 1px 0px inset,
+    rgba(255, 250, 245, 0.30) 0px -1px 1px 0px inset,
+    rgba(180, 70, 40, 0.30) 0px 4px 16px 0px,
+    rgba(255, 250, 245, 0.18) 0px 0px 1.6px 3px inset;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  z-index: 2;
+  transition:
+    transform 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    box-shadow 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    background-color 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Conic-gradient rim — dark stops catch the upper-left + lower-right
+   edges (-75deg axis matches the sheen direction). Warm-burgundy
+   (rgba 80,30,15) instead of pure black so the rim reads as a
+   shadow of the coral substrate rather than a cartoon outline.
+   Bright stops use the same cream tint as the sheen for hue
+   consistency. mask-composite:exclude renders only the ring. */
+.liquid-glass-coral::after {
+  content: '';
+  position: absolute;
+  inset: -0.5px 0 0 -0.5px;
+  width: calc(100% + 1px);
+  height: calc(100% + 1px);
+  padding: 1px;
+  background-image:
+    conic-gradient(from -75deg at 50% 50%,
+      rgba(80, 30, 15, 0.45),
+      rgba(80, 30, 15, 0) 5%,
+      rgba(80, 30, 15, 0) 40%,
+      rgba(80, 30, 15, 0.45) 50%,
+      rgba(80, 30, 15, 0) 60%,
+      rgba(80, 30, 15, 0) 95%,
+      rgba(80, 30, 15, 0.45)),
+    linear-gradient(rgba(255, 250, 245, 0.35), rgba(255, 250, 245, 0.35));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  box-shadow: rgba(255, 250, 245, 0.35) 0px 0px 0px 0.5px inset;
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Shadow proxy — SIBLING div, NOT a pseudo. Sits outside the button's
+   stacking context so the coral-warm gradient doesn't bleed through
+   the surface. inset:-12px overhang + blur(2px). The ::after is a
+   masked ring positioned bottom-right (top:20px left:14px) — simulates
+   a directional cast shadow from light at the upper-left. */
+.liquid-glass-coral-shadow {
+  position: absolute;
+  inset: -12px;
+  filter: blur(2px);
+  pointer-events: none;
+  overflow: visible;
+  transition: filter 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.liquid-glass-coral-shadow::after {
+  content: '';
+  position: absolute;
+  top: 20px;
+  left: 14px;
+  right: 0;
+  bottom: 0;
+  width: calc(100% - 28px);
+  height: calc(100% - 28px);
+  padding: 2px;
+  background-image: linear-gradient(
+    rgba(180, 70, 40, 0.22),
+    rgba(180, 70, 40, 0.10)
+  );
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  border-radius: 12px;
+  pointer-events: none;
+  transition:
+    top 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+    opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.liquid-glass-coral > * {
+  position: relative;
+  z-index: 2;
+}
+
+.liquid-glass-coral:hover:not(:disabled) {
+  background-image:
+    linear-gradient(-75deg,
+      rgba(255, 250, 245, 0.06),
+      rgba(255, 250, 245, 0.28),
+      rgba(255, 250, 245, 0.06)),
+    linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34);
+  box-shadow:
+    rgba(80, 30, 15, 0.16) 0px 1px 1px 0px inset,
+    rgba(255, 250, 245, 0.34) 0px -1px 1px 0px inset,
+    rgba(180, 70, 40, 0.36) 0px 2.4px 0.8px -1.6px,
+    rgba(255, 250, 245, 0.22) 0px 0px 0.8px 1.6px inset;
+}
+
+.liquid-glass-coral-root:has(.liquid-glass-coral:hover:not(:disabled))
+  .liquid-glass-coral-shadow {
+  filter: blur(1px);
+}
+
+.liquid-glass-coral-root:has(.liquid-glass-coral:hover:not(:disabled))
+  .liquid-glass-coral-shadow::after {
+  top: 14px;
+}
+
+.liquid-glass-coral:active:not(:disabled) {
+  transform: translateY(1px) scale(0.99);
+  transition-duration: 0.15s;
+}
+
+.liquid-glass-coral-root:has(.liquid-glass-coral:active:not(:disabled))
+  .liquid-glass-coral-shadow::after {
+  top: 20px;
+  opacity: 0.75;
+}
+
+.liquid-glass-coral:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.liquid-glass-coral:focus-visible {
+  outline: 2px solid rgba(220, 103, 67, 0.6);
+  outline-offset: 3px;
+}
+
+/* Edge (olive) variant — same recipe, olive base + olive-tinted
+   rim/substrate/shadow. The cream sheen stays cream (warm-white
+   reads against olive as "afternoon sun on a deep matte surface"
+   which is exactly the Edge-aesthetic register). Three layers shift:
+   surface gradient (coral → olive), substrate radial (deep-coral →
+   deep-olive), shadow proxy tint (warm-coral → olive-warm). The
+   conic rim darks push toward near-black (rgba 0,12,4) because olive
+   is already dark and the rim needs more contrast to register. */
+.liquid-glass-coral-root.is-edge::before {
+  background: radial-gradient(
+    ellipse at 50% 60%,
+    rgba(15, 26, 18, 0.26) 0%,
+    rgba(15, 26, 18, 0.08) 50%,
+    transparent 80%
+  );
+}
+
+.liquid-glass-coral-root.is-edge .liquid-glass-coral {
+  background-color: #0f1a12;
+  background-image:
+    linear-gradient(-75deg,
+      rgba(255, 250, 245, 0.04),
+      rgba(255, 250, 245, 0.18),
+      rgba(255, 250, 245, 0.04)),
+    linear-gradient(-75deg, #0a1209, #0f1a12, #16241a, #1a2a1f, #16241a, #0f1a12, #0a1209);
+  box-shadow:
+    rgba(0, 12, 4, 0.28) 0px 1px 1px 0px inset,
+    rgba(255, 250, 245, 0.22) 0px -1px 1px 0px inset,
+    rgba(20, 35, 22, 0.40) 0px 4px 16px 0px,
+    rgba(255, 250, 245, 0.14) 0px 0px 1.6px 3px inset;
+}
+
+.liquid-glass-coral-root.is-edge .liquid-glass-coral::after {
+  background-image:
+    conic-gradient(from -75deg at 50% 50%,
+      rgba(0, 12, 4, 0.55),
+      rgba(0, 12, 4, 0) 5%,
+      rgba(0, 12, 4, 0) 40%,
+      rgba(0, 12, 4, 0.55) 50%,
+      rgba(0, 12, 4, 0) 60%,
+      rgba(0, 12, 4, 0) 95%,
+      rgba(0, 12, 4, 0.55)),
+    linear-gradient(rgba(255, 250, 245, 0.30), rgba(255, 250, 245, 0.30));
+  box-shadow: rgba(255, 250, 245, 0.30) 0px 0px 0px 0.5px inset;
+}
+
+.liquid-glass-coral-root.is-edge .liquid-glass-coral-shadow::after {
+  background-image: linear-gradient(
+    rgba(20, 35, 22, 0.30),
+    rgba(20, 35, 22, 0.14)
+  );
+}
+
+.liquid-glass-coral-root.is-edge .liquid-glass-coral:hover:not(:disabled) {
+  background-image:
+    linear-gradient(-75deg,
+      rgba(255, 250, 245, 0.06),
+      rgba(255, 250, 245, 0.24),
+      rgba(255, 250, 245, 0.06)),
+    linear-gradient(-75deg, #0a1209, #0f1a12, #16241a, #1a2a1f, #16241a, #0f1a12, #0a1209);
+  box-shadow:
+    rgba(0, 12, 4, 0.28) 0px 1px 1px 0px inset,
+    rgba(255, 250, 245, 0.26) 0px -1px 1px 0px inset,
+    rgba(20, 35, 22, 0.44) 0px 2.4px 0.8px -1.6px,
+    rgba(255, 250, 245, 0.18) 0px 0px 0.8px 1.6px inset;
+}
+
+.liquid-glass-coral-root.is-edge .liquid-glass-coral:focus-visible {
+  outline: 2px solid rgba(15, 26, 18, 0.7);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-glass-coral,
+  .liquid-glass-coral-shadow,
+  .liquid-glass-coral-shadow::after {
+    transition: none;
+  }
+}

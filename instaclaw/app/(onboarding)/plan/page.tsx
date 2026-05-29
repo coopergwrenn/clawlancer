@@ -979,68 +979,58 @@ export default function PlanPage() {
           </p>
         )}
 
-        <button
-          onClick={handleCheckout}
-          disabled={loading}
-          className="w-full px-6 py-4 rounded-lg font-semibold transition-all cursor-pointer disabled:opacity-50"
-          style={{
-            // 2026-05-22 W2 polish: Continue/Confirm CTA was orange-gradient for
-            // everyone, including Edge attendees who'd just come through the
-            // olive Edge funnel. Same brand-seam class F4 (commit 074f3bd6)
-            // closed for /signin's EdgePartnerBanner. Edge users now get the
-            // olive solid; non-Edge users keep the kinetic orange gradient.
-            // Shadow + brand-orange highlight glow swapped to olive tones to
-            // match. Headline + body for Edge already done in aa96584d.
-            // --edge-olive is scoped under /edge/* via app/edge/layout.tsx; /plan
-            // is under (onboarding), so the var is undefined here. Use the
-            // canonical olive hex (#0f1a12) literal — matches every /edge
-            // primary CTA + the Edge terminal's claim-client.tsx solid buttons.
-            background: isEdge
-              ? "#0f1a12"
-              : "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
-            backdropFilter: "blur(2px)",
-            WebkitBackdropFilter: "blur(2px)",
-            boxShadow: isEdge
-              ? `
-                rgba(255,255,255,0.18) 0px -1px 1px 0px inset,
-                rgba(41,49,30,0.35) 0px 4px 16px 0px
-              `
-              : `
-              rgba(255,255,255,0.2) 0px 2px 2px 0px inset,
-              rgba(255,255,255,0.3) 0px -1px 1px 0px inset,
-              rgba(220,103,67,0.35) 0px 4px 16px 0px,
-              rgba(255,255,255,0.08) 0px 0px 1.6px 4px inset
-            `,
-            color: "#ffffff",
-            fontSize: "15px",
-            letterSpacing: "0.01em",
-          }}
+        {/* Primary trial CTA — glass-coral pill (2026-05-29 Cooper
+            feedback). Prior full-bleed coral bar with rounded-lg
+            read as a 2019 SaaS template; new treatment layers the
+            page's liquid-glass material vocabulary on top of the
+            coral base. See .liquid-glass-coral recipe in globals.css
+            for the full architecture rationale — 3-DOM mirror of
+            .liquid-glass-signin with hue-matched palette (cream
+            sheen instead of pure white, burgundy rim darks instead
+            of pure black, coral-warm drop instead of black drop).
+            Constraints: 440px max-width centered, 12px border-radius
+            (matches .liquid-glass-card on Pro tier), serif typography
+            (19px Instrument Serif, -0.3px tracking) for register
+            consistency with the page H1 ("choose a plan.") and the
+            sibling glass CTA ("book a call."). Edge variant via
+            .is-edge class on root substitutes olive base + olive-
+            tinted rim/substrate/shadow. */}
+        <div
+          className={`liquid-glass-coral-root mx-auto${isEdge ? " is-edge" : ""}`}
+          style={{ maxWidth: 440 }}
         >
-          {loading ? (
-            <span className="flex items-center gap-2 justify-center">
-              <svg
-                className="animate-spin h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-              creating checkout session...
-            </span>
-          ) : "start free trial"}
-        </button>
+          <button
+            onClick={handleCheckout}
+            disabled={loading}
+            className="liquid-glass-coral"
+          >
+            {loading ? (
+              <span className="flex items-center gap-2 justify-center">
+                <svg
+                  className="animate-spin h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                creating checkout session...
+              </span>
+            ) : "start free trial"}
+          </button>
+          <div aria-hidden className="liquid-glass-coral-shadow" />
+        </div>
 
         {/* Enterprise section — Option D redesign (2026-05-29 visual
             polish, Cooper-approved structure). Replaces the prior
