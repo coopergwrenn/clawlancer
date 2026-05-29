@@ -771,12 +771,39 @@ async function checkQuarantinedVMs(
       summary: `query failed: ${error.message}`,
     };
   }
-  const list = (data as any[]) || [];
+  // 2026-05-29: PRE_BAKE_ALLOW_QUARANTINED_VMS — operator-acknowledged
+  // override. Use sparingly: comma-separated VM names that the operator has
+  // verified are NOT bake-blocking (e.g., abandoned-user VM stuck in a
+  // reconciler-side quarantine loop unrelated to the manifest being baked).
+  // The operator must document the reason in the bake invocation. Mirrors
+  // the GBRAIN_COVERAGE_EXCLUDE_VMS pattern. Same env var threading through
+  // execSync's default-inherit behavior from autonomous-bake.ts.
+  const ackedQuarantines = new Set(
+    (process.env.PRE_BAKE_ALLOW_QUARANTINED_VMS || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  const rawList = (data as any[]) || [];
+  const acked: any[] = [];
+  const list = rawList.filter((v: any) => {
+    if (ackedQuarantines.has(v.name)) {
+      acked.push(v);
+      return false;
+    }
+    return true;
+  });
+  const ackNote =
+    acked.length > 0
+      ? `\n  Operator-acknowledged (PRE_BAKE_ALLOW_QUARANTINED_VMS): ${acked.map((v: any) => v.name).join(", ")}`
+      : "";
   return {
     name: "no quarantined VMs",
     severity: "CRITICAL",
     passed: list.length === 0,
-    summary: list.length === 0 ? "✓" : `${list.length} quarantined`,
+    summary: list.length === 0
+      ? acked.length > 0 ? `✓ (${acked.length} acked-excluded)` : "✓"
+      : `${list.length} quarantined`,
     details:
       list.length > 0
         ? list
@@ -786,8 +813,8 @@ async function checkQuarantinedVMs(
               const ts = v.watchdog_quarantined_at || v.reconcile_quarantined_at;
               return `  ${v.name} (${v.health_status}/${v.status}): ${kind} since ${ts?.slice(0, 16)}`;
             })
-            .join("\n")
-        : undefined,
+            .join("\n") + ackNote
+        : (acked.length > 0 ? ackNote.trimStart() : undefined),
   };
 }
 
