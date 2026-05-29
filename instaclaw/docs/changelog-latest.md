@@ -1,19 +1,19 @@
-# Changelog — generated 2026-05-28
+# Changelog — generated 2026-05-29
 
-Window: `575ecfad80d33143728d9b33cc012812cf6fc90c` → `HEAD` (HEAD = `15947df7`)
-Total commits: 2
+Window: `15947df744d4ac6a4f6ccecec8c28651c7f8b632` → `HEAD` (HEAD = `d3c0d9fc`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 15947df744d4ac6a4f6ccecec8c28651c7f8b632 -->
+<!-- LAST_GENERATED_SHA: d3c0d9fcc8dc6f01361bddf3448dc3d020483c15 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 2
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 2
 - Merge commits: 0
 
 ## What changed for users
@@ -22,18 +22,20 @@ _None in this window._
 
 ## What changed under the hood
 
-- `15947df7` 2026-05-28 — feat(rule70): daily gateway hygiene timer at 09:00 UTC ± 30min [6 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `039855b8` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `f71d02f4` 2026-05-28 — fix(middleware): add /api/ambassador/validate-referral to selfAuthAPIs (pre-existing bug, Rule 13) [1 files] _(ai-assisted)_
+- `539ad7b1` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `d3c0d9fc` 2026-05-29 — feat(Rule 71): openclaw patch registry, verify/apply engine, upgrade runbook — no fleet change [6 files] _(multi: [infrastructure, docs]; ai-assisted)_
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `15947df7` 2026-05-28 — feat(rule70): daily gateway hygiene timer at 09:00 UTC ± 30min [6 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (2)
+
+- `f71d02f4` 2026-05-28 — fix(middleware): add /api/ambassador/validate-referral to selfAuthAPIs (pre-existing bug, Rule 13) [1 files] _(ai-assisted)_
+- `d3c0d9fc` 2026-05-29 — feat(Rule 71): openclaw patch registry, verify/apply engine, upgrade runbook — no fleet change [6 files] _(multi: [infrastructure, docs]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +47,23 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `039855b8` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `539ad7b1` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `15947df7` 2026-05-28 — [reconciler, infrastructure, docs] — feat(rule70): daily gateway hygiene timer at 09:00 UTC ± 30min
+- `d3c0d9fc` 2026-05-29 — [infrastructure, docs] — feat(Rule 71): openclaw patch registry, verify/apply engine, upgrade runbook — no fleet change
 
-## AI-assisted commits (1)
+## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `15947df7` 2026-05-28 — feat(rule70): daily gateway hygiene timer at 09:00 UTC ± 30min
+- `f71d02f4` 2026-05-28 — fix(middleware): add /api/ambassador/validate-referral to selfAuthAPIs (pre-existing bug, Rule 13)
+- `d3c0d9fc` 2026-05-29 — feat(Rule 71): openclaw patch registry, verify/apply engine, upgrade runbook — no fleet change
 
 ## Appendix — every commit (chronological)
 
-- `039855b8` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
-- `15947df7` 2026-05-28 — feat(rule70): daily gateway hygiene timer at 09:00 UTC ± 30min [6 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `539ad7b1` 2026-05-28 — chore(changelog): auto-update [skip ci] [2 files]
+- `f71d02f4` 2026-05-28 — fix(middleware): add /api/ambassador/validate-referral to selfAuthAPIs (pre-existing bug, Rule 13) [1 files] _(ai-assisted)_
+- `d3c0d9fc` 2026-05-29 — feat(Rule 71): openclaw patch registry, verify/apply engine, upgrade runbook — no fleet change [6 files] _(multi: [infrastructure, docs]; ai-assisted)_
