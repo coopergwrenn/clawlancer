@@ -4093,6 +4093,63 @@ If any answer is no → the PR is incomplete or potentially regressive.
 - **Rule 47** (continuous reconciliation, not version-gated): the file-drift call site of `stepEnableDailyRestartTimer` closes the cv-current gap.
 - **Rule 56** (migration files must be self-contained): the analog here is "manifest entries + template constants must be self-contained" — no operator clicks required for the timer to install.
 
+### Rule 71 — Every custom OpenClaw dist patch lives in the registry; every upgrade verifies patch survival
+
+We carry custom modifications to OpenClaw's vendored `dist/` files (and its nested `node_modules`) to fix upstream bugs and add behavior the plugin system doesn't expose. Every `npm install -g openclaw@<version>` WIPES those files. There are SIX code paths that reinstall OpenClaw (`configureOpenClaw`, `stepNpmPinDrift`, `upgradeOpenClaw`, `fleet-upgrade-openclaw.sh`, snapshot bake, cloud-init inherit). A patch wired into only a subset of those paths silently regresses on the rest. **The cure: all patches are declared as data in one registry, applied by one shared engine, located by content anchor (never by hashed filename), and verified after every upgrade — drift and native-fixes are surfaced loudly, never swallowed.**
+
+#### Why this rule exists
+
+- **The v118 typing-keepalive incident (2026-05-23, Rule 63/64):** the patch lived ONLY in `configureOpenClaw`. Re-enabling the feature fleet-wide assumed a patch that wasn't on existing VMs → every paying user saw choppy UX. Root cause: a patch wired into one wipe site, not all of them.
+- **The reasoning-router silent-drift risk (2026-05-2x, 4.26→5.22 bump):** `stepPiAiReasoningPatch` keys on byte-exact anchors in pi-ai's source. If a version bump changes that source, the step pushes a *warning* (not an error), `config_version` still bumps, and the reasoning router is **silently OFF fleet-wide** with nothing alerting. There was no tool to answer "is the patch actually applied?"
+- **The queue-collect-batch black hole (2026-05-2x):** the patch + its paired config overrides (`messages.queue.mode=collect`, `debounceMs=3000`, `byChannel.telegram=collect`) existed ONLY on vm-1028/vm-1043 via manual SSH — in NO source file, with NO deployment path. They would be silently wiped the moment either VM reconciled.
+
+#### The system (built 2026-05-29)
+
+- **`lib/openclaw-patches.ts`** — THE single source of truth. A `PATCHES` registry of declarative descriptors (id, sentinel, anchors, pure `transform`, `detectNativeFix`, `rollout`, `kind`, `why`) + a shared `applyOpenClawPatches` / `verifyOpenClawPatches` engine reproducing the gold-standard `stepPiAiReasoningPatch` discipline (sentinel-skip → discover → anchor-check → transform → pre-write verify [sentinel count + brace balance] → backup → atomic base64 write → verify-after-write → `node --check` → rollback-on-failure). **File discovery is content-anchored** (`grep -rlF <discriminator>`), so hash-renamed bundle chunks (`bot-*.js`, `queue-*.js`) are still found across versions. The openclaw root resolves via `$(npm root -g)/openclaw` — NO hardcoded node version.
+- **`scripts/_verify-openclaw-patches.ts`** — read-only coverage across the fleet/sample/one VM. The headline tool: reports `applied`/`missing`/`anchor-drift`/`native-fixed`/`target-missing`/`no-transform` per VM × patch. **Run after every `OPENCLAW_PINNED_VERSION` bump.** Exit 1 if any fleet patch is missing/drifted.
+- **`scripts/_apply-openclaw-patches.ts`** — manual/canary/bake apply (idempotent, backs up, `node --check`, rollback). Default applies only `rollout: "fleet"`; `--include-canary` opts in.
+- **`scripts/_test-openclaw-patches.ts`** — local fixture test (Rule 31), runs without a VM: feeds synthetic anchored source through each transform, asserts sentinel count + brace balance + `node --check` + idempotency + anchor-drift safety.
+- **`instaclaw/docs/openclaw-upgrade-runbook.md`** — the guided upgrade procedure (pre-flight re-anchor check → canary → verify → fleet rollout → bake with patch step → native-fix deletion → rollback).
+
+#### Mandatory pattern
+
+1. **Every dist patch is a descriptor in `PATCHES`.** No exceptions. A patch that exists only on a VM's disk (like queue-collect-batch did) is a Rule-71 violation — capture it into the registry.
+2. **Every wipe site re-applies all patches**, co-located with the wipe (the gold standard: `stepNpmPinDrift` → `stepPiAiReasoningPatch` adjacent). Snapshot bake adds a `_apply-openclaw-patches.ts` step + a `_verify-openclaw-patches.ts` checklist item.
+3. **Anchors are byte-exact; discovery is by content, never by hashed filename.** A patch keyed on `bot-msflwCEW.js` is wrong; key it on a unique code substring.
+4. **Drift is loud.** Anchors absent → `anchor-drift` (re-anchor needed), surfaced by the verify tool and (for `fleet` patches) a non-zero exit. Never let a verify-after-set that only checks disk hide a patch that didn't apply.
+5. **Native-fix detection for every `bugfix` patch.** `detectNativeFix` lets verify say "upstream fixed this — delete the patch." `feature` patches have no detector (upstream won't ship our features).
+6. **Promotion to `rollout: "fleet"` and any fleet-wide apply is a Rule 64 decision** — test on vm-1019, get Cooper's explicit approval, then bump the manifest or run a tested fleet-push.
+7. **Config overrides are NOT patches** — they live in `~/.openclaw/openclaw.json` (survive npm install) and belong in `VM_MANIFEST.configSettings` so `stepConfigSettings` enforces them. Never leave them as manual SSH edits on a couple of VMs.
+
+#### Banned patterns
+
+- A dist modification applied by a bash block in one install path and nowhere else (the v118 mistake).
+- Locating a patch target by its hashed filename (`bot-msflwCEW.js`) — breaks on the next version's rename.
+- Treating `openclaw config set` exit-0 or "we ran the patch" as proof the patch is live — verify the sentinel on disk (Rule 10), and verify the patch is applied fleet-wide after an upgrade (this rule).
+- A patch whose body exists only on a VM's disk with no source-of-truth descriptor.
+- A bugfix patch carried forward across versions without a native-fix check — you may be patching something upstream already fixed.
+- Bumping `OPENCLAW_PINNED_VERSION` without running `_verify-openclaw-patches.ts` afterward.
+
+#### Detection rule
+
+For any PR that bumps `OPENCLAW_PINNED_VERSION`, adds a new dist patch, or touches `lib/openclaw-patches.ts`:
+1. Is every patch in the registry (none living only on a VM)?
+2. Does the PR description show `_verify-openclaw-patches.ts` output (or a plan to run it post-deploy) confirming no fleet patch drifted on the new version?
+3. For a new patch: is it located by content anchor (not hashed filename), does it have a fixture in `_test-openclaw-patches.ts`, and (if `bugfix`) a `detectNativeFix`?
+4. For a `fleet` promotion: vm-1019 tested + Cooper approval (Rule 64)?
+
+If any answer is no, the PR is incomplete.
+
+#### Related rules
+
+- **Rule 10** (verify every config set; no `|| true`): the engine's verify-after-write + `pushFailed`-on-error discipline.
+- **Rule 22 / 23** (never leave state broken; sentinel-grep required templates): the engine backs up + `node --check`s + rolls back; sentinels gate idempotency.
+- **Rule 31** (ship a failure-mode test): `_test-openclaw-patches.ts`.
+- **Rule 32** (config exit-0 ≠ applied): patches need a gateway restart because Node caches module imports — `restartNeeded` on each descriptor.
+- **Rule 47** (continuous reconciliation): patches re-apply on the reconcile path adjacent to the wipe; the verify tool is the cv-current safety net.
+- **Rule 64** (manifest bumps require Cooper approval; test on vm-1019): governs promotion to `fleet` + fleet-wide apply.
+- **OpenClaw Upgrade Playbook** (below): the broader timeout/watchdog/canary discipline this runbook plugs into.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
