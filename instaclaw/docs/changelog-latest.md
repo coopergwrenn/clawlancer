@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-29
 
-Window: `35d0350eac06195523fdd19d6b4d73804eec37f0` → `HEAD` (HEAD = `c3922f4c`)
+Window: `c3922f4c5728486ced1a7fd3d421e00de68038f8` → `HEAD` (HEAD = `5c0db19e`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: c3922f4c5728486ced1a7fd3d421e00de68038f8 -->
+<!-- LAST_GENERATED_SHA: 5c0db19ef01a2ef34fd23f56d034fea9e0f22e29 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `c3922f4c` 2026-05-29 — plan: glass-coral CTA — material on coral base, not on top of it [2 files] _(ai-assisted)_
+- `5c0db19e` 2026-05-29 — plan: glass-coral CTA — switch to full-pill (9999px) to match every other primary button [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `2e494e30` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+- `2079cc1f` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `c3922f4c` 2026-05-29 — plan: glass-coral CTA — material on coral base, not on top of it [2 files] _(ai-assisted)_
+- `5c0db19e` 2026-05-29 — plan: glass-coral CTA — switch to full-pill (9999px) to match every other primary button [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `2e494e30` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+- `2079cc1f` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `c3922f4c` 2026-05-29 — plan: glass-coral CTA — material on coral base, not on top of it
+- `5c0db19e` 2026-05-29 — plan: glass-coral CTA — switch to full-pill (9999px) to match every other primary button
 
 ## Appendix — every commit (chronological)
 
-- `2e494e30` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
-- `c3922f4c` 2026-05-29 — plan: glass-coral CTA — material on coral base, not on top of it [2 files] _(ai-assisted)_
+- `2079cc1f` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+- `5c0db19e` 2026-05-29 — plan: glass-coral CTA — switch to full-pill (9999px) to match every other primary button [2 files] _(ai-assisted)_
