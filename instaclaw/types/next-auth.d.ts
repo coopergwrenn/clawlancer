@@ -31,6 +31,24 @@ declare module "next-auth" {
       // /channels; 7 is the right cadence for accidental states, 14 for
       // deliberate ones.
       dismissedChannelNudgeAt?: string | null;
+      // Raw chatgpt_plan_type string from OpenAI's id_token claim,
+      // refreshed on each token-refresh cron tick. Observed values:
+      // "free" / "plus" / "pro" / "team" / "enterprise" (OpenAI doesn't
+      // publish the enum). NULL for users who never connected ChatGPT
+      // and for users whose tokens were nulled by disconnectUser. Drives
+      // /plan's auto-BYOK-pricing path — paired with connectedChatGPT,
+      // only the paid plan types ("plus" / "pro" / "team" / "enterprise")
+      // surface the ChatGPT-aware UX; "free" or NULL fall back to the
+      // default toggle. Source: lib/auth.ts session callback.
+      chatgptPlanType?: string | null;
+      // True iff the user currently has live ChatGPT OAuth tokens stored
+      // on instaclaw_users (derived from openai_oauth_account_id !== null
+      // — see lib/auth.ts session callback for the rationale on using
+      // account_id over the encrypted token). Combined with chatgptPlanType
+      // to gate the /plan auto-BYOK pricing path. Defaults to false on
+      // sessions where the field hasn't been set (legacy paths, edge
+      // cases) — consumers should treat undefined === false.
+      connectedChatGPT?: boolean;
     };
   }
 }

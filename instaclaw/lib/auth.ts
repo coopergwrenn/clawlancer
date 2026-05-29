@@ -622,15 +622,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         index_last_intent_at: string | null;
         preferred_channel: string | null;
         dismissed_channel_nudge_at: string | null;
+        chatgpt_plan_type: string | null;
+        openai_oauth_account_id: string | null;
       } | null = null;
+
+      // SELECT used by both auth paths. chatgpt_plan_type + openai_oauth_account_id
+      // are read so /plan can detect ChatGPT-OAuth users and show them
+      // BYOK-equivalent pricing (their agent will auto-route through their
+      // own Codex access via stepChatGPTOAuthToken — see vm-reconcile.ts:11183).
+      // Both fields are NULL on disconnect (openai-oauth-db.ts:524-529 nulls
+      // them together), so account_id is a reliable "currently connected"
+      // signal. plan_type is the display string ("plus" / "pro" / "team" /
+      // "free" / etc — whatever OpenAI's id_token returns) — gated downstream
+      // so we only honor paid tiers ("free" can't use Codex, hides the UI).
+      const SESSION_USER_SELECT =
+        "id, onboarding_complete, partner, index_last_intent_at, preferred_channel, dismissed_channel_nudge_at, chatgpt_plan_type, openai_oauth_account_id";
 
       if (token.googleId) {
         // Google path (existing — unchanged)
         const { data } = await supabase
           .from("instaclaw_users")
-          .select(
-            "id, onboarding_complete, partner, index_last_intent_at, preferred_channel, dismissed_channel_nudge_at",
-          )
+          .select(SESSION_USER_SELECT)
           .eq("google_id", token.googleId)
           .single();
         userRow = data
@@ -642,15 +654,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               preferred_channel: data.preferred_channel as string | null,
               dismissed_channel_nudge_at:
                 data.dismissed_channel_nudge_at as string | null,
+              chatgpt_plan_type: data.chatgpt_plan_type as string | null,
+              openai_oauth_account_id:
+                data.openai_oauth_account_id as string | null,
             }
           : null;
       } else if (token.instaclawUserId) {
         // ChatGPT path (new — Credentials provider)
         const { data } = await supabase
           .from("instaclaw_users")
-          .select(
-            "id, onboarding_complete, partner, index_last_intent_at, preferred_channel, dismissed_channel_nudge_at",
-          )
+          .select(SESSION_USER_SELECT)
           .eq("id", token.instaclawUserId as string)
           .single();
         userRow = data
@@ -662,6 +675,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               preferred_channel: data.preferred_channel as string | null,
               dismissed_channel_nudge_at:
                 data.dismissed_channel_nudge_at as string | null,
+              chatgpt_plan_type: data.chatgpt_plan_type as string | null,
+              openai_oauth_account_id:
+                data.openai_oauth_account_id as string | null,
             }
           : null;
       }
@@ -694,6 +710,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // 2026-05-27 after the underlying column was applied to prod.
         session.user.dismissedChannelNudgeAt =
           userRow.dismissed_channel_nudge_at ?? null;
+        // chatgptPlanType: raw plan-type string from OpenAI's id_token
+        // claim chatgptPlanType, written by storeOAuthTokens at signin
+        // (openai-oauth-db.ts:379) and refreshed on every token-refresh
+        // cron tick (line 780). Possible values: "free", "plus", "pro",
+        // "team", "enterprise" (OpenAI doesn't publish the enum but these
+        // are observed). NULL for users who never connected ChatGPT and
+        // for users whose tokens have been nulled by disconnectUser.
+        // Used by /plan to surface the BYOK-equivalent pricing path with
+        // "using your chatgpt plus subscription." copy.
+        session.user.chatgptPlanType = userRow.chatgpt_plan_type;
+        // connectedChatGPT: true iff the user currently has live ChatGPT
+        // OAuth tokens. Derived from openai_oauth_account_id non-null,
+        // because openai-oauth-db.ts:524-529's disconnectUser path nulls
+        // account_id along with the access/refresh tokens. (We deliberately
+        // don't expose the encrypted token blob through the session — that
+        // would be expensive + leaks ciphertext to the client; account_id
+        // is a small text field that's a 1:1 indicator.)
+        // Pairs with chatgptPlanType: /plan auto-applies BYOK pricing iff
+        // connectedChatGPT && chatgptPlanType in paid set ("plus" / "pro"
+        // / "team" / "enterprise"). "free" connected accounts fall back
+        // to the regular toggle because OpenAI doesn't give free-tier
+        // accounts Codex API access.
+        session.user.connectedChatGPT = userRow.openai_oauth_account_id !== null;
       }
       return session;
     },
