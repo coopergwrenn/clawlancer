@@ -5182,8 +5182,12 @@ async function stepPiAiReasoningPatch(
   result: ReconcileResult,
   dryRun: boolean,
 ): Promise<void> {
+  // 2026-05-29 re-anchor for OpenClaw 2026.5.22: pi-ai package renamed
+  // @mariozechner → @earendil-works (and reasoning-block shape rewrote to use
+  // model.thinkingLevelMap). File path within the package is unchanged.
+  // Mirror in lib/openclaw-patches.ts (the registry); both MUST stay in sync.
   const TARGET =
-    "/home/openclaw/.nvm/versions/node/v22.22.2/lib/node_modules/openclaw/node_modules/@mariozechner/pi-ai/dist/providers/openai-codex-responses.js";
+    "/home/openclaw/.nvm/versions/node/v22.22.2/lib/node_modules/openclaw/node_modules/@earendil-works/pi-ai/dist/providers/openai-codex-responses.js";
   const SENTINEL = "INSTACLAW_REASONING_ROUTER_V1";
 
   // 1. Cheap sentinel check — skip if already patched.
@@ -5216,12 +5220,23 @@ async function stepPiAiReasoningPatch(
   // 3. Anchors — must match byte-for-byte in pi-ai's current dist.
   const ANCHOR_AFTER_IMPORTS =
     'const DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api";';
+  // 2026-05-29 re-anchor: 5.22's buildRequestBody dropped the
+  // clampReasoningEffort static helper in favor of inline
+  // model.thinkingLevelMap lookup with `none` → `off ?? "none"` handling and
+  // an `if (effort !== null)` skip-when-null gate. Bytes captured from
+  // vm-036's @earendil-works/pi-ai/dist/providers/openai-codex-responses.js
+  // lines 283-293 (verified via `sed -n 283,293p | cat -A`).
   const ANCHOR_REASONING_BLOCK = [
     '    if (options?.reasoningEffort !== undefined) {',
-    '        body.reasoning = {',
-    '            effort: clampReasoningEffort(model.id, options.reasoningEffort),',
-    '            summary: options.reasoningSummary ?? "auto",',
-    '        };',
+    '        const effort = options.reasoningEffort === "none"',
+    '            ? (model.thinkingLevelMap?.off ?? "none")',
+    '            : (model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort);',
+    '        if (effort !== null) {',
+    '            body.reasoning = {',
+    '                effort,',
+    '                summary: options.reasoningSummary ?? "auto",',
+    '            };',
+    '        }',
     '    }',
   ].join("\n");
 
@@ -5248,12 +5263,23 @@ async function stepPiAiReasoningPatch(
     "",
   ].join("\n");
 
+  // 2026-05-29 re-anchor: mirrors the new 5.22 model.thinkingLevelMap
+  // pattern in BOTH the if and else-if branches (so a router decision of
+  // "low" against a model whose thinkingLevelMap.low === null is correctly
+  // suppressed — same behavior as upstream). Brace-balanced (11 opens, 11
+  // closes — verified). Embeds SENTINEL once here + once in INJECT_TOP =
+  // total 2, meets the >=2 sentinel-count gate below.
   const INJECT_REASONING_REPLACEMENT = [
     '    if (options?.reasoningEffort !== undefined) {',
-    '        body.reasoning = {',
-    '            effort: clampReasoningEffort(model.id, options.reasoningEffort),',
-    '            summary: options.reasoningSummary ?? "auto",',
-    '        };',
+    '        const effort = options.reasoningEffort === "none"',
+    '            ? (model.thinkingLevelMap?.off ?? "none")',
+    '            : (model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort);',
+    '        if (effort !== null) {',
+    '            body.reasoning = {',
+    '                effort,',
+    '                summary: options.reasoningSummary ?? "auto",',
+    '            };',
+    '        }',
     '    } else if (_instaclawRouter && typeof _instaclawRouter.classifyMessage === "function") {',
     `        // ${SENTINEL} — route reasoning effort by message content.`,
     "        try {",
@@ -5264,10 +5290,15 @@ async function stepPiAiReasoningPatch(
     "                    sessionId: options?.sessionId,",
     "                });",
     "                if (_decision && _decision.effort) {",
-    "                    body.reasoning = {",
-    "                        effort: clampReasoningEffort(model.id, _decision.effort),",
-    '                        summary: options?.reasoningSummary ?? "auto",',
-    "                    };",
+    '                    const _effort = _decision.effort === "none"',
+    '                        ? (model.thinkingLevelMap?.off ?? "none")',
+    '                        : (model.thinkingLevelMap?.[_decision.effort] ?? _decision.effort);',
+    "                    if (_effort !== null) {",
+    "                        body.reasoning = {",
+    "                            effort: _effort,",
+    '                            summary: options?.reasoningSummary ?? "auto",',
+    "                        };",
+    "                    }",
     "                }",
     "            }",
     "        } catch (_e) { /* router failure must never block the request */ }",

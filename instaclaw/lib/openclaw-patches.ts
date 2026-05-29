@@ -153,12 +153,27 @@ const REASONING_ROUTER_SENTINEL = "INSTACLAW_REASONING_ROUTER_V1";
 const REASONING_ROUTER_ANCHOR_AFTER_IMPORTS =
   'const DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api";';
 
+// 2026-05-29 re-anchor for OpenClaw 2026.5.22: pi-ai package renamed from
+// @mariozechner to @earendil-works AND upstream rewrote this block. The OLD
+// 4.26 shape used `clampReasoningEffort(model.id, effort)` (a static helper);
+// the NEW 5.22 shape inlines the clamping via `model.thinkingLevelMap` lookup
+// with explicit "none" → `thinkingLevelMap?.off ?? "none"` handling and an
+// `if (effort !== null)` skip-when-null gate.
+//
+// Anchor bytes captured live from vm-036's
+// node_modules/@earendil-works/pi-ai/dist/providers/openai-codex-responses.js
+// lines 283-293 (verified via `sed -n 283,293p | cat -A`).
 const REASONING_ROUTER_ANCHOR_REASONING_BLOCK = [
   "    if (options?.reasoningEffort !== undefined) {",
-  "        body.reasoning = {",
-  "            effort: clampReasoningEffort(model.id, options.reasoningEffort),",
-  '            summary: options.reasoningSummary ?? "auto",',
-  "        };",
+  '        const effort = options.reasoningEffort === "none"',
+  '            ? (model.thinkingLevelMap?.off ?? "none")',
+  "            : (model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort);",
+  "        if (effort !== null) {",
+  "            body.reasoning = {",
+  "                effort,",
+  '                summary: options.reasoningSummary ?? "auto",',
+  "            };",
+  "        }",
   "    }",
 ].join("\n");
 
@@ -175,12 +190,26 @@ const REASONING_ROUTER_INJECT_TOP = [
   "",
 ].join("\n");
 
+// Mirrors the 2026.5.22 model.thinkingLevelMap pattern in BOTH branches:
+//   - If caller passed reasoningEffort, use upstream's clamping logic.
+//   - Else if our router has an opinion, classify and apply the SAME clamping
+//     logic to the router's decision (so a router decision of "low" against a
+//     model whose thinkingLevelMap.low === null is correctly suppressed).
+// Brace-balanced (11 opens, 11 closes — verified by manual count); embeds the
+// REASONING_ROUTER_SENTINEL once (the load-time comment in INJECT_TOP embeds
+// it a second time → total 2, meets minSentinelCount=2). The catch swallows
+// router failures so the request never blocks on patch infrastructure.
 const REASONING_ROUTER_INJECT_REASONING_REPLACEMENT = [
   "    if (options?.reasoningEffort !== undefined) {",
-  "        body.reasoning = {",
-  "            effort: clampReasoningEffort(model.id, options.reasoningEffort),",
-  '            summary: options.reasoningSummary ?? "auto",',
-  "        };",
+  '        const effort = options.reasoningEffort === "none"',
+  '            ? (model.thinkingLevelMap?.off ?? "none")',
+  "            : (model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort);",
+  "        if (effort !== null) {",
+  "            body.reasoning = {",
+  "                effort,",
+  '                summary: options.reasoningSummary ?? "auto",',
+  "            };",
+  "        }",
   '    } else if (_instaclawRouter && typeof _instaclawRouter.classifyMessage === "function") {',
   `        // ${REASONING_ROUTER_SENTINEL} — route reasoning effort by message content.`,
   "        try {",
@@ -191,10 +220,15 @@ const REASONING_ROUTER_INJECT_REASONING_REPLACEMENT = [
   "                    sessionId: options?.sessionId,",
   "                });",
   "                if (_decision && _decision.effort) {",
-  "                    body.reasoning = {",
-  "                        effort: clampReasoningEffort(model.id, _decision.effort),",
-  '                        summary: options?.reasoningSummary ?? "auto",',
-  "                    };",
+  '                    const _effort = _decision.effort === "none"',
+  '                        ? (model.thinkingLevelMap?.off ?? "none")',
+  "                        : (model.thinkingLevelMap?.[_decision.effort] ?? _decision.effort);",
+  "                    if (_effort !== null) {",
+  "                        body.reasoning = {",
+  "                            effort: _effort,",
+  '                            summary: options?.reasoningSummary ?? "auto",',
+  "                        };",
+  "                    }",
   "                }",
   "            }",
   "        } catch (_e) { /* router failure must never block the request */ }",
@@ -314,8 +348,11 @@ export const PATCHES: OpenClawPatch[] = [
     managedBy: "stepPiAiReasoningPatch",
     discovery: {
       mode: "fixedPath",
+      // 2026-05-29: package renamed @mariozechner/pi-ai → @earendil-works/pi-ai
+      // in OpenClaw 2026.5.22. File path within the package is unchanged.
+      // Anchors + transform also re-anchored above for the new block shape.
       relPath:
-        "node_modules/@mariozechner/pi-ai/dist/providers/openai-codex-responses.js",
+        "node_modules/@earendil-works/pi-ai/dist/providers/openai-codex-responses.js",
     },
     anchors: [
       REASONING_ROUTER_ANCHOR_AFTER_IMPORTS,
@@ -328,7 +365,8 @@ export const PATCHES: OpenClawPatch[] = [
     why:
       "Routes reasoning effort by message content when the caller leaves " +
       "options.reasoningEffort undefined. Without it, codex requests bill the " +
-      "wrong effort tier. Live fleet-wide via stepPiAiReasoningPatch since v112.",
+      "wrong effort tier. Live fleet-wide via stepPiAiReasoningPatch since v112. " +
+      "Re-anchored 2026-05-29 for OpenClaw 2026.5.22 (package rename + block shape).",
     ref: "lib/vm-reconcile.ts:stepPiAiReasoningPatch; CLAUDE.md Rule 71",
   },
   {
