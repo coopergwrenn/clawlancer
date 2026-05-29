@@ -107,10 +107,15 @@ export async function getEdgeUserState(): Promise<EdgeUserState> {
     .limit(1);
 
   if (pending?.[0]?.telegram_bot_token) {
-    // They provided a bot token; next step is plan / checkout.
+    // They provided a bot token via the legacy /connect flow; next
+    // step is plan / checkout. Preserved for users who started
+    // pre-2026-05-29 when /connect was a required step.
     return { kind: "in_progress", resumePath: "/plan" };
   }
 
-  // Logged in but haven't connected a bot yet — start at /connect.
-  return { kind: "in_progress", resumePath: "/connect" };
+  // Logged in but no pending row. 2026-05-29: previously resumed
+  // at /connect; new flow sends every user (Edge included) straight
+  // to /plan. /connect is now a power-user opt-in path only, reachable
+  // via the "use the legacy setup" footnote on /plan and /channels.
+  return { kind: "in_progress", resumePath: "/plan" };
 }

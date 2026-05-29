@@ -23,25 +23,23 @@ export function SetupClient() {
   const router = useRouter();
 
   function handleContinue() {
-    // Route to /signin with callbackUrl=/connect.
+    // Route to /signin with callbackUrl=/plan.
     //
     // /signin shows both auth options (Google + ChatGPT). After
-    // successful auth, NextAuth honors the callbackUrl and redirects to
-    // /connect (the bot-pairing step). For first-time Edge attendees
-    // this is the right surface — /connect itself doesn't have a
-    // sign-in button (it assumes an authenticated user), so we explicitly
-    // route through /signin first.
-    //
-    // Why the explicit redirect chain over /signup's Google button:
-    // /signup is the invite-code entry point and doesn't have the
-    // ChatGPT button. /signin presents both options equally per Cooper's
-    // Option-A spec. Edge attendees don't have invite codes (they're
-    // verified via EdgeOS), so /signin is the right choice.
+    // successful auth, NextAuth honors the callbackUrl and redirects
+    // to /plan (Edge variant — sponsor framing, $0 today copy, olive
+    // CTA). 2026-05-29 routing-bug fix: previously callbackUrl was
+    // /connect (BYOB Telegram bot creation step). Cooper's new
+    // onboarding flow makes /connect a power-user opt-in path only;
+    // standard Edge flow goes /edge/claim → /signin → /plan directly.
+    // Users who want their own Telegram bot still reach /connect via
+    // the "use the legacy setup" footnote on /plan + /channels.
     //
     // The callbackUrl is read by /signin and forwarded to both the
-    // Google signIn() call and the ChatGPT modal's signupCallbackUrl prop,
-    // ensuring identical post-auth redirect behavior for both providers.
-    router.push("/signin?callbackUrl=/connect");
+    // Google signIn() call and the ChatGPT modal's signupCallbackUrl
+    // prop, ensuring identical post-auth redirect behavior for both
+    // providers.
+    router.push("/signin?callbackUrl=/plan");
   }
 
   return (

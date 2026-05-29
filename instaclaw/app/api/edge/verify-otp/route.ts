@@ -15,11 +15,13 @@
  *   5. Returns { ok: true, otpToken } to the client
  *
  * The client then calls:
- *   signIn(EDGE_EMAIL_OTP_PROVIDER_ID, { otpToken, callbackUrl: "/connect" })
+ *   signIn(EDGE_EMAIL_OTP_PROVIDER_ID, { otpToken, callbackUrl: "/plan" })
  *
  * NextAuth's Credentials provider's authorize() in lib/auth.ts verifies
  * the otpToken (HMAC + exp + audience) + does a DB lookup → returns the
- * user → mint session → user lands on /connect.
+ * user → mint session → user lands on /plan (Edge variant).
+ * (2026-05-29: callbackUrl was /connect; updated as part of Cooper's
+ * onboarding redesign that makes /plan the universal post-auth landing.)
  *
  * Why a one-shot token bridge (vs. just minting the session here):
  *   NextAuth v5 doesn't expose a server-side "create session from a known

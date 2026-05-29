@@ -293,7 +293,10 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
    */
   const handleSignInGoogle = useCallback(() => {
     setGateState({ kind: "oauth_redirecting", provider: "google" });
-    signIn("google", { callbackUrl: "/connect" });
+    // 2026-05-29: callbackUrl was /connect; Cooper's new onboarding
+    // flow sends every Edge attendee straight to /plan (Edge variant
+    // handles sponsor framing). /connect is now opt-in only.
+    signIn("google", { callbackUrl: "/plan" });
   }, []);
 
   /**
@@ -413,7 +416,10 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
       }
 
       // Code verified server-side, user upserted, otpToken minted.
-      // Hand off to NextAuth — signIn() will redirect to /connect.
+      // Hand off to NextAuth — signIn() will redirect to /plan
+      // (2026-05-29: was /connect; Cooper's new flow sends Edge
+      // attendees straight to /plan, Edge variant handles sponsor
+      // framing).
       setGateState({
         kind: "email_otp_signing_in",
         email: otpEntry.email,
@@ -424,7 +430,7 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
       // disabled; we trigger the navigation manually only on success.
       const signInResult = await signIn("edge-email-otp", {
         otpToken: data.otpToken,
-        callbackUrl: "/connect",
+        callbackUrl: "/plan",
         redirect: false,
       });
       if (!signInResult || signInResult.error) {
@@ -434,7 +440,7 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
       // Navigate to the callback URL ourselves (NextAuth would normally
       // do this with redirect:true). window.location preserves the
       // session cookie write that just happened.
-      window.location.href = signInResult.url ?? "/connect";
+      window.location.href = signInResult.url ?? "/plan";
     },
     [gateState],
   );
@@ -936,14 +942,18 @@ export function ClaimClient({ userState }: { userState: EdgeUserState }) {
         backdrop + focus trap; closing returns the user to the auth_choice
         screen with all three buttons still visible.
         On success the modal calls signIn(OPENAI_DEVICE_CODE_PROVIDER_ID,
-        {signupToken, callbackUrl: "/connect"}). The edge_verified_email
+        {signupToken, callbackUrl: "/plan"}). The edge_verified_email
         signed cookie set by /api/edge/verify-ticket is honored by the
-        OAuth callback in lib/auth.ts. */}
+        OAuth callback in lib/auth.ts.
+        2026-05-29: callbackUrl was /connect; Cooper's new onboarding
+        flow sends Edge attendees straight to /plan (Edge variant
+        handles sponsor framing + olive CTA). /connect is now an
+        opt-in power-user path only. */}
     <ChatGPTConnectModal
       isOpen={chatgptModalOpen}
       onClose={() => setChatgptModalOpen(false)}
       mode="signup"
-      signupCallbackUrl="/connect"
+      signupCallbackUrl="/plan"
       // 2026-05-22 — Edge theme. Swaps the modal's black + brand-orange
       // palette for Edge cream + olive so it doesn't visually clash with
       // the "Unlocked. Welcome back, Cooper." page behind it. See

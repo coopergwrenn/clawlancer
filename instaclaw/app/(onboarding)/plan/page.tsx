@@ -180,36 +180,120 @@ export default function PlanPage() {
     }
   }, [isChatGPTUser, apiMode]);
 
+  // Hydration / first-visit state.
+  //
+  // 2026-05-29 routing-bug fix: this effect previously redirected to
+  // /connect when no pending row existed for the user. That broke the
+  // new onboarding flow Cooper finalized today:
+  //
+  //   /signin → /plan → stripe checkout → /deploying → /onboarding/done
+  //
+  // /connect is now a LEGACY power-user path (BYOB Telegram bot creation).
+  // It's still reachable via the "use the legacy setup" footnote at the
+  // bottom of this page + the same link on /channels, but it is NOT a
+  // prerequisite for /plan.
+  //
+  // Three entry shapes this effect handles:
+  //
+  //  1. sessionStorage already populated (user is mid-flow, e.g. they
+  //     went /channels → /onboarding/web → /plan, or /edge/claim →
+  //     /connect → /plan): hydrate apiMode from storage, done.
+  //  2. No sessionStorage, but pending row exists in DB (refresh/new
+  //     tab of an in-flight session): rebuild sessionStorage from the
+  //     DB row + hydrate apiMode.
+  //  3. No sessionStorage, no pending row (the NEW /signin → /plan
+  //     flow — most users post-Cooper's onboarding redesign): seed
+  //     sessionStorage with web-channel defaults so handleCheckout's
+  //     downstream /api/onboarding/save call gets channels:["web"]
+  //     (passes the at-least-one-channel validation at the save
+  //     endpoint) and the agent provisions in the same shape as the
+  //     /onboarding/web silent-provision path (channels_enabled=[],
+  //     no telegram/discord tokens, dashboard-only access). The user
+  //     can later opt into a messaging channel via /channels.
+  //
+  // Edge flow uses the SAME flow as everyone else post-2026-05-29:
+  // /edge/claim → /signin (callbackUrl="/plan" — claim-client.tsx
+  // Google/email-OTP/ChatGPT-modal all updated) → /plan with the Edge
+  // variant (olive headline + sponsor framing + olive CTA — gated on
+  // partner=edge_city via the existing isEdge branch above). Edge
+  // attendees hit Case 3 (no pending row) and the web-channel seed
+  // applies — they provision with channels_enabled=[] (dashboard-only)
+  // unless they opt into a messaging channel later via /channels.
   useEffect(() => {
     const stored = sessionStorage.getItem("instaclaw_onboarding");
     if (stored) {
+      // Case 1 — sessionStorage present
       const data = JSON.parse(stored);
       setApiMode(data.apiMode ?? "all_inclusive");
       setHydrated(true);
       return;
     }
 
-    // No sessionStorage — try to restore from DB (handles refresh / new tab)
+    // No sessionStorage — try to restore from DB (handles refresh / new
+    // tab in flows that DID create a pending row earlier — Edge, /channels
+    // skip-to-command-center, legacy /connect).
     fetch("/api/onboarding/wizard-status")
-      .then((r) => r.ok ? r.json() : null)
+      .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.pending) {
-          // Rebuild sessionStorage from saved pending record
+          // Case 2 — pending row in DB; rebuild sessionStorage.
           const restored = {
             botToken: data.pending.telegram_bot_token ?? "",
-            channels: data.pending.telegram_bot_token ? ["telegram"] : data.pending.discord_bot_token ? ["discord"] : [],
+            channels: data.pending.telegram_bot_token
+              ? ["telegram"]
+              : data.pending.discord_bot_token
+                ? ["discord"]
+                : [],
             apiMode: data.pending.api_mode ?? "all_inclusive",
             model: data.pending.default_model ?? "claude-sonnet-4-6",
           };
-          sessionStorage.setItem("instaclaw_onboarding", JSON.stringify(restored));
+          sessionStorage.setItem(
+            "instaclaw_onboarding",
+            JSON.stringify(restored),
+          );
           setApiMode(restored.apiMode as "all_inclusive" | "byok");
           setHydrated(true);
         } else {
-          router.push("/connect");
+          // Case 3 — no prior state. Seed web-channel defaults so
+          // handleCheckout's /api/onboarding/save call passes the
+          // at-least-one-channel validation. /plan is now this user's
+          // first onboarding page; previously they'd be bounced to
+          // /connect, but that's no longer a required step.
+          const seed = {
+            botToken: "",
+            channels: ["web"],
+            apiMode: "all_inclusive",
+            model: "claude-sonnet-4-6",
+          };
+          sessionStorage.setItem(
+            "instaclaw_onboarding",
+            JSON.stringify(seed),
+          );
+          setApiMode("all_inclusive");
+          setHydrated(true);
         }
       })
       .catch(() => {
-        router.push("/connect");
+        // Network error reading wizard-status — same conservative seed
+        // as Case 3. Better to let the user proceed and have
+        // handleCheckout retry the save than to dead-end them at /connect
+        // (which would now itself be confusing).
+        const seed = {
+          botToken: "",
+          channels: ["web"],
+          apiMode: "all_inclusive",
+          model: "claude-sonnet-4-6",
+        };
+        try {
+          sessionStorage.setItem(
+            "instaclaw_onboarding",
+            JSON.stringify(seed),
+          );
+        } catch {
+          /* private mode — non-fatal, useState defaults still apply */
+        }
+        setApiMode("all_inclusive");
+        setHydrated(true);
       });
   }, [router]);
 
@@ -346,7 +430,7 @@ export default function PlanPage() {
           <div className="max-w-5xl mx-auto px-6">
             <div className="flex items-center justify-center gap-2">
               {[
-                { num: 1, label: "Connect" },
+                { num: 1, label: "Sign in" },
                 { num: 2, label: "Plan" },
                 { num: 3, label: "Deploy" },
               ].map((step, i) => (
@@ -1051,13 +1135,45 @@ export default function PlanPage() {
           </div>
         </section>
 
+        {/* Legacy-setup footnote (2026-05-29 routing-bug fix).
+            /plan is no longer gated behind /connect (the BYOB Telegram
+            bot creation page). Users who specifically want to bring
+            their own Telegram bot can still reach /connect via this
+            link. Same register as /channels' "use the legacy setup"
+            footnote (channels-client.tsx:282-298) — 13px SUBTLE_INK,
+            lowercase, single underlined link in MUTED_INK. Hidden
+            for Edge attendees because they ALREADY came through
+            /connect en route here (claim-client.tsx:296 →
+            connect/page.tsx:289 → /plan), so the link would be
+            confusing for them. */}
+        {!isEdge && (
+          <p
+            className="mt-10 text-center"
+            style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
+          >
+            want your own Telegram bot?{" "}
+            <Link
+              href="/connect"
+              className="transition-opacity hover:opacity-70"
+              style={{
+                color: MUTED_INK,
+                textDecoration: "underline",
+                textUnderlineOffset: 2,
+              }}
+            >
+              use the legacy setup
+            </Link>
+            .
+          </p>
+        )}
+
         {/* Support footer — F3 audit fix 2026-05-22. /plan is where the
             Stripe checkout creation can fail (network, deployment lock,
             existing-sub edge case) and previously the only escape was
             the inline error message. SupportFooter gives attendees a
             persistent contact path. */}
         <div
-          className="mt-10 text-center"
+          className="mt-6 text-center"
           style={{ fontSize: 12, color: SUBTLE_INK }}
         >
           <SupportFooter />

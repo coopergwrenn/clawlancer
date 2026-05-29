@@ -128,7 +128,10 @@ export async function GET(req: NextRequest) {
     ? "/dashboard?partner_tag_error=1"
     : result.hasVm
       ? "/dashboard"
-      : "/connect"; // they're authed but have no VM yet — /connect is the right next step
+      : "/plan"; // 2026-05-29: was /connect; Cooper's new onboarding
+                 // flow sends Edge attendees (and everyone else) straight
+                 // to /plan after auth — /connect is now an opt-in path
+                 // via the "use the legacy setup" footnote on /plan.
 
   const res = buildRedirect(req, destination);
   res.cookies.set(PARTNER_COOKIE, PARTNER, {
