@@ -979,33 +979,40 @@ export default function PlanPage() {
           </p>
         )}
 
-        {/* Primary trial CTA — glass-coral pill (2026-05-29 Cooper
-            feedback). Prior full-bleed coral bar with rounded-lg
-            read as a 2019 SaaS template; new treatment layers the
-            page's liquid-glass material vocabulary on top of the
-            coral base. See .liquid-glass-coral recipe in globals.css
-            for the full architecture rationale — 3-DOM mirror of
-            .liquid-glass-signin with hue-matched palette (cream
-            sheen instead of pure white, burgundy rim darks instead
-            of pure black, coral-warm drop instead of black drop).
-            Constraints: 440px max-width centered, full-pill border-
-            radius (9999px) so the shape matches every other primary
-            CTA across the project (Claim My Agent on the landing
-            hero, book a call. sibling below, OAuth pills on /signin)
-            instead of standing out as a 12px outlier. Serif
-            typography (19px Instrument Serif, -0.3px tracking) for
-            register consistency with the page H1 ("choose a plan.")
-            and the sibling glass CTA ("book a call."). Edge variant
-            via .is-edge class on root substitutes olive base +
-            olive-tinted rim/substrate/shadow. */}
+        {/* Primary trial CTA — standard glass surface, coral light
+            bleeding through (2026-05-29 v3 Cooper feedback). v1 was
+            a flat coral bar (2019 SaaS); v2 was a painted-coral
+            surface with cream-sheen glass on top; v3 inverts that —
+            the surface uses the EXACT SAME glass material as every
+            other primary button on the project (.liquid-glass-signin
+            = "book a call." sibling below, the OAuth pills on
+            /signin, .liquid-glass-btn family on the landing hero).
+            What changes is the LIGHT BEHIND the glass: a coral radial
+            on the root's ::before refraction substrate (or olive for
+            Edge attendees). Mirrors the /channels pattern (cards
+            with .is-imessage / .is-telegram modifiers — same glass
+            surface, different colored substrate behind). See
+            .cta-coral / .cta-edge rules in globals.css.
+
+            Constraints: 440px max-width centered, full-pill 9999px
+            (inherited from .liquid-glass-signin-root), serif typo
+            (19px Instrument Serif, -0.3px tracking — applied by the
+            modifier class), CARD_INK text (inherited from
+            .liquid-glass-signin-root#333334). Disabled inline because
+            .liquid-glass-signin is shared with /signin OAuth pills
+            that never disable; adding :disabled to the shared class
+            would be over-reach. */}
         <div
-          className={`liquid-glass-coral-root mx-auto${isEdge ? " is-edge" : ""}`}
+          className={`liquid-glass-signin-root mx-auto ${isEdge ? "cta-edge" : "cta-coral"}`}
           style={{ maxWidth: 440 }}
         >
           <button
             onClick={handleCheckout}
             disabled={loading}
-            className="liquid-glass-coral"
+            className="liquid-glass-signin"
+            style={
+              loading ? { opacity: 0.5, cursor: "not-allowed" } : undefined
+            }
           >
             {loading ? (
               <span className="flex items-center gap-2 justify-center">
@@ -1032,7 +1039,7 @@ export default function PlanPage() {
               </span>
             ) : "start free trial"}
           </button>
-          <div aria-hidden className="liquid-glass-coral-shadow" />
+          <div aria-hidden className="liquid-glass-signin-shadow" />
         </div>
 
         {/* Enterprise section — Option D redesign (2026-05-29 visual
