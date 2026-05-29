@@ -2619,3 +2619,94 @@ html.lenis body {
     rgba(20, 35, 22, 0.14)
   );
 }
+
+/* ─── Larry on the /plan trial CTA (.cta-larry) ──────────────────────
+   2026-05-29 — Pixel-art Larry crab peeks over the top-right edge of
+   the start-trial CTA, waves his right claw. Larry is the InstaClaw
+   mascot, not the Edge mascot, so the JSX renders him only for
+   non-Edge users (the .cta-coral variant). The Edge variant gets a
+   clean glass pill with no character.
+
+   Asset: /images/larry-wave-sprite.png — horizontal 4-frame strip,
+   each frame 256×113px source (Larry's tight bbox after noise removal
+   via connected-components, bottom-anchored so his feet sit at the
+   sprite bottom in every frame). Sprite total 1024×113px source.
+
+   At display: each frame is FRAME_W × FRAME_H, scaled from 256×113
+   via background-size: (FRAME_W * 4)px FRAME_Hpx. image-rendering:
+   pixelated tells the browser to use nearest-neighbor when sampling
+   (no anti-alias) so the pixel-art edges stay crisp at any zoom.
+
+   Position: absolute, inside .liquid-glass-signin-root.cta-coral
+   (already position: relative). bottom: ~85% puts Larry's BOTTOM
+   above the wrapper bottom by 85% of wrapper height, which leaves
+   most of Larry visible ABOVE the pill (peeking) with a small
+   overlap onto the pill's top edge. z-index: 1 sits him behind the
+   button surface (z-index: 2) but ahead of the shadow proxy
+   (z-index: 0) — so where Larry overlaps the pill, he renders
+   behind-and-through the transparent glass surface (the part
+   peeking above is unobstructed).
+
+   Animation: two parallel animations on the same element via
+   comma-separated `animation` shorthand.
+     - larry-wave: cycles background-position through frames
+       1→2→3→4→3→2→1 (ping-pong, 7 evenly-spaced keyframes at
+       0/14.3/28.6/42.9/57.1/71.4/85.7%). Uses step-end timing so
+       transitions are instant (no tween of pixel art). 3.5s loop.
+     - larry-bob: gentle 3px vertical translateY bob over 6s with
+       ease-in-out. Slower than the wave so Larry waves several
+       times per bob — separates the rhythms for visual interest.
+   prefers-reduced-motion disables both. */
+
+.cta-larry {
+  /* Sizing is driven by CSS variables so the @keyframes can use the
+     same frame-width without hardcoded duplication. Width:height
+     ratio MUST be 256:113 (the sprite's per-frame source dimensions)
+     so Larry doesn't stretch. --cta-larry-w can be tuned independently
+     of the keyframe math. */
+  --cta-larry-w: 96px;
+  --cta-larry-h: 42px; /* 96 * 113 / 256 = 42.4 ≈ 42 */
+
+  position: absolute;
+  bottom: 88%;
+  right: 28px;
+  width: var(--cta-larry-w);
+  height: var(--cta-larry-h);
+  background-image: url('/images/larry-wave-sprite.png');
+  background-repeat: no-repeat;
+  /* Background-size: total sprite display size. Sprite source is
+     1024×113 (4 frames × 256×113). At display the sprite is shown at
+     (4 × --cta-larry-w) × --cta-larry-h, so each frame is exactly
+     --cta-larry-w wide. */
+  background-size: calc(var(--cta-larry-w) * 4) var(--cta-larry-h);
+  background-position: 0 0;
+  z-index: 1;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  pointer-events: none;
+  animation:
+    larry-wave 3.5s step-end infinite,
+    larry-bob 6s ease-in-out infinite;
+}
+
+@keyframes larry-wave {
+  0%, 100% { background-position: 0 0; }                             /* F1 */
+  14.3%    { background-position: calc(var(--cta-larry-w) * -1) 0; } /* F2 */
+  28.6%    { background-position: calc(var(--cta-larry-w) * -2) 0; } /* F3 */
+  42.9%    { background-position: calc(var(--cta-larry-w) * -3) 0; } /* F4 */
+  57.1%    { background-position: calc(var(--cta-larry-w) * -2) 0; } /* F3 */
+  71.4%    { background-position: calc(var(--cta-larry-w) * -1) 0; } /* F2 */
+  85.7%    { background-position: 0 0; }                             /* F1 */
+}
+
+@keyframes larry-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cta-larry {
+    animation: none;
+    background-position: 0 0;
+  }
+}

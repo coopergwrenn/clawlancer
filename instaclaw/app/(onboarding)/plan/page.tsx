@@ -1006,6 +1006,16 @@ export default function PlanPage() {
           className={`liquid-glass-signin-root mx-auto ${isEdge ? "cta-edge" : "cta-coral"}`}
           style={{ maxWidth: 440 }}
         >
+          {/* Larry the InstaClaw crab, peeking over the top-right edge.
+              Decorative — aria-hidden so screen readers skip him. Hidden
+              for Edge attendees (the .cta-edge variant) because Larry
+              is InstaClaw's mascot, not Edge's. Renders BEFORE the
+              button in source order so his z-index: 1 puts him behind
+              the button's z-index: 2 surface where they overlap (small
+              overlap at the bottom of his silhouette; most of him is
+              above the pill where there's no overlap). See .cta-larry
+              + @keyframes larry-wave / larry-bob in globals.css. */}
+          {!isEdge && <span aria-hidden className="cta-larry" />}
           <button
             onClick={handleCheckout}
             disabled={loading}
