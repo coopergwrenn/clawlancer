@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-30
 
-Window: `9577157d86734b339e9d80d5cb83ea3c00f15d7e` → `HEAD` (HEAD = `f48e572e`)
+Window: `f48e572efbb380ee16bace5fbcc3c795b5a85133` → `HEAD` (HEAD = `cd7e6703`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: f48e572efbb380ee16bace5fbcc3c795b5a85133 -->
+<!-- LAST_GENERATED_SHA: cd7e6703c8e68889875e3288dc64c22337b97264 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `f48e572e` 2026-05-30 — plan: 2026-05-29 pricing sweep — landing, blogs, dashboard, Edge, JSON-LD [38 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
-- `c01cc185` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `cd7e6703` 2026-05-30 — fix(onboarding): unblock BYOK flow for Anthropic-key AND ChatGPT-OAuth users [10 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `c5f57435` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `f48e572e` 2026-05-30 — plan: 2026-05-29 pricing sweep — landing, blogs, dashboard, Edge, JSON-LD [38 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `cd7e6703` 2026-05-30 — fix(onboarding): unblock BYOK flow for Anthropic-key AND ChatGPT-OAuth users [10 files] _(multi: [infrastructure, feature]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `c01cc185` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `c5f57435` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `f48e572e` 2026-05-30 — [infrastructure, feature, edge, docs] — plan: 2026-05-29 pricing sweep — landing, blogs, dashboard, Edge, JSON-LD
+- `cd7e6703` 2026-05-30 — [infrastructure, feature] — fix(onboarding): unblock BYOK flow for Anthropic-key AND ChatGPT-OAuth users
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `f48e572e` 2026-05-30 — plan: 2026-05-29 pricing sweep — landing, blogs, dashboard, Edge, JSON-LD
+- `cd7e6703` 2026-05-30 — fix(onboarding): unblock BYOK flow for Anthropic-key AND ChatGPT-OAuth users
 
 ## Appendix — every commit (chronological)
 
-- `c01cc185` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
-- `f48e572e` 2026-05-30 — plan: 2026-05-29 pricing sweep — landing, blogs, dashboard, Edge, JSON-LD [38 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `c5f57435` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `cd7e6703` 2026-05-30 — fix(onboarding): unblock BYOK flow for Anthropic-key AND ChatGPT-OAuth users [10 files] _(multi: [infrastructure, feature]; ai-assisted)_
