@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-30
 
-Window: `2ba1c469007d34fef27bb39ff273a6a738027d93` → `HEAD` (HEAD = `0818062f`)
+Window: `0818062fe2bbb46bde3724ddd91ad2e8c6f82ae7` → `HEAD` (HEAD = `2acd3d1e`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 0818062fe2bbb46bde3724ddd91ad2e8c6f82ae7 -->
+<!-- LAST_GENERATED_SHA: 2acd3d1ed7f14d9f1874c79a6d0deae4664ea108 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `0818062f` 2026-05-30 — fix(onboarding): wabi-sabi polish pass across /deploying, /onboarding/done, /connect [4 files] _(ai-assisted)_
+- `2acd3d1e` 2026-05-30 — fix(onboarding): unify CTAs to glass-pill standard across /connect + /onboarding/done [3 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `bd7e8a55` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `ab5a4c4e` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `0818062f` 2026-05-30 — fix(onboarding): wabi-sabi polish pass across /deploying, /onboarding/done, /connect [4 files] _(ai-assisted)_
+- `2acd3d1e` 2026-05-30 — fix(onboarding): unify CTAs to glass-pill standard across /connect + /onboarding/done [3 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `bd7e8a55` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `ab5a4c4e` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `0818062f` 2026-05-30 — fix(onboarding): wabi-sabi polish pass across /deploying, /onboarding/done, /connect
+- `2acd3d1e` 2026-05-30 — fix(onboarding): unify CTAs to glass-pill standard across /connect + /onboarding/done
 
 ## Appendix — every commit (chronological)
 
-- `bd7e8a55` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
-- `0818062f` 2026-05-30 — fix(onboarding): wabi-sabi polish pass across /deploying, /onboarding/done, /connect [4 files] _(ai-assisted)_
+- `ab5a4c4e` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `2acd3d1e` 2026-05-30 — fix(onboarding): unify CTAs to glass-pill standard across /connect + /onboarding/done [3 files] _(ai-assisted)_
