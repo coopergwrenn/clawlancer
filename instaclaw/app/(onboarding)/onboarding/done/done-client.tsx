@@ -477,52 +477,47 @@ function FormState(props: FormStateProps) {
         </div>
       )}
 
-      {/* CTAs — submit (coral) + skip (equal-prominence text) */}
-      <div className="mt-10 flex flex-col items-center gap-3">
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={submitting}
-          className="w-full rounded-2xl transition-all duration-150 ease-out active:scale-[0.99] cursor-pointer disabled:cursor-default"
-          style={{
-            background: submitting ? CORAL_DEEP : CORAL,
-            color: "#ffffff",
-            fontFamily: "var(--font-serif)",
-            fontSize: 20,
-            letterSpacing: "-0.3px",
-            padding: "16px 24px",
-            border: "none",
-            boxShadow: submitting
-              ? "0 1px 2px rgba(199, 90, 52, 0.20)"
-              : "0 1px 2px rgba(233, 111, 77, 0.30), 0 4px 16px rgba(233, 111, 77, 0.20)",
-          }}
-          onMouseEnter={(e) => {
-            if (submitting) return;
-            e.currentTarget.style.transform = "translateY(-1px)";
-            e.currentTarget.style.boxShadow =
-              "0 1px 2px rgba(233, 111, 77, 0.32), 0 8px 24px rgba(233, 111, 77, 0.26)";
-          }}
-          onMouseLeave={(e) => {
-            if (submitting) return;
-            e.currentTarget.style.transform = "translateY(0)";
-            e.currentTarget.style.boxShadow =
-              "0 1px 2px rgba(233, 111, 77, 0.30), 0 4px 16px rgba(233, 111, 77, 0.20)";
-          }}
+      {/* CTAs — primary glass-coral pill + skip text link.
+          2026-05-30 polish: upgraded from flat-coral rounded-2xl to the
+          .liquid-glass-signin cta-coral recipe used across /signin,
+          /plan ("start free trial"), and /onboarding/provider ("save
+          and continue"). Same glass surface + coral substrate behind.
+          Shared :hover behavior comes from globals.css so the
+          per-button onMouseEnter/Leave handlers are gone. */}
+      <div className="mt-10 flex flex-col items-center gap-3 w-full">
+        <div
+          className="liquid-glass-signin-root cta-coral mx-auto w-full"
+          style={{ maxWidth: 460 }}
         >
-          {submitting ? "saving..." : "ok, let's meet."}
-        </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={submitting}
+            className="liquid-glass-signin"
+            style={
+              submitting
+                ? { opacity: 0.5, cursor: "not-allowed" }
+                : undefined
+            }
+          >
+            {submitting ? "saving..." : "ok, let's meet."}
+          </button>
+          <div aria-hidden className="liquid-glass-signin-shadow" />
+        </div>
 
         <button
           type="button"
           onClick={onSkip}
           disabled={submitting}
-          className="transition-colors duration-150 cursor-pointer disabled:cursor-default"
+          className="transition-colors duration-150 cursor-pointer disabled:cursor-default underline"
           style={{
             background: "transparent",
             border: "none",
             color: MUTED_INK,
-            fontSize: 15,
+            fontSize: 13,
             padding: "10px 20px",
+            textUnderlineOffset: 3,
+            letterSpacing: "-0.1px",
           }}
           onMouseEnter={(e) => {
             if (submitting) return;
@@ -600,26 +595,25 @@ function PostSubmitState({ channel }: { channel: Channel }) {
       </p>
 
       {/* Web-only users: a direct CTA to /dashboard since there's no
-          messaging app for them to switch to. Coral pill matching the
-          /channels primary CTA family — same color hierarchy as the
-          rest of onboarding. The pulsing-dot affordance below the
-          channel users' "i'll be there" copy means "your agent is
-          about to message you" — which doesn't apply for web. */}
+          messaging app for them to switch to. 2026-05-30 polish:
+          upgraded from a flat-coral rounded-full pill to the
+          .liquid-glass-signin cta-coral recipe so this CTA reads as
+          a sibling of /plan's "start free trial" and the form-state
+          submit above — same recipe, same surface, same hover. */}
       {isWeb ? (
-        <div className="flex justify-center">
+        <div
+          className="liquid-glass-signin-root cta-coral mx-auto"
+          style={{ maxWidth: 360 }}
+        >
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-medium transition-snappy"
-            style={{
-              background: CORAL,
-              color: "#ffffff",
-              boxShadow: "0 2px 8px rgba(233, 111, 77, 0.28), inset 0 1px 0 rgba(255,255,255,0.25)",
-              letterSpacing: "-0.2px",
-            }}
+            className="liquid-glass-signin"
+            style={{ textDecoration: "none", fontFamily: "inherit" }}
           >
             open your command center
-            <span aria-hidden style={{ fontSize: 16, marginLeft: 2 }}>→</span>
+            <span aria-hidden style={{ marginLeft: 4 }}>→</span>
           </Link>
+          <div aria-hidden className="liquid-glass-signin-shadow" />
         </div>
       ) : (
         /* Subtle visual cue — a coral dot that gently pulses,
@@ -692,26 +686,23 @@ function ExpiredState() {
         no problem. text us again and we&apos;ll start over fresh.
       </p>
 
-      <a
-        href="sms:+14072425197"
-        className="inline-flex items-center gap-2 rounded-2xl transition-all duration-150 ease-out active:scale-[0.99]"
-        style={{
-          background: CORAL,
-          color: "#ffffff",
-          fontFamily: "var(--font-serif)",
-          fontSize: 18,
-          letterSpacing: "-0.3px",
-          padding: "14px 24px",
-          textDecoration: "none",
-          boxShadow:
-            "0 1px 2px rgba(233, 111, 77, 0.30), 0 4px 16px rgba(233, 111, 77, 0.20)",
-        }}
+      {/* 2026-05-30 polish: upgraded from flat-coral rounded-2xl to
+          the glass-coral pill recipe so the expired-state recovery
+          CTA matches the rest of the onboarding family. */}
+      <div
+        className="liquid-glass-signin-root cta-coral"
+        style={{ maxWidth: 240 }}
       >
-        text us
-        <span aria-hidden style={{ marginLeft: 4 }}>
-          →
-        </span>
-      </a>
+        <a
+          href="sms:+14072425197"
+          className="liquid-glass-signin"
+          style={{ textDecoration: "none", fontFamily: "inherit" }}
+        >
+          text us
+          <span aria-hidden style={{ marginLeft: 4 }}>→</span>
+        </a>
+        <div aria-hidden className="liquid-glass-signin-shadow" />
+      </div>
     </div>
   );
 }

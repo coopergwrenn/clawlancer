@@ -2606,6 +2606,24 @@ html.lenis body {
   );
 }
 
+/* 2026-05-30 — .cta-telegram variant. Same architecture as .cta-coral
+   / .cta-edge: the .liquid-glass-signin surface stays neutral glass;
+   the root's ::before substrate is tinted Telegram brand-blue so a
+   Telegram-action CTA reads as "telegram-y" without being a bright
+   blue rectangle. Mirrors the /channels Telegram card refraction
+   (.channel-card-root.is-telegram::before — same blue tint, same
+   architectural pattern). Used on /connect's "open BotFather with
+   /newbot pre-typed" button. */
+.liquid-glass-signin-root.cta-telegram::before {
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    rgba(34, 158, 217, 0.30) 0%,
+    rgba(34, 158, 217, 0.16) 45%,
+    rgba(0, 0, 0, 0.05) 75%,
+    transparent 92%
+  );
+}
+
 .liquid-glass-signin-root.cta-coral .liquid-glass-signin-shadow::after {
   background-image: linear-gradient(
     rgba(220, 103, 67, 0.32),
@@ -2617,6 +2635,13 @@ html.lenis body {
   background-image: linear-gradient(
     rgba(20, 35, 22, 0.30),
     rgba(20, 35, 22, 0.14)
+  );
+}
+
+.liquid-glass-signin-root.cta-telegram .liquid-glass-signin-shadow::after {
+  background-image: linear-gradient(
+    rgba(34, 158, 217, 0.28),
+    rgba(34, 158, 217, 0.10)
   );
 }
 

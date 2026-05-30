@@ -621,55 +621,63 @@ export default function ConnectPage() {
               </div>
             ) : (
               <>
-                {/* 2026-05-22 FIX A — BotFather deep link button (Charlie's
-                    Edge feedback). One tap opens Telegram with /newbot
-                    pre-typed in the BotFather chat, eliminating "open
-                    Telegram, search BotFather, tap Start, type /newbot".
-                    Placed ABOVE the input so users see the fast path first;
-                    manual instructions below stay for users who prefer them. */}
-                <a
-                  href={BOTFATHER_NEWBOT_DEEP_LINK}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 mb-3 w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:opacity-95 active:scale-[0.99]"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, rgba(38,165,228,0.95), rgba(34,153,217,1))",
-                    color: "#ffffff",
-                    boxShadow:
-                      "rgba(255,255,255,0.25) 0px -1px 1px 0px inset, rgba(38,165,228,0.35) 0px 4px 14px 0px",
-                  }}
-                >
-                  {/* Telegram brand color for instant recognition. Icon is
-                      inlined SVG — Telegram paper-plane, no extra dep. */}
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    aria-hidden="true"
+                {/* BotFather deep link button (Charlie's Edge feedback,
+                    2026-05-22). One tap opens Telegram with /newbot
+                    pre-typed.
+                    2026-05-30 polish: was a bright Telegram-blue
+                    gradient rounded-xl button — visually clashed with
+                    the wabi-sabi cream + coral palette. Now uses the
+                    glass pill recipe with .cta-telegram substrate
+                    (blue tint behind glass), matching the /channels
+                    Telegram card refraction pattern. The blue paper-
+                    plane icon stays so brand recognition is preserved;
+                    the surface itself is the standard neutral glass. */}
+                <div className="liquid-glass-signin-root cta-telegram mb-3">
+                  <a
+                    href={BOTFATHER_NEWBOT_DEEP_LINK}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="liquid-glass-signin"
+                    style={{
+                      textDecoration: "none",
+                      fontFamily: "inherit",
+                      fontSize: 14,
+                      letterSpacing: "-0.1px",
+                      gap: 8,
+                    }}
                   >
-                    <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71l-4.13-3.05-1.99 1.93c-.23.23-.42.42-.84.42z" />
-                  </svg>
-                  Open BotFather with /newbot pre-typed
-                  {/* External-link arrow — inlined to avoid pulling in
-                      lucide-react just for this one icon. */}
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="opacity-80"
-                    aria-hidden="true"
-                  >
-                    <path d="M7 17 17 7" />
-                    <path d="M7 7h10v10" />
-                  </svg>
-                </a>
+                    {/* Telegram brand-blue paper-plane — instant
+                        recognition. Stroke color stays Telegram-blue
+                        so it reads as "Telegram action" against the
+                        neutral glass surface. */}
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="#229ED9"
+                      aria-hidden="true"
+                    >
+                      <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71l-4.13-3.05-1.99 1.93c-.23.23-.42.42-.84.42z" />
+                    </svg>
+                    open BotFather with /newbot pre-typed
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="opacity-50"
+                      aria-hidden="true"
+                    >
+                      <path d="M7 17 17 7" />
+                      <path d="M7 7h10v10" />
+                    </svg>
+                  </a>
+                  <div aria-hidden className="liquid-glass-signin-shadow" />
+                </div>
 
                 <div className="flex gap-3">
                   <input
@@ -698,48 +706,66 @@ export default function ConnectPage() {
                       border: error ? "2px solid #DC6743" : "none",
                     }}
                   />
-                <button
-                  type="button"
-                  onClick={handleVerifyToken}
-                  disabled={loading || !botToken.trim()}
-                  className={`px-6 py-3 rounded-xl text-sm font-medium transition-all min-w-[100px] ${!botToken.trim() ? "disabled:opacity-50" : ""}`}
-                  style={TOKEN_RE.test(botToken.trim()) && !verified ? {
-                    background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
-                    backdropFilter: "blur(2px)",
-                    WebkitBackdropFilter: "blur(2px)",
-                    boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(255,255,255,0.3) 0px -1px 1px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px, rgba(255,255,255,0.08) 0px 0px 1.6px 4px inset",
-                    color: "#ffffff",
-                  } : {
-                    ...glassInputStyle,
-                  }}
-                >
-                  {loading ? (
-                    <span className="flex items-center gap-2 justify-center">
-                      <svg
-                        className="animate-spin h-3 w-3"
-                        viewBox="0 0 24 24"
-                        fill="none"
+                {/* 2026-05-30 polish: Verify upgraded to glass pill.
+                    When token shape is valid → coral-tinted glass
+                    (.cta-coral). Otherwise → neutral glass — same
+                    recipe as /signin's OAuth pills + /plan's "start
+                    free trial". The token-shape branch lights the
+                    surface coral so the user sees a clear affordance
+                    ("this is now ready to verify"). */}
+                {(() => {
+                  const ready = TOKEN_RE.test(botToken.trim()) && !verified;
+                  return (
+                    <div
+                      className={`liquid-glass-signin-root${ready ? " cta-coral" : ""}`}
+                      style={{ width: 132, flexShrink: 0 }}
+                    >
+                      <button
+                        type="button"
+                        onClick={handleVerifyToken}
+                        disabled={loading || !botToken.trim()}
+                        className="liquid-glass-signin"
+                        style={{
+                          height: 48,
+                          fontSize: 14,
+                          padding: "0 16px",
+                          opacity: !botToken.trim() ? 0.5 : 1,
+                          cursor: !botToken.trim() || loading
+                            ? "not-allowed"
+                            : "pointer",
+                        }}
                       >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                        />
-                      </svg>
-                      Verifying...
-                    </span>
-                  ) : (
-                    "Verify"
-                  )}
-                </button>
+                        {loading ? (
+                          <span className="flex items-center gap-2 justify-center">
+                            <svg
+                              className="animate-spin h-3 w-3"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                              />
+                            </svg>
+                            verifying...
+                          </span>
+                        ) : (
+                          "verify"
+                        )}
+                      </button>
+                      <div aria-hidden className="liquid-glass-signin-shadow" />
+                    </div>
+                  );
+                })()}
                 </div>
               </>
             )}
@@ -770,44 +796,53 @@ export default function ConnectPage() {
           </p>
         )}
 
-        {/* ── CTA Button — immediately after token ── */}
-        <button
-          onClick={handleContinue}
-          disabled={saving || !selectedChannel || (selectedChannel === "telegram" && !verified)}
-          className="w-full px-6 py-3.5 rounded-lg text-base font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{
-            background: accent.cta_gradient,
-            backdropFilter: "blur(2px)",
-            WebkitBackdropFilter: "blur(2px)",
-            boxShadow: accent.cta_glow_shadow,
-            color: "#ffffff",
-          }}
+        {/* ── CTA Button ── glass-coral pill (Edge: olive). 2026-05-30
+            polish: upgraded from a flat coral-gradient rounded-lg to
+            the .liquid-glass-signin recipe so this CTA matches /plan
+            ("start free trial"), /onboarding/provider ("save and
+            continue"), and /onboarding/done ("ok, let's meet."). The
+            Edge variant uses .cta-edge for the olive substrate, matching
+            the /plan Edge variant's CTA. */}
+        <div
+          className={`liquid-glass-signin-root ${isEdge ? "cta-edge" : "cta-coral"}`}
         >
-          {saving ? (
-            <span className="flex items-center gap-2 justify-center">
-              <svg
-                className="animate-spin h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-              saving...
-            </span>
-          ) : "continue to plan."}
-        </button>
+          <button
+            onClick={handleContinue}
+            disabled={saving || !selectedChannel || (selectedChannel === "telegram" && !verified)}
+            className="liquid-glass-signin"
+            style={
+              saving || !selectedChannel || (selectedChannel === "telegram" && !verified)
+                ? { opacity: 0.5, cursor: "not-allowed" }
+                : undefined
+            }
+          >
+            {saving ? (
+              <span className="flex items-center gap-2 justify-center">
+                <svg
+                  className="animate-spin h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                saving...
+              </span>
+            ) : "continue to plan."}
+          </button>
+          <div aria-hidden className="liquid-glass-signin-shadow" />
+        </div>
 
         {/* Skip-Telegram escape hatch — only surfaced for partner-flow users.
             For Edge attendees who don't want to set up Telegram at the venue
