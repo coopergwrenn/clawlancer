@@ -66,6 +66,7 @@ import {
   WELCOME_GAP_2_TO_3_MS,
 } from "@/lib/welcome-messages";
 import { forwardInboundToVm } from "@/lib/channel-routing";
+import { recordFloorActivity, recordForwardOutcome } from "@/lib/floor-activity";
 
 export const maxDuration = 300;
 
@@ -282,7 +283,19 @@ export async function POST(req: NextRequest) {
         hasMedia: mediaUrl !== null,
       });
       after(async () => {
-        await forwardInboundToVm({
+        // THE PERK-UP TRIGGER (The Floor, PRD §35.2). Write `message_in` the
+        // instant the message arrives — before the 60–90s gateway call — so
+        // Larry reacts in <2s. Guard on vmId: no live VM → no office. Fire-
+        // and-forget; never throws.
+        if (resolution.vmId) {
+          await recordFloorActivity({
+            vmId: resolution.vmId,
+            userId: resolution.userId,
+            kind: "message_in",
+            channel: "imessage",
+          });
+        }
+        const result = await forwardInboundToVm({
           userId: resolution.userId,
           channel: "imessage",
           channelIdentity: fromNumber,
@@ -290,6 +303,8 @@ export async function POST(req: NextRequest) {
           mediaUrl: mediaUrl ?? undefined,
           inboundMessageId: messageHandle ?? undefined,
         });
+        // Terminal Floor event: complete (celebrate) or error (stumble).
+        await recordForwardOutcome(resolution.userId, result);
       });
       return NextResponse.json({ ok: true, kind: "known" });
     }
