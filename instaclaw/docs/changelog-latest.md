@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-30
 
-Window: `b2a136363f5b7cddcbbb30b235a9eab0b2b197cf` → `HEAD` (HEAD = `9577157d`)
+Window: `9577157d86734b339e9d80d5cb83ea3c00f15d7e` → `HEAD` (HEAD = `f48e572e`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 9577157d86734b339e9d80d5cb83ea3c00f15d7e -->
+<!-- LAST_GENERATED_SHA: f48e572efbb380ee16bace5fbcc3c795b5a85133 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `7ba0c191` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
-- `9577157d` 2026-05-30 — plan: 2026-05-29 pricing update — new Stripe price IDs (all_inclusive + BYOK) + grandfathering [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `f48e572e` 2026-05-30 — plan: 2026-05-29 pricing sweep — landing, blogs, dashboard, Edge, JSON-LD [38 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
+- `c01cc185` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `9577157d` 2026-05-30 — plan: 2026-05-29 pricing update — new Stripe price IDs (all_inclusive + BYOK) + grandfathering [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `f48e572e` 2026-05-30 — plan: 2026-05-29 pricing sweep — landing, blogs, dashboard, Edge, JSON-LD [38 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `7ba0c191` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+- `c01cc185` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `9577157d` 2026-05-30 — [infrastructure, feature] — plan: 2026-05-29 pricing update — new Stripe price IDs (all_inclusive + BYOK) + grandfathering
+- `f48e572e` 2026-05-30 — [infrastructure, feature, edge, docs] — plan: 2026-05-29 pricing sweep — landing, blogs, dashboard, Edge, JSON-LD
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `9577157d` 2026-05-30 — plan: 2026-05-29 pricing update — new Stripe price IDs (all_inclusive + BYOK) + grandfathering
+- `f48e572e` 2026-05-30 — plan: 2026-05-29 pricing sweep — landing, blogs, dashboard, Edge, JSON-LD
 
 ## Appendix — every commit (chronological)
 
-- `7ba0c191` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
-- `9577157d` 2026-05-30 — plan: 2026-05-29 pricing update — new Stripe price IDs (all_inclusive + BYOK) + grandfathering [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `c01cc185` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `f48e572e` 2026-05-30 — plan: 2026-05-29 pricing sweep — landing, blogs, dashboard, Edge, JSON-LD [38 files] _(multi: [infrastructure, feature, edge, docs]; ai-assisted)_
