@@ -1,9 +1,9 @@
 # Changelog — generated 2026-05-30
 
-Window: `0818062fe2bbb46bde3724ddd91ad2e8c6f82ae7` → `HEAD` (HEAD = `2acd3d1e`)
+Window: `2acd3d1ed7f14d9f1874c79a6d0deae4664ea108` → `HEAD` (HEAD = `067bb187`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 2acd3d1ed7f14d9f1874c79a6d0deae4664ea108 -->
+<!-- LAST_GENERATED_SHA: 067bb187dd1b6f1e7605ddceb0d0554c82340e94 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `2acd3d1e` 2026-05-30 — fix(onboarding): unify CTAs to glass-pill standard across /connect + /onboarding/done [3 files] _(ai-assisted)_
+- `067bb187` 2026-05-30 — feat(onboarding): three emotional moments — claim flow, memory card, the agent speaks [10 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `ab5a4c4e` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `aae0a34a` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `2acd3d1e` 2026-05-30 — fix(onboarding): unify CTAs to glass-pill standard across /connect + /onboarding/done [3 files] _(ai-assisted)_
+- `067bb187` 2026-05-30 — feat(onboarding): three emotional moments — claim flow, memory card, the agent speaks [10 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `ab5a4c4e` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `aae0a34a` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `2acd3d1e` 2026-05-30 — fix(onboarding): unify CTAs to glass-pill standard across /connect + /onboarding/done
+- `067bb187` 2026-05-30 — feat(onboarding): three emotional moments — claim flow, memory card, the agent speaks
 
 ## Appendix — every commit (chronological)
 
-- `ab5a4c4e` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
-- `2acd3d1e` 2026-05-30 — fix(onboarding): unify CTAs to glass-pill standard across /connect + /onboarding/done [3 files] _(ai-assisted)_
+- `aae0a34a` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `067bb187` 2026-05-30 — feat(onboarding): three emotional moments — claim flow, memory card, the agent speaks [10 files] _(ai-assisted)_
