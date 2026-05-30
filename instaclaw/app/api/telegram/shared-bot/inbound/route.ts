@@ -50,6 +50,7 @@ import {
   WELCOME_GAP_2_TO_3_MS,
 } from "@/lib/welcome-messages";
 import { forwardInboundToVm } from "@/lib/channel-routing";
+import { recordFloorActivity, recordForwardOutcome } from "@/lib/floor-activity";
 
 export const maxDuration = 300;
 
@@ -220,7 +221,20 @@ export async function POST(req: NextRequest) {
         },
       );
       after(async () => {
-        await forwardInboundToVm({
+        // THE PERK-UP TRIGGER (The Floor, PRD §35.2). Write `message_in` the
+        // instant the user's message arrives — BEFORE the 60–90s gateway call —
+        // so Larry reacts in <2s. Fires for ALL users (incl. BYOK, which
+        // bypasses the proxy). Guard on vmId: no live VM → no office to
+        // animate. Fire-and-forget; never throws.
+        if (resolution.vmId) {
+          await recordFloorActivity({
+            vmId: resolution.vmId,
+            userId: resolution.userId,
+            kind: "message_in",
+            channel: "telegram",
+          });
+        }
+        const result = await forwardInboundToVm({
           userId: resolution.userId,
           channel: "telegram",
           channelIdentity: chatId,
@@ -233,6 +247,8 @@ export async function POST(req: NextRequest) {
               ? String(update.update_id)
               : undefined,
         });
+        // Terminal Floor event: complete (celebrate) or error (stumble).
+        await recordForwardOutcome(resolution.userId, result);
       });
       return NextResponse.json({ ok: true, kind: "known" });
     }
