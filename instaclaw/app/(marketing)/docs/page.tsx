@@ -33,7 +33,7 @@ const docsJsonLd = {
       "@type": "HowToStep",
       position: 3,
       name: "Pick a Plan",
-      text: "Choose Starter ($29/mo), Pro ($99/mo), or Power ($299/mo). All plans include a 3-day free trial.",
+      text: "Choose Starter ($49.99/mo), Pro ($129.99/mo), or Power ($349.99/mo). All plans include a 3-day free trial.",
     },
     {
       "@type": "HowToStep",
@@ -155,9 +155,9 @@ export default function DocsPage() {
               <div style={{ color: "#6b6b6b" }}>
                 <p>Choose the plan that fits your usage:</p>
                 <ul className="mt-3 space-y-2">
-                  <li><strong style={{ color: "#333334" }}>Starter ($29/mo)</strong> — 600 daily units. Perfect for personal use.</li>
-                  <li><strong style={{ color: "#333334" }}>Pro ($99/mo)</strong> — 1,000 daily units. For power users who need more.</li>
-                  <li><strong style={{ color: "#333334" }}>Power ($299/mo)</strong> — 2,500 daily units. Maximum performance with upgraded resources.</li>
+                  <li><strong style={{ color: "#333334" }}>Starter ($49.99/mo)</strong> — 600 daily units. Perfect for personal use.</li>
+                  <li><strong style={{ color: "#333334" }}>Pro ($129.99/mo)</strong> — 1,000 daily units. For power users who need more.</li>
+                  <li><strong style={{ color: "#333334" }}>Power ($349.99/mo)</strong> — 2,500 daily units. Maximum performance with upgraded resources.</li>
                 </ul>
                 <p className="mt-3">
                   All plans come with a <strong style={{ color: "#333334" }}>3-day free trial</strong>.

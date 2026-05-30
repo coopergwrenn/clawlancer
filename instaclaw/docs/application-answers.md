@@ -51,7 +51,7 @@ Speed. I launched InstaClaw about six weeks ago and it already has hundreds of p
 - 2nd place Virtuals Protocol trading competition -> $14K backing
 - Partners: World Foundation (grants), XMTP, Virtuals Protocol, Bankr, Even Realities, Edge City, Newsworthy
 - Token: $INSTACLAW on Base, daily auto buy-and-burn from real revenue
-- Pricing: $29-$299/mo subscriptions
+- Pricing: $49.99-$349.99/mo subscriptions (all-inclusive); $35.99-$119.99/mo BYOK
 - Launched ~6 weeks ago (as of April 2026)
 
 ## Cooper Background

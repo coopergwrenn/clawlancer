@@ -204,7 +204,7 @@ export default function AiAgentVideoCreationPage() {
             Brand consistency across multiple videos demands careful template design and style enforcement. Without proper constraints, AI-generated videos might exhibit visual inconsistency that undermines brand identity. Establishing comprehensive brand guidelines, using locked templates for core elements, and implementing automated brand compliance checking helps maintain professional standards.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            Rendering costs and time can become prohibitive for high-volume production without proper infrastructure. Teams scaling to hundreds of videos daily need robust rendering architecture with cost optimization. InstaClaw addresses this by providing managed infrastructure that handles scaling automatically — <Link href="/pricing" className="underline" style={{ color: "#DC6743" }}>plans start at $29/month</Link> for hosted agent deployments with included rendering capacity.
+            Rendering costs and time can become prohibitive for high-volume production without proper infrastructure. Teams scaling to hundreds of videos daily need robust rendering architecture with cost optimization. InstaClaw addresses this by providing managed infrastructure that handles scaling automatically — <Link href="/pricing" className="underline" style={{ color: "#DC6743" }}>plans start at $49.99/month</Link> for hosted agent deployments with included rendering capacity.
           </p>
         </section>
 

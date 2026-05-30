@@ -193,7 +193,7 @@ export default function OpenclawHostingCostPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            InstaClaw handles all infrastructure, database management, updates, and monitoring for <Link href="/pricing" className="underline" style={{ color: "#DC6743" }}>$29/month on the Starter plan</Link>. You only pay for the LLM API calls you use — typically $10-20 per month for moderate usage. Total cost: $39-49 per month with zero maintenance time required.
+            InstaClaw handles all infrastructure, database management, updates, and monitoring for <Link href="/pricing" className="underline" style={{ color: "#DC6743" }}>$35.99/month on the Starter BYOK plan</Link> (or $49.99/month all-inclusive). With BYOK you only pay Anthropic directly for the LLM API calls you use — typically $10-20 per month for moderate usage. Total cost: $45-55 per month with zero maintenance time required.
           </p>
         </section>
 
@@ -310,7 +310,7 @@ export default function OpenclawHostingCostPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            <strong style={{ color: "#333334" }}>Year one managed hosting:</strong> InstaClaw subscription ($39 × 12 = $468) + API costs ($20 × 12 = $240) + setup time (1 hour × $100/hour = $100) = <strong style={{ color: "#333334" }}>$808 total</strong>.
+            <strong style={{ color: "#333334" }}>Year one managed hosting:</strong> InstaClaw BYOK subscription ($35.99 × 12 ≈ $432) + Anthropic API costs ($20 × 12 = $240) + setup time (1 hour × $100/hour = $100) = <strong style={{ color: "#333334" }}>$772 total</strong>.
           </p>
           <p
             className="text-sm leading-relaxed mb-4"

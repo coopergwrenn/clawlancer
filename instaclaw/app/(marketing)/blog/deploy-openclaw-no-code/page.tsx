@@ -186,10 +186,10 @@ export default function DeployOpenClawNoCodePage() {
             </strong>
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            Choose the plan that fits your usage. The Starter plan at $29/month
+            Choose the plan that fits your usage. The Starter plan at $49.99/month
             includes Claude API credits so you can start using your agent
             immediately. If you already have your own Anthropic API key, the BYOK
-            plan at $14/month lets you bring your own key and only pay for the
+            plan at $35.99/month lets you bring your own key and only pay for the
             infrastructure. Both plans include the same features -- dedicated VM,
             all skills, SSH access, and auto-updates.
           </p>

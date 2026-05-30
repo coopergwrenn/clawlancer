@@ -417,7 +417,7 @@ export default function WhatIsAPersonalAiAgentPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            Plans start at $29/month and come with a 3-day free trial so you
+            Plans start at $49.99/month and come with a 3-day free trial so you
             can experience what having a personal AI agent feels like before
             committing. Check the{" "}
             <Link

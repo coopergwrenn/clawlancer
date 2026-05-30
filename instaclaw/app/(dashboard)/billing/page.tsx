@@ -8,8 +8,13 @@ const tiers = [
   {
     id: "starter" as const,
     name: "Starter",
-    allInclusive: 29,
-    byok: 14,
+    // 2026-05-29 pricing update — matches lib/stripe.ts NEW_PRICE_IDS.
+    // Existing subs stay on grandfathered Stripe prices; the dashboard
+    // tier comparison shows the current advertised price for new
+    // checkouts (an existing $99 Pro user upgrading to Power would
+    // see Power priced at $349.99, not the old $299).
+    allInclusive: 49.99,
+    byok: 35.99,
     description: "Perfect for getting started",
     dailyUnits: 600,
     features: [
@@ -26,8 +31,8 @@ const tiers = [
   {
     id: "pro" as const,
     name: "Pro",
-    allInclusive: 99,
-    byok: 39,
+    allInclusive: 129.99,
+    byok: 49.99,
     description: "For everyday use",
     dailyUnits: 1000,
     features: [
@@ -45,8 +50,8 @@ const tiers = [
   {
     id: "power" as const,
     name: "Power",
-    allInclusive: 299,
-    byok: 99,
+    allInclusive: 349.99,
+    byok: 119.99,
     description: "For heavy workflows",
     dailyUnits: 2500,
     features: [
@@ -314,7 +319,7 @@ export default function BillingPage() {
                       color: isSelected ? "var(--accent)" : "var(--foreground)",
                     }}
                   >
-                    ${price}
+                    ${price.toFixed(2)}
                   </span>
                   <span className="text-sm ml-1" style={{ color: "var(--muted)" }}>
                     /mo

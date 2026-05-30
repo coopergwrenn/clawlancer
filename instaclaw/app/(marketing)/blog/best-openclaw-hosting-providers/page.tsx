@@ -145,9 +145,9 @@ export default function BestOpenClawHostingProvidersPage() {
           </p>
 
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            Plans start at $14/month for the BYOK (Bring Your Own Key) tier,
+            Plans start at $35.99/month for the BYOK (Bring Your Own Key) tier,
             where you provide your own Anthropic API key and pay for usage
-            directly. The Starter plan at $29/month includes Claude API credits
+            directly. The Starter plan at $49.99/month includes Claude API credits
             so you can get started without an existing Anthropic account. Both
             plans include a dedicated Ubuntu VM, full SSH access, 20+ pre-loaded
             skills, automatic OpenClaw updates, self-healing infrastructure, and
@@ -165,7 +165,7 @@ export default function BestOpenClawHostingProvidersPage() {
           </p>
 
           <p className="text-sm leading-relaxed mb-10" style={{ color: "#6b6b6b" }}>
-            The tradeoff is cost. At $14-29/month (plus API usage), InstaClaw is
+            The tradeoff is cost. At $35.99-$49.99/month (plus API usage), InstaClaw is
             more expensive than a bare VPS at $5-10/month. You are paying for the
             convenience, reliability, and time savings. For the majority of users
             -- especially those whose time is worth more than the price
@@ -275,7 +275,7 @@ export default function BestOpenClawHostingProvidersPage() {
                     Monthly cost
                   </td>
                   <td className="py-3 pr-4">$5-20 + API</td>
-                  <td className="py-3 pr-4">From $14/mo + API</td>
+                  <td className="py-3 pr-4">From $35.99/mo + API</td>
                   <td className="py-3">$15-50 + API</td>
                 </tr>
                 <tr style={{ borderBottom: "1px solid #e5e5e5" }}>

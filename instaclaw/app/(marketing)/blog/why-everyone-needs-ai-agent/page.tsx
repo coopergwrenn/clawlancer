@@ -126,7 +126,7 @@ export default function WhyEveryoneNeedsAiAgentPage() {
             The infrastructure complexity that once kept AI agents in the domain of enterprises and developers has been abstracted away. Modern platforms handle the hosting, scaling, security, and maintenance. Users interact through clean interfaces or natural language — no coding required. This democratization of access removes the last significant barrier to mass adoption.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            For those who want more control without the infrastructure headache, managed hosting solutions provide the best of both worlds. InstaClaw, for example, handles all the technical complexity of running OpenClaw while giving you full control over your agent&apos;s behavior and data. You get enterprise-grade reliability at <Link href="/pricing" className="underline" style={{ color: "#DC6743" }}>pricing that starts at $29 per month</Link>, without needing to become a DevOps expert.
+            For those who want more control without the infrastructure headache, managed hosting solutions provide the best of both worlds. InstaClaw, for example, handles all the technical complexity of running OpenClaw while giving you full control over your agent&apos;s behavior and data. You get enterprise-grade reliability at <Link href="/pricing" className="underline" style={{ color: "#DC6743" }}>pricing that starts at $49.99 per month</Link>, without needing to become a DevOps expert.
           </p>
         </section>
 

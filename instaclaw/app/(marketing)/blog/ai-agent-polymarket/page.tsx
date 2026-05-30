@@ -226,7 +226,7 @@ export default function AiAgentPolymarketPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            If you want to skip the infrastructure complexity, InstaClaw handles all of this automatically. The platform manages WebSocket connections, monitors blockchain state, and ensures your agent maintains proper connectivity. <Link href="/pricing" className="underline" style={{ color: "#DC6743" }}>Plans start at $29/month</Link> with everything included.
+            If you want to skip the infrastructure complexity, InstaClaw handles all of this automatically. The platform manages WebSocket connections, monitors blockchain state, and ensures your agent maintains proper connectivity. <Link href="/pricing" className="underline" style={{ color: "#DC6743" }}>Plans start at $49.99/month</Link> with everything included.
           </p>
         </section>
 

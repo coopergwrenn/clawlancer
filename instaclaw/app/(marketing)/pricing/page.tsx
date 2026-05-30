@@ -5,9 +5,9 @@ import { CtaBanner } from "@/components/marketing/cta-banner";
 import Link from "next/link";
 
 export const metadata = createMetadata({
-  title: "InstaClaw Pricing — AI Agent Plans Starting at $29/month",
+  title: "InstaClaw Pricing — AI Agent Plans Starting at $49.99/month",
   description:
-    "Simple, transparent pricing for your personal AI agent. Starter ($29/mo), Pro ($99/mo), and Power ($299/mo) plans — all with a 3-day free trial. BYOK available.",
+    "Simple, transparent pricing for your personal AI agent. Starter ($49.99/mo), Pro ($129.99/mo), and Power ($349.99/mo) plans — all with a 3-day free trial. BYOK available.",
   path: "/pricing",
 });
 
@@ -22,7 +22,7 @@ const pricingJsonLd = {
     {
       "@type": "Offer",
       name: "Starter (All-Inclusive)",
-      price: "29",
+      price: "49.99",
       priceCurrency: "USD",
       priceValidUntil: "2027-12-31",
       availability: "https://schema.org/InStock",
@@ -30,7 +30,7 @@ const pricingJsonLd = {
     {
       "@type": "Offer",
       name: "Starter (BYOK)",
-      price: "14",
+      price: "35.99",
       priceCurrency: "USD",
       priceValidUntil: "2027-12-31",
       availability: "https://schema.org/InStock",
@@ -38,7 +38,7 @@ const pricingJsonLd = {
     {
       "@type": "Offer",
       name: "Pro (All-Inclusive)",
-      price: "99",
+      price: "129.99",
       priceCurrency: "USD",
       priceValidUntil: "2027-12-31",
       availability: "https://schema.org/InStock",
@@ -46,7 +46,7 @@ const pricingJsonLd = {
     {
       "@type": "Offer",
       name: "Pro (BYOK)",
-      price: "39",
+      price: "49.99",
       priceCurrency: "USD",
       priceValidUntil: "2027-12-31",
       availability: "https://schema.org/InStock",
@@ -54,7 +54,7 @@ const pricingJsonLd = {
     {
       "@type": "Offer",
       name: "Power (All-Inclusive)",
-      price: "299",
+      price: "349.99",
       priceCurrency: "USD",
       priceValidUntil: "2027-12-31",
       availability: "https://schema.org/InStock",
@@ -62,7 +62,7 @@ const pricingJsonLd = {
     {
       "@type": "Offer",
       name: "Power (BYOK)",
-      price: "99",
+      price: "119.99",
       priceCurrency: "USD",
       priceValidUntil: "2027-12-31",
       availability: "https://schema.org/InStock",

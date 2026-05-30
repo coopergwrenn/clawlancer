@@ -59,7 +59,7 @@ const steps = [
     details: [
       "Create a Telegram bot (or connect Discord/Slack/WhatsApp) — we walk you through it",
       "Paste your bot token into the dashboard",
-      "Choose your plan: Starter ($29/mo), Pro ($99/mo), or Power ($299/mo)",
+      "Choose your plan: Starter ($49.99/mo), Pro ($129.99/mo), or Power ($349.99/mo)",
       "Optionally enable BYOK mode with your own Anthropic API key for lower prices",
     ],
   },

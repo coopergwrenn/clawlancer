@@ -126,7 +126,7 @@ const useCases: UseCaseData[] = [
       },
       {
         heading: "Better Than Apps, Cheaper Than Tutors",
-        content: "Duolingo costs $7/month but can't hold a conversation. A private tutor costs $30-60/hour with scheduling constraints. Your InstaClaw agent provides unlimited conversation practice, adapts to your level in real-time, and is available at 3am when you can't sleep and want to practice Spanish — all for $29/month.",
+        content: "Duolingo costs $7/month but can't hold a conversation. A private tutor costs $30-60/hour with scheduling constraints. Your InstaClaw agent provides unlimited conversation practice, adapts to your level in real-time, and is available at 3am when you can't sleep and want to practice Spanish — all for $49.99/month.",
       },
     ],
     howToStart: [

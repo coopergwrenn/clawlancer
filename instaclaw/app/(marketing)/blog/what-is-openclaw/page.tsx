@@ -407,7 +407,7 @@ export default function WhatIsOpenClawPage() {
             no SSH, no server configuration. InstaClaw manages the VM,
             installs OpenClaw, handles updates, monitors health, and deals with
             all the infrastructure complexity behind the scenes. Plans start at
-            $29/month with a 3-day free trial — check{" "}
+            $49.99/month with a 3-day free trial — check{" "}
             <Link
               href="/pricing"
               className="underline"

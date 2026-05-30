@@ -107,7 +107,7 @@ export default function OpenclawApiGuidePage() {
             <strong style={{ color: "#333334" }}>Configurations Endpoint</strong> — The <code style={{ backgroundColor: "#f5f5f5", padding: "2px 6px", borderRadius: "3px", fontFamily: "monospace" }}>/v1/configs</code> endpoint provides access to system-level and agent-level configuration settings. Use this to adjust resource limits, set default behaviors, configure integrations with external services, and manage environment-specific settings.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            InstaClaw takes care of hosting and maintaining these endpoints — you just focus on building your <strong style={{ color: "#333334" }}>openclaw integration</strong>. Plans start at $29 per month and include API access with generous rate limits.
+            InstaClaw takes care of hosting and maintaining these endpoints — you just focus on building your <strong style={{ color: "#333334" }}>openclaw integration</strong>. Plans start at $49.99 per month and include API access with generous rate limits.
           </p>
         </section>
 

@@ -112,7 +112,7 @@ const features = [
 const faqs = [
   {
     q: "What does it cost?",
-    a: "Every plan comes with a 3-day free trial. Full access, no restrictions, no credit card to start. Standard InstaClaw pricing ($29/$99/$299/mo) kicks in after the trial. Cancel anytime before then and you won't be charged.",
+    a: "Every plan comes with a 3-day free trial. Full access, no restrictions, no credit card to start. Standard InstaClaw pricing ($49.99/$129.99/$349.99/mo) kicks in after the trial. Cancel anytime before then and you won't be charged.",
   },
   {
     q: "Do I need a Consensus ticket?",

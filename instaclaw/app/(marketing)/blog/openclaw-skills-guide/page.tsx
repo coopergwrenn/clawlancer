@@ -164,7 +164,7 @@ export default function OpenclawSkillsGuidePage() {
             This is where the difference between self-hosted OpenClaw and a managed platform becomes significant. Self-hosting gives you complete control but requires ongoing maintenance. You&apos;re responsible for updating skills when new versions are released, rotating API keys when they expire, debugging connection issues, and monitoring resource usage.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            InstaClaw handles all of this infrastructure automatically. Skills are updated in the background when patches are released. Credentials are managed through an encrypted secrets vault. If an MCP server crashes, it&apos;s automatically restarted. You get monitoring dashboards that show which skills each agent is using, how often, and what errors they&apos;re encountering. For businesses deploying multiple agents, InstaClaw plans start at $29 per month and include unlimited skill installations, automatic updates, and enterprise-grade security for sensitive credentials.
+            InstaClaw handles all of this infrastructure automatically. Skills are updated in the background when patches are released. Credentials are managed through an encrypted secrets vault. If an MCP server crashes, it&apos;s automatically restarted. You get monitoring dashboards that show which skills each agent is using, how often, and what errors they&apos;re encountering. For businesses deploying multiple agents, InstaClaw plans start at $49.99 per month and include unlimited skill installations, automatic updates, and enterprise-grade security for sensitive credentials.
           </p>
         </section>
 

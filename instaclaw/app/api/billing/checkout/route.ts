@@ -207,7 +207,8 @@ export async function POST(req: NextRequest) {
     // Every Edge attendee gets a Stripe subscription with a fixed
     // trial_end anchored to June 30, 2026 midnight Pacific (07:00 UTC).
     // Card is collected at checkout. $0 is charged today. Auto-charges
-    // $99/month starting June 30 unless they cancel.
+    // $129.99/month starting June 30 unless they cancel (or whatever the
+    // current Pro all-inclusive price is by then).
     //
     // Why a fixed trial_end (not trial_period_days):
     // Every attendee gets the SAME end date regardless of signup date.

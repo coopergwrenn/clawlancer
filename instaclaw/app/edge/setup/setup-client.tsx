@@ -82,7 +82,7 @@ export function SetupClient() {
           className="text-[17px] sm:text-[19px] leading-[1.55] max-w-[42ch] mb-7 sm:mb-8 reveal-anim"
           style={{ color: "var(--edge-ink-soft)" }}
         >
-          If you keep your agent after the village ends, it&apos;s $99/month
+          If you keep your agent after the village ends, it&apos;s $129.99/month
           starting June 30. Cancel anytime, no questions.
         </p>
 

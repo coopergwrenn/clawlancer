@@ -244,7 +244,7 @@ export default function AiAgentTelegramBotPage() {
             Monitoring is essential. You need to track uptime, response times, error rates, and memory usage. Set up alerting so you know when something breaks. Most teams use tools like Prometheus, Grafana, or Datadog for observability.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            InstaClaw handles all of this automatically. When you deploy an OpenClaw agent through InstaClaw, the platform provisions the infrastructure, configures webhooks, sets up monitoring, and provides a dashboard where you can view logs, metrics, and usage statistics. If your agent crashes, InstaClaw restarts it automatically. You get alerts if something goes wrong. <Link href="/pricing" className="underline" style={{ color: "#DC6743" }}>Plans start at $29/month</Link> for fully managed hosting with always-on infrastructure.
+            InstaClaw handles all of this automatically. When you deploy an OpenClaw agent through InstaClaw, the platform provisions the infrastructure, configures webhooks, sets up monitoring, and provides a dashboard where you can view logs, metrics, and usage statistics. If your agent crashes, InstaClaw restarts it automatically. You get alerts if something goes wrong. <Link href="/pricing" className="underline" style={{ color: "#DC6743" }}>Plans start at $49.99/month</Link> for fully managed hosting with always-on infrastructure.
           </p>
         </section>
 

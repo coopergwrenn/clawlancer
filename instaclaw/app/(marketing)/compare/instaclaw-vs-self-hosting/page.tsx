@@ -29,7 +29,7 @@ const rows = [
   { category: "Technical skill required", self: "Linux, SSH, Docker, DNS, SSL", instaclaw: "None" },
   { category: "Server cost", self: "$5-20/month (VPS)", instaclaw: "Included in plan" },
   { category: "AI API costs", self: "$20-100+/month (Anthropic)", instaclaw: "Included (or BYOK)" },
-  { category: "Total monthly cost", self: "$25-120+/month + your time", instaclaw: "$29-299/month (all-in)" },
+  { category: "Total monthly cost", self: "$25-120+/month + your time", instaclaw: "$49.99-$349.99/month (all-in)" },
   { category: "Uptime monitoring", self: "You set up & manage", instaclaw: "Automatic, self-healing" },
   { category: "Crash recovery", self: "Manual intervention", instaclaw: "Auto-restart & recovery" },
   { category: "SSL & DNS", self: "You configure", instaclaw: "Included & managed" },
@@ -166,10 +166,10 @@ export default function ComparisonPage() {
                 from crashes — adds 1-2 hours per month minimum.
               </p>
               <p className="mt-4" style={{ color: "#6b6b6b" }}>
-                InstaClaw&apos;s Starter plan at $29/month includes everything: the
+                InstaClaw&apos;s Starter plan at $49.99/month includes everything: the
                 server, AI model access, 20+ pre-installed skills, self-healing
                 monitoring, and support. For most people, the time saved is worth
-                far more than the price difference. With BYOK mode at $14/month,
+                far more than the price difference. With BYOK mode at $35.99/month,
                 the gap narrows even further.
               </p>
             </section>

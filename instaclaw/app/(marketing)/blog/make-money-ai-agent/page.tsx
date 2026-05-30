@@ -127,7 +127,7 @@ export default function MakeMoneyAiAgentPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            The most successful freelancers using this approach are transparent about their methods. They position themselves not as individual service providers but as technology-enabled agencies. Clients appreciate the efficiency and turnaround time improvements. Some freelancers have built this into six-figure agencies without hiring human employees, using AI agents as their scalable workforce. InstaClaw makes this particularly straightforward — you can deploy an agent configured for your specific service niche and have it running within an hour. Plans start at $29 per month, which is trivial compared to the revenue increase from being able to take on 3-4x more client work.
+            The most successful freelancers using this approach are transparent about their methods. They position themselves not as individual service providers but as technology-enabled agencies. Clients appreciate the efficiency and turnaround time improvements. Some freelancers have built this into six-figure agencies without hiring human employees, using AI agents as their scalable workforce. InstaClaw makes this particularly straightforward — you can deploy an agent configured for your specific service niche and have it running within an hour. Plans start at $49.99 per month, which is trivial compared to the revenue increase from being able to take on 3-4x more client work.
           </p>
           <p
             className="text-sm leading-relaxed mb-4"

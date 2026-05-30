@@ -52,21 +52,21 @@ const homepageJsonLd = [
       {
         "@type": "Offer",
         name: "Starter",
-        price: "29",
+        price: "49.99",
         priceCurrency: "USD",
         description: "600 daily units, dedicated VM, all AI models, all channels",
       },
       {
         "@type": "Offer",
         name: "Pro",
-        price: "99",
+        price: "129.99",
         priceCurrency: "USD",
         description: "1,000 daily units, priority support, early access to new features",
       },
       {
         "@type": "Offer",
         name: "Power",
-        price: "299",
+        price: "349.99",
         priceCurrency: "USD",
         description: "2,500 daily units, upgraded server resources, dedicated support",
       },
@@ -208,7 +208,7 @@ export default function Home() {
         <hr className="section-divider" />
         <HowItWorks />
         <hr className="section-divider" />
-        <ScrollReveal text="This sounds impossible, but it's *real.* An AI that works for you _while_ _you_ _sleep._ It remembers everything, handles real tasks on its own, and gets smarter the more you use it. Not a chatbot. A full personal system that never ~stops.~ All yours for *$29* a month. Don't believe us? Try it _free_ for three days." />
+        <ScrollReveal text="This sounds impossible, but it's *real.* An AI that works for you _while_ _you_ _sleep._ It remembers everything, handles real tasks on its own, and gets smarter the more you use it. Not a chatbot. A full personal system that never ~stops.~ All yours for *$49.99* a month. Don't believe us? Try it _free_ for three days." />
         <hr className="section-divider" />
         <Comparison />
         <hr className="section-divider" />

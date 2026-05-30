@@ -409,7 +409,7 @@ export default function AiAgentForCryptoPage() {
             className="text-sm leading-relaxed mb-4"
             style={{ color: "#6b6b6b" }}
           >
-            InstaClaw eliminates these operational concerns with managed hosting designed specifically for OpenClaw agents. We handle infrastructure, security, monitoring, and updates — you configure trading strategies and review performance. Plans start at $29/month with crypto-optimized integrations included.
+            InstaClaw eliminates these operational concerns with managed hosting designed specifically for OpenClaw agents. We handle infrastructure, security, monitoring, and updates — you configure trading strategies and review performance. Plans start at $49.99/month with crypto-optimized integrations included.
           </p>
         </section>
 

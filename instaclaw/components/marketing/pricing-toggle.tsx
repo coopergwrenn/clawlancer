@@ -6,8 +6,9 @@ import Link from "next/link";
 const tiers = [
   {
     name: "Starter",
-    allInclusive: "$29",
-    byok: "$14",
+    // 2026-05-29 pricing update — see lib/stripe.ts NEW_PRICE_IDS
+    allInclusive: "$49.99",
+    byok: "$35.99",
     description: "Perfect for personal use",
     features: [
       "600 daily units (Haiku = 1, Sonnet = 4, Opus = 19)",
@@ -19,8 +20,8 @@ const tiers = [
   },
   {
     name: "Pro",
-    allInclusive: "$99",
-    byok: "$39",
+    allInclusive: "$129.99",
+    byok: "$49.99",
     description: "For power users",
     features: [
       "1,000 daily units — nearly 2x Starter",
@@ -33,8 +34,8 @@ const tiers = [
   },
   {
     name: "Power",
-    allInclusive: "$299",
-    byok: "$99",
+    allInclusive: "$349.99",
+    byok: "$119.99",
     description: "Maximum performance",
     features: [
       "2,500 daily units — over 4x Starter",

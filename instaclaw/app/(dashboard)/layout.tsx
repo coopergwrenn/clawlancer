@@ -595,7 +595,7 @@ export default function DashboardLayout({
                 marginBottom: "0.75rem",
               }}
             >
-              View plans — from $29/mo
+              View plans — from $49.99/mo
             </button>
             <button
               onClick={() => router.push("/billing")}

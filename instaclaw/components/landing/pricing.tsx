@@ -19,11 +19,15 @@ const glassStyle = {
   `,
 };
 
+// 2026-05-29 pricing update \u2014 see lib/stripe.ts NEW_PRICE_IDS for the
+// Stripe IDs these amounts correspond to. Existing subs stay on the
+// pre-update Stripe prices ($99 Pro / $299 Power) automatically;
+// only NEW checkouts route to the new amounts.
 const tiers = [
   {
     name: "Starter",
-    allInclusive: "$29",
-    byok: "$14",
+    allInclusive: "$49.99",
+    byok: "$35.99",
     description: "For personal use",
     features: [
       "600 daily units (MiniMax 0.2, Haiku 1, Sonnet 4, Opus 19)",
@@ -36,8 +40,8 @@ const tiers = [
   },
   {
     name: "Pro",
-    allInclusive: "$99",
-    byok: "$39",
+    allInclusive: "$129.99",
+    byok: "$49.99",
     description: "For daily power use",
     features: [
       "1,000 daily units",
@@ -50,8 +54,8 @@ const tiers = [
   },
   {
     name: "Power",
-    allInclusive: "$299",
-    byok: "$99",
+    allInclusive: "$349.99",
+    byok: "$119.99",
     description: "For always-on agent work",
     features: [
       "2,500 daily units",

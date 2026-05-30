@@ -242,7 +242,7 @@ export default function PersonalAiVsBusinessAiPage() {
             deploy a fully functional agent in under a minute. The platform
             handles the technical complexity — model selection, memory
             management, API integrations — while you focus on defining what you
-            want automated. Plans start at $29 per month with no setup fees or
+            want automated. Plans start at $49.99 per month with no setup fees or
             implementation requirements.
           </p>
         </section>
@@ -348,7 +348,7 @@ export default function PersonalAiVsBusinessAiPage() {
             pay a modest monthly fee for your personal agent while the company
             invests in enterprise platforms only where true multi-user
             coordination is required. <Link href="/pricing" className="underline" style={{ color: "#DC6743" }}>InstaClaw&apos;s pricing</Link> reflects
-            this individual focus, starting at $29 per month with transparent
+            this individual focus, starting at $49.99 per month with transparent
             resource-based scaling.
           </p>
         </section>
@@ -420,7 +420,7 @@ export default function PersonalAiVsBusinessAiPage() {
             personal AI and business AI. Personal AI agents justify their cost
             through time savings for individual users. If an agent saves you
             five hours per week, that&apos;s roughly 20 hours per month — easily
-            worth $29 to $99 in subscription fees for most professionals.
+            worth $49.99 to $129.99 in subscription fees for most professionals.
           </p>
           <p
             className="text-sm leading-relaxed mb-4"
@@ -539,7 +539,7 @@ export default function PersonalAiVsBusinessAiPage() {
             style={{ color: "#6b6b6b" }}
           >
             Third, what&apos;s your budget for AI automation? Personal AI
-            agents cost $29-$99 per month and deliver immediate value. Business
+            agents cost $49.99–$129.99 per month and deliver immediate value. Business
             AI requires thousands of dollars monthly plus implementation costs,
             justified only by benefits that scale across many users. The
             investment decision depends on the breadth of impact you expect.

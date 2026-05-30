@@ -310,7 +310,7 @@ export default function AiAgentPassiveIncomePage() {
             <Link href="/pricing" style={{ color: "#DC6743" }}>
               an InstaClaw plan
             </Link>{" "}
-            that fits your budget. The BYOK plan at $14/month is the most
+            that fits your budget. The BYOK plan at $35.99/month is the most
             affordable starting point if you already have an <a href="https://anthropic.com" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-70" style={{ color: "#DC6743" }}>Anthropic</a> API key.
             Spend the first week getting comfortable with your agent -- learn its
             strengths, test different prompts, and experiment with various skills.

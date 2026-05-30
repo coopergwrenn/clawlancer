@@ -90,7 +90,7 @@ export default function OpenclawVsAutogptPage() {
             The advantage of OpenClaw&apos;s approach is <strong style={{ color: "#333334" }}>predictability</strong>. Developers can specify exactly what information should be retained, how it should be organized, and when it should be retrieved. This makes it easier to implement features like user preferences, learned behaviors, and compliance with data retention policies.
           </p>
           <p className="text-sm leading-relaxed mb-4" style={{ color: "#6b6b6b" }}>
-            If you&apos;re building an agent that needs to learn organically from diverse experiences, AutoGPT&apos;s vector-based memory might suit your needs. If you need precise control over what the agent remembers and when, OpenClaw&apos;s structured approach offers more guarantees. InstaClaw provides managed memory layers with automatic backups and scaling, so you don&apos;t have to operate vector databases yourself — <Link href="/pricing" className="underline" style={{ color: "#DC6743" }}>plans start at $29/month</Link>.
+            If you&apos;re building an agent that needs to learn organically from diverse experiences, AutoGPT&apos;s vector-based memory might suit your needs. If you need precise control over what the agent remembers and when, OpenClaw&apos;s structured approach offers more guarantees. InstaClaw provides managed memory layers with automatic backups and scaling, so you don&apos;t have to operate vector databases yourself — <Link href="/pricing" className="underline" style={{ color: "#DC6743" }}>plans start at $49.99/month</Link>.
           </p>
         </section>
 

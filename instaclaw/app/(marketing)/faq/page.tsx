@@ -86,7 +86,7 @@ const pricingItems = [
   {
     question: "How much does InstaClaw cost?",
     answer:
-      "Starter: $29/month, Pro: $99/month, Power: $299/month. All plans include a 3-day free trial with full access. BYOK pricing is roughly half: $14, $39, and $99/month respectively.",
+      "Starter: $49.99/month, Pro: $129.99/month, Power: $349.99/month. All plans include a 3-day free trial with full access. BYOK pricing is lower because you bring your own Anthropic key: $35.99, $49.99, and $119.99/month respectively.",
   },
   {
     question: "What are credits/units?",

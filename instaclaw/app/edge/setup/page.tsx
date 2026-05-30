@@ -10,7 +10,7 @@ import { SupportFooter } from "@/components/marketing/support-footer";
  *
  * Sits between /edge/claim (ticket verification) and /connect (OAuth +
  * bot pairing). The trust moment of Edge onboarding: this is where the
- * attendee learns "your card is collected here; $0 today; $99/month
+ * attendee learns "your card is collected here; $0 today; $129.99/month
  * starting June 30 unless you cancel."
  *
  * Why this exists as its own page:
@@ -45,7 +45,7 @@ import { SupportFooter } from "@/components/marketing/support-footer";
 export const metadata = createMetadata({
   title: "Your Edge Esmeralda 2026 agent — trial terms",
   description:
-    "$0 today. Your Edge Esmeralda agent is sponsor-funded for the 28-day village. If you keep your agent after the village ends, it's $99/month starting June 30, 2026.",
+    "$0 today. Your Edge Esmeralda agent is sponsor-funded for the 28-day village. If you keep your agent after the village ends, it's $129.99/month starting June 30, 2026.",
   path: "/edge/setup",
   ogTitle: "Your Edge Esmeralda 2026 agent — trial terms",
   ogImage: "/edge/og-edge.png",
