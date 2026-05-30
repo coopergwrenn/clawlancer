@@ -176,7 +176,7 @@ export default function PricingPage() {
                 },
                 {
                   q: "What's the difference between All-Inclusive and BYOK?",
-                  a: "All-Inclusive includes AI model costs in your subscription. BYOK (Bring Your Own Key) lets you use your own Anthropic API key and pay Anthropic directly, cutting your InstaClaw subscription roughly in half.",
+                  a: "All-Inclusive includes AI model costs in your subscription. BYOK (Bring Your Own Key) lets you use your own Anthropic API key OR your ChatGPT Plus/Pro/Team subscription via OAuth — you pay the provider directly, which cuts your InstaClaw subscription roughly in half.",
                 },
                 {
                   q: "Is there really a free trial?",

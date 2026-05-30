@@ -57,8 +57,24 @@ export interface CreateUserVMParams {
   tier: string;
   /** Auth mode for the agent's Anthropic API calls. */
   apiMode: "all_inclusive" | "byok";
-  /** BYOK only — the user's own Anthropic API key. Required when apiMode='byok'. */
+  /**
+   * BYOK only — the user's own Anthropic API key. Required when
+   * `apiMode === 'byok'` UNLESS `hasChatGPTOAuth === true` (then the
+   * reconciler's stepChatGPTOAuthToken will configure Codex access
+   * from instaclaw_users.openai_oauth_access_token instead — see
+   * vm-reconcile.ts:11183).
+   */
   apiKey?: string | null;
+  /**
+   * True when the user has a connected ChatGPT Plus/Pro/Team subscription
+   * (instaclaw_users.openai_oauth_access_token + openai_oauth_account_id
+   * are both set). Threaded from the caller so this function's pre-flight
+   * validation doesn't need its own DB lookup. When true, byok-without-
+   * apiKey is acceptable — the VM is provisioned in `byok` state and the
+   * reconciler upgrades it to `chatgpt_oauth` on its next tick. Default
+   * false to preserve back-compat for existing callers.
+   */
+  hasChatGPTOAuth?: boolean;
   /** Anthropic model string the agent defaults to (e.g., "anthropic/claude-sonnet-4-6"). */
   defaultModel: string;
   /**
@@ -165,8 +181,10 @@ export function validateCreateUserVMParams(p: CreateUserVMParams): void {
   if (p.apiMode !== "all_inclusive" && p.apiMode !== "byok") {
     throw new Error(`createUserVM: apiMode must be "all_inclusive" or "byok" (got "${p.apiMode}")`);
   }
-  if (p.apiMode === "byok" && !p.apiKey) {
-    throw new Error('createUserVM: apiMode="byok" requires apiKey to be set');
+  if (p.apiMode === "byok" && !p.apiKey && !p.hasChatGPTOAuth) {
+    throw new Error(
+      'createUserVM: apiMode="byok" requires either apiKey OR hasChatGPTOAuth=true',
+    );
   }
   if (!p.defaultModel) throw new Error("createUserVM: defaultModel required");
   const channels = p.channels ?? ["telegram"];
@@ -780,7 +798,9 @@ export async function assignOrProvisionUserVm(
 
   const { data: user, error: userErr } = await supabase
     .from("instaclaw_users")
-    .select("partner, user_timezone")
+    .select(
+      "partner, user_timezone, openai_oauth_access_token, openai_oauth_account_id",
+    )
     .eq("id", userId)
     .maybeSingle();
   if (userErr) {
@@ -800,6 +820,14 @@ export async function assignOrProvisionUserVm(
   const apiMode = (pending.api_mode ?? "all_inclusive") as "all_inclusive" | "byok";
   const defaultModel = pending.default_model ?? "anthropic/claude-sonnet-4-6";
 
+  // hasChatGPTOAuth: read from instaclaw_users — when true, byok-without-
+  // apiKey is acceptable. The reconciler's stepChatGPTOAuthToken pushes
+  // the OAuth token to disk on the first reconcile tick after VM is up
+  // (vm-reconcile.ts:11183), upgrading api_mode "byok" → "chatgpt_oauth".
+  const hasChatGPTOAuth = !!(
+    user?.openai_oauth_access_token && user?.openai_oauth_account_id
+  );
+
   // channels: channel-first users have NO on-VM messaging plugin (backend
   // relays via lib/channel-routing). BYOB users have ["telegram"]; if
   // discord_bot_token is present, also include "discord".
@@ -813,6 +841,7 @@ export async function assignOrProvisionUserVm(
     userId,
     tier,
     apiMode,
+    hasChatGPTOAuth,
     partner: user?.partner ?? null,
     isChannelFirst,
     channelFirstChannel: pending.channel ?? null,
@@ -825,6 +854,7 @@ export async function assignOrProvisionUserVm(
       tier,
       apiMode,
       apiKey: pending.api_key,
+      hasChatGPTOAuth,
       defaultModel,
       telegramBotToken: pending.telegram_bot_token ?? null,
       telegramBotUsername: pending.telegram_bot_username ?? null,

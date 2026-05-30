@@ -78,7 +78,7 @@ const skillsItems = [
   {
     question: "What AI model does it use?",
     answer:
-      "InstaClaw runs on Claude by Anthropic — the same models behind Claude.ai. On All-Inclusive plans, the default is Claude Haiku 4.5 (fast and efficient). You can upgrade to Sonnet 4.6 or Opus 4.6 anytime — just tell your bot 'use Sonnet' or 'switch to Opus'. BYOK users can configure any Claude model.",
+      "InstaClaw runs on Claude by Anthropic by default — the same models behind Claude.ai. On All-Inclusive plans, the default is Claude Haiku 4.5 (fast and efficient). You can upgrade to Sonnet 4.6 or Opus 4.6 anytime — just tell your bot 'use Sonnet' or 'switch to Opus'. BYOK users on the Anthropic path can configure any Claude model; BYOK users on the ChatGPT path route through OpenAI Codex with their own subscription.",
   },
 ];
 
@@ -86,7 +86,7 @@ const pricingItems = [
   {
     question: "How much does InstaClaw cost?",
     answer:
-      "Starter: $49.99/month, Pro: $129.99/month, Power: $349.99/month. All plans include a 3-day free trial with full access. BYOK pricing is lower because you bring your own Anthropic key: $35.99, $49.99, and $119.99/month respectively.",
+      "Starter: $49.99/month, Pro: $129.99/month, Power: $349.99/month. All plans include a 3-day free trial with full access. BYOK pricing is lower because you bring your own API access — either an Anthropic key or a ChatGPT Plus/Pro/Team subscription via OAuth: $35.99, $49.99, and $119.99/month respectively.",
   },
   {
     question: "What are credits/units?",
@@ -114,7 +114,7 @@ const byokItems = [
   {
     question: "What's BYOK mode?",
     answer:
-      "Bring Your Own Key. If you already have an Anthropic API key, connect it directly and pay Anthropic for AI usage yourself. This cuts your InstaClaw subscription roughly in half. Your API key is encrypted at rest and stored on your VM only — all API calls go directly from your VM to Anthropic.",
+      "Bring Your Own Key. Connect your own Anthropic API key OR your ChatGPT Plus/Pro/Team subscription via OAuth — you pay the provider directly. This cuts your InstaClaw subscription roughly in half. Your credentials are encrypted at rest and stored on your VM only; all API calls go directly from your VM to the provider.",
   },
   {
     question: "Do I get full access to the server?",

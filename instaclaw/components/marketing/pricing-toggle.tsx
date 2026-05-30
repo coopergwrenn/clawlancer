@@ -96,7 +96,9 @@ export function PricingToggle() {
           <span style={{ color: isByok ? "#333334" : "#6b6b6b" }}>BYOK</span>
         </div>
         <p className="text-xs mt-3" style={{ color: "#6b6b6b" }}>
-          BYOK = Bring Your Own Key. Use your Anthropic API key and pay less.
+          BYOK = Bring Your Own Key. Connect your Anthropic API key or
+          ChatGPT Plus/Pro/Team subscription. You pay the provider
+          directly; we charge a lower infrastructure fee.
         </p>
       </div>
 

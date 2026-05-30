@@ -145,7 +145,7 @@ const homepageJsonLd = [
         name: "What's BYOK mode?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Bring Your Own Key. If you already have an Anthropic API key, connect it directly and pay Anthropic for AI usage yourself. This cuts your InstaClaw subscription roughly in half. Your API key is encrypted at rest and stored on your VM only — all API calls go directly from your VM to Anthropic.",
+          text: "Bring Your Own Key. Connect your own Anthropic API key OR your ChatGPT Plus/Pro/Team subscription via OAuth — you pay the provider directly. This cuts your InstaClaw subscription roughly in half. Your credentials are encrypted at rest and stored on your VM only; all API calls go directly from your VM to the provider.",
         },
       },
       {
@@ -153,7 +153,7 @@ const homepageJsonLd = [
         name: "What AI model does it use?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "InstaClaw runs on Claude by Anthropic — the same models behind Claude.ai. On All-Inclusive plans, the default is Claude Haiku 4.5 (fast and efficient). You can upgrade to Sonnet 4.6 or Opus 4.6 anytime — just tell your bot 'use Sonnet' or 'switch to Opus'. BYOK users can configure any Claude model.",
+          text: "InstaClaw runs on Claude by Anthropic by default — the same models behind Claude.ai. On All-Inclusive plans, the default is Claude Haiku 4.5 (fast and efficient). You can upgrade to Sonnet 4.6 or Opus 4.6 anytime — just tell your bot 'use Sonnet' or 'switch to Opus'. BYOK users on the Anthropic path can configure any Claude model; BYOK users on the ChatGPT path route through OpenAI Codex.",
         },
       },
       {

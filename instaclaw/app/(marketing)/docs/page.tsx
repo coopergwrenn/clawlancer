@@ -232,7 +232,8 @@ export default function DocsPage() {
               </div>
               <div style={{ color: "#6b6b6b" }}>
                 <p>
-                  If you have your own Anthropic API key, you can switch to BYOK
+                  If you have your own Anthropic API key OR a ChatGPT
+                  Plus/Pro/Team subscription, you can switch to BYOK
                   (Bring Your Own Key) mode to reduce your subscription cost:
                 </p>
                 <ol className="mt-3 space-y-2 list-decimal pl-5">
@@ -243,8 +244,10 @@ export default function DocsPage() {
                 </ol>
                 <p className="mt-3">
                   In BYOK mode, all API calls go directly from your VM to
-                  Anthropic. We never proxy or log them. You get full control
-                  over model selection, rate limits, and token budgets.
+                  the provider (Anthropic for API-key users, OpenAI for
+                  ChatGPT-OAuth users). We never proxy or log them. You
+                  get full control over model selection, rate limits, and
+                  token budgets.
                 </p>
               </div>
             </section>

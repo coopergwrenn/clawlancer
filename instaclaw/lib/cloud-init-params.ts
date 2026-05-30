@@ -115,13 +115,39 @@ export async function buildParamsFromVmRow(
   }
 
   // ── BYOK: api_key on row required when apiMode=byok ──
+  //
+  // EXCEPT: ChatGPT-OAuth users have api_mode="byok" + api_key=NULL by
+  // design — their agent routes through Codex via stepChatGPTOAuthToken
+  // (vm-reconcile.ts:11183), which pushes openai_oauth_access_token to
+  // the VM on the first reconcile tick post-boot and transitions
+  // api_mode to "chatgpt_oauth". The cloud-init tarball doesn't need
+  // the Anthropic key for these users — the OAuth token arrives on a
+  // separate path. Detect this state by checking the assigned user's
+  // openai_oauth_account_id (nulled by disconnectUser; reliable
+  // currently-connected signal).
   const apiKey = apiMode === "byok" ? optStr("api_key") : undefined;
   if (apiMode === "byok" && !apiKey) {
-    throw new Error(
-      `buildParamsFromVmRow: api_mode="byok" but api_key column is null on ` +
-        `vm "${vmName}". BYOK users must have their key stored before ` +
-        `cloud-init can deliver it.`,
+    const { data: oauthRow } = await supabase
+      .from("instaclaw_users")
+      .select("openai_oauth_access_token, openai_oauth_account_id")
+      .eq("id", userId)
+      .maybeSingle();
+    const hasChatGPTOAuth = !!(
+      (oauthRow as { openai_oauth_access_token?: string | null; openai_oauth_account_id?: string | null } | null)?.openai_oauth_access_token &&
+      (oauthRow as { openai_oauth_account_id?: string | null } | null)?.openai_oauth_account_id
     );
+    if (!hasChatGPTOAuth) {
+      throw new Error(
+        `buildParamsFromVmRow: api_mode="byok" but api_key column is null on ` +
+          `vm "${vmName}" AND user has no ChatGPT OAuth tokens. One of the ` +
+          `two providers must be configured before cloud-init can deliver ` +
+          `a working agent.`,
+      );
+    }
+    // OAuth path — proceed with apiKey=undefined. setup.sh's BYOK branch
+    // skips the Anthropic key write when apiKey is empty; the reconciler's
+    // first tick installs the OAuth profile via configureOpenClaw and
+    // upgrades api_mode to "chatgpt_oauth".
   }
 
   // ── Optional VM-row fields (degrade silently to undefined) ──
