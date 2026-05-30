@@ -342,7 +342,27 @@ export default function ConnectPage() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: "#f8f7f4" }}>
+    <div
+      className="min-h-screen"
+      style={{
+        /* 2026-05-30 polish — atmospheric gradient matches the rest of
+         * the onboarding surfaces (/signin, /plan, /channels,
+         * /onboarding/provider, /deploying, /onboarding/done). Prior
+         * to this pass /connect was a flat cream which made it feel
+         * "out of family" against the wabi-sabi standard. The legacy
+         * page is reachable via /plan's footnote + /channels'
+         * "advanced: use the legacy setup" link; keeping the visual
+         * register consistent means a user who clicks into the legacy
+         * path doesn't feel like they fell into a different app. */
+        background: `
+          radial-gradient(1200px 700px at 50% -10%, rgba(233, 111, 77, 0.18), transparent 65%),
+          radial-gradient(900px 600px at 8% 95%, rgba(34, 158, 217, 0.14), transparent 70%),
+          radial-gradient(700px 500px at 95% 25%, rgba(31, 173, 62, 0.08), transparent 75%),
+          linear-gradient(180deg, #f5f3ee 0%, #f8f7f4 60%, #f9f7f2 100%),
+          #f8f7f4
+        `,
+      }}
+    >
       <EdgePartnerBanner />
       {/* Step Indicator */}
       <div
@@ -453,20 +473,30 @@ export default function ConnectPage() {
       <div className="max-w-2xl mx-auto px-6 pt-12 pb-8">
         {/* ── Simplified Header ── */}
         <div className="text-center mb-8">
+          {/* 2026-05-30 wabi-sabi polish — Title Case "Connect Your Bot"
+              with sans-light subtitle replaced by the lowercase serif
+              clamp + period convention used on /signin ("sign in."),
+              /channels ("pick a channel."), /plan ("choose a plan."),
+              /onboarding/provider ("connect your provider."). Keeps the
+              legacy page visually inside the same family of pages even
+              though it predates the wabi-sabi pass. */}
           <h1
-            className="text-3xl mb-2"
+            className="font-normal mb-3"
             style={{
               fontFamily: "var(--font-serif)",
+              fontSize: "clamp(40px, 11vw, 56px)",
+              lineHeight: 1.02,
+              letterSpacing: "-1.5px",
               color: "#333334",
-              fontWeight: 400
             }}
           >
-            Connect Your Bot
+            connect your bot.
           </h1>
-          <p className="text-sm" style={{ color: "#999" }}>
-            Paste your Telegram bot token
-            <br className="sm:hidden" />
-            {" "}to connect your agent.
+          <p
+            className="text-sm"
+            style={{ color: "#6b6b6b", lineHeight: 1.5 }}
+          >
+            paste your telegram bot token. the agent meets you there.
           </p>
         </div>
 
@@ -774,9 +804,9 @@ export default function ConnectPage() {
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                 />
               </svg>
-              Saving...
+              saving...
             </span>
-          ) : "Continue to Plan Selection"}
+          ) : "continue to plan."}
         </button>
 
         {/* Skip-Telegram escape hatch — only surfaced for partner-flow users.
@@ -955,7 +985,15 @@ export default function ConnectPage() {
                       BYOK
                     </p>
                     <p className="text-xs mt-1" style={{ color: "#666" }}>
-                      Bring your own Anthropic key. Save more.
+                      {/* 2026-05-30 dual-provider copy. Pre-BYOK-restructure
+                          this said only "Anthropic key" — but BYOK on the
+                          modern flow also covers ChatGPT Plus/Pro/Team via
+                          OAuth (configured on /onboarding/provider). On the
+                          legacy /connect path users can still ONLY enter
+                          an Anthropic key here; the copy acknowledges
+                          ChatGPT as the alternative so users don't bounce
+                          thinking "no anthropic key = not for me." */}
+                      Bring your own Anthropic key (or use ChatGPT). Save more.
                     </p>
                   </button>
                 </div>
@@ -965,11 +1003,18 @@ export default function ConnectPage() {
               {apiMode === "byok" && (
                 <div>
                   <label
-                    className="block text-sm font-medium mb-3"
+                    className="block text-sm font-medium mb-1.5"
                     style={{ color: "#333334" }}
                   >
                     Anthropic API Key
                   </label>
+                  <p
+                    className="text-xs mb-3"
+                    style={{ color: "#9a9892", lineHeight: 1.5 }}
+                  >
+                    Have ChatGPT Plus/Pro/Team instead? Sign in with ChatGPT
+                    on the <a href="/signin" className="underline" style={{ color: "#6b6b6b" }}>sign-in page</a> to use your subscription.
+                  </p>
                   <input
                     type="password"
                     placeholder="sk-ant-..."

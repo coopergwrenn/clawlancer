@@ -763,7 +763,16 @@ function DeployingPageContent() {
           <div className="max-w-5xl mx-auto px-6">
             <div className="flex items-center justify-center gap-2">
               {[
-                { num: 1, label: "Connect" },
+                // 2026-05-30 auth-consolidation parity: step 1 was
+                // "Connect" (legacy BYOB-Telegram /connect page) when
+                // /connect was the canonical first onboarding stop.
+                // Post-consolidation the canonical first step is
+                // /signin — /plan + /onboarding/provider already use
+                // "Sign in" here. Fixing the label here so the
+                // user's mental map ("I signed in → picked a plan →
+                // now deploying") stays coherent across the three
+                // pages that show the step indicator.
+                { num: 1, label: "Sign in" },
                 { num: 2, label: "Plan" },
                 { num: 3, label: "Deploy" },
               ].map((step, i) => (

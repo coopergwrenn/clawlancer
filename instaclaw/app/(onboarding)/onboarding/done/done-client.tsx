@@ -188,8 +188,87 @@ export function OnboardingDoneClient({
   return (
     <div
       className="min-h-screen flex flex-col"
-      style={{ background: CREAM_BG, color: CARD_INK }}
+      style={{
+        color: CARD_INK,
+        /* Warm-sand atmosphere — verbatim from /channels, /signin,
+         * /plan, /onboarding/provider, /deploying. Closes the visual
+         * loop so /onboarding/done feels like the natural endpoint of
+         * the same journey — same room the user signed in from. Prior
+         * to 2026-05-30 this page used a flat CREAM_BG which read as
+         * "different product" against the rest of the funnel. */
+        background: `
+          radial-gradient(1200px 700px at 50% -10%, rgba(233, 111, 77, 0.18), transparent 65%),
+          radial-gradient(900px 600px at 8% 95%, rgba(34, 158, 217, 0.14), transparent 70%),
+          radial-gradient(700px 500px at 95% 25%, rgba(31, 173, 62, 0.08), transparent 75%),
+          linear-gradient(180deg, #f5f3ee 0%, #f8f7f4 60%, #f9f7f2 100%),
+          ${CREAM_BG}
+        `,
+      }}
     >
+      {/* Three-step indicator at the top — same recipe as /plan,
+          /onboarding/provider, /deploying. ALL three steps shown as
+          completed (green checkmark orbs) because the user is past
+          every stage at this point. The visual closure ("everything
+          green") reinforces the celebration without adding new copy.
+          Sticky-positioned with backdrop blur so it stays visible
+          when content scrolls. */}
+      <div
+        className="sticky top-0 z-10 py-4"
+        style={{
+          background:
+            "linear-gradient(-75deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.6))",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          borderBottom: "1px solid rgba(0, 0, 0, 0.06)",
+        }}
+      >
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="flex items-center justify-center gap-2">
+            {[
+              { num: 1, label: "Sign in" },
+              { num: 2, label: "Plan" },
+              { num: 3, label: "Deploy" },
+            ].map((step, i) => (
+              <div key={step.num} className="flex items-center">
+                <div className="flex flex-col items-center">
+                  <span
+                    className="relative flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold overflow-hidden"
+                    style={{
+                      background:
+                        "radial-gradient(circle at 35% 30%, rgba(34,197,94,0.6), rgba(34,197,94,0.35) 50%, rgba(22,163,74,0.7) 100%)",
+                      boxShadow:
+                        "rgba(34,197,94,0.3) 0px 2px 8px 0px, rgba(255,255,255,0.25) 0px -1px 1px 0px inset",
+                      color: "#ffffff",
+                    }}
+                  >
+                    <span
+                      className="absolute inset-0 rounded-full pointer-events-none"
+                      style={{
+                        background:
+                          "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.45) 0%, transparent 50%)",
+                      }}
+                    />
+                    <span className="relative">&#10003;</span>
+                  </span>
+                  <span
+                    className="text-xs mt-1.5 font-medium"
+                    style={{ color: SUBTLE_INK }}
+                  >
+                    {step.label}
+                  </span>
+                </div>
+                {i < 2 && (
+                  <div
+                    className="w-16 mx-3 mb-5 rounded-full"
+                    style={{ height: "2px", background: "#22c55e" }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <main className="flex-1 flex flex-col items-center justify-center px-5 py-12">
         <div
           className="w-full transition-all duration-300 ease-out"
