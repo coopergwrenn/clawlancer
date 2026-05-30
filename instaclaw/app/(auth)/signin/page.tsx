@@ -153,7 +153,8 @@ export default async function SignInPage({
     callbackUrl.startsWith("/onboarding/") ||
     callbackUrl.startsWith("/plan") ||
     callbackUrl.startsWith("/channels") ||
-    callbackUrl.startsWith("/connect");
+    callbackUrl.startsWith("/connect") ||
+    callbackUrl.startsWith("/deploying");
   const isNewUser = isExplicitNew || isFunnelMid;
 
   const session = await auth();

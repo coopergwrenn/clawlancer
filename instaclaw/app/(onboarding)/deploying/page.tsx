@@ -183,9 +183,24 @@ function DeployingPageContent() {
   // AgentChat sequence skips that message entirely. The agent does
   // its other prep ("setting up my workspace...") then holds on the
   // typing indicator until deploy completes.
-  const { data: session } = useSession();
+  //
+  // Status check (2026-05-30 QA fix): /deploying must be auth-gated.
+  // Pre-fix, an unauthenticated visitor could URL-type /deploying
+  // and see Larry + "hi." + falsely-✓ "payment confirmed" — bizarre
+  // and deceptive. /api/vm/status returns 401 for unauth so the
+  // validation never catches the case; AgentChat rendered
+  // unconditionally. Redirect unauth users to /signin with a
+  // callbackUrl that the funnel-mid heuristic will catch (showing
+  // "claim your agent." downstream).
+  const { data: session, status: sessionStatus } = useSession();
   const userFirstName =
     session?.user?.name?.trim().split(/\s+/)[0] || null;
+
+  useEffect(() => {
+    if (sessionStatus === "unauthenticated") {
+      router.replace("/signin?callbackUrl=/deploying");
+    }
+  }, [sessionStatus, router]);
   // Edge attendees go through one more step (the mandatory intent gate at
   // /edge/intents) before reaching their dashboard — the matching engine
   // needs at least one intent to seed the village network. The gate itself
@@ -676,6 +691,29 @@ function DeployingPageContent() {
     `,
     color: "#ffffff",
   } as const;
+
+  // 2026-05-30 QA gate: render nothing during auth-loading or the
+  // brief moment between unauth detection and the router.replace.
+  // Without this, the AgentChat would mount for an unauth visitor
+  // and start typing "hi." before the redirect lands — bizarre +
+  // deceptive (the page would also show "payment confirmed" ✓
+  // falsely). A blank screen for ~200ms is the right answer.
+  if (sessionStatus === "loading" || sessionStatus === "unauthenticated") {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{
+          background: `
+            radial-gradient(1200px 700px at 50% -10%, rgba(233, 111, 77, 0.18), transparent 65%),
+            radial-gradient(900px 600px at 8% 95%, rgba(34, 158, 217, 0.14), transparent 70%),
+            radial-gradient(700px 500px at 95% 25%, rgba(31, 173, 62, 0.08), transparent 75%),
+            linear-gradient(180deg, #f5f3ee 0%, #f8f7f4 60%, #f9f7f2 100%),
+            #f8f7f4
+          `,
+        }}
+      />
+    );
+  }
 
   return (
     <>
