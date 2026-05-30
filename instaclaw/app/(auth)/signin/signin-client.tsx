@@ -60,9 +60,19 @@ const REFERRAL_STORAGE_KEY = "instaclaw_ref";
 export function SignInClient({
   callbackUrl,
   initialRef,
+  isNewUser,
 }: {
   callbackUrl: string;
   initialRef?: string;
+  /**
+   * Server-resolved from `?new=1` query param appended by the landing-
+   * page "Claim My Agent" / "get started" CTAs. When true, swap the
+   * headline from "sign in." to "claim your agent." so the energy of
+   * the click survives the navigation. Default false — direct visits
+   * and nav-"sign in" clicks keep the original copy. See page.tsx for
+   * the param parsing.
+   */
+  isNewUser?: boolean;
 }) {
   // ChatGPT-as-signin opens the device-code modal in signup mode. The
   // modal handles the full polling + identity-resolution + signIn() flow
@@ -285,6 +295,17 @@ export function SignInClient({
             everything needed. Typography spec preserved verbatim
             from the pre-Move-1 version (serif clamp, line-height
             1.0, letter-spacing -1.8px). */}
+        {/* Headline. Intent-aware (2026-05-30):
+              - Newcomer (isNewUser=true, set by ?new=1 from landing
+                "Claim My Agent" CTA): "claim your agent." — preserves
+                the verb the user just clicked. They came here CLAIMING
+                a thing, not signing in.
+              - Default ("sign in."): users who clicked a "sign in" link
+                in nav/marketing, middleware redirects, direct URL.
+            No subtitle in either case. The two OAuth pills below are
+            self-explanatory ("sign in with Google" / "sign in with
+            ChatGPT") — adding a tutorial line would be cognitive
+            overhead at a moment that should feel light. */}
         <div className="text-center">
           <h1
             className="font-normal"
@@ -296,7 +317,7 @@ export function SignInClient({
               color: CARD_INK,
             }}
           >
-            sign in.
+            {isNewUser ? "claim your agent." : "sign in."}
           </h1>
         </div>
 

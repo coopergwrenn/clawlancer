@@ -278,6 +278,11 @@ function HeroInner() {
           </span>
         ) : (
           <div className="flex items-center gap-2">
+            {/* Nav "sign in" stays bare — returning-user energy.
+                The /signin server wrapper defaults to "sign in." for
+                this entry point. Nav "get started" gets ?new=1 like
+                the hero CTA so newcomers downstream see "claim your
+                agent." on the auth page. */}
             <Link
               href="/signin"
               className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
@@ -289,7 +294,7 @@ function HeroInner() {
               sign in
             </Link>
             <span className="liquid-glass-nav-btn-root">
-              <Link href="/channels" className="liquid-glass-nav-btn">
+              <Link href="/channels?new=1" className="liquid-glass-nav-btn">
                 get started
               </Link>
               <div aria-hidden="true" className="liquid-glass-nav-btn-shadow"></div>
@@ -357,10 +362,19 @@ function HeroInner() {
             <WaitlistForm />
           ) : (
             <>
+              {/* 2026-05-30 — append ?new=1 to the unauth CTA so it
+                  threads through /channels → /onboarding/web →
+                  middleware → /signin with the newcomer-intent flag.
+                  The server wrapper at /signin reads ?new=1 OR a
+                  funnel-mid callbackUrl to swap the headline from
+                  "sign in." to "claim your agent." Preserves the
+                  emotional energy of the click from this CTA to the
+                  auth page. Authed users → /dashboard, no flag
+                  needed (no headline downstream). */}
               <div className="flex justify-center pt-2">
                 <div className="liquid-glass-btn-root">
                   <Link
-                    href={session ? "/dashboard" : "/channels"}
+                    href={session ? "/dashboard" : "/channels?new=1"}
                     className="liquid-glass-btn"
                   >
                     <span>Claim My Agent</span>

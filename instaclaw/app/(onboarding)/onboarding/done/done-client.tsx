@@ -60,6 +60,18 @@ interface OnboardingDoneClientProps {
   partner?: string | null;
   suggestedName?: string | null;
   existingProfile?: ExistingProfile | null;
+  /**
+   * Telegram bot username (without @) for the user's assigned bot,
+   * passed through from page.tsx's pending row read. When the channel
+   * is "telegram" and we have this value, PostSubmitState renders a
+   * tappable `https://t.me/<botUsername>?start=hi` deep-link CTA
+   * instead of the pulsing-dot ambient signal — one tap → Telegram
+   * opens → user sees the agent's first message already there.
+   * Null when channel is non-Telegram or the pending row didn't
+   * persist a bot username (channel-first imessage signups, for
+   * example, where there's no BYOB bot).
+   */
+  telegramBotUsername?: string | null;
 }
 
 const channelDisplayName = (c: Channel): string => {
@@ -111,6 +123,7 @@ export function OnboardingDoneClient({
   channel,
   suggestedName,
   existingProfile,
+  telegramBotUsername,
 }: OnboardingDoneClientProps) {
   const [screen, setScreen] = useState<Screen>(initialState);
   const [name, setName] = useState<string>(
@@ -294,7 +307,17 @@ export function OnboardingDoneClient({
             />
           )}
 
-          {screen === "post-submit" && <PostSubmitState channel={channel} />}
+          {screen === "post-submit" && (
+            <PostSubmitState
+              channel={channel}
+              telegramBotUsername={telegramBotUsername ?? null}
+              memory={{
+                name: name.trim() || null,
+                intendedUse,
+                vibe,
+              }}
+            />
+          )}
 
           {screen === "expired" && <ExpiredState />}
         </div>
@@ -549,8 +572,100 @@ function FormState(props: FormStateProps) {
 /* POST-SUBMIT STATE                                                   */
 /* ────────────────────────────────────────────────────────────────── */
 
-function PostSubmitState({ channel }: { channel: Channel }) {
+/**
+ * Memory card data — the agent's first memory of the user, derived
+ * from the FormState inputs. Each line is null when the user skipped
+ * or didn't fill that field. The card only renders if AT LEAST one
+ * line is non-null; full skip → no card → straight to the CTA.
+ */
+interface MemoryData {
+  name: string | null;
+  intendedUse: IntendedUse | null;
+  vibe: Vibe | null;
+}
+
+/**
+ * Human-readable phrases per vibe value, used by the memory card.
+ * Matches the FormState's VIBE_OPTIONS labels but reframed as the
+ * AGENT's voice ("you like X") rather than the user's choice.
+ */
+const VIBE_PHRASE: Record<Vibe, string> = {
+  "just-get-things-done": "just-get-things-done",
+  "chatty-and-warm": "chatty and warm",
+  "wry-and-minimal": "wry and minimal",
+};
+const USE_PHRASE: Record<IntendedUse, string> = {
+  work: "for work",
+  personal: "for personal stuff",
+  both: "for work and personal",
+};
+
+function PostSubmitState({
+  channel,
+  telegramBotUsername,
+  memory,
+}: {
+  channel: Channel;
+  telegramBotUsername: string | null;
+  memory: MemoryData;
+}) {
   const isWeb = channel === "web";
+
+  // 2026-05-30 — channel-specific deep-link CTA construction.
+  //
+  //   telegram → https://t.me/<botUsername>?start=hi  (deep-link
+  //              opens Telegram app; ?start=hi triggers the bot's
+  //              /start handler so the agent's first message lands
+  //              immediately)
+  //   imessage → sms:+1...&body=hi   (sms: scheme opens Messages
+  //              with the body pre-filled on iOS/macOS)
+  //   discord  → /dashboard          (no deep-link to a specific bot
+  //              yet — defer to dashboard until that exists)
+  //   slack    → /dashboard          (same as discord)
+  //   web      → /dashboard
+  //
+  // The CTA text + destination are coupled. When a bot username is
+  // unavailable for the Telegram channel (rare — channel-first
+  // signups skip BYOB) we fall back to a generic "head back to
+  // telegram." copy without a deep link.
+  let ctaHref: string;
+  let ctaLabel: string;
+  let ctaModifier: string; // .cta-coral / .cta-telegram / etc.
+
+  if (isWeb) {
+    ctaHref = "/dashboard";
+    ctaLabel = "open your command center";
+    ctaModifier = "cta-coral";
+  } else if (channel === "telegram" && telegramBotUsername) {
+    // Telegram deep-link with /start payload so the agent's first
+    // message dispatches immediately on tap.
+    ctaHref = `https://t.me/${telegramBotUsername}?start=hi`;
+    ctaLabel = "open telegram and say hi";
+    ctaModifier = "cta-telegram";
+  } else if (channel === "imessage") {
+    // sms: URI with body= for iOS/macOS Messages pre-fill. The
+    // number lives in lib/channels OR /channels source — using the
+    // same number /channels' iMessage card uses (+14072425197).
+    // We don't pre-fill body with "hi" because some carriers strip
+    // the body param; user opens Messages with our number ready.
+    ctaHref = "sms:+14072425197";
+    ctaLabel = "open messages and say hi";
+    ctaModifier = "cta-coral";
+  } else {
+    // Discord / Slack / unknown — fall through to dashboard.
+    ctaHref = "/dashboard";
+    ctaLabel = "open your command center";
+    ctaModifier = "cta-coral";
+  }
+
+  // Build the memory card's lines (only the non-null ones render).
+  const memoryLines: string[] = [];
+  if (memory.name) memoryLines.push(`you go by ${memory.name}.`);
+  if (memory.intendedUse)
+    memoryLines.push(`you'll use me ${USE_PHRASE[memory.intendedUse]}.`);
+  if (memory.vibe) memoryLines.push(`you like ${VIBE_PHRASE[memory.vibe]}.`);
+  const showMemoryCard = memoryLines.length > 0;
+
   return (
     <div className="text-center">
       <h1
@@ -581,72 +696,116 @@ function PostSubmitState({ channel }: { channel: Channel }) {
           : `head back to ${channelDisplayName(channel)}.`}
       </p>
 
-      <p
-        className="mb-12"
-        style={{
-          fontSize: 16,
-          lineHeight: 1.5,
-          color: SUBTLE_INK,
-          maxWidth: 320,
-          margin: "0 auto",
-        }}
-      >
-        {isWeb ? "tap below to meet your agent." : "i'll be there."}
-      </p>
-
-      {/* Web-only users: a direct CTA to /dashboard since there's no
-          messaging app for them to switch to. 2026-05-30 polish:
-          upgraded from a flat-coral rounded-full pill to the
-          .liquid-glass-signin cta-coral recipe so this CTA reads as
-          a sibling of /plan's "start free trial" and the form-state
-          submit above — same recipe, same surface, same hover. */}
-      {isWeb ? (
+      {/* 2026-05-30 — Memory card. The agent's first memory of the
+          user, written in real time. The user just submitted the
+          form; this card visualizes what the agent now knows. Each
+          line "appears like ink" — sequential fade-in with a slight
+          upward translate at staggered delays (350ms apart, starting
+          at 350ms after mount). The card is the visual proof of the
+          product's core promise (personal AI with memory). Without
+          this, the user has no idea anything happened when they hit
+          submit. Hidden if every line is null (full-skip path). */}
+      {showMemoryCard && (
         <div
-          className="liquid-glass-signin-root cta-coral mx-auto"
-          style={{ maxWidth: 360 }}
+          className="mx-auto mb-10 text-left"
+          style={{
+            maxWidth: 380,
+            padding: "20px 22px 22px",
+            borderRadius: 16,
+            background:
+              "linear-gradient(-75deg, rgba(255,255,255,0.55), rgba(255,255,255,0.78), rgba(255,255,255,0.55))",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            border: "1px solid rgba(0,0,0,0.06)",
+            boxShadow:
+              "rgba(0,0,0,0.04) 0px 2px 8px 0px, rgba(255,255,255,0.55) 0px 1px 1px 0px inset",
+          }}
         >
-          <Link
-            href="/dashboard"
-            className="liquid-glass-signin"
-            style={{ textDecoration: "none", fontFamily: "inherit" }}
-          >
-            open your command center
-            <span aria-hidden style={{ marginLeft: 4 }}>→</span>
-          </Link>
-          <div aria-hidden className="liquid-glass-signin-shadow" />
-        </div>
-      ) : (
-        /* Subtle visual cue — a coral dot that gently pulses,
-           reinforcing "something is happening." Not a spinner; not a
-           progress bar. Just a small living signal. Applies to channel
-           users where M_RETURN is dispatching to their inbox in
-           the background. */
-        <div className="flex justify-center" aria-hidden>
-          <span
+          <p
+            className="mb-3 memory-line"
             style={{
-              display: "inline-block",
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
-              background: CORAL,
-              boxShadow: `0 0 0 4px rgba(233, 111, 77, 0.12)`,
-              animation: "onboarding-done-pulse 1.6s ease-in-out infinite",
+              fontSize: 13,
+              color: SUBTLE_INK,
+              letterSpacing: "0.04em",
+              textTransform: "lowercase",
+              fontFamily: "var(--font-serif)",
+              fontStyle: "italic",
+              animationDelay: "0ms",
             }}
-          />
+          >
+            i remember:
+          </p>
+          {memoryLines.map((line, i) => (
+            <p
+              key={line}
+              className="memory-line"
+              style={{
+                fontFamily: "var(--font-serif)",
+                fontSize: 17,
+                lineHeight: 1.45,
+                color: CARD_INK,
+                letterSpacing: "-0.2px",
+                margin: i === memoryLines.length - 1 ? 0 : "0 0 8px",
+                animationDelay: `${350 + (i + 1) * 350}ms`,
+              }}
+            >
+              {line}
+            </p>
+          ))}
         </div>
       )}
 
+      {/* Channel-specific deep-link CTA (Telegram / Messages / web /
+          fallback). Replaces the pre-2026-05-30 pulsing coral dot —
+          ambient signal → clear action. The CTA inherits its glass
+          recipe + tint from .cta-coral or .cta-telegram (see
+          globals.css). External links use <a target="_blank"> so the
+          Telegram / Messages app launches without dropping our
+          tab; internal links use <Link>. */}
+      <div
+        className={`liquid-glass-signin-root ${ctaModifier} mx-auto`}
+        style={{ maxWidth: 380 }}
+      >
+        {ctaHref.startsWith("/") ? (
+          <Link
+            href={ctaHref}
+            className="liquid-glass-signin"
+            style={{ textDecoration: "none", fontFamily: "inherit" }}
+          >
+            {ctaLabel}
+            <span aria-hidden style={{ marginLeft: 4 }}>→</span>
+          </Link>
+        ) : (
+          <a
+            href={ctaHref}
+            target={ctaHref.startsWith("http") ? "_blank" : undefined}
+            rel={ctaHref.startsWith("http") ? "noopener noreferrer" : undefined}
+            className="liquid-glass-signin"
+            style={{ textDecoration: "none", fontFamily: "inherit" }}
+          >
+            {ctaLabel}
+            <span aria-hidden style={{ marginLeft: 4 }}>→</span>
+          </a>
+        )}
+        <div aria-hidden className="liquid-glass-signin-shadow" />
+      </div>
+
       <style>{`
-        @keyframes onboarding-done-pulse {
-          0%, 100% {
-            transform: scale(1);
-            opacity: 0.95;
-            box-shadow: 0 0 0 4px rgba(233, 111, 77, 0.10);
-          }
-          50% {
-            transform: scale(1.18);
+        /* "Ink appearing" — each memory-line fades in with a slight
+           upward translate. Combined with the staggered animation-
+           delay (set inline per element above) this creates the
+           sequential "the agent is writing this down right now"
+           feeling Cooper specified. Easing is ease-out so the
+           settling motion is calm, not snappy. */
+        .memory-line {
+          opacity: 0;
+          transform: translateY(6px);
+          animation: memory-ink-appear 600ms ease-out forwards;
+        }
+        @keyframes memory-ink-appear {
+          to {
             opacity: 1;
-            box-shadow: 0 0 0 7px rgba(233, 111, 77, 0.16);
+            transform: translateY(0);
           }
         }
       `}</style>

@@ -99,6 +99,7 @@ export default async function SignInPage({
   searchParams: Promise<{
     callbackUrl?: string | string[];
     ref?: string | string[];
+    new?: string | string[];
   }>;
 }) {
   const params = await searchParams;
@@ -116,6 +117,45 @@ export default async function SignInPage({
   const rawRef = Array.isArray(params.ref) ? params.ref[0] : params.ref;
   const initialRef = sanitizeRef(rawRef);
 
+  // ── Newcomer intent (2026-05-30) ─────────────────────────────────
+  //
+  // A user arriving from the landing-page "Claim My Agent" CTA, or
+  // mid-funnel via the /channels → /onboarding/web path, is here to
+  // CLAIM something — not to return to an existing account. /signin
+  // detects this state and swaps the headline from "sign in." →
+  // "claim your agent." so the emotional energy of the click is
+  // honored on landing.
+  //
+  // Two detection signals (OR'd):
+  //   1. Explicit `?new=1` query param (appended by hero CTAs we
+  //      control — landing "Claim My Agent" + nav "get started").
+  //   2. `callbackUrl` pointing into the onboarding funnel
+  //      (/onboarding/*, /plan, /channels). These callbackUrls only
+  //      get set when middleware redirects an unauth user away from
+  //      a mid-funnel page — which means they're CLAIMING an agent,
+  //      not returning to one. (The default /dashboard callbackUrl
+  //      stays as a "returning" signal because it covers both
+  //      back-button traffic and direct dashboard visits.)
+  //
+  // Why server-side: the server wrapper already does all param
+  // parsing (W5 audit fix, 2026-05-22). Keeping `isNewUser` server-
+  // side avoids a Suspense boundary and prevents headline flicker
+  // on hydration.
+  //
+  // The default ("sign in.") still wins for direct visits, nav-"sign
+  // in" clicks, marketing-page links, and dashboard-callback
+  // middleware bounces. False negatives (a new user gets the boring
+  // copy) are tolerable; false positives (a returning user gets
+  // "claim your agent.") would be jarring, so the gates are strict.
+  const rawNew = Array.isArray(params.new) ? params.new[0] : params.new;
+  const isExplicitNew = rawNew === "1";
+  const isFunnelMid =
+    callbackUrl.startsWith("/onboarding/") ||
+    callbackUrl.startsWith("/plan") ||
+    callbackUrl.startsWith("/channels") ||
+    callbackUrl.startsWith("/connect");
+  const isNewUser = isExplicitNew || isFunnelMid;
+
   const session = await auth();
   if (session?.user?.id) {
     // Already authenticated — skip the buttons, go straight to the
@@ -125,5 +165,11 @@ export default async function SignInPage({
     redirect(callbackUrl);
   }
 
-  return <SignInClient callbackUrl={callbackUrl} initialRef={initialRef} />;
+  return (
+    <SignInClient
+      callbackUrl={callbackUrl}
+      initialRef={initialRef}
+      isNewUser={isNewUser}
+    />
+  );
 }

@@ -173,6 +173,7 @@ export default async function OnboardingDonePage({ searchParams }: PageProps) {
           sessionId={sessionId}
           initialState="expired"
           channel={pending.channel ?? "imessage"}
+          telegramBotUsername={pending.telegram_bot_username ?? null}
         />
       );
     }
@@ -183,6 +184,7 @@ export default async function OnboardingDonePage({ searchParams }: PageProps) {
         sessionId={sessionId}
         initialState="post-submit"
         channel={pending.channel ?? "imessage"}
+        telegramBotUsername={pending.telegram_bot_username ?? null}
       />
     );
   }
@@ -218,6 +220,7 @@ export default async function OnboardingDonePage({ searchParams }: PageProps) {
       channel={pending.channel ?? "imessage"}
       partner={user?.partner ?? null}
       suggestedName={suggestedName}
+      telegramBotUsername={pending.telegram_bot_username ?? null}
       existingProfile={
         existingProfile
           ? {

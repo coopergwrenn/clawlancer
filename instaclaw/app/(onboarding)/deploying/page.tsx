@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Check, AlertCircle, RotateCcw } from "lucide-react";
 import { EdgePartnerBanner, usePartnerCookie } from "@/components/marketing/edge-partner-banner";
 import {
@@ -9,6 +10,7 @@ import {
   POOL_PHASES,
   CLOUD_INIT_PHASES,
 } from "@/components/onboarding/deploying-phase-accordion";
+import { AgentChat } from "@/components/onboarding/agent-chat";
 
 // Brand constants — paired with /channels (channels-client.tsx:33-37).
 // /signin uses the same set. If these change at /channels, change here too.
@@ -174,6 +176,16 @@ function DeployingPageContent() {
   // and forever after.
   const partner = usePartnerCookie();
   const isEdge = partner === "edge_city";
+  // Session-aware first-name extraction for the AgentChat "learning
+  // your name." message. Google OAuth populates session.user.name as
+  // the full name ("Cooper Wrenn"); we take the first token. When the
+  // session is undefined (mounting / unauth) or the name is empty, the
+  // AgentChat sequence skips that message entirely. The agent does
+  // its other prep ("setting up my workspace...") then holds on the
+  // typing indicator until deploy completes.
+  const { data: session } = useSession();
+  const userFirstName =
+    session?.user?.name?.trim().split(/\s+/)[0] || null;
   // Edge attendees go through one more step (the mandatory intent gate at
   // /edge/intents) before reaching their dashboard — the matching engine
   // needs at least one intent to seed the village network. The gate itself
@@ -476,20 +488,32 @@ function DeployingPageContent() {
             updateStep("telegram", "done");
 
             if (data.vm.healthStatus === "healthy") {
-              // Fully ready — redirect to dashboard
+              // Fully ready. 2026-05-30: auto-redirect removed for
+              // non-Edge users — the AgentChat's "open telegram and
+              // say hi →" CTA is the user's action. The chat's
+              // climax is destroyed if we yank the page out from
+              // under it. Edge attendees keep the auto-redirect
+              // because /edge/intents is a mandatory gate (matching
+              // engine needs at least one intent seeded).
               updateStep("health", "done");
               setPolling(false);
               setSoftTimeout(false);
               clearInterval(interval);
-              setTimeout(() => { window.location.href = deploySuccessDestination; }, 1500);
+              if (isEdge) {
+                setTimeout(() => { window.location.href = deploySuccessDestination; }, 1500);
+              }
             } else if (pollCount - (configuredAtPoll.current ?? pollCount) >= 5) {
-              // 5-second grace period elapsed — gateway is running, redirect
-              // anyway. The dashboard handles unhealthy states gracefully.
+              // 5-second grace period elapsed — gateway is running. Same
+              // pattern as the fully-healthy branch above: non-Edge
+              // users stay on the chat (CTA fires); Edge users get
+              // redirected to /edge/intents for the mandatory gate.
               updateStep("health", "done");
               setPolling(false);
               setSoftTimeout(false);
               clearInterval(interval);
-              setTimeout(() => { window.location.href = deploySuccessDestination; }, 1500);
+              if (isEdge) {
+                setTimeout(() => { window.location.href = deploySuccessDestination; }, 1500);
+              }
             } else {
               // Within 5s grace period — still checking health
               updateStep("health", "active");
@@ -868,55 +892,37 @@ function DeployingPageContent() {
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-16">
-          {/* Title — typography matches /channels' "pick a channel."
-              and /signin's "sign in." (serif clamp, line-height 1.0,
-              letter-spacing -1.8px). Lowercase + period; the new copy
-              "your agent is coming to life." replaces the previous
-              "Deploying Your Instance" Title Case + frames the wait as
-              a poetic moment rather than a system status string.
-
-              The 8-phrase rotating subtitle (SUBTITLE_MESSAGES + the
-              RotatingSubtitle crossfade component, still defined above
-              for potential future reuse) is replaced by a single
-              static line "give me about a minute." — reconciles the
-              desktop/mobile copy mismatch we had + drops the AI-all-
-              caps / ellipsis register that didn't match Cooper voice.
-
-              The cowboy ROTATING_MESSAGES for individual step phases
-              (Taming the claw..., etc.) are UNCHANGED — they're
-              step-internal voice and out of scope for this pass. */}
-          <div className="mb-12 text-center">
-            <h1
-              className="font-normal mb-3"
-              style={{
-                fontFamily: "var(--font-serif)",
-                fontSize: "clamp(44px, 12vw, 60px)",
-                lineHeight: 1.0,
-                letterSpacing: "-1.8px",
-                color: CARD_INK,
-              }}
-            >
-              your agent is coming to life.
-            </h1>
-            <p
-              className="mx-auto"
-              style={{
-                fontSize: 17,
-                lineHeight: 1.5,
-                color: MUTED_INK,
-                maxWidth: 380,
-              }}
-            >
-              give me about a minute.
-            </p>
-            {polling && !configureFailed && (
-              <p
-                className="mt-3"
-                style={{ fontSize: 13, color: SUBTLE_INK, lineHeight: 1.5 }}
-              >
-                this takes about a minute. please don&apos;t leave this screen.
-              </p>
-            )}
+          {/* 2026-05-30 — AgentChat is the emotional centerpiece of
+              this page. Replaces the static "your agent is coming to
+              life." headline + cowboy-rotating subtitle. The agent
+              actually SPEAKS — typing indicators, sequential
+              messages, then "okay. i'm ready." → channel-specific
+              CTA when deploy completes.
+              Timing decoupled from polling — the chat plays for ~22s
+              regardless of how fast the technical deploy runs, so
+              every user gets the full emotional arc (the wait the
+              chat creates IS part of the experience, not a cost).
+              The CTA at the end of the chat replaces the previous
+              auto-redirect to /dashboard. See agent-chat.tsx for the
+              full sequence + copy reasoning.
+              isComplete fires when (a) gateway URL exists AND
+              (b) health is confirmed OR a 5s grace period elapsed.
+              channel detection: if we have a Telegram bot username,
+              the user is on the Telegram path → CTA opens t.me deep
+              link. Otherwise (web users, Edge attendees with no bot,
+              cloud-init in progress), CTA opens /dashboard. */}
+          <div className="mb-10 w-full">
+            <AgentChat
+              userFirstName={userFirstName}
+              channel={
+                vmAccordionState.telegramBotUsername ? "telegram" : "web"
+              }
+              botUsername={vmAccordionState.telegramBotUsername}
+              isComplete={
+                configuredRef.current &&
+                vmAccordionState.healthStatus === "healthy"
+              }
+            />
           </div>
 
           {/* Progress bar container — glass card */}

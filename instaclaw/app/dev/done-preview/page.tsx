@@ -53,12 +53,30 @@ export default function DonePreviewPage() {
   return (
     <div>
       <OnboardingDoneClient
+        // 2026-05-30 — key={...} forces re-mount on screen/channel
+        // change so OnboardingDoneClient's useState(initialState)
+        // initializer runs again. Without key, switching from "form"
+        // to "post-submit" via the case picker has no effect because
+        // useState only seeds on mount.
+        key={`${screen}-${channel}`}
         sessionId="00000000-0000-4000-8000-000000000001"
         initialState={screen}
         channel={channel}
         partner={null}
         suggestedName="Cooper"
-        existingProfile={null}
+        telegramBotUsername="myinstaclaw_bot"
+        existingProfile={
+          // For post-submit preview, fake an existingProfile so the
+          // memory card has data to render. Without this, post-
+          // submit shows no card (full-skip path).
+          screen === "post-submit"
+            ? {
+                name: "Cooper",
+                intended_use: "work",
+                vibe: "wry-and-minimal",
+              }
+            : null
+        }
       />
       {/* Case-picker overlay. Fixed bottom-left so it doesn't interfere
           with the rendered page above. Links rebuild the URL so the

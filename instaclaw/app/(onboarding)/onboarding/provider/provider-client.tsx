@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import { LenisProvider } from "@/components/landing/lenis-provider";
 import { SupportFooter } from "@/components/marketing/support-footer";
 import { ChatGPTConnectModal } from "@/components/dashboard/chatgpt-connect-modal";
@@ -452,6 +452,48 @@ export function ProviderClient({ stripeSessionId }: ProviderClientProps) {
         </div>
 
         <main className="max-w-xl mx-auto px-6 pt-10 pb-16">
+          {/* 2026-05-30 — payment-confirmation pill above the headline.
+              The user just came from Stripe; without this pill the
+              page reads as "wait, ANOTHER form?" The pill ACKs the
+              transaction first, then frames what's coming as "one more
+              step" so the user doesn't feel the friction of an extra
+              gate. Green checkmark matches the completed-step orbs in
+              the indicator above. Glass-eyebrow recipe ties it to the
+              brand pill family. */}
+          <div className="flex justify-center mb-6">
+            <span
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full"
+              style={{
+                background:
+                  "linear-gradient(-75deg, rgba(34,197,94,0.10), rgba(34,197,94,0.18), rgba(34,197,94,0.10))",
+                border: "1px solid rgba(34,197,94,0.25)",
+                boxShadow:
+                  "rgba(0,0,0,0.04) 0px 1px 2px 0px, rgba(255,255,255,0.4) 0px 1px 1px 0px inset",
+                fontSize: 12,
+                letterSpacing: "-0.1px",
+                color: "#1f7a3d",
+              }}
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#22c55e"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <span>
+                <span style={{ fontWeight: 600 }}>payment confirmed.</span>{" "}
+                <span style={{ opacity: 0.75 }}>one more step.</span>
+              </span>
+            </span>
+          </div>
+
           <div className="text-center mb-10">
             <h1
               className="font-normal mb-4"
@@ -576,6 +618,29 @@ export function ProviderClient({ stripeSessionId }: ProviderClientProps) {
                 }}
               >
                 {keyError}
+              </p>
+            )}
+
+            {/* 2026-05-30 — trust copy below the input. The user is
+                literally typing a credential into a form; the industry
+                norm (Stripe, 1Password's web app, GitHub PAT entry)
+                is to reassure RIGHT NEXT to the input. The encryption
+                is real: lib/security.encryptApiKey() AES-GCM with
+                CREDENTIAL_ENCRYPTION_KEY → pending_users.api_key. The
+                key never reaches our servers in plaintext after
+                /api/onboarding/save-provider returns. */}
+            {!keyError && (
+              <p
+                className="mt-2.5 flex items-center justify-center gap-1.5"
+                style={{
+                  fontSize: 11,
+                  color: SUBTLE_INK,
+                  lineHeight: 1.4,
+                  letterSpacing: "-0.05px",
+                }}
+              >
+                <Lock size={11} style={{ opacity: 0.7 }} aria-hidden />
+                <span>encrypted at rest. lives on your VM only.</span>
               </p>
             )}
 
