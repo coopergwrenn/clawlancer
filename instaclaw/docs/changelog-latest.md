@@ -1,16 +1,16 @@
-# Changelog — generated 2026-05-29
+# Changelog — generated 2026-05-30
 
-Window: `866212e237bb0ac4e444ad4c180cd9ac34457c8e` → `HEAD` (HEAD = `b2a13636`)
+Window: `b2a136363f5b7cddcbbb30b235a9eab0b2b197cf` → `HEAD` (HEAD = `9577157d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: b2a136363f5b7cddcbbb30b235a9eab0b2b197cf -->
+<!-- LAST_GENERATED_SHA: 9577157d86734b339e9d80d5cb83ea3c00f15d7e -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Infrastructure:** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,11 +18,12 @@ Total commits: 2
 
 ## What changed for users
 
-- `b2a13636` 2026-05-29 — plan: Larry v2 — fix eye flash + body jitter [6 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `e9ab4885` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+- `7ba0c191` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+- `9577157d` 2026-05-30 — plan: 2026-05-29 pricing update — new Stripe price IDs (all_inclusive + BYOK) + grandfathering [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
 
 ## By category
 
@@ -30,13 +31,13 @@ Total commits: 2
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
+
+- `9577157d` 2026-05-30 — plan: 2026-05-29 pricing update — new Stripe price IDs (all_inclusive + BYOK) + grandfathering [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
+
+### Feature (user-facing) (0)
 
 _(none)_
-
-### Feature (user-facing) (1)
-
-- `b2a13636` 2026-05-29 — plan: Larry v2 — fix eye flash + body jitter [6 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `e9ab4885` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+- `7ba0c191` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `9577157d` 2026-05-30 — [infrastructure, feature] — plan: 2026-05-29 pricing update — new Stripe price IDs (all_inclusive + BYOK) + grandfathering
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `b2a13636` 2026-05-29 — plan: Larry v2 — fix eye flash + body jitter
+- `9577157d` 2026-05-30 — plan: 2026-05-29 pricing update — new Stripe price IDs (all_inclusive + BYOK) + grandfathering
 
 ## Appendix — every commit (chronological)
 
-- `e9ab4885` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
-- `b2a13636` 2026-05-29 — plan: Larry v2 — fix eye flash + body jitter [6 files] _(ai-assisted)_
+- `7ba0c191` 2026-05-29 — chore(changelog): auto-update [skip ci] [2 files]
+- `9577157d` 2026-05-30 — plan: 2026-05-29 pricing update — new Stripe price IDs (all_inclusive + BYOK) + grandfathering [2 files] _(multi: [infrastructure, feature]; ai-assisted)_
