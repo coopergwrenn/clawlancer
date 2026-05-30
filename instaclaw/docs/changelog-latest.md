@@ -1,28 +1,31 @@
 # Changelog — generated 2026-05-30
 
-Window: `067bb187dd1b6f1e7605ddceb0d0554c82340e94` → `HEAD` (HEAD = `eb002895`)
-Total commits: 2
+Window: `eb002895f34e1480e8314ca577de7afe4cb325aa` → `HEAD` (HEAD = `d9f7409f`)
+Total commits: 4
 
-<!-- LAST_GENERATED_SHA: eb002895f34e1480e8314ca577de7afe4cb325aa -->
+<!-- LAST_GENERATED_SHA: d9f7409fa80ac67f8f2182ce2fdeba9435af0be9 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Infrastructure:** 2
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
-- Merge commits: 0
+- **Docs / PRD only:** 2
+- AI-assisted commits (co-authored): 3
+- Merge commits: 1
 
 ## What changed for users
 
-- `eb002895` 2026-05-30 — fix(deploying): gate page behind auth — unauth visitors saw Larry + fake "payment confirmed" [2 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `a6507a15` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `4c4954e9` 2026-05-30 — feat(the-floor): real-time agent activity → 3D office (MVP) + H1/L3/M4 fixes [22 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
+- `d9f7409f` 2026-05-30 — Merge feat/the-floor: The Floor MVP — real-time agent activity → 3D office [0 files] _(ai-assisted; merge)_
+- `1950f999` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `7a626ebe` 2026-05-30 — docs(the-floor): complete build notes — Phase 2 status + self-audit + follow-ups [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -30,29 +33,41 @@ Total commits: 2
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (2)
+
+- `4c4954e9` 2026-05-30 — feat(the-floor): real-time agent activity → 3D office (MVP) + H1/L3/M4 fixes [22 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
+- `d9f7409f` 2026-05-30 — Merge feat/the-floor: The Floor MVP — real-time agent activity → 3D office [0 files] _(ai-assisted; merge)_
+
+### Feature (user-facing) (0)
 
 _(none)_
-
-### Feature (user-facing) (1)
-
-- `eb002895` 2026-05-30 — fix(deploying): gate page behind auth — unauth visitors saw Larry + fake "payment confirmed" [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `a6507a15` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `1950f999` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `7a626ebe` 2026-05-30 — docs(the-floor): complete build notes — Phase 2 status + self-audit + follow-ups [1 files] _(ai-assisted)_
 
-## AI-assisted commits (1)
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `4c4954e9` 2026-05-30 — [infrastructure, feature, docs] — feat(the-floor): real-time agent activity → 3D office (MVP) + H1/L3/M4 fixes
+
+## AI-assisted commits (3)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `eb002895` 2026-05-30 — fix(deploying): gate page behind auth — unauth visitors saw Larry + fake "payment confirmed"
+- `4c4954e9` 2026-05-30 — feat(the-floor): real-time agent activity → 3D office (MVP) + H1/L3/M4 fixes
+- `7a626ebe` 2026-05-30 — docs(the-floor): complete build notes — Phase 2 status + self-audit + follow-ups
+- `d9f7409f` 2026-05-30 — Merge feat/the-floor: The Floor MVP — real-time agent activity → 3D office
 
 ## Appendix — every commit (chronological)
 
-- `a6507a15` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
-- `eb002895` 2026-05-30 — fix(deploying): gate page behind auth — unauth visitors saw Larry + fake "payment confirmed" [2 files] _(ai-assisted)_
+- `1950f999` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `4c4954e9` 2026-05-30 — feat(the-floor): real-time agent activity → 3D office (MVP) + H1/L3/M4 fixes [22 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
+- `7a626ebe` 2026-05-30 — docs(the-floor): complete build notes — Phase 2 status + self-audit + follow-ups [1 files] _(ai-assisted)_
+- `d9f7409f` 2026-05-30 — Merge feat/the-floor: The Floor MVP — real-time agent activity → 3D office [0 files] _(ai-assisted; merge)_
