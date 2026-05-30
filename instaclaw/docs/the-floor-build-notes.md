@@ -106,24 +106,118 @@ policy) → `git mv` the file into `migrations/` in the promoting commit.
   extension (PRD §26). MVP runs on `message_in` + `complete`/`error`; the director
   infers the working state between them. Station-specific walks are v1.
 
-## Next: the 3D scene (item 5)
+## Phase 2 (the 3D scene) — BUILT (2026-05-30)
 
-Stack: `three` + `@react-three/fiber` + `@react-three/drei` + `zustand` (to add to
-`package.json`; none present yet). Plan, in order (prove the pipe, then dress it up):
+Stack added to `package.json`: `three@0.184`, `@react-three/fiber@9.6.1`,
+`@react-three/drei@10.7.7`, `zustand@5.0.14`, `@types/three` (peer-compatible with
+React 19.2.3 / Next 16). `frameloop="demand"` from line one.
 
-1. **zustand activity store** — subscribes to `GET /api/floor/activity` (poll ~2s),
-   normalizes rows into a director-friendly event queue.
-2. **Work-activity director** (PRD §10.4) — pure state machine modeled on the Village's
-   encounter-engine *structure* (one owner of motion, explicit states), fed work
-   signals: `IDLE → INCOMING(perk-up) → WORKING_DESK(type) → CELEBRATING/STUMBLING →
-   IDLE`. Unit-testable with no renderer.
-3. **R3F scene, primitives first** — `frameloop="demand"` from line one; a box room, a
-   sphere/low-poly Larry, a desk. Wire director → Larry's transform/animation. Prove
-   "message → Larry perks up" end-to-end with ugly geometry.
-4. **`app/(dashboard)/floor/page.tsx`** — owner view; tap-Larry → existing chat deeplink;
-   one-line activity ticker.
-5. **THEN dress it up** — crab Larry model, tidepool room, baked lighting + bloom + AO +
-   god-rays, day/night from the agent's timezone, particles. The screenshot bar (PRD §5).
+| Layer | File | What |
+|---|---|---|
+| Director (brain, PURE) | `lib/floor/director.ts` | state machine `applyEvent`/`applyTick`; behavior + timed transitions; `behaviorNeedsAnimation` governor; `describeBehavior` ticker |
+| Keyset window (PURE) | `lib/floor/activity-window.ts` | (created_at,id) cursor + `selectNewActivity` model of the server SQL (H1) |
+| Store (zustand) | `lib/floor/store.ts` | director state + keyset cursor + recent events; `ingestActivity` (first-load guard) + `pollOnce` |
+| Engine (lifecycle) | `lib/floor/use-floor-engine.ts` | poll ~2s + logic clock ~1s; pause on tab-hidden |
+| Larry (the soul) | `components/floor/larry.tsx` | primitive crab rig: perk-up squash-stretch, crab-scuttle, eyestalk acting, claw-tap, hop, stumble; render-on-demand governor |
+| Room | `components/floor/office-room.tsx` | static warm primitives (desk, monitor, chair, window, plant, rug) |
+| Scene | `components/floor/floor-scene.tsx` | lights + intensity-driven desk lamp + RenderKicker + constrained OrbitControls |
+| Canvas | `components/floor/floor-canvas.tsx` | `<Canvas frameloop="demand">`, dpr cap, shadows |
+| View | `components/floor/floor-view.tsx` | engine + dynamic(ssr:false) canvas + live ticker + states |
+| Page | `app/(dashboard)/floor/page.tsx` | thin server page → FloorView |
+
+The magic-moment trace (PRD §24): user texts → webhook writes `message_in` (before the
+60–90s gateway call) → poll picks it up (keyset cursor, ≤2s) → store folds it →
+director flips to `incoming` + bumps `perkSeq` → RenderKicker invalidates → Larry's
+`useFrame` sees the bump → eyestalks shoot up, body pops → auto-advances to typing
+(lamp brightens by intensity) → `complete` → celebrate hop → settle.
+
+## Self-audit fixes (2026-05-30, post-migration)
+
+Adversarial re-read of every file found 8 issues. Three that affect real behavior were
+fixed; four are documented follow-ups below; one (M3) was investigated and proven a
+non-bug.
+
+**FIXED — H1 (was: missed perk-up under load).** A blind newest-50 window + a
+client-side cursor search could SKIP events when more than a page arrived between polls
+(a skipped `message_in` = a missed perk-up = the feature's thesis broken). Fix: a
+composite **(created_at, id) keyset cursor** — the server now filters strictly-new rows
+(`?since`+`?sinceId`) and drains them in chronological order, so no event is ever
+skipped (worst case: a flood is delayed a few poll cycles). A turn's `message_in` is the
+OLDEST event of its burst, so it's always in the first drained page → the perk-up never
+lags. New `lib/floor/activity-window.ts` holds the cursor helpers + `selectNewActivity`
+(a pure model of the SQL the route must mirror). **This also closes L2** (id-based
+cursors break when retention prunes the cursor row; a `created_at`-keyed cursor is robust
+to pruning). The store's fragile `findIndex → -1 → re-fold-everything` path is GONE.
+Proven by a new overflow test: a 27-event flood with a buried `message_in`, drained
+through a simulated server at page-size 10, folds every event exactly once and fires the
+buried perk-up. Page limit bumped 50→100 for flood headroom.
+
+**FIXED — L3 (stale intensity/station).** `message_in` now resets `intensity` and
+`station` to null, so a new turn's perk-up never briefly renders the prior turn's effort
+tier / station. One-line change in `applyEvent`; director test asserts it.
+
+**FIXED — M4 (WebGL teardown on transient error).** A one-poll network blip flipped
+`status:"error"`, which unmounted `<FloorCanvas>` — destroying the GPU context and
+re-initializing the whole scene on recovery (janky on mobile; can hit the browser's
+WebGL-context limit on repeated flaps). Now the canvas stays MOUNTED for every state
+except `no_office`; a transient error shows a small non-blocking "Reconnecting…" toast
+overlaid on the still-running scene.
+
+Tests after fixes: **director 42 + store 25 + activity 22 = 89, all passing.** tsc 0
+errors, eslint clean, `next build` green (`/floor` + `/api/floor/activity`).
+
+## Open follow-ups (documented, NOT fixed — by decision)
+
+- **H2 — clock-skew trap for v1/Realtime.** The director times transitions off the
+  *client* `Date.now()`, while events carry the *server* `created_at`. Today this is
+  safe: `applyEvent` stamps `since` from the client clock, and `created_at` is only used
+  as the opaque keyset cursor string (never for timing). **The trap:** when v1 switches
+  to Supabase Realtime and someone reaches for `created_at` to time the perk-up, a client
+  clock behind the server would make a just-arrived `message_in` look already-expired →
+  **perk-up skipped**. The route already returns `serverTime` for exactly this drift
+  correction; it's unused today. *Fix when hit:* compute a client↔server offset from
+  `serverTime`, or keep timing strictly client-relative (current approach).
+
+- **M1 — overlapping-poll status flap.** `pollOnce` isn't await-serialized; a tab-wake
+  fires an immediate poll while the interval may also fire → two concurrent requests.
+  Director state is safe (monotonic keyset cursor — an older response can't rewind it),
+  but `status`/`vmId` could briefly flap if a stale response resolves after a fresh one.
+  *Fix when hit:* a request-generation counter — ignore a response whose generation is
+  stale.
+
+- **M2 — RenderKicker fragility.** `RenderKicker` invalidates when `state.director !==
+  prev.director` (reference compare), relying on the store only assigning a new
+  `director` object on a real change (true today: `tick` returns same ref on no-op; the
+  empty-poll path doesn't touch `director`). *Breaks when:* a future edit makes
+  `ingestActivity`/`tick` always assign a fresh `director` → invalidate on every empty 2s
+  poll → render-on-demand defeated → silent battery regression. *Fix/hardening:* subscribe
+  via `subscribeWithSelector` on a stable derived key (behavior + perkSeq + idleLevel).
+
+- **L1 — `recentEvents` built but unrendered.** The store maintains a 12-event tail for a
+  future history strip; the UI only shows the current `describeBehavior` line. ~12 small
+  objects, harmless, owner-only sanitized data. *Decision:* keep for the v1 history-strip;
+  drop if v1 doesn't use it.
+
+- **M3 — investigated, NOT a bug.** Larry's one-shot timers use `state.clock.elapsedTime`,
+  which only advances while frames render. In `frameloop="demand"` at rest the clock
+  pauses, so a perk that starts then backgrounds resumes correctly on return. A future
+  editor might "fix" this into a real bug by switching to wall-clock — don't.
+
+## Deferred by plan (not laziness)
+
+- **Visual polish phase** (PRD §5): rigged low-poly crab model + tidepool dressing +
+  baked lighting + bloom/AO/god-rays + particles + day/night. MVP is primitives to prove
+  the pipe — the agreed order ("real data + simple scene = product").
+- **Tap Larry → chat** (PRD §11): MVP has a Share placeholder; 3D raycast click → channel
+  deeplink is next.
+- **Health wiring** (asleep/offline): `applyHealth` exists + tested; not yet fed from
+  `/api/vm/status`. One-liner in the engine when wired (v1).
+- **Realtime transport**: swap the poll for Supabase Realtime (Village dual-channel
+  pattern), same event shape (v1).
+- **Discord `message_in`**: only Telegram + iMessage inbound webhooks exist today; add the
+  same 3-line write when a Discord inbound route lands.
+- **Producer (2)**: `working`/`tool`/intensity/station from the proxy extension (PRD §26);
+  MVP infers the working state between `message_in` and `complete`.
 
 The magic-moment acceptance test (PRD §24): a user messages their agent and Larry perks
-up in under 2 seconds. The backend now makes that *possible*; the scene makes it *visible*.
+up in under 2 seconds. The backend makes that *possible*; the scene makes it *visible*.
