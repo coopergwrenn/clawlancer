@@ -58,8 +58,11 @@ const tiers = [
   {
     id: "starter" as const,
     name: "Starter",
-    allInclusive: 29,
-    byok: 14,
+    // 2026-05-29 pricing update — see lib/stripe.ts NEW_PRICE_IDS
+    // for the Stripe price IDs these amounts correspond to.
+    // Grandfathering: existing subs keep their original Stripe price.
+    allInclusive: 49.99,
+    byok: 35.99,
     description: "just exploring.",
     dailyUnits: 600,
     features: [
@@ -77,8 +80,8 @@ const tiers = [
   {
     id: "pro" as const,
     name: "Pro",
-    allInclusive: 99,
-    byok: 39,
+    allInclusive: 129.99,
+    byok: 49.99,
     description: "everyday use.",
     dailyUnits: 1000,
     features: [
@@ -97,8 +100,8 @@ const tiers = [
   {
     id: "power" as const,
     name: "Power",
-    allInclusive: 299,
-    byok: 99,
+    allInclusive: 349.99,
+    byok: 119.99,
     description: "heavy lifting.",
     dailyUnits: 2500,
     features: [
@@ -598,7 +601,7 @@ export default function PlanPage() {
                   className="line-through opacity-60"
                   style={{ fontSize: "0.95rem" }}
                 >
-                  $99/mo
+                  $129.99/mo
                 </span>
                 <span
                   style={{ color: "#0f1a12", fontWeight: 700, fontSize: "1.05rem" }}
@@ -802,7 +805,7 @@ export default function PlanPage() {
                         letterSpacing: "-1px",
                       }}
                     >
-                      ${price}
+                      ${price.toFixed(2)}
                     </span>
                     <span
                       className="text-sm ml-1"
