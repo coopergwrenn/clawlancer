@@ -114,41 +114,24 @@ export async function buildParamsFromVmRow(
     );
   }
 
-  // ── BYOK: api_key on row required when apiMode=byok ──
+  // ── BYOK: api_key column is OPTIONAL when apiMode=byok ──
   //
-  // EXCEPT: ChatGPT-OAuth users have api_mode="byok" + api_key=NULL by
-  // design — their agent routes through Codex via stepChatGPTOAuthToken
-  // (vm-reconcile.ts:11183), which pushes openai_oauth_access_token to
-  // the VM on the first reconcile tick post-boot and transitions
-  // api_mode to "chatgpt_oauth". The cloud-init tarball doesn't need
-  // the Anthropic key for these users — the OAuth token arrives on a
-  // separate path. Detect this state by checking the assigned user's
-  // openai_oauth_account_id (nulled by disconnectUser; reliable
-  // currently-connected signal).
+  // 2026-05-30: relaxed. Three valid byok-tarball states:
+  //   (a) Anthropic-key user with api_key set on the row — written into
+  //       setup.sh's auth-profiles.json as the Anthropic profile.
+  //   (b) ChatGPT-OAuth user with api_key=NULL — agent routes through
+  //       Codex via stepChatGPTOAuthToken on the first reconcile tick
+  //       (vm-reconcile.ts:11183), which pushes openai_oauth_access_token
+  //       to disk and transitions api_mode → "chatgpt_oauth".
+  //   (c) "Provider deferred" user with api_key=NULL AND no OAuth — paid
+  //       via Stripe, hasn't yet completed /onboarding/provider. VM boots
+  //       with an empty Anthropic profile; agent runs but Anthropic
+  //       calls fail at message time until the user adds a credential
+  //       (dashboard banner / /settings — Phase B).
+  // The throw that was here pre-2026-05-30 blocked state (c) and was
+  // also a latent bug for any state-(b) cloud-init path where the OAuth
+  // detection raced disconnectUser.
   const apiKey = apiMode === "byok" ? optStr("api_key") : undefined;
-  if (apiMode === "byok" && !apiKey) {
-    const { data: oauthRow } = await supabase
-      .from("instaclaw_users")
-      .select("openai_oauth_access_token, openai_oauth_account_id")
-      .eq("id", userId)
-      .maybeSingle();
-    const hasChatGPTOAuth = !!(
-      (oauthRow as { openai_oauth_access_token?: string | null; openai_oauth_account_id?: string | null } | null)?.openai_oauth_access_token &&
-      (oauthRow as { openai_oauth_account_id?: string | null } | null)?.openai_oauth_account_id
-    );
-    if (!hasChatGPTOAuth) {
-      throw new Error(
-        `buildParamsFromVmRow: api_mode="byok" but api_key column is null on ` +
-          `vm "${vmName}" AND user has no ChatGPT OAuth tokens. One of the ` +
-          `two providers must be configured before cloud-init can deliver ` +
-          `a working agent.`,
-      );
-    }
-    // OAuth path — proceed with apiKey=undefined. setup.sh's BYOK branch
-    // skips the Anthropic key write when apiKey is empty; the reconciler's
-    // first tick installs the OAuth profile via configureOpenClaw and
-    // upgrades api_mode to "chatgpt_oauth".
-  }
 
   // ── Optional VM-row fields (degrade silently to undefined) ──
   const discordBotToken = optStr("discord_bot_token");

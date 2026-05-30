@@ -1,23 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { Eye, EyeOff } from "lucide-react";
 import { LenisProvider } from "@/components/landing/lenis-provider";
 import { EdgePartnerBanner, usePartnerCookie } from "@/components/marketing/edge-partner-banner";
 import { SupportFooter } from "@/components/marketing/support-footer";
-import { ChatGPTConnectModal } from "@/components/dashboard/chatgpt-connect-modal";
-
-// Anthropic API key format — keys begin with sk-ant- and contain at
-// least one segment after. We validate loosely (just the prefix) so
-// the regex stays future-proof against Anthropic's segment scheme
-// changes (we've seen sk-ant-api03-… and sk-ant-api04-… in the wild;
-// older sk-ant-… without a segment also exists). The real test is
-// the first API call — server-side validation is best-effort, just
-// to catch the obvious "user pasted a Stripe key" class of mistake.
-const ANTHROPIC_KEY_PREFIX_RE = /^sk-ant-[A-Za-z0-9_-]{8,}$/;
 
 // Brand constants — same values used on /channels and /signin (channels-
 // client.tsx and signin-client.tsx import them inline). Kept inline here
@@ -130,7 +118,6 @@ const tiers = [
 ];
 
 export default function PlanPage() {
-  const router = useRouter();
   // Edge attendees get a different headline + body on this page. The
   // animated orange marketing copy ("never sleeps, never forgets...")
   // is non-Edge brand voice and doesn't acknowledge that Edge attendees
@@ -150,7 +137,7 @@ export default function PlanPage() {
   // are optional — `undefined` is treated identically to false / null,
   // so the legacy non-ChatGPT path is the default for users on legacy
   // sessions or where the fields are unset.
-  const { data: session, update: updateSession } = useSession();
+  const { data: session } = useSession();
   const isChatGPTUser = !!(
     session?.user?.connectedChatGPT &&
     CHATGPT_PAID_PLANS.has(session?.user?.chatgptPlanType ?? "")
@@ -166,26 +153,6 @@ export default function PlanPage() {
     "all_inclusive"
   );
   const [loading, setLoading] = useState(false);
-
-  // BYOK Anthropic key state (Phase 2 of 2026-05-30 BYOK fix).
-  // Only relevant when apiMode === "byok" && !isChatGPTUser. The field
-  // appears inline below the toggle helper text, validated on blur via
-  // ANTHROPIC_KEY_PREFIX_RE before allowing checkout. handleCheckout
-  // sends it through /api/onboarding/save which persists encrypted
-  // to instaclaw_pending_users.api_key (lib/security.encryptApiKey).
-  const [anthropicKey, setAnthropicKey] = useState("");
-  const [showAnthropicKey, setShowAnthropicKey] = useState(false);
-  const [anthropicKeyError, setAnthropicKeyError] = useState("");
-
-  // ChatGPT-connect modal state (Phase 3 of 2026-05-30 BYOK fix).
-  // Inline "or connect your ChatGPT subscription" link below the
-  // Anthropic input opens this modal in "connect" mode (post-signin
-  // path — user already has a session, modal does OAuth device-code).
-  // onConnected handler calls updateSession() so the isChatGPTUser
-  // computation re-fires + the auto-BYOK effect takes over (UI snaps
-  // to "using your chatgpt {plan} subscription"). updateSession comes
-  // from the useSession destructure at the top of this component.
-  const [chatgptModalOpen, setChatgptModalOpen] = useState(false);
   const [error, setError] = useState("");
 
   const [hydrated, setHydrated] = useState(false);
@@ -329,7 +296,9 @@ export default function PlanPage() {
         setApiMode("all_inclusive");
         setHydrated(true);
       });
-  }, [router]);
+    // Effect intentionally runs once on mount — no dependencies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleToggleApiMode() {
     const newMode = apiMode === "all_inclusive" ? "byok" : "all_inclusive";
@@ -347,25 +316,6 @@ export default function PlanPage() {
     setLoading(true);
     setError("");
 
-    // BYOK pre-flight (2026-05-30 fix). When apiMode === "byok" and the
-    // user is NOT a ChatGPT-OAuth user, an inline Anthropic key field
-    // is required. The save endpoint also enforces this server-side
-    // (with ChatGPT-OAuth fallback) but catching here surfaces the
-    // error inline at the input instead of as a top-level error toast.
-    if (apiMode === "byok" && !isChatGPTUser) {
-      const trimmed = anthropicKey.trim();
-      if (!trimmed) {
-        setLoading(false);
-        setAnthropicKeyError("Enter your Anthropic API key, or connect ChatGPT below.");
-        return;
-      }
-      if (!ANTHROPIC_KEY_PREFIX_RE.test(trimmed)) {
-        setLoading(false);
-        setAnthropicKeyError("That doesn't look like an Anthropic key. Keys start with sk-ant-…");
-        return;
-      }
-    }
-
     const stored = sessionStorage.getItem("instaclaw_onboarding");
     if (stored) {
       const data = JSON.parse(stored);
@@ -379,16 +329,13 @@ export default function PlanPage() {
         sessionStorage.getItem("instaclaw_onboarding") ?? "{}"
       );
 
-      // Resolve apiKey for the save payload. Priority order:
-      //   1. anthropicKey state (Phase 2 inline input on /plan — the new path)
-      //   2. onboarding.apiKey from sessionStorage (legacy /connect path)
-      //   3. undefined — save endpoint will accept this iff hasChatGPTOAuth
-      //      is true server-side (Phase 1 API fix), else 400
-      const resolvedApiKey =
-        apiMode === "byok" && !isChatGPTUser && anthropicKey.trim()
-          ? anthropicKey.trim()
-          : (onboarding.apiKey as string | undefined);
-
+      // 2026-05-30 architecture shift: BYOK API-key collection moved
+      // OUT of /plan into a dedicated post-checkout /onboarding/provider
+      // page (Cooper's directive — plan page is for buying, key setup
+      // happens after commitment). The apiKey field here is just whatever
+      // a legacy /connect signup may have persisted in sessionStorage;
+      // typical /plan-first users will send apiKey=undefined and complete
+      // provider config after Stripe redirect.
       const saveRes = await fetch("/api/onboarding/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -401,7 +348,7 @@ export default function PlanPage() {
           whatsappPhoneNumberId: onboarding.whatsappPhoneNumberId,
           channels: onboarding.channels,
           apiMode,
-          apiKey: resolvedApiKey,
+          apiKey: onboarding.apiKey as string | undefined,
           model: onboarding.model,
           tier: selectedTier,
         }),
@@ -692,9 +639,11 @@ export default function PlanPage() {
                 3 days free. cancel anytime.
               </p>
 
-              {/* Toggle area — ChatGPT users see a static line declaring
-                  their existing subscription is in use; everyone else
-                  sees the All-Inclusive ↔ BYOK toggle. */}
+              {/* Toggle area — ChatGPT users see a static confirmation
+                  that their subscription is already wired up (no action
+                  needed); everyone else sees the All-Inclusive ↔ BYOK
+                  toggle with a reassuring "you'll connect your provider
+                  right after checkout" subtitle when BYOK is active. */}
               {isChatGPTUser ? (
                 <p
                   className="mt-6 text-center"
@@ -704,7 +653,7 @@ export default function PlanPage() {
                     lineHeight: 1.5,
                   }}
                 >
-                  using your chatgpt {chatgptPlanDisplay} subscription.
+                  your chatgpt {chatgptPlanDisplay} subscription is connected. you&apos;re all set.
                 </p>
               ) : (
                 <>
@@ -760,149 +709,21 @@ export default function PlanPage() {
                     </span>
                   </div>
                   {apiMode === "byok" && (
-                    <div className="mt-3 mx-auto" style={{ maxWidth: 440 }}>
-                      {/* BYOK helper — names both supported providers
-                          so a user with ChatGPT Plus doesn't bounce
-                          thinking "no anthropic key = not for me." */}
-                      <p
-                        className="text-center"
-                        style={{
-                          fontSize: 12,
-                          color: SUBTLE_INK,
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        use your own anthropic key or chatgpt sub. cheaper —
-                        you pay the provider directly.
-                      </p>
-
-                      {/* Inline Anthropic key input (Phase 2 of 2026-05-30
-                          BYOK fix). Password-type with show/hide eye
-                          toggle. Validates loose prefix on blur; final
-                          format check happens server-side on first API
-                          call. Disabled-state error styling kicks in
-                          when anthropicKeyError is set. */}
-                      <div className="mt-4 relative">
-                        <input
-                          type={showAnthropicKey ? "text" : "password"}
-                          value={anthropicKey}
-                          onChange={(e) => {
-                            setAnthropicKey(e.target.value);
-                            if (anthropicKeyError) setAnthropicKeyError("");
-                          }}
-                          onBlur={() => {
-                            const trimmed = anthropicKey.trim();
-                            if (trimmed && !ANTHROPIC_KEY_PREFIX_RE.test(trimmed)) {
-                              setAnthropicKeyError(
-                                "That doesn't look like an Anthropic key. Keys start with sk-ant-…",
-                              );
-                            }
-                          }}
-                          placeholder="sk-ant-api03-…"
-                          aria-label="Anthropic API key"
-                          className="w-full font-mono outline-none"
-                          style={{
-                            padding: "12px 44px 12px 16px",
-                            borderRadius: 9999,
-                            background: "rgba(255, 255, 255, 0.75)",
-                            border: `1px solid ${anthropicKeyError ? "rgba(220,60,60,0.45)" : "rgba(0, 0, 0, 0.08)"}`,
-                            color: CARD_INK,
-                            fontSize: 13,
-                            letterSpacing: "-0.1px",
-                            boxShadow: anthropicKeyError
-                              ? "0 0 0 3px rgba(220,60,60,0.10)"
-                              : "0 1px 2px rgba(0, 0, 0, 0.03)",
-                            transition:
-                              "border-color 0.18s ease, box-shadow 0.18s ease",
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowAnthropicKey(!showAnthropicKey)}
-                          aria-label={
-                            showAnthropicKey ? "Hide API key" : "Show API key"
-                          }
-                          className="absolute top-1/2 -translate-y-1/2 cursor-pointer"
-                          style={{
-                            right: 14,
-                            color: SUBTLE_INK,
-                            display: "flex",
-                            alignItems: "center",
-                            padding: 4,
-                          }}
-                        >
-                          {showAnthropicKey ? (
-                            <EyeOff size={15} />
-                          ) : (
-                            <Eye size={15} />
-                          )}
-                        </button>
-                      </div>
-                      {anthropicKeyError && (
-                        <p
-                          className="mt-2 text-center"
-                          style={{
-                            fontSize: 11,
-                            color: "rgba(180, 50, 50, 0.85)",
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          {anthropicKeyError}
-                        </p>
-                      )}
-
-                      {/* Phase 3 — "or connect ChatGPT" alternative.
-                          Subtle text divider + link that opens the
-                          ChatGPTConnectModal in "connect" mode. After
-                          a successful connect, the modal's onConnected
-                          handler refreshes the session via
-                          updateSession() and the auto-BYOK effect
-                          re-fires — UI flips to the
-                          "using your chatgpt {plan} subscription"
-                          variant automatically. */}
-                      <div
-                        className="mt-4 flex items-center gap-3"
-                        aria-hidden
-                      >
-                        <div
-                          style={{
-                            flex: 1,
-                            height: 1,
-                            background: "rgba(0, 0, 0, 0.08)",
-                          }}
-                        />
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color: SUBTLE_INK,
-                            letterSpacing: "0.04em",
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          or
-                        </span>
-                        <div
-                          style={{
-                            flex: 1,
-                            height: 1,
-                            background: "rgba(0, 0, 0, 0.08)",
-                          }}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setChatgptModalOpen(true)}
-                        className="mt-3 mx-auto block underline cursor-pointer"
-                        style={{
-                          fontSize: 12,
-                          color: MUTED_INK,
-                          letterSpacing: "-0.1px",
-                          textUnderlineOffset: 3,
-                        }}
-                      >
-                        connect your chatgpt plus/pro/team subscription
-                      </button>
-                    </div>
+                    <p
+                      className="mt-3 mx-auto text-center"
+                      style={{
+                        maxWidth: 440,
+                        fontSize: 12,
+                        color: SUBTLE_INK,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {/* Reassuring "what's coming" subtitle. No input on
+                          this page — key configuration happens on the
+                          /onboarding/provider screen after Stripe so the
+                          plan page stays focused on choosing + paying. */}
+                      you&apos;ll connect your anthropic key or chatgpt account right after checkout.
+                    </p>
                   )}
                 </>
               )}
@@ -1565,30 +1386,6 @@ export default function PlanPage() {
         </div>
         </div>
       </div>
-
-      {/* ChatGPT Connect modal (Phase 3 of 2026-05-30 BYOK fix).
-          Opened by the "connect your chatgpt …" link inside the BYOK
-          area. Uses connect-mode (post-signin device-code flow) because
-          the user already has a session. onConnected fires after the
-          token is persisted by the device-code/poll endpoint — we
-          refresh the NextAuth session via updateSession() so the
-          freshly-set chatgpt_plan_type + openai_oauth_account_id flow
-          into session.user, isChatGPTUser flips true, and the auto-
-          BYOK effect re-fires (apiMode stays "byok", UI swaps to the
-          "using your chatgpt …" branch). */}
-      <ChatGPTConnectModal
-        isOpen={chatgptModalOpen}
-        onClose={() => setChatgptModalOpen(false)}
-        onConnected={() => {
-          setChatgptModalOpen(false);
-          // Force a session refresh so isChatGPTUser becomes true on
-          // the next render. updateSession returns a Promise<Session>
-          // but we don't need to await it — the React re-render
-          // triggered by the underlying state mutation handles the UI
-          // swap.
-          void updateSession();
-        }}
-      />
     </LenisProvider>
   );
 }

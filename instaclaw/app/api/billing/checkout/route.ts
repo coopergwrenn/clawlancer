@@ -326,7 +326,7 @@ export async function POST(req: NextRequest) {
     // /api/checkout/verify (existing) which finalizes the assignment.
     const { data: latestPending } = await supabase
       .from("instaclaw_pending_users")
-      .select("id, channel")
+      .select("id, channel, api_key")
       .eq("user_id", user.id)
       .is("consumed_at", null)
       .order("created_at", { ascending: false })
@@ -336,9 +336,48 @@ export async function POST(req: NextRequest) {
     const isChannelOnboarding =
       !!latestPending && latestPending.channel !== null;
 
-    const successUrl = isChannelOnboarding
-      ? `${origin}/onboarding/done?session=${latestPending.id}&stripe={CHECKOUT_SESSION_ID}`
-      : `${origin}/deploying?session_id={CHECKOUT_SESSION_ID}`;
+    // ── Provider-step routing (2026-05-30) ─────────────────────────
+    //
+    // BYOK users who don't have a credential yet (no Anthropic key on
+    // pending_users AND no ChatGPT OAuth on instaclaw_users) get
+    // routed through /onboarding/provider after Stripe. That page
+    // collects the credential then redirects forward to /deploying
+    // or /onboarding/done.
+    //
+    // All-inclusive users and pre-connected BYOK users skip the
+    // Provider step entirely — their success_url targets the original
+    // destination directly. This keeps Cooper-paid all-inclusive flows
+    // and Edge attendees as fast as before.
+    //
+    // The Provider page receives the Stripe Checkout Session id so
+    // post-Provider redirects to /onboarding/done / /deploying still
+    // carry it (those pages call /api/checkout/verify on mount with
+    // the id). It computes the post-Provider destination by re-
+    // reading pending.channel via /api/onboarding/provider-status, so
+    // we don't need to encode it in the success_url here.
+    let needsProviderStep = false;
+    if (apiMode === "byok") {
+      const hasAnthropicKey = !!latestPending?.api_key;
+      let hasChatGPTOAuth = false;
+      if (!hasAnthropicKey) {
+        const { data: oauthCheck } = await supabase
+          .from("instaclaw_users")
+          .select("openai_oauth_access_token, openai_oauth_account_id")
+          .eq("id", user.id)
+          .maybeSingle();
+        hasChatGPTOAuth = !!(
+          oauthCheck?.openai_oauth_access_token &&
+          oauthCheck?.openai_oauth_account_id
+        );
+      }
+      needsProviderStep = !hasAnthropicKey && !hasChatGPTOAuth;
+    }
+
+    const successUrl = needsProviderStep
+      ? `${origin}/onboarding/provider?stripe={CHECKOUT_SESSION_ID}`
+      : isChannelOnboarding
+        ? `${origin}/onboarding/done?session=${latestPending.id}&stripe={CHECKOUT_SESSION_ID}`
+        : `${origin}/deploying?session_id={CHECKOUT_SESSION_ID}`;
 
     const checkoutSession = await stripe.checkout.sessions.create({
       customer: customerId,

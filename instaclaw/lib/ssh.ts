@@ -5859,9 +5859,20 @@ export async function configureOpenClaw(
   config: UserConfig,
   expectedUserId?: string
 ): Promise<{ gatewayUrl: string; gatewayToken: string; controlUiUrl: string; gatewayVerified: boolean; partialFailures: PartialFailure[] }> {
-  if (config.apiMode === "byok" && !config.apiKey) {
-    throw new Error("API key required for BYOK mode");
-  }
+  // 2026-05-30: byok + null apiKey is now a valid state. Two paths land here:
+  //   (1) ChatGPT-OAuth users — agent routes through Codex via the
+  //       openai-codex:default profile seeded by the chatgpt_oauth
+  //       pre-configure block below (line 6029+). No Anthropic key needed.
+  //   (2) "Provider config deferred" users — paid via Stripe, haven't yet
+  //       completed /onboarding/provider. Agent boots with an empty
+  //       Anthropic profile; Anthropic calls fail at runtime with a clear
+  //       auth error; the user is prompted (Phase B dashboard banner)
+  //       to add a provider via /onboarding/provider or /settings.
+  // The throw that was here pre-2026-05-30 ("API key required for BYOK
+  // mode") was a latent bug for path (1) — the chatgpt_oauth pre-configure
+  // block was unreachable because this throw fires first. Both paths are
+  // now allowed; the apiKey resolution below falls back to "" (empty
+  // string) when missing.
 
   // Timeline tracking — timestamps at each phase for debugging
   const timeline: Record<string, number> = {};
@@ -5989,16 +6000,29 @@ export async function configureOpenClaw(
     // Resolve API key:
     // - BYOK: user's own Anthropic key (calls Anthropic directly)
     // - All-inclusive: gateway token (calls our proxy which adds the real key)
+    //
+    // 2026-05-30: BYOK with null apiKey is a valid state (see top-of-
+    // function comment). For ChatGPT-OAuth users, the openai-codex:default
+    // profile written further down replaces the (empty) anthropic profile
+    // at runtime via model.primary=gpt-5.5. For "skip-and-configure-later"
+    // users, the anthropic profile is written with key="" — agent boots,
+    // Anthropic calls fail at first message with a clear auth error,
+    // user is routed back to /onboarding/provider or /settings to add
+    // their credential. The all-inclusive branch is unchanged — proxy
+    // token is always available.
     const apiKey =
       config.apiMode === "byok"
-        ? config.apiKey!
-        : gatewayToken; // Use gateway token as "API key" — proxy authenticates with it
-    if (!apiKey) {
+        ? (config.apiKey ?? "")
+        : gatewayToken;
+    if (config.apiMode === "all_inclusive" && !apiKey) {
+      // All-inclusive must have a gateway token. The fall-through above
+      // already mints one earlier in this function; this guard surfaces
+      // any future bug that lets a null gateway token reach here.
       throw new Error("No API key available for configuration");
     }
     // For all-inclusive mode the apiKey is our generated gatewayToken (always safe).
-    // For BYOK mode the apiKey is a decrypted user key — written via base64
-    // in auth-profiles.json to avoid shell injection.
+    // For BYOK mode the apiKey is a decrypted user key OR empty string —
+    // written via base64 in auth-profiles.json to avoid shell injection.
 
     // For all-inclusive: proxy base URL so OpenClaw routes through instaclaw.io
     const proxyBaseUrl =

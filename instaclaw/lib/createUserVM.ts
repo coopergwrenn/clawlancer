@@ -181,11 +181,12 @@ export function validateCreateUserVMParams(p: CreateUserVMParams): void {
   if (p.apiMode !== "all_inclusive" && p.apiMode !== "byok") {
     throw new Error(`createUserVM: apiMode must be "all_inclusive" or "byok" (got "${p.apiMode}")`);
   }
-  if (p.apiMode === "byok" && !p.apiKey && !p.hasChatGPTOAuth) {
-    throw new Error(
-      'createUserVM: apiMode="byok" requires either apiKey OR hasChatGPTOAuth=true',
-    );
-  }
+  // 2026-05-30: byok with null apiKey AND no OAuth is now a valid
+  // pre-provisioning state. The user has paid via Stripe but hasn't yet
+  // completed /onboarding/provider (key entry or ChatGPT connect). The VM
+  // boots in BYOK mode with an empty Anthropic profile; agent runs but
+  // Anthropic calls fail until the user adds a provider (or the
+  // reconciler's stepChatGPTOAuthToken installs one from a later connect).
   if (!p.defaultModel) throw new Error("createUserVM: defaultModel required");
   const channels = p.channels ?? ["telegram"];
   if (!Array.isArray(channels)) {

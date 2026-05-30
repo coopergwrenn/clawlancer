@@ -32,30 +32,6 @@ export async function POST(req: NextRequest) {
       .is("consumed_at", null) // Don't read back consumed records
       .single();
 
-    // ── ChatGPT-OAuth detection (2026-05-30 BYOK fix) ──────────────────
-    //
-    // A user signed in via ChatGPT OAuth — OR a Google-signed-in user
-    // who later connected ChatGPT from the dashboard / from /plan via
-    // the connect modal — has openai_oauth_access_token + account_id
-    // set on instaclaw_users. For these users, BYOK is semantically
-    // valid WITHOUT an Anthropic apiKey: their agent will route
-    // through Codex via stepChatGPTOAuthToken (vm-reconcile.ts:11183)
-    // once the VM is up and configureOpenClaw (lib/ssh.ts:5540+)
-    // pushes the OAuth token to disk.
-    //
-    // We check openai_oauth_account_id specifically because that's
-    // the field nulled by disconnectUser (openai-oauth-db.ts:524-529)
-    // — a 1:1 indicator of "currently connected." access_token alone
-    // could be a stale row from a disconnect-mid-rotation race.
-    const { data: oauthCheck } = await supabase
-      .from("instaclaw_users")
-      .select("openai_oauth_access_token, openai_oauth_account_id")
-      .eq("id", session.user.id)
-      .maybeSingle();
-    const hasChatGPTOAuth = !!(
-      oauthCheck?.openai_oauth_access_token && oauthCheck?.openai_oauth_account_id
-    );
-
     // Merge: prefer incoming values, fall back to existing record
     const enabledChannels: string[] = channels ?? (existing?.telegram_bot_token ? ["telegram"] : []);
     if (enabledChannels.length === 0 && !existing) {
@@ -101,25 +77,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate BYOK key (or accept ChatGPT OAuth as an alternative provider).
-    //
-    // Three acceptance conditions for `apiMode === "byok"`:
-    //   (a) new Anthropic apiKey provided in this request — typed inline on /plan
-    //   (b) existing pending_users.api_key already saved (legacy /connect path)
-    //   (c) user has connected ChatGPT Plus/Pro/Team — the reconciler will
-    //       route the VM through their Codex access, no Anthropic key needed
-    //
-    // If none of (a)/(b)/(c) → 400 with an actionable error message that
-    // tells the user exactly what they can do to unblock.
-    if (finalApiMode === "byok" && !apiKey && !existing?.api_key && !hasChatGPTOAuth) {
-      return NextResponse.json(
-        {
-          error:
-            "BYOK requires either an Anthropic API key or a connected ChatGPT Plus/Pro/Team subscription. Enter your key on the previous screen, or connect ChatGPT from the toggle.",
-        },
-        { status: 400 }
-      );
-    }
+    // BYOK validation relaxed 2026-05-30: apiKey is NO LONGER required
+    // at /plan submit. Cooper directive: provider configuration moves to
+    // a dedicated post-Stripe /onboarding/provider page (Anthropic key OR
+    // ChatGPT OAuth connect). At save time we accept apiMode="byok" with
+    // apiKey=undefined for all users — the Provider page collects the
+    // credential after checkout. Existing pending_users.api_key (legacy
+    // /connect path) is preserved by the `encryptedKey` fall-through
+    // below.
 
     // Tier is optional on initial save (Connect page), required for checkout (Plan page)
     const finalTier = tier ?? existing?.tier ?? "pro";
