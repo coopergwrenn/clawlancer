@@ -33,7 +33,6 @@ import {
   Telescope,
   Link2,
   Mic,
-  Waves,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -3229,45 +3228,25 @@ export default function CommandCenterPage() {
           >
             Command Center
           </h1>
-          {/* The Floor — compact watch-live entry, flush-right on the title row
-              so it never steals vertical space from the task list. Matches the
-              FilterPills frosting (backdrop-blur + translucent fill + subtle
-              border + inset top-highlight sheen + hover bg-tint shift) so it
-              reads as a sibling to the pills right below it. Lucide Waves icon
-              (same as the nav entry — one identity across surfaces); the emerald
-              live-dot signals real-time. Desktop-only like the title — mobile
-              reaches The Floor via primaryNav. */}
-          <Link
-            href="/floor"
-            className="group flex items-center gap-2 shrink-0 rounded-full pl-2.5 pr-3 py-1.5 text-sm font-medium backdrop-blur-md border border-black/[0.08] bg-white/[0.45] transition-colors hover:bg-white/[0.65]"
-            style={{
-              color: "var(--foreground)",
-              boxShadow:
-                "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
-            }}
-          >
-            <span className="relative flex items-center justify-center">
-              <Waves className="w-4 h-4" style={{ color: "var(--muted)" }} />
-              <span className="absolute -top-1.5 -right-1.5 flex h-2 w-2">
-                <span
-                  className="absolute inline-flex h-full w-full rounded-full animate-ping"
-                  style={{ background: "#34d399", opacity: 0.65 }}
-                />
-                <span
-                  className="relative inline-flex h-2 w-2 rounded-full"
-                  style={{ background: "#10b981" }}
-                />
+          {/* The Floor — flush-right on the title row so it never steals
+              vertical space from the task list. This is the landing-hero
+              liquid-glass nav button (.liquid-glass-nav-btn), transplanted
+              verbatim — same 3-element root/surface/shadow architecture, same
+              frosting, depth, and hover the hero's "dashboard" / "get started"
+              buttons use. Text + arrow only; no icon, no dot. Desktop-only like
+              the title — mobile reaches The Floor via primaryNav. */}
+          <span className="liquid-glass-nav-btn-root">
+            <Link href="/floor" className="liquid-glass-nav-btn group">
+              The Floor
+              <span
+                aria-hidden="true"
+                className="ml-1.5 transition-transform group-hover:translate-x-0.5"
+              >
+                &rarr;
               </span>
-            </span>
-            The Floor
-            <span
-              aria-hidden="true"
-              className="transition-transform group-hover:translate-x-0.5"
-              style={{ color: "var(--muted)" }}
-            >
-              &rarr;
-            </span>
-          </Link>
+            </Link>
+            <div aria-hidden="true" className="liquid-glass-nav-btn-shadow"></div>
+          </span>
         </div>
         <p className="hidden sm:block text-base mt-2" style={{ color: "var(--muted)" }}>
           Your agent works around the clock. Here&apos;s everything
