@@ -53,9 +53,19 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
     ? new Date(new Date(periodStart).getTime() + 30 * 86400_000).toISOString()
     : null;
 
+  // Normalize uninitialized state: when period_start IS NULL, the user has
+  // never had a consume RPC call against their record (the column default
+  // from the migration is 0). They're entitled to the full tier grant, so
+  // return that — otherwise fresh users would see "0 / 60 remaining" in
+  // the dashboard's red-low-balance state, which is misleading. The RPC
+  // sets balance := grant on the first consume call (migration L111-117),
+  // making this normalization a no-op once activation happens.
+  const balanceRaw = Number(userRow.toolrouter_balance ?? 0);
+  const balance = periodStart === null ? Number(grantTotal) : balanceRaw;
+
   return NextResponse.json({
     tier,
-    balance: Number(userRow.toolrouter_balance ?? 0),
+    balance,
     grant_total: Number(grantTotal),
     topup_balance: Number(userRow.toolrouter_topup_balance ?? 0),
     period_start: periodStart,
