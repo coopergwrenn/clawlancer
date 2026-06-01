@@ -1,20 +1,20 @@
 # Changelog — generated 2026-06-01
 
-Window: `d9f7409fa80ac67f8f2182ce2fdeba9435af0be9` → `HEAD` (HEAD = `b97c29dc`)
-Total commits: 2
+Window: `b97c29dc5898835f2ad5661bbbbad7cd0de3121d` → `HEAD` (HEAD = `470585f4`)
+Total commits: 4
 
-<!-- LAST_GENERATED_SHA: b97c29dc5898835f2ad5661bbbbad7cd0de3121d -->
+<!-- LAST_GENERATED_SHA: 470585f490c89d3706f3c4f3888c895193900fac -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
+- **Reconciler / manifest:** 2
 - **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
-- Merge commits: 0
+- AI-assisted commits (co-authored): 3
+- Merge commits: 1
 
 ## What changed for users
 
@@ -22,18 +22,21 @@ _None in this window._
 
 ## What changed under the hood
 
-- `7744a1fb` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
-- `b97c29dc` 2026-06-01 — feat(the-floor): proxy-coverage message_in — perk-up works for ALL users [7 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `ac779ca1` 2026-05-27 — feat(toolrouter): v1 — sponsored-tier allocation + in-chat upsell ready for Cooper's self-serve key [18 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `3d606d5a` 2026-06-01 — fix(toolrouter): re-add imports lost in rebase + sync PRD to new pricing [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `470585f4` 2026-06-01 — Merge feat/toolrouter-v1: ToolRouter v1 — sponsored-tier allocation + in-chat upsell [0 files] _(ai-assisted; merge)_
+- `dcbd5b7d` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (2)
 
-_(none)_
+- `ac779ca1` 2026-05-27 — feat(toolrouter): v1 — sponsored-tier allocation + in-chat upsell ready for Cooper's self-serve key [18 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `3d606d5a` 2026-06-01 — fix(toolrouter): re-add imports lost in rebase + sync PRD to new pricing [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
 
 ### Infrastructure (1)
 
-- `b97c29dc` 2026-06-01 — feat(the-floor): proxy-coverage message_in — perk-up works for ALL users [7 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `470585f4` 2026-06-01 — Merge feat/toolrouter-v1: ToolRouter v1 — sponsored-tier allocation + in-chat upsell [0 files] _(ai-assisted; merge)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +48,26 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `7744a1fb` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `dcbd5b7d` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
 
-## Multi-category commits (1)
+## Multi-category commits (2)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `b97c29dc` 2026-06-01 — [infrastructure, docs] — feat(the-floor): proxy-coverage message_in — perk-up works for ALL users
+- `ac779ca1` 2026-05-27 — [reconciler, infrastructure, docs] — feat(toolrouter): v1 — sponsored-tier allocation + in-chat upsell ready for Cooper's self-serve key
+- `3d606d5a` 2026-06-01 — [reconciler, infrastructure, docs] — fix(toolrouter): re-add imports lost in rebase + sync PRD to new pricing
 
-## AI-assisted commits (1)
+## AI-assisted commits (3)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `b97c29dc` 2026-06-01 — feat(the-floor): proxy-coverage message_in — perk-up works for ALL users
+- `ac779ca1` 2026-05-27 — feat(toolrouter): v1 — sponsored-tier allocation + in-chat upsell ready for Cooper's self-serve key
+- `3d606d5a` 2026-06-01 — fix(toolrouter): re-add imports lost in rebase + sync PRD to new pricing
+- `470585f4` 2026-06-01 — Merge feat/toolrouter-v1: ToolRouter v1 — sponsored-tier allocation + in-chat upsell
 
 ## Appendix — every commit (chronological)
 
-- `7744a1fb` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
-- `b97c29dc` 2026-06-01 — feat(the-floor): proxy-coverage message_in — perk-up works for ALL users [7 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `ac779ca1` 2026-05-27 — feat(toolrouter): v1 — sponsored-tier allocation + in-chat upsell ready for Cooper's self-serve key [18 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `dcbd5b7d` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `3d606d5a` 2026-06-01 — fix(toolrouter): re-add imports lost in rebase + sync PRD to new pricing [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `470585f4` 2026-06-01 — Merge feat/toolrouter-v1: ToolRouter v1 — sponsored-tier allocation + in-chat upsell [0 files] _(ai-assisted; merge)_
