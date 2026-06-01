@@ -27,7 +27,7 @@
  * noticed. That single beat is the whole feature; everything else frames it.
  */
 
-import { useRef } from "react";
+import { forwardRef, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useFloorStore } from "@/lib/floor/store";
@@ -53,14 +53,16 @@ const CLAW_TONE = "#d2742e"; // pincer jaws — lighter than the leg tone so the
 
 // ── Stage positions (world units; ~1 unit ≈ one floor tile) ─────────────────
 const HOME_POS = new THREE.Vector3(1.15, 0, 0.85); // resting spot, front-right
-const DESK_POS = new THREE.Vector3(0, 0, 0.2); // working spot, at the desk
+const DESK_POS = new THREE.Vector3(0, 0, 0.12); // working spot, in front of the desk
 const GROUND_Y = 0.3; // body-center height when grounded (legs reach the floor)
+const LEG_BASE_Y = -0.05; // resting y of each walking-leg attach group
 
 // ── Timing / amplitudes ─────────────────────────────────────────────────────
 const SCUTTLE_LAMBDA = 6; // higher = snappier scuttle toward target x/z
-const PERK_POP_MS = 460; // perk-up squash-stretch duration
-const HOP_MS = 620; // single celebrate hop duration
+const PERK_TOTAL_MS = 760; // perk-up: anticipation → stretch → settle
+const HOP_MS = 760; // celebrate hop (anticipation crouch + arc)
 const STUMBLE_MS = 900; // error wobble duration
+const STEP_FREQ = 10; // leg-cycle / waddle cadence while scuttling
 
 /** Where should Larry be standing for this behavior? */
 function targetPosition(d: DirectorState): THREE.Vector3 {
@@ -91,10 +93,23 @@ function targetEyeRaise(d: DirectorState): number {
   }
 }
 
-/** A smooth 0→1→0 pop envelope (squash-stretch) over a normalized t in [0,1]. */
-function popEnvelope(t: number): number {
-  if (t <= 0 || t >= 1) return 0;
-  return Math.sin(t * Math.PI); // single clean overshoot
+/**
+ * The perk-up envelope over normalized t in [0,1], built from the animation
+ * principles so the "noticed you" beat reads as intentional, not robotic:
+ *   - ANTICIPATION: a quick squash DOWN before the pop (negative lobe).
+ *   - STRETCH + SETTLE: a strong stretch UP that overshoots, then a decaying
+ *     oscillation settles it back to rest (follow-through).
+ * Returns a signed amount: <0 = squash, >0 = stretch.
+ */
+function perkStretch(tn: number): number {
+  if (tn <= 0 || tn >= 1) return 0;
+  if (tn < 0.15) {
+    // anticipation — a quick crouch before the spring
+    return -Math.sin((tn / 0.15) * Math.PI) * 0.45;
+  }
+  // stretch up, then a damped overshoot that settles
+  const u = (tn - 0.15) / 0.85;
+  return Math.sin(u * Math.PI * 1.6) * Math.exp(-u * 2.4);
 }
 
 // ── Body-part builders ───────────────────────────────────────────────────────
@@ -107,7 +122,10 @@ function popEnvelope(t: number): number {
  * front of Larry so he reads as *looking at you*; an emissive catch-light gives
  * the "alive, not plastic" glint (the bloom pass will make it sparkle).
  */
-function CrabEye({ side }: { side: number }) {
+const CrabEye = forwardRef<THREE.Group, { side: number }>(function CrabEye(
+  { side },
+  ref,
+) {
   return (
     <group position={[side * 0.1, 0, 0]}>
       {/* stalk — short, slightly outward, so the eye perches on the shell front */}
@@ -115,37 +133,40 @@ function CrabEye({ side }: { side: number }) {
         <cylinderGeometry args={[0.027, 0.032, 0.08, 12]} />
         <meshStandardMaterial color={CRAB_ORANGE} roughness={0.5} />
       </mesh>
-      {/* eyeball — oversized + forward (the single biggest appeal lever). Low
-          roughness = a glossy, *wet* eye that catches a crisp specular. */}
-      <mesh castShadow position={[0, 0.1, 0]}>
-        <sphereGeometry args={[0.085, 32, 24]} />
-        <meshStandardMaterial color={EYE_WHITE} roughness={0.11} metalness={0} />
-      </mesh>
-      {/* iris — warm amber, gazing straight forward + a touch down (endearing,
-          deliberately NOT converged — straight pupils read friendliest head-on). */}
-      <mesh position={[0, 0.09, 0.07]}>
-        <sphereGeometry args={[0.046, 24, 18]} />
-        <meshStandardMaterial color={EYE_IRIS} roughness={0.32} metalness={0} />
-      </mesh>
-      {/* pupil — glossy black so it picks up a tiny secondary glint */}
-      <mesh position={[0, 0.088, 0.083]}>
-        <sphereGeometry args={[0.026, 18, 14]} />
-        <meshStandardMaterial color={EYE_PUPIL} roughness={0.13} metalness={0} />
-      </mesh>
-      {/* catch-light — the spark of life. Emissive + un-tonemapped so it stays a
-          crisp white glint and the bloom pass blooms it. */}
-      <mesh position={[side * 0.022, 0.122, 0.066]}>
-        <sphereGeometry args={[0.015, 12, 10]} />
-        <meshStandardMaterial
-          color={CATCH_LIGHT}
-          emissive={CATCH_LIGHT}
-          emissiveIntensity={1.6}
-          toneMapped={false}
-        />
-      </mesh>
+      {/* eye group — eyeball + iris + pupil + catch-light move/scale as ONE, so
+          the blink (scale.y) closes a whole, coherent eye. */}
+      <group ref={ref} position={[0, 0.1, 0]}>
+        {/* eyeball — oversized + forward (the single biggest appeal lever). Low
+            roughness = a glossy, *wet* eye that catches a crisp specular. */}
+        <mesh castShadow position={[0, 0, 0]}>
+          <sphereGeometry args={[0.085, 32, 24]} />
+          <meshStandardMaterial color={EYE_WHITE} roughness={0.11} metalness={0} />
+        </mesh>
+        {/* iris — warm amber, gazing straight forward + a touch down. */}
+        <mesh position={[0, -0.01, 0.07]}>
+          <sphereGeometry args={[0.046, 24, 18]} />
+          <meshStandardMaterial color={EYE_IRIS} roughness={0.32} metalness={0} />
+        </mesh>
+        {/* pupil — glossy black so it picks up a tiny secondary glint */}
+        <mesh position={[0, -0.012, 0.083]}>
+          <sphereGeometry args={[0.026, 18, 14]} />
+          <meshStandardMaterial color={EYE_PUPIL} roughness={0.13} metalness={0} />
+        </mesh>
+        {/* catch-light — the spark of life. Emissive + un-tonemapped so it stays
+            a crisp white glint and the bloom pass blooms it. */}
+        <mesh position={[side * 0.022, 0.022, 0.066]}>
+          <sphereGeometry args={[0.015, 12, 10]} />
+          <meshStandardMaterial
+            color={CATCH_LIGHT}
+            emissive={CATCH_LIGHT}
+            emissiveIntensity={1.6}
+            toneMapped={false}
+          />
+        </mesh>
+      </group>
     </group>
   );
-}
+});
 
 /**
  * One front claw (cheliped): a short arm + a chunky rounded palm + a two-finger
@@ -211,10 +232,13 @@ function Cheliped({ side }: { side: number }) {
  * pointed foot) — the silhouette detail that makes Larry read CRAB from any
  * angle. `splay` fans it front/back. Static for now; the walk cycle is Step 5.
  */
-function CrabLeg({ x, z, splay }: { x: number; z: number; splay: number }) {
+const CrabLeg = forwardRef<
+  THREE.Group,
+  { x: number; z: number; splay: number }
+>(function CrabLeg({ x, z, splay }, ref) {
   const sign = x < 0 ? -1 : 1;
   return (
-    <group position={[x, -0.05, z]} rotation={[0, splay, 0]}>
+    <group ref={ref} position={[x, LEG_BASE_Y, z]} rotation={[0, splay, 0]}>
       {/* upper segment — swings out and down from under the shell */}
       <group rotation={[0, 0, sign * 0.95]}>
         <mesh castShadow position={[0, -0.1, 0]}>
@@ -231,7 +255,7 @@ function CrabLeg({ x, z, splay }: { x: number; z: number; splay: number }) {
       </group>
     </group>
   );
-}
+});
 
 /** Walking-leg layout — 3 per side, fanned front→back. */
 const LEG_LAYOUT = [
@@ -305,9 +329,11 @@ export function Larry() {
   // Rig refs — mutated imperatively in the frame loop (never via React state).
   const root = useRef<THREE.Group>(null); // whole crab (position/scuttle/hop)
   const body = useRef<THREE.Group>(null); // body (squash-stretch on perk)
-  const eyeStalks = useRef<THREE.Group>(null); // both eyestalks (raise/droop)
+  const eyeStalks = useRef<THREE.Group>(null); // both eyestalks (raise/droop/look)
   const leftClaw = useRef<THREE.Group>(null);
   const rightClaw = useRef<THREE.Group>(null);
+  const eyes = useRef<(THREE.Group | null)[]>([]); // 2 eye groups (blink scale.y)
+  const legs = useRef<(THREE.Group | null)[]>([]); // 6 walking legs (gait lift)
 
   // One-shot bookkeeping (refs so they survive frames without re-render).
   const lastPerkSeq = useRef(0);
@@ -315,6 +341,9 @@ export function Larry() {
   const lastBehavior = useRef<DirectorState["behavior"]>("idle");
   const oneShotStart = useRef(-1); // start of hop/stumble one-shots
   const eyeRaise = useRef(0.5); // smoothed eyestalk raise
+  const gait = useRef(0); // smoothed "walking-ness" 0..1 (drives waddle + legs)
+  const blinkStart = useRef(-1); // elapsedTime the current blink began
+  const nextBlinkAt = useRef(2.5); // elapsedTime of the next scheduled blink
 
   useFrame((state, delta) => {
     const d = useFloorStore.getState().director;
@@ -336,12 +365,24 @@ export function Larry() {
       lastBehavior.current = d.behavior;
     }
 
-    // ── 1. Scuttle: damp position toward the behavior's target (x/z) ─────────
+    // ── 1. Scuttle + GAIT: damp position toward target; derive walking-ness ──
     const target = targetPosition(d);
-    g.position.x = THREE.MathUtils.damp(g.position.x, target.x, SCUTTLE_LAMBDA, delta);
-    g.position.z = THREE.MathUtils.damp(g.position.z, target.z, SCUTTLE_LAMBDA, delta);
+    const prevX = g.position.x;
+    const prevZ = g.position.z;
+    g.position.x = THREE.MathUtils.damp(prevX, target.x, SCUTTLE_LAMBDA, delta);
+    g.position.z = THREE.MathUtils.damp(prevZ, target.z, SCUTTLE_LAMBDA, delta);
+    // How fast is he actually travelling this frame → how "walking" he looks.
+    const speed = delta > 0 ? Math.hypot(g.position.x - prevX, g.position.z - prevZ) / delta : 0;
+    gait.current = THREE.MathUtils.damp(
+      gait.current,
+      THREE.MathUtils.clamp(speed / 1.1, 0, 1),
+      9,
+      delta,
+    );
+    const m = gait.current; // 0 = still, 1 = full scuttle
+    const stepWave = Math.sin(t * STEP_FREQ); // shared step phase
 
-    // ── 2. Vertical motion: breathing / typing / hop, stacked on ground Y ───
+    // ── 2. Vertical motion: breathing / typing / hop + per-step bob ─────────
     let y = GROUND_Y;
     if (d.behavior === "idle") {
       // Honest breathing — amplitude shrinks as he settles toward a nap.
@@ -349,43 +390,60 @@ export function Larry() {
       y += Math.sin(t * 1.6) * amp;
     } else if (d.behavior === "working") {
       // Focused micro-bob (the "typing" rhythm), faster when thinking hard.
-      const speed = d.intensity === 3 ? 11 : d.intensity === 2 ? 9 : 7;
-      y += Math.sin(t * speed) * 0.012;
+      const sp = d.intensity === 3 ? 11 : d.intensity === 2 ? 9 : 7;
+      y += Math.sin(t * sp) * 0.012;
     } else if (d.behavior === "celebrating" && oneShotStart.current >= 0) {
-      // A joyful hop (parabolic arc).
-      const ht = (t - oneShotStart.current) * 1000;
-      const tn = Math.min(ht / HOP_MS, 1);
-      y += Math.sin(tn * Math.PI) * 0.45;
-    }
-    g.position.y = y;
-
-    // ── 3. Perk-up pop (squash-stretch on body) ─────────────────────────────
-    let bodyScaleY = 1;
-    let bodyScaleXZ = 1;
-    if (perkStart.current >= 0) {
-      const pt = ((t - perkStart.current) * 1000) / PERK_POP_MS;
-      const pop = popEnvelope(pt);
-      if (pop > 0) {
-        bodyScaleY = 1 + pop * 0.22; // stretch up
-        bodyScaleXZ = 1 - pop * 0.1; // squash in
-      } else if (pt >= 1) {
-        perkStart.current = -1; // pop finished
+      // A joyful hop: ANTICIPATION crouch, then an arc up + a small second
+      // bounce (follow-through) so the landing reads, not teleports.
+      const tn = Math.min(((t - oneShotStart.current) * 1000) / HOP_MS, 1);
+      if (tn < 0.15) {
+        y -= Math.sin((tn / 0.15) * Math.PI) * 0.045; // crouch
+      } else {
+        const u = (tn - 0.15) / 0.85;
+        y += Math.sin(u * Math.PI) * 0.45 + Math.max(0, Math.sin(u * Math.PI * 2 - Math.PI)) * 0.08;
       }
     }
-    if (body.current) {
-      body.current.scale.set(bodyScaleXZ, bodyScaleY, bodyScaleXZ);
-    }
+    // Secondary action: a little up-down bob on every step while scuttling.
+    y += Math.abs(stepWave) * 0.022 * m;
 
-    // ── 4. Stumble wobble (comedic, decaying — never an alarm) ───────────────
-    let rootRoll = 0;
+    // ── 3. Perk-up: anticipation → stretch overshoot → settle (+ micro-hop) ──
+    let stretch = 0;
+    if (perkStart.current >= 0) {
+      const tn = ((t - perkStart.current) * 1000) / PERK_TOTAL_MS;
+      if (tn >= 1) perkStart.current = -1;
+      else stretch = perkStretch(tn);
+    }
+    if (body.current) {
+      body.current.scale.set(1 - stretch * 0.2, 1 + stretch * 0.38, 1 - stretch * 0.2);
+    }
+    y += Math.max(0, stretch) * 0.08; // micro-hop on the spring up
+    g.position.y = y;
+
+    // ── 4. Roll: scuttle WADDLE (secondary action) or stumble wobble ────────
+    let rollTarget = stepWave * 0.09 * m; // side-to-side waddle while walking
+    let pitchTarget = m * 0.05; // a slight forward lean into the scuttle
     if (d.behavior === "stumbling" && oneShotStart.current >= 0) {
       const st = (t - oneShotStart.current) * 1000;
       const tn = Math.min(st / STUMBLE_MS, 1);
-      rootRoll = Math.sin(st / 60) * 0.18 * (1 - tn); // decays to upright
+      rollTarget = Math.sin(st / 60) * 0.18 * (1 - tn); // decays to upright
+      pitchTarget = 0;
     }
-    g.rotation.z = THREE.MathUtils.damp(g.rotation.z, rootRoll, 8, delta);
+    g.rotation.z = THREE.MathUtils.damp(g.rotation.z, rollTarget, 9, delta);
+    g.rotation.x = THREE.MathUtils.damp(g.rotation.x, pitchTarget, 8, delta);
 
-    // ── 5. Eyestalk acting (raise/droop) ────────────────────────────────────
+    // ── 5. Leg cycle: phased lift + swing (arcs), scaled by walking-ness ─────
+    const legArr = legs.current;
+    for (let i = 0; i < legArr.length; i++) {
+      const leg = legArr[i];
+      if (!leg) continue;
+      // Alternating tripod-ish gait: opposite sides + neighbours out of phase.
+      const phase = (i % 3) * ((Math.PI * 2) / 3) + (i < 3 ? 0 : Math.PI);
+      const w = Math.sin(t * STEP_FREQ + phase);
+      leg.position.y = LEG_BASE_Y + Math.max(0, w) * 0.06 * m; // lift on the up-beat
+      leg.rotation.x = w * 0.18 * m; // swing fore/aft (arc)
+    }
+
+    // ── 6. Eyestalk acting: raise/droop + perk follow-through + look-around ──
     eyeRaise.current = THREE.MathUtils.damp(
       eyeRaise.current,
       targetEyeRaise(d),
@@ -393,32 +451,77 @@ export function Larry() {
       delta,
     );
     if (eyeStalks.current) {
-      // Raise = lift + slight forward lean; droop = lower + tilt down.
-      eyeStalks.current.position.y = 0.12 + eyeRaise.current * 0.16;
-      eyeStalks.current.rotation.x = (1 - eyeRaise.current) * 0.5;
+      let eyeY = 0.12 + eyeRaise.current * 0.16;
+      let eyeRotX = (1 - eyeRaise.current) * 0.5; // droop tilts down
+      let eyeRotY = 0;
+      if (perkStart.current >= 0) {
+        // FOLLOW-THROUGH: the eyes pop up a beat AFTER the body and overshoot.
+        const ft = perkStretch(
+          Math.max(0, ((t - perkStart.current) * 1000) / PERK_TOTAL_MS - 0.08),
+        );
+        eyeY += Math.max(0, ft) * 0.05;
+        eyeRotX -= Math.max(0, ft) * 0.18; // snap to wide-awake
+      }
+      if (d.behavior === "idle" && d.idleLevel === 1) {
+        eyeRotY = Math.sin(t * 0.5) * 0.35; // "looking around" pan
+      }
+      eyeStalks.current.position.y = eyeY;
+      eyeStalks.current.rotation.x = eyeRotX;
+      eyeStalks.current.rotation.y = eyeRotY;
     }
 
-    // ── 6. Claw tapping while working (the "keyboard") ───────────────────────
-    const tapping = d.behavior === "working";
-    const tapL = tapping ? Math.max(0, Math.sin(t * 14)) * 0.35 : 0;
-    const tapR = tapping ? Math.max(0, Math.sin(t * 14 + Math.PI)) * 0.35 : 0;
-    if (leftClaw.current)
-      leftClaw.current.rotation.x = THREE.MathUtils.damp(leftClaw.current.rotation.x, -tapL, 14, delta);
-    if (rightClaw.current)
-      rightClaw.current.rotation.x = THREE.MathUtils.damp(rightClaw.current.rotation.x, -tapR, 14, delta);
+    // ── 7. Blink (secondary action) — periodic while awake, shut when asleep ─
+    const awake = d.behavior !== "asleep" && d.behavior !== "offline";
+    let blinkScaleY = 1;
+    if (awake) {
+      if (blinkStart.current < 0 && t >= nextBlinkAt.current) blinkStart.current = t;
+      if (blinkStart.current >= 0) {
+        const bt = (t - blinkStart.current) / 0.14; // a 140ms blink
+        if (bt >= 1) {
+          blinkStart.current = -1;
+          // schedule the next blink 2.2–5.2s out (varied so it feels alive)
+          nextBlinkAt.current = t + 2.2 + (Math.sin(t * 12.9898) * 0.5 + 0.5) * 3;
+        } else {
+          blinkScaleY = 1 - Math.sin(bt * Math.PI) * 0.9; // dip to ~0.1 and back
+        }
+      }
+    } else {
+      blinkScaleY = 0.12; // eyes shut while sleeping
+    }
+    for (const eye of eyes.current) if (eye) eye.scale.y = blinkScaleY;
 
-    // ── 7. Render-on-demand governor (PRD §12) ──────────────────────────────
-    // Keep requesting frames while ANYTHING is still moving; otherwise let
-    // frameloop="demand" rest at ~0 GPU. We are "settled" only when: behavior
-    // needs no looping animation AND position has reached target AND no one-shot
-    // (perk/hop/stumble) is in flight.
-    const dx = Math.abs(g.position.x - target.x);
-    const dz = Math.abs(g.position.z - target.z);
-    const atTarget = dx < 0.002 && dz < 0.002;
-    const perkActive = perkStart.current >= 0;
+    // ── 8. Claws: tap while working; raise high on celebrate ────────────────
+    let clawTargetL = 0;
+    let clawTargetR = 0;
+    if (d.behavior === "working") {
+      clawTargetL = -Math.max(0, Math.sin(t * 14)) * 0.35;
+      clawTargetR = -Math.max(0, Math.sin(t * 14 + Math.PI)) * 0.35;
+    } else if (d.behavior === "celebrating" && oneShotStart.current >= 0) {
+      // Throw the claws UP in celebration (then settle) — pairs with the hop.
+      const tn = Math.min(((t - oneShotStart.current) * 1000) / HOP_MS, 1);
+      const up = Math.sin(Math.min(tn / 0.6, 1) * Math.PI) * 1.05;
+      clawTargetL = -up;
+      clawTargetR = -up;
+    }
+    if (leftClaw.current)
+      leftClaw.current.rotation.x = THREE.MathUtils.damp(leftClaw.current.rotation.x, clawTargetL, 14, delta);
+    if (rightClaw.current)
+      rightClaw.current.rotation.x = THREE.MathUtils.damp(rightClaw.current.rotation.x, clawTargetR, 14, delta);
+
+    // ── 9. Render-on-demand governor (PRD §12) ──────────────────────────────
+    // Keep requesting frames while ANYTHING is still in motion; otherwise let
+    // frameloop="demand" rest at ~0 GPU.
+    const atTarget =
+      Math.abs(g.position.x - target.x) < 0.002 &&
+      Math.abs(g.position.z - target.z) < 0.002;
     const eyeSettled = Math.abs(eyeRaise.current - targetEyeRaise(d)) < 0.01;
     const needsMore =
-      behaviorNeedsAnimation(d) || !atTarget || perkActive || !eyeSettled;
+      behaviorNeedsAnimation(d) ||
+      !atTarget ||
+      perkStart.current >= 0 ||
+      blinkStart.current >= 0 ||
+      m > 0.01 ||
+      !eyeSettled;
     if (needsMore) invalidate();
   });
 
@@ -455,10 +558,20 @@ export function Larry() {
           <meshStandardMaterial color={MOUTH} roughness={0.65} />
         </mesh>
 
-        {/* ── Eyes on stalks (raised/drooped as a unit by the frame loop) ── */}
+        {/* ── Eyes on stalks (raised/drooped as a unit; each eye blinks) ── */}
         <group ref={eyeStalks} position={[0, 0.16, 0.2]}>
-          <CrabEye side={-1} />
-          <CrabEye side={1} />
+          <CrabEye
+            ref={(el) => {
+              eyes.current[0] = el;
+            }}
+            side={-1}
+          />
+          <CrabEye
+            ref={(el) => {
+              eyes.current[1] = el;
+            }}
+            side={1}
+          />
         </group>
 
         {/* ── Front claws — tap while "typing"; snap on celebrate (Step 5) ── */}
@@ -469,9 +582,17 @@ export function Larry() {
           <Cheliped side={1} />
         </group>
 
-        {/* ── Walking legs — 3 per side, the crab silhouette ── */}
+        {/* ── Walking legs — 3 per side; phased leg-cycle while scuttling ── */}
         {LEG_LAYOUT.map((l, i) => (
-          <CrabLeg key={i} x={l.x} z={l.z} splay={l.splay} />
+          <CrabLeg
+            key={i}
+            ref={(el) => {
+              legs.current[i] = el;
+            }}
+            x={l.x}
+            z={l.z}
+            splay={l.splay}
+          />
         ))}
       </group>
     </group>

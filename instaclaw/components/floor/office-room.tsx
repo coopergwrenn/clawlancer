@@ -144,8 +144,10 @@ export function OfficeRoom() {
         </mesh>
       </group>
 
-      {/* ── Chair ── */}
-      <group position={[0, 0, 0.55]}>
+      {/* ── Chair ── tucked to the left and angled toward the desk, so it
+          dresses the room without standing between Larry (at the desk) and the
+          camera. ── */}
+      <group position={[-1.0, 0, 0.5]} rotation={[0, 0.6, 0]}>
         <mesh castShadow position={[0, 0.42, 0]}>
           <boxGeometry args={[0.42, 0.08, 0.42]} />
           <meshStandardMaterial color={CHAIR} roughness={0.7} />
