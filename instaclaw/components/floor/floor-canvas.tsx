@@ -14,6 +14,7 @@
  */
 
 import { Canvas } from "@react-three/fiber";
+import { NoToneMapping } from "three";
 import { FloorScene } from "./floor-scene";
 
 export default function FloorCanvas() {
@@ -24,7 +25,9 @@ export default function FloorCanvas() {
       shadows
       // Cap DPR so retina phones don't render at 3× (the #1 WebGL battery sink).
       dpr={[1, 2]}
-      gl={{ antialias: true, powerPreference: "high-performance" }}
+      // Tone mapping is owned by the post-FX composer (ACES ToneMapping effect),
+      // so the renderer must NOT also tone-map or it'd double-apply.
+      gl={{ antialias: true, powerPreference: "high-performance", toneMapping: NoToneMapping }}
       camera={{ position: [3.4, 2.7, 3.6], fov: 38, near: 0.1, far: 100 }}
       style={{ width: "100%", height: "100%", touchAction: "none" }}
     >

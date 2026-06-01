@@ -18,6 +18,8 @@
 import { useEffect, useRef } from "react";
 import { useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Environment, Lightformer } from "@react-three/drei";
+import { EffectComposer, Bloom, Vignette, ToneMapping } from "@react-three/postprocessing";
+import { ToneMappingMode } from "postprocessing";
 import * as THREE from "three";
 import { useFloorStore } from "@/lib/floor/store";
 import { Larry } from "./larry";
@@ -199,6 +201,23 @@ export function FloorScene() {
         target={[0, 0.5, 0]}
         onChange={() => invalidate()}
       />
+
+      {/* ── Post-FX (PRD §12) ── Composes ONLY on demanded frames, so it adds
+          zero cost at rest. BLOOM makes the catch-lights, window, caustics and
+          Fresnel rim actually glow (threshold-gated → only the bright/emissive
+          things bloom = "selective"). ACES tone-mapping rolls off highlights
+          for a filmic, non-blown look. VIGNETTE darkens the corners → the
+          cozy, focused framing the scene was missing. */}
+      <EffectComposer multisampling={4}>
+        <Bloom
+          intensity={0.7}
+          luminanceThreshold={0.82}
+          luminanceSmoothing={0.22}
+          mipmapBlur
+        />
+        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+        <Vignette eskil={false} offset={0.3} darkness={0.62} />
+      </EffectComposer>
     </>
   );
 }
