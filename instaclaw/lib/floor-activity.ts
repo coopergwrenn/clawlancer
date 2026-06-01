@@ -141,85 +141,156 @@ export function buildActivityRow(input: FloorActivityInput): FloorActivityRow {
  */
 export const MESSAGE_IN_DEDUPE_WINDOW_MS = 15_000;
 
-/** In-process last-message_in timestamp per vm_id (best-effort, per-lambda). */
-const _lastMessageInByVm = new Map<string, number>();
+/**
+ * Dedupe window for the TERMINAL `complete` event (proxy-coverage v2, 2026-06-01).
+ *
+ * Like `message_in`, a single turn's `complete` can reach TWO producers:
+ *   1. the proxy detects the final LLM response's turn-ending `stop_reason` and
+ *      writes `complete` as the stream finishes;
+ *   2. for a shared-bot/iMessage turn, that same relay then returns and the
+ *      webhook writes `complete` via `recordForwardOutcome` ~1–3s later.
+ * Whichever fires first wins; the echo within the window is dropped.
+ *
+ * Deliberately SHORTER than the message_in window: it only needs to cover the
+ * proxy→relay-return echo (a couple of seconds), and a longer window would risk
+ * swallowing a genuinely-NEXT turn's `complete` in a rapid back-and-forth —
+ * which would drop that turn's terminal event and re-introduce the "Larry types
+ * to the 180s safety timeout" bug this whole change exists to fix.
+ */
+export const TERMINAL_DEDUPE_WINDOW_MS = 5_000;
+
+/** In-process last-write timestamp per `${vmId}:${kind}` (best-effort, per-lambda). */
+const _lastByVmKind = new Map<string, number>();
 
 /**
- * Decide whether a message_in for this VM is a duplicate of one just recorded,
- * using ONLY the in-process map. Pure-ish (mutates the module map). The unit
- * test drives it directly. Returns true = "duplicate, skip"; false = "record it"
- * (and stamps the map so the next call within the window is deduped).
+ * Decide whether an activity event of `kind` for this VM is a duplicate of one
+ * just recorded, using ONLY the in-process map. Pure-ish (mutates the module
+ * map). Returns true = "duplicate, skip"; false = "record it" (and stamps the
+ * map so the next call within the window is deduped). Keyed by (vmId, kind) so
+ * `message_in` and `complete` dedupe independently.
+ */
+export function isDuplicateActivityLocal(
+  vmId: string,
+  kind: FloorActivityKind,
+  now: number,
+  windowMs: number,
+): boolean {
+  const key = `${vmId}:${kind}`;
+  const last = _lastByVmKind.get(key);
+  if (last !== undefined && now - last < windowMs) return true;
+  _lastByVmKind.set(key, now);
+  // Opportunistic cleanup so the map can't grow unbounded on a long-lived
+  // lambda: drop entries older than 2× the longest window we use.
+  if (_lastByVmKind.size > 1000) {
+    const cutoff = now - MESSAGE_IN_DEDUPE_WINDOW_MS * 2;
+    for (const [k, v] of _lastByVmKind) {
+      if (v < cutoff) _lastByVmKind.delete(k);
+    }
+  }
+  return false;
+}
+
+/**
+ * Back-compat shim for the original message_in-only guard (the unit test and
+ * any existing callers use this signature). Delegates to the generic guard.
  */
 export function isDuplicateMessageInLocal(
   vmId: string,
   now: number,
   windowMs: number = MESSAGE_IN_DEDUPE_WINDOW_MS,
 ): boolean {
-  const last = _lastMessageInByVm.get(vmId);
-  if (last !== undefined && now - last < windowMs) return true;
-  _lastMessageInByVm.set(vmId, now);
-  // Opportunistic cleanup so the map can't grow unbounded on a long-lived
-  // lambda: drop entries older than 2× the window.
-  if (_lastMessageInByVm.size > 500) {
-    const cutoff = now - windowMs * 2;
-    for (const [k, v] of _lastMessageInByVm) {
-      if (v < cutoff) _lastMessageInByVm.delete(k);
-    }
-  }
-  return false;
+  return isDuplicateActivityLocal(vmId, "message_in", now, windowMs);
 }
 
 /** Test-only: clear the in-process dedupe map between cases. */
 export function __resetMessageInDedupeForTests(): void {
-  _lastMessageInByVm.clear();
+  _lastByVmKind.clear();
 }
 
 /**
- * Record a `message_in` event with double-write dedupe (see the window doc).
- * Use this from BOTH the inbound webhooks and the proxy entry path — whichever
- * fires first wins; the echo within the window is dropped. Fire-and-forget;
- * never throws.
+ * Record a deduped activity event (`message_in` or `complete`) with double-write
+ * dedupe (see the window docs). Use from BOTH the inbound webhooks and the proxy
+ * — whichever producer fires first wins; the echo within `windowMs` is dropped.
+ * Fire-and-forget; never throws.
  *
  * Order of checks (cheapest first):
  *   1. in-process recency map (no I/O) — catches the common same-lambda echo;
  *   2. DB recency probe — catches the cross-instance echo;
  *   3. insert.
  */
-export async function recordMessageIn(
+async function recordDedupedActivity(
   input: Omit<FloorActivityInput, "kind">,
-  now: number = Date.now(),
+  kind: Extract<FloorActivityKind, "message_in" | "complete">,
+  windowMs: number,
+  now: number,
 ): Promise<void> {
-  // 1. In-process guard. If true, a very recent message_in for this VM already
+  // 1. In-process guard. If true, a very recent <kind> for this VM already
   //    happened on THIS lambda — skip without any I/O.
-  if (isDuplicateMessageInLocal(input.vmId, now)) {
+  if (isDuplicateActivityLocal(input.vmId, kind, now, windowMs)) {
     return;
   }
   try {
-    // 2. Cross-instance guard: was a message_in written for this VM within the
+    // 2. Cross-instance guard: was a <kind> written for this VM within the
     //    window by another lambda (e.g. webhook on instance A, proxy on B)?
-    const sinceIso = new Date(now - MESSAGE_IN_DEDUPE_WINDOW_MS).toISOString();
+    const sinceIso = new Date(now - windowMs).toISOString();
     const { data: recent, error: probeErr } = await getSupabase()
       .from("instaclaw_agent_activity")
       .select("id")
       .eq("vm_id", input.vmId)
-      .eq("kind", "message_in")
+      .eq("kind", kind)
       .gte("created_at", sinceIso)
       .limit(1);
     if (!probeErr && recent && recent.length > 0) {
       // An echo from the other producer already landed — drop this one.
       return;
     }
-    // 3. No recent message_in → record it.
-    await recordFloorActivity({ ...input, kind: "message_in" });
+    // 3. No recent <kind> → record it.
+    await recordFloorActivity({ ...input, kind });
   } catch (err) {
-    // Best-effort. A missed message_in is a missed perk-up beat, not a broken
-    // agent reply — swallow exactly like recordFloorActivity.
-    logger.warn("[floor-activity] recordMessageIn threw (non-fatal)", {
+    // Best-effort. A missed beat is cosmetic, not a broken agent reply —
+    // swallow exactly like recordFloorActivity.
+    logger.warn(`[floor-activity] record ${kind} threw (non-fatal)`, {
       route: "lib/floor-activity",
       vmId: input.vmId,
       error: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+/**
+ * Record a `message_in` (the perk-up trigger). Deduped against the other
+ * producer over MESSAGE_IN_DEDUPE_WINDOW_MS. Fire-and-forget; never throws.
+ */
+export async function recordMessageIn(
+  input: Omit<FloorActivityInput, "kind">,
+  now: number = Date.now(),
+): Promise<void> {
+  return recordDedupedActivity(
+    input,
+    "message_in",
+    MESSAGE_IN_DEDUPE_WINDOW_MS,
+    now,
+  );
+}
+
+/**
+ * Record a `complete` (the turn-END celebrate + return-to-idle). Call this from
+ * the proxy when the final LLM response of a turn ends with a turn-ending
+ * `stop_reason` (see `isTurnEndStopReason`), and from the relay outcome. Deduped
+ * against the other producer over the SHORT TERMINAL_DEDUPE_WINDOW_MS so the
+ * proxy↔webhook echo collapses to one celebrate without swallowing the next
+ * turn's. Fire-and-forget; never throws.
+ */
+export async function recordComplete(
+  input: Omit<FloorActivityInput, "kind">,
+  now: number = Date.now(),
+): Promise<void> {
+  return recordDedupedActivity(
+    input,
+    "complete",
+    TERMINAL_DEDUPE_WINDOW_MS,
+    now,
+  );
 }
 
 /**
@@ -304,5 +375,98 @@ export async function recordForwardOutcome(
   result: ForwardOutcomeLike,
 ): Promise<void> {
   const input = forwardOutcomeToActivity(userId, result);
-  if (input) await recordFloorActivity(input);
+  if (!input) return;
+  if (input.kind === "complete") {
+    // Route the relay's complete through the SAME deduped writer the proxy uses,
+    // so a shared-bot turn (proxy detects turn-end AND the relay returns) yields
+    // exactly ONE celebrate, not two. (kind is implied by recordComplete.)
+    const { kind: _kind, ...rest } = input;
+    void _kind;
+    await recordComplete(rest);
+  } else {
+    await recordFloorActivity(input);
+  }
+}
+
+// ── Turn-end detection (proxy `complete` trigger) ────────────────────────────
+
+/**
+ * Is this LLM `stop_reason` / `finish_reason` a TURN-ENDING one (the agent is
+ * done and its reply is going back to the user) vs. a continue-with-a-tool one
+ * (the agent will run a tool and make another LLM call)?
+ *
+ * Turn-ending → write `complete` (Larry celebrates + returns to idle):
+ *   - Anthropic: end_turn | stop_sequence | max_tokens
+ *   - OpenAI/MiniMax: stop | length
+ * NOT turn-ending → do nothing (Larry keeps working honestly through the tool):
+ *   - tool_use | tool_calls | function_call | pause_turn | null | unknown
+ *
+ * Unknown defaults to false on purpose: a missed `complete` just rides to the
+ * director's safety timeout (the pre-existing behavior), whereas a wrong `true`
+ * would celebrate mid-turn — strictly worse than the bug we're fixing.
+ */
+export function isTurnEndStopReason(s: string | null | undefined): boolean {
+  switch (s) {
+    case "end_turn":
+    case "stop_sequence":
+    case "max_tokens":
+    case "stop":
+    case "length":
+      return true;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Pull the most-recent `stop_reason` / `finish_reason` string value out of a
+ * buffer of (possibly partial) SSE / JSON text. Returns the LAST quoted value
+ * (the terminal one) or null. `stop_reason: null` (unquoted, in message_start /
+ * intermediate chunks) deliberately does NOT match, so only the terminal event
+ * is picked up.
+ */
+export function extractStopReason(text: string): string | null {
+  const re = /"(?:stop_reason|finish_reason)"\s*:\s*"([a-z_]+)"/g;
+  let m: RegExpExecArray | null;
+  let last: string | null = null;
+  while ((m = re.exec(text)) !== null) last = m[1];
+  return last;
+}
+
+/**
+ * Wrap a streaming response body in a PASSTHROUGH tee that scans the SSE text
+ * for the turn-ending `stop_reason` and invokes `onStopReason` AT MOST ONCE.
+ *
+ * Safety contract (this sits in the hot user-response path):
+ *   - every chunk is enqueued unchanged, FIRST and unconditionally — the scan
+ *     can never alter, drop, reorder, or delay the bytes the client receives;
+ *   - all scan work is wrapped so a throw can never disturb the passthrough;
+ *   - a bounded tail buffer (the terminal stop_reason is always at the stream's
+ *     end) keeps memory flat regardless of response size.
+ */
+export function attachCompletionScanner<T extends Uint8Array>(
+  body: ReadableStream<T>,
+  onStopReason: (stopReason: string) => void,
+): ReadableStream<T> {
+  const decoder = new TextDecoder();
+  let tail = "";
+  let fired = false;
+  const ts = new TransformStream<T, T>({
+    transform(chunk, controller) {
+      controller.enqueue(chunk); // PASSTHROUGH — always, first, unconditional.
+      if (fired) return;
+      try {
+        tail += decoder.decode(chunk, { stream: true });
+        if (tail.length > 8192) tail = tail.slice(-8192);
+        const sr = extractStopReason(tail);
+        if (sr) {
+          fired = true; // one signal per stream — the terminal stop_reason
+          onStopReason(sr);
+        }
+      } catch {
+        // Never let scanning disturb the user's response.
+      }
+    },
+  });
+  return body.pipeThrough(ts);
 }

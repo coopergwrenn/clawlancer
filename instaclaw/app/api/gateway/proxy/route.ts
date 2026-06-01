@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
-import { recordMessageIn } from "@/lib/floor-activity";
+import {
+  recordMessageIn,
+  recordComplete,
+  isTurnEndStopReason,
+  extractStopReason,
+  attachCompletionScanner,
+} from "@/lib/floor-activity";
 import { logger } from "@/lib/logger";
 import { sendAdminAlertEmail } from "@/lib/email";
 import { sendPerVmAlertDeduped } from "@/lib/admin-alert";
@@ -1865,12 +1871,56 @@ export async function POST(req: NextRequest) {
         .then(() => {});
     }
 
+    // --- THE FLOOR: complete (turn-END) detection (PRD §35, 2026-06-01 v2) ---
+    // The proxy only wrote `message_in` (the perk-up); with no terminal signal,
+    // proxy-only agents (the largest cohort — own bot / web / mini-app) had Larry
+    // "working/typing" until the director's 180s safety timeout, long after the
+    // agent already answered. We now write `complete` when the FINAL LLM response
+    // of a turn ends with a turn-ending stop_reason (end_turn / stop / etc., NOT
+    // tool_use — a tool turn keeps going, and celebrating mid-turn would be worse
+    // than the bug). Same user-turn gate as message_in, but ALSO tool_continuation
+    // (a turn's last call is a continuation). recordComplete dedupes against the
+    // relay's recordForwardOutcome so a shared-bot turn celebrates exactly once.
+    const trackFloorComplete =
+      (isManualMessage || isToolContinuation) &&
+      !isHeartbeat &&
+      !isInfrastructureCall &&
+      !strictCanaryBypass &&
+      !matchPipelineBypass &&
+      !isVirtuals &&
+      !!vm.assigned_to &&
+      finalProviderRes.status >= 200 &&
+      finalProviderRes.status < 300;
+    const floorCompleteVmId = vm.id;
+    const floorCompleteUserId = vm.assigned_to as string;
+
     // If streaming or no usage warning needed, pass through the response directly.
     // Streaming responses are SSE text that can't be JSON-parsed, so we never
     // try to buffer/modify them — that was causing "request ended without sending
     // any chunks" when the buffered SSE was returned as a single JSON blob.
     if (isStreaming || !usageWarning) {
-      return new NextResponse(finalProviderRes.body, {
+      let outBody = finalProviderRes.body;
+      // Streaming user-turn response → tee it (passthrough, never disturbed) to
+      // detect the turn-ending stop_reason and write `complete`.
+      if (isStreaming && trackFloorComplete && outBody) {
+        let completeP: Promise<void> | null = null;
+        outBody = attachCompletionScanner(outBody, (stopReason) => {
+          if (!completeP && isTurnEndStopReason(stopReason)) {
+            completeP = recordComplete({
+              vmId: floorCompleteVmId,
+              userId: floorCompleteUserId,
+              channel: "web",
+            }).catch(() => {});
+          }
+        });
+        // after() runs once the stream is fully flushed (the scanner has by then
+        // seen the terminal event and started the write, if any) — keep the
+        // function alive until that fire-and-forget write settles.
+        after(async () => {
+          if (completeP) await completeP;
+        });
+      }
+      return new NextResponse(outBody, {
         status: finalProviderRes.status,
         headers: {
           "content-type": finalProviderRes.headers.get("content-type") || "application/json",
@@ -1887,6 +1937,18 @@ export async function POST(req: NextRequest) {
 
     // Non-streaming: append usage warning to the AI response
     const resText = await finalProviderRes.text();
+    // Same turn-end → `complete` detection, read straight from the JSON body
+    // (extractStopReason matches "stop_reason"/"finish_reason" in JSON too).
+    if (trackFloorComplete && isTurnEndStopReason(extractStopReason(resText))) {
+      const completeP = recordComplete({
+        vmId: floorCompleteVmId,
+        userId: floorCompleteUserId,
+        channel: "web",
+      }).catch(() => {});
+      after(async () => {
+        await completeP;
+      });
+    }
     try {
       const resBody = JSON.parse(resText);
       if (resBody.content && Array.isArray(resBody.content)) {
