@@ -24,6 +24,10 @@
  *   8. Wrapper wiring — dead-code detection for callToolRouter callers
  *      (Task K.4 status). INFO at v1 ship; OK once production code calls
  *      callToolRouter or instaclaw_consume_toolrouter_searches.
+ *   9. K.4 wrapper deployed on canary VM — SSH probe of wrapper file
+ *      existence + MCP config wire-up. Set TOOLROUTER_CANARY_VM env to
+ *      a VM name (defaults to instaclaw-vm-1019, Cooper's standing
+ *      canary). Set TOOLROUTER_CANARY_VM='' to skip.
  *
  * Exit code:
  *   0 — all hard gates clear (soft signals like unreachable / not-yet-applied logged but pass)
@@ -298,6 +302,10 @@ function checkCodeWiring(): void {
   const expectedFiles = [
     "lib/toolrouter-client.ts",
     "lib/toolrouter-credits.ts",
+    // K.4 (added 2026-06-01): the wrapper source + the endpoint it POSTs to.
+    "lib/toolrouter-wrapper-script.ts",
+    "app/api/agent/toolrouter/record-usage/route.ts",
+    "app/api/cron/reconcile-toolrouter-usage/route.ts",
     "app/api/toolrouter/balance/route.ts",
     "app/api/cron/probe-toolrouter-balance/route.ts",
     "app/api/cron/probe-toolrouter-registry/route.ts",
@@ -320,6 +328,8 @@ function checkCodeWiring(): void {
     const expectedCrons = [
       "/api/cron/probe-toolrouter-balance",
       "/api/cron/probe-toolrouter-registry",
+      // K.4 (added 2026-06-01): hourly drift detector for wrapper missed-reports.
+      "/api/cron/reconcile-toolrouter-usage",
     ];
     for (const path of expectedCrons) {
       const entry = crons.find((c) => c.path === path);
@@ -666,6 +676,168 @@ function checkWrapperWiring(): void {
 }
 
 // ────────────────────────────────────────────────────────────────────
+// Section 9 — K.4 wrapper deployed on canary VM (SSH live probe)
+// ────────────────────────────────────────────────────────────────────
+//
+// Section 8 is a static codebase check. Section 9 is the runtime
+// counterpart: SSH into a canary VM and probe whether the wrapper
+// .mjs file is actually deployed AND the mcp.servers.toolrouter
+// config points at it (.command="node" + .args[0]=<wrapperPath>).
+//
+// The wrapper deploy happens via stepFiles + the file-drift cron;
+// the MCP wire-up happens via stepToolRouter (reconcile-fleet cron,
+// gated on cv-staleness OR secret_version-staleness). On a fresh
+// post-deploy fleet, both should land within ~30 min of the Vercel
+// deploy. Until VM_MANIFEST.version bumps to force re-reconcile,
+// caught-up VMs have the wrapper on disk but their MCP config still
+// points at the v1 direct-toolrouter shape.
+//
+// Canary VM: TOOLROUTER_CANARY_VM env var, defaults to
+// "instaclaw-vm-1019" (Cooper's standing canary per CLAUDE.md
+// Rule 64). Set TOOLROUTER_CANARY_VM='' to skip Section 9 entirely.
+
+const TOOLROUTER_CANARY_VM_DEFAULT = "instaclaw-vm-1019";
+const TOOLROUTER_WRAPPER_PATH_ON_VM = "/home/openclaw/.openclaw/scripts/toolrouter-wrapper.mjs";
+
+async function checkWrapperDeployedOnCanary(): Promise<void> {
+  const canaryName = process.env.TOOLROUTER_CANARY_VM === undefined
+    ? TOOLROUTER_CANARY_VM_DEFAULT
+    : process.env.TOOLROUTER_CANARY_VM;
+
+  if (!canaryName) {
+    record({
+      name: "9.1 wrapper deployed on canary VM",
+      severity: "INFO",
+      detail: "skipped (TOOLROUTER_CANARY_VM='')",
+    });
+    return;
+  }
+
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.SSH_PRIVATE_KEY_B64) {
+    record({
+      name: "9.1 wrapper deployed on canary VM",
+      severity: "SOFT",
+      detail: "SKIPPED — need SUPABASE_SERVICE_ROLE_KEY + SSH_PRIVATE_KEY_B64",
+    });
+    return;
+  }
+
+  // Resolve canary IP from Supabase
+  const { getSupabase } = await import("../lib/supabase");
+  const supabase = getSupabase();
+  const { data: vm, error: lookupErr } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name, ip_address, gateway_token, health_status, status")
+    .eq("name", canaryName)
+    .maybeSingle();
+  if (lookupErr || !vm) {
+    record({
+      name: "9.1 wrapper deployed on canary VM",
+      severity: "SOFT",
+      detail: `canary VM "${canaryName}" not found: ${lookupErr?.message ?? "no row"}`,
+    });
+    return;
+  }
+  if (vm.status !== "assigned" || vm.health_status !== "healthy") {
+    record({
+      name: "9.1 wrapper deployed on canary VM",
+      severity: "SOFT",
+      detail: `canary "${canaryName}" not eligible (status=${vm.status}, health=${vm.health_status})`,
+    });
+    return;
+  }
+
+  // SSH probe (mirrors _coverage-toolrouter.ts pattern)
+  const { NodeSSH } = await import("node-ssh");
+  const ssh = new NodeSSH();
+  let sshPrivateKey: string;
+  try {
+    sshPrivateKey = Buffer.from(process.env.SSH_PRIVATE_KEY_B64!, "base64").toString("utf-8");
+  } catch (e) {
+    record({
+      name: "9.1 wrapper deployed on canary VM",
+      severity: "SOFT",
+      detail: `SSH_PRIVATE_KEY_B64 decode failed: ${e instanceof Error ? e.message.slice(0, 100) : String(e)}`,
+    });
+    return;
+  }
+
+  try {
+    await ssh.connect({
+      host: vm.ip_address,
+      username: "openclaw",
+      privateKey: sshPrivateKey,
+      readyTimeout: 8_000,
+    });
+
+    const probe = await ssh.execCommand(
+      `echo "WRAPPER_EXISTS:$(test -f ${TOOLROUTER_WRAPPER_PATH_ON_VM} && echo 1 || echo 0)"; ` +
+      `echo "WRAPPER_SENTINEL:$(grep -c TOOLROUTER_WRAPPER_V1 ${TOOLROUTER_WRAPPER_PATH_ON_VM} 2>/dev/null || echo 0)"; ` +
+      `echo "MCP_COMMAND:$(jq -r '.mcp.servers.toolrouter.command // ""' $HOME/.openclaw/openclaw.json 2>/dev/null)"; ` +
+      `echo "MCP_ARG0:$(jq -r '.mcp.servers.toolrouter.args[0] // ""' $HOME/.openclaw/openclaw.json 2>/dev/null)"`,
+    );
+
+    const out = probe.stdout || "";
+    const lines = out.split("\n");
+    const find = (prefix: string): string => {
+      const ln = lines.find((l) => l.startsWith(prefix + ":"));
+      return ln ? ln.slice(prefix.length + 1).trim() : "";
+    };
+    const wrapperExists = find("WRAPPER_EXISTS") === "1";
+    const wrapperSentinelCount = Number(find("WRAPPER_SENTINEL")) || 0;
+    const mcpCommand = find("MCP_COMMAND");
+    const mcpArg0 = find("MCP_ARG0");
+
+    // State matrix:
+    //   wrapper missing, mcp=toolrouter      → v1 state, pre-K.4
+    //   wrapper present, mcp=toolrouter      → mid-rollout (file-drift ran, manifest not bumped)
+    //   wrapper present, mcp=node + arg=path → K.4 fully wired ✓
+    //   wrapper missing, mcp=node            → BAD — MCP config points at non-existent wrapper
+    if (!wrapperExists) {
+      record({
+        name: "9.1 wrapper deployed on canary VM",
+        severity: mcpCommand === "node" ? "HARD" : "INFO",
+        detail: mcpCommand === "node"
+          ? `BROKEN: ${canaryName} MCP points at wrapper that's not on disk (mcp.command=${mcpCommand})`
+          : `K.4 not rolled to ${canaryName} yet (wrapper missing, MCP at v1 shape command=${mcpCommand || "unset"})`,
+      });
+      return;
+    }
+    if (wrapperSentinelCount < 1) {
+      record({
+        name: "9.1 wrapper deployed on canary VM",
+        severity: "HARD",
+        detail: `${canaryName} wrapper file present but TOOLROUTER_WRAPPER_V1 sentinel missing — Rule 23 should have refused this deploy`,
+      });
+      return;
+    }
+    if (mcpCommand !== "node" || !mcpArg0.includes("toolrouter-wrapper.mjs")) {
+      record({
+        name: "9.1 wrapper deployed on canary VM",
+        severity: "INFO",
+        detail: `${canaryName} wrapper deployed but MCP not wired yet (mcp.command=${mcpCommand || "unset"}, arg0=${mcpArg0.slice(-40) || "unset"}) — waiting for manifest version bump`,
+      });
+      return;
+    }
+
+    record({
+      name: "9.1 wrapper deployed on canary VM",
+      severity: "OK",
+      detail: `${canaryName}: wrapper on disk + MCP wired (command=node, arg0=…${mcpArg0.slice(-40)})`,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    record({
+      name: "9.1 wrapper deployed on canary VM",
+      severity: "SOFT",
+      detail: `${canaryName} SSH probe failed: ${msg.slice(0, 120)}`,
+    });
+  } finally {
+    try { ssh.dispose(); } catch { /* swallow */ }
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
 // Main
 // ────────────────────────────────────────────────────────────────────
 
@@ -697,6 +869,9 @@ async function main(): Promise<void> {
 
   console.log("Section 8: Wrapper wiring (K.4 status)");
   checkWrapperWiring();
+
+  console.log("Section 9: K.4 wrapper deployed on canary VM (SSH probe)");
+  await checkWrapperDeployedOnCanary();
 
   console.log("\n──────── results ────────");
   for (const r of results) {

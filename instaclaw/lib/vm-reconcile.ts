@@ -3246,9 +3246,22 @@ async function stepEdgeOSApiKey(
  * discriminating field per transport (.command for stdio, .transport
  * for streamable-http) — both writes are no-ops when already correct.
  */
+// K.4 wrapper deploy path on every VM. Pinned constant so the reconciler,
+// the wrapper config builder, and any future audit script agree on the
+// absolute location. The wrapper itself is deployed via stepFiles from
+// the manifest's TOOLROUTER_WRAPPER_MJS template entry — see
+// lib/vm-manifest.ts:files[]. configureOpenClaw's stepFiles drives the
+// initial provisioning; the file-drift cron + reconciler stepFiles
+// drive updates on existing VMs.
+const TOOLROUTER_WRAPPER_PATH = "/home/openclaw/.openclaw/scripts/toolrouter-wrapper.mjs";
+
 async function stepToolRouter(
   ssh: SSHConnection,
-  vm: VMRecord & { name?: string | null; assigned_to?: string | null },
+  vm: VMRecord & {
+    name?: string | null;
+    assigned_to?: string | null;
+    gateway_token?: string | null;
+  },
   result: ReconcileResult,
   dryRun: boolean,
   strict: boolean,
@@ -3308,12 +3321,49 @@ async function stepToolRouter(
   const transport: ToolRouterTransport =
     process.env.TOOLROUTER_TRANSPORT === "streamable-http" ? "streamable-http" : "stdio";
 
+  // ── Gate 5: K.4 wrapper readiness (stdio only) ──
+  // The wrapper config points OpenClaw at our wrapper script. Before
+  // writing that config, confirm two preconditions:
+  //   a) vm.gateway_token is set (the wrapper authenticates to InstaClaw
+  //      with it)
+  //   b) the wrapper .mjs is on disk (stepFiles deploys it — runs in
+  //      the same reconcileVM cycle, but on first-ever-reconcile we
+  //      can't assume ordering)
+  // If either is missing, defer to the next cycle. The fleet converges
+  // within ~3 reconciler ticks of any new VM coming online.
+  let wrapperConfig: { wrapperPath: string; gatewayToken: string; instaclawApiUrl?: string } | null = null;
+  if (transport === "stdio") {
+    if (!vm.gateway_token) {
+      // Reconcile-fleet SELECT includes gateway_token; should never be
+      // null on an assigned + healthy VM. Log loudly if it is.
+      result.warnings.push("toolrouter: vm.gateway_token missing (wrapper requires it)");
+      return;
+    }
+    const wrapperProbe = await ssh.execCommand(
+      `test -f "${TOOLROUTER_WRAPPER_PATH}" && echo ok || echo missing`,
+    );
+    if (!wrapperProbe.stdout.includes("ok")) {
+      // Wrapper not yet deployed. stepFiles will write it on this or
+      // the next reconcile cycle. Defer cleanly.
+      result.warnings.push("toolrouter: wrapper .mjs not yet deployed, deferring MCP wire");
+      return;
+    }
+    wrapperConfig = {
+      wrapperPath: TOOLROUTER_WRAPPER_PATH,
+      gatewayToken: vm.gateway_token,
+      instaclawApiUrl: process.env.INSTACLAW_API_URL || "https://instaclaw.io",
+    };
+  }
+
   // ── Probe disk for current MCP shape ──
-  // For stdio, the discriminating field is .command (= "toolrouter").
-  // For streamable-http, it's .transport (= "streamable-http").
-  // Mirrors stepIndexProvision lines ~2522-2538.
+  // K.4 transition: stdio's discriminating field is now .command === "node"
+  // (the wrapper) instead of "toolrouter" (the raw v1 shape). VMs at the v1
+  // shape will fail the probe → reconciler writes the new config → natural
+  // migration on the next reconcile tick.
+  // For streamable-http: discriminator is .transport === "streamable-http"
+  // (unchanged — the wrapper makes no sense for HTTP transport).
   const discriminator = transport === "stdio" ? ".command" : ".transport";
-  const expectedDiscriminatorValue = transport === "stdio" ? "toolrouter" : "streamable-http";
+  const expectedDiscriminatorValue = transport === "stdio" ? "node" : "streamable-http";
   let diskOk = false;
   try {
     const probe = await ssh.execCommand(
@@ -3342,7 +3392,7 @@ async function stepToolRouter(
   // Tempfile + stdin pattern mirrors stepIndexProvision (avoid argv-quoting
   // issues with the JSON body). Tempfile path uses vm.id to avoid the
   // Date.now() race seen in the 2026-05-01 strip-thinking incident.
-  const mcpJson = JSON.stringify(buildToolRouterMcpConfig(apiKey, transport, apiUrl));
+  const mcpJson = JSON.stringify(buildToolRouterMcpConfig(apiKey, transport, apiUrl, wrapperConfig));
   const tmpPath = `/tmp/toolrouter-mcp-${vm.id}.json`;
 
   const upload = await ssh.execCommand(`cat > ${tmpPath} && chmod 600 ${tmpPath}`, {
