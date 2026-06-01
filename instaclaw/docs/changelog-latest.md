@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-01
 
-Window: `715eb02d1065fd1e490f2e92279fe911e6be7a2b` → `HEAD` (HEAD = `6c99cf65`)
+Window: `6c99cf65cba9c8520cd7103556241dbdecf943fc` → `HEAD` (HEAD = `72b32540`)
 Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 6c99cf65cba9c8520cd7103556241dbdecf943fc -->
+<!-- LAST_GENERATED_SHA: 72b325404b3a183e0467eeeea5e5cb22c1548649 -->
 
 ## Summary
 
@@ -22,9 +22,9 @@ _None in this window._
 
 ## What changed under the hood
 
-- `e6d78bec` 2026-06-01 — fix(toolrouter): API normalize uninitialized balance + verifier dead-code detection [2 files] _(ai-assisted)_
-- `6c99cf65` 2026-06-01 — Merge feat/toolrouter-audit-fixes: API normalization + verifier dead-code detection [0 files] _(ai-assisted; merge)_
-- `2be458c1` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `122d143d` 2026-06-01 — feat(floor): proxy `complete` event — Larry stops working when the agent does [3 files] _(ai-assisted)_
+- `72b32540` 2026-06-01 — Merge: proxy `complete` event (Larry stops working when the agent does) [0 files] _(ai-assisted; merge)_
+- `3bfa65cd` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -34,8 +34,8 @@ _(none)_
 
 ### Infrastructure (2)
 
-- `e6d78bec` 2026-06-01 — fix(toolrouter): API normalize uninitialized balance + verifier dead-code detection [2 files] _(ai-assisted)_
-- `6c99cf65` 2026-06-01 — Merge feat/toolrouter-audit-fixes: API normalization + verifier dead-code detection [0 files] _(ai-assisted; merge)_
+- `122d143d` 2026-06-01 — feat(floor): proxy `complete` event — Larry stops working when the agent does [3 files] _(ai-assisted)_
+- `72b32540` 2026-06-01 — Merge: proxy `complete` event (Larry stops working when the agent does) [0 files] _(ai-assisted; merge)_
 
 ### Feature (user-facing) (0)
 
@@ -47,17 +47,17 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `2be458c1` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `3bfa65cd` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `e6d78bec` 2026-06-01 — fix(toolrouter): API normalize uninitialized balance + verifier dead-code detection
-- `6c99cf65` 2026-06-01 — Merge feat/toolrouter-audit-fixes: API normalization + verifier dead-code detection
+- `122d143d` 2026-06-01 — feat(floor): proxy `complete` event — Larry stops working when the agent does
+- `72b32540` 2026-06-01 — Merge: proxy `complete` event (Larry stops working when the agent does)
 
 ## Appendix — every commit (chronological)
 
-- `e6d78bec` 2026-06-01 — fix(toolrouter): API normalize uninitialized balance + verifier dead-code detection [2 files] _(ai-assisted)_
-- `2be458c1` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
-- `6c99cf65` 2026-06-01 — Merge feat/toolrouter-audit-fixes: API normalization + verifier dead-code detection [0 files] _(ai-assisted; merge)_
+- `3bfa65cd` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `122d143d` 2026-06-01 — feat(floor): proxy `complete` event — Larry stops working when the agent does [3 files] _(ai-assisted)_
+- `72b32540` 2026-06-01 — Merge: proxy `complete` event (Larry stops working when the agent does) [0 files] _(ai-assisted; merge)_
