@@ -145,6 +145,10 @@ export const config = {
     "/env-vars/:path*",
     "/ambassador/:path*",
     "/live/:path*",
+    // The authed owner view + any future sub-routes (edge-auth parity with the
+    // sibling pages above). NOTE: when the PUBLIC share view at /floor/[handle]
+    // ships, exclude it from `protectedPages` so it stays reachable logged-out.
+    "/floor/:path*",
     "/api/((?!auth|_next).*)",
   ],
 };

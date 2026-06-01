@@ -23,6 +23,7 @@ import {
   Zap,
   Mail,
   MapPin,
+  Waves,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { motion } from "motion/react";
@@ -35,6 +36,11 @@ const primaryNav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tourKey: "nav-dashboard" },
   { href: "/tasks", label: "Command Center", icon: MessageSquare, tourKey: "nav-command-center" },
   { href: "/heartbeat", label: "Heartbeat", icon: Heart, tourKey: "nav-heartbeat" },
+  // Manage (Command Center) → monitor (Heartbeat) → WATCH (The Floor): the
+  // agent-interaction cluster, in that logical order. The Floor is the launch
+  // feature, prominent in primaryNav. Waves nods to Larry's tidepool + the
+  // "sea floor" double meaning of the name.
+  { href: "/floor", label: "The Floor", icon: Waves, tourKey: "nav-floor" },
   { href: "/earn", label: "Earn", icon: TrendingUp, tourKey: "nav-earn" },
   { href: "/skills", label: "Skills", icon: Puzzle, tourKey: "nav-skills" },
 ];
