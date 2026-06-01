@@ -131,12 +131,22 @@ export async function GET(req: NextRequest) {
         });
 
         if (outcome.status === "verified") {
-          // Replay defense: this on-chain tx must not already be verified on a
-          // different row. Oldest-first ⇒ the legitimate first claimant wins.
+          // Replay defense, scoped by DIRECTION. A single on-chain USDC Transfer
+          // has exactly one (from,to,value), so a given tx_hash backs at most ONE
+          // legit earn (the recipient) and ONE legit spend (the sender). A second
+          // VERIFIED row of the SAME direction on the same tx_hash is a genuine
+          // replay (double-counting one transfer) → dispute. We must NOT key on
+          // tx_hash alone: an agent-to-agent sale legitimately produces TWO rows
+          // sharing one tx_hash (seller earn + buyer spend), and both must verify.
+          // Oldest-first ⇒ the legitimate first claimant of each direction wins.
+          // (Boundary: a batched multi-recipient tx could yield two legit earns on
+          // one hash; x402 `exact` settles one transfer per tx, so that's out of
+          // scope for Phase 1A. If batched settlement lands, key on log_index too.)
           const { data: dup } = await supabase
             .from("frontier_transactions")
             .select("id")
             .eq("tx_hash", row.tx_hash)
+            .eq("direction", row.direction)
             .not("verified_on_chain_at", "is", null)
             .neq("id", row.id)
             .limit(1)
@@ -144,7 +154,7 @@ export async function GET(req: NextRequest) {
           if (dup) {
             await markDisputed(supabase, row.id);
             summary.rejected++;
-            rejections.push(`${row.id} tx ${row.tx_hash.slice(0, 12)}… REPLAY of already-verified tx`);
+            rejections.push(`${row.id} tx ${row.tx_hash.slice(0, 12)}… REPLAY of already-verified ${row.direction} on this tx`);
             logger.warn("[frontier-verify] tx_hash replay", { txId: row.id, txHash: row.tx_hash, dupId: dup.id });
             continue;
           }
