@@ -22,6 +22,7 @@ import * as THREE from "three";
 import { useFloorStore } from "@/lib/floor/store";
 import { Larry } from "./larry";
 import { OfficeRoom } from "./office-room";
+import { CausticFloor } from "./caustic-floor";
 
 /**
  * Kicks a single render frame whenever the director changes. This is the
@@ -178,6 +179,7 @@ export function FloorScene() {
 
       {/* ── World ── */}
       <OfficeRoom />
+      <CausticFloor />
       <Larry />
 
       {/* ── Camera controls — a gentle, constrained orbit. Users can find a
