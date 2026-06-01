@@ -200,6 +200,10 @@
     {
       "path": "/api/cron/frontier-verify-settlements",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/frontier-burn-executor",
+      "schedule": "0 2 * * *"
     }
   ]
 }
