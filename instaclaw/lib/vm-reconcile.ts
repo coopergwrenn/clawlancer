@@ -91,6 +91,11 @@ import {
   onVmSkillPath,
   currentSourceMode as currentBaseSkillsSourceMode,
 } from "./base-skills-registry";
+import {
+  buildToolRouterMcpConfig,
+  getToolRouterEnv,
+  type ToolRouterTransport,
+} from "./toolrouter-client";
 import * as fs from "fs";
 import * as path from "path";
 

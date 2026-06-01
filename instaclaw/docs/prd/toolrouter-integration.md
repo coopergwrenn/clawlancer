@@ -1070,9 +1070,9 @@ exhausts their allocation.
 
 | Tier | Included / month | §15.3 modeled monthly | Headroom multiple | Equivalent if used entirely as... |
 |---|---|---|---|---|
-| Starter ($29) | **60 premium searches** | ~30 Exa + minimal other | 2x | 60 Exa, OR 12 Browserbase, OR 4 Manus deep, OR 20 Parallel search |
-| Pro ($99) | **400 premium searches** | ~200 Exa + 2 Manus + 2 Browserbase | 2x | 400 Exa, OR 80 Browserbase, OR 26 Manus deep, OR 130 AgentMail send |
-| Power ($299) | **1500 premium searches** | ~800 Exa + 8 Manus + 10 Browserbase | 2x | 1500 Exa, OR 500 Browserbase, OR 100 Manus deep, OR 6.6 high-cost AgentMail inbox creations |
+| Starter ($49.99) | **60 premium searches** | ~30 Exa + minimal other | 2x | 60 Exa, OR 12 Browserbase, OR 4 Manus deep, OR 20 Parallel search |
+| Pro ($129.99) | **400 premium searches** | ~200 Exa + 2 Manus + 2 Browserbase | 2x | 400 Exa, OR 80 Browserbase, OR 26 Manus deep, OR 130 AgentMail send |
+| Power ($349.99) | **1500 premium searches** | ~800 Exa + 8 Manus + 10 Browserbase | 2x | 1500 Exa, OR 500 Browserbase, OR 100 Manus deep, OR 6.6 high-cost AgentMail inbox creations |
 
 **The "premium searches" unit** is a deliberate UX simplification.
 Internally, calls are weighted (Exa = 1, Manus deep = 15, Browserbase
@@ -1363,7 +1363,7 @@ read-the-room behavior. ALL strings live verbatim in the
 4. **Didn't address Cooper's anchoring question.** Cooper PM-2 asked
    "does 'less than a coffee' help or hurt for power users?" PM-4
    silently picked "$10" without justification. PM-5 documents the
-   research: for users paying $29-299/mo, friendly anchoring reads
+   research: for users paying $49.99-349.99/mo, friendly anchoring reads
    as condescending. Skip it. Just say "$10."
 5. **No "read the room" routing.** Research from conversational AI
    (LivePerson, Quidget): *"if user responses become short, negative,
@@ -1564,7 +1564,7 @@ This is one personality talking. Same agent that sends welcome-1.
 ##### Why "$10" not "less than a coffee"
 
 [Research-informed: anchoring works through reference shifts, not
-friendly comparisons. For our $29-299/mo subscriber base, $10 is
+friendly comparisons. For our $49.99-349.99/mo subscriber base, $10 is
 obviously trivial; framing it as "less than a coffee" reads as
 condescending. Power users especially hate being talked down to.
 Just say "$10" plainly. The user knows what $10 is.]
@@ -3759,9 +3759,9 @@ patterns from CLAUDE.md fleet history):
 
 | Tier | Users | Exa/user/mo | Manus/user/mo | Browserbase/user/mo | AgentMail/user/mo | Parallel/user/mo |
 |---|---|---|---|---|---|---|
-| Starter ($29) | 120 (80%) | 30 | 0.2 | 0.2 | 0.5 | 0.5 |
-| Pro ($99) | 22 (15%) | 200 | 2 | 2 | 5 | 5 |
-| Power ($299) | 8 (5%) | 800 | 8 | 10 | 20 | 25 |
+| Starter ($49.99) | 120 (80%) | 30 | 0.2 | 0.2 | 0.5 | 0.5 |
+| Pro ($129.99) | 22 (15%) | 200 | 2 | 2 | 5 | 5 |
+| Power ($349.99) | 8 (5%) | 800 | 8 | 10 | 20 | 25 |
 
 **Scenario A monthly fleet cost (AgentBook registered):**
 - Exa: ~free (assuming free trial covers high volume — Q3)
@@ -3780,7 +3780,7 @@ patterns from CLAUDE.md fleet history):
 - **Total: ~$271/mo. Per-user: $1.81.** Still <10% of hosting margin.
 
 **Key insight**: even WORST-case Scenario B with 800 Exa searches/mo per
-Power user is **~$0.50/user/mo on a $299 plan**. Margin is fine
+Power user is **~$0.50/user/mo on a $349.99 plan**. Margin is fine
 either way. The AgentBook registration just makes free-money even more
 free.
 
@@ -3788,15 +3788,16 @@ free.
 
 At realistic v1 fleet usage:
 - **Scenario A (AgentBook registered)**: ~$0.13/user/mo. Hosting cost
-  ($29/user/mo) dwarfs the tool COGS by 200x. Trivially absorbable.
+  ($49.99/user/mo) dwarfs the tool COGS by 300x. Trivially absorbable.
 - **Scenario B (no registration)**: ~$1.81/user/mo. Still 16x smaller
   than the hosting cost. Trivially absorbable.
 
 **Worst-plausible scenario**: a Starter user with an agent that calls
 Exa search 100x/day (= 3000/mo) AND no AgentBook registration. Their
-ToolRouter cost: 3000 × $0.017 = $51/mo. Their plan: $29/mo. Negative
-margin. **BUT** this requires a user dramatically out of the modeled
-distribution. The defensive mitigation is per-user daily caps (§15.5).
+ToolRouter cost: 3000 × $0.017 = $51/mo. Their plan: $49.99/mo. Roughly
+break-even (the 2026-05-29 pricing sweep changed this from negative
+margin to break-even at the worst-plausible Starter outlier). The
+defensive mitigation is per-user daily caps (§15.5) regardless.
 
 ### 15.5 Mandatory v1 defense — per-user daily spend cap
 
@@ -3822,22 +3823,26 @@ Implementation:
 Caps are 5-10x the modeled usage so they don't bind on normal users.
 They protect against runaway / abuse.
 
-### 15.6 The Exa free-trial cap — the single critical unknown
+### 15.6 The Exa free-trial cap — RESOLVED (2026-05-27 from Andy)
 
-**This is the only number that materially shifts the cost model.** From
-the source: `exa.search`'s `agentkit_value_type: "free_trial"`, but the
-per-agent monthly cap (if any) is NOT in the endpoint definition. For
-Manus the cap is documented (2/month/agent); for Exa it's silent.
+**RESOLVED 2026-05-27**: Andy confirmed Exa free trial is
+**100/month/account, no rate limits**. This puts us firmly in
+Scenario A (generous): ~$20/mo fleet COGS, AgentBook registration
+is the highest-leverage 5 minutes of Cooper's pre-ship work.
 
-If Exa free trial is generous (say, unlimited for AgentKit-verified):
-Scenario A total = ~$20/mo fleet. AgentBook registration is a no-op-
-expensive-but-still-free win.
+For reference (kept for forensic trail):
+- Modeled fleet Exa usage was ~3K-5K calls/month (across 150 VMs).
+  With 100/month/account on a single platform key, we exhaust the
+  free tier mid-month at the Power tier under heavy load.
+- BUT the AgentKit-to-x402 fallback kicks in at $0.007/call. Even
+  if every Exa call from call 101 onward falls to x402, fleet COGS
+  for Exa specifically caps at ~$20-30/mo against modeled usage.
+- v1.5 (per-user keys) multiplies the free allotment by N-users
+  → ~15,000/month free across the fleet → Exa effectively free
+  for the foreseeable future.
 
-If Exa free trial is capped at 2/month (matching Manus):
-Scenario A reverts toward Scenario B for high-volume users. Still
-absorbable but the AgentKit moat is meaningfully smaller.
-
-**Q3 (§6) is elevated to P0 specifically to resolve this.**
+The §15.6a contingency below was for the "Exa is 2/mo like Manus"
+worst case — now moot. Kept for forensic reference.
 
 ### 15.6a Q3 contingency — if Exa free trial is tightly capped
 
@@ -3958,9 +3963,9 @@ Per the Base MCP PRD §10's positioning skeleton:
 For this to hold under ToolRouter usage, the agent's earnings (via
 Base MCP v2.5 producer endpoints or ToolRouter v2 producer listings) must
 exceed the agent's ToolRouter consumption. The math:
-- Agent costs $29-299/mo in InstaClaw hosting + ToolRouter consumption
+- Agent costs $49.99-349.99/mo in InstaClaw hosting + ToolRouter consumption
 - Agent earns $X/mo from other agents via x402 / producer surfaces
-- Profit center if X > $29-299
+- Profit center if X > $49.99-349.99
 
 **v1 doesn't get us there** (we're pure consumer). **v2 + Base MCP v2.5
 do** (producer surface). ToolRouter v1 is the consumer-side scaffolding
