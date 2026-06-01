@@ -21,6 +21,9 @@
  *   5. Partner-secret HTTP probe (delegate to verifyAllPartnerSecrets)
  *   6. Migration file location (Rule 56)
  *   7. TS/SQL tier-grant sync (TOOLROUTER_TIER_GRANTS vs migration CASE block)
+ *   8. Wrapper wiring — dead-code detection for callToolRouter callers
+ *      (Task K.4 status). INFO at v1 ship; OK once production code calls
+ *      callToolRouter or instaclaw_consume_toolrouter_searches.
  *
  * Exit code:
  *   0 — all hard gates clear (soft signals like unreachable / not-yet-applied logged but pass)
@@ -574,6 +577,95 @@ function checkTierGrantSync(): void {
 }
 
 // ────────────────────────────────────────────────────────────────────
+// Section 8 — Wrapper wiring (dead-code detection, Task K.4 status)
+// ────────────────────────────────────────────────────────────────────
+//
+// The wrapper function callToolRouter() at lib/toolrouter-client.ts:346
+// implements the call-first-decrement-after consumption logic. It's
+// well-formed but optional at v1 (PRD Task K.4 — "lands in K.4, not
+// exported at v1"). When v1 ships without it:
+//   - User tool calls route via MCP subprocess → toolrouter.world directly
+//   - Allocation columns (toolrouter_balance / toolrouter_topup_balance)
+//     never decrement
+//   - 80%/100% upsell never fires
+//   - Top-up purchases credit a column that no consumer reads
+//
+// This section greps the codebase for production callers and reports
+// the wiring state so the operator knows whether allocation enforcement
+// is live or decorative. INFO at v1 ship state; OK once K.4 lands.
+
+function checkWrapperWiring(): void {
+  const candidates = [
+    resolve(REPO_INSTACLAW, "app/api"),
+    resolve(REPO_INSTACLAW, "lib"),
+  ];
+
+  // Find all .ts/.tsx files that import or reference callToolRouter +
+  // instaclaw_consume_toolrouter_searches. Exclude the wrapper's own
+  // file and verifier scripts.
+  const excludePaths = [
+    "lib/toolrouter-client.ts", // wrapper's own definition + types
+  ];
+
+  function listTs(dir: string, acc: string[] = []): string[] {
+    let entries: string[];
+    try {
+      entries = require("fs").readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return acc;
+    }
+    for (const ent of entries) {
+      const full = `${dir}/${ent.name}`;
+      if (ent.isDirectory()) listTs(full, acc);
+      else if (ent.isFile() && (ent.name.endsWith(".ts") || ent.name.endsWith(".tsx"))) {
+        acc.push(full);
+      }
+    }
+    return acc;
+  }
+
+  const files: string[] = [];
+  for (const dir of candidates) files.push(...listTs(dir));
+
+  const callerHits: string[] = [];
+  const rpcHits: string[] = [];
+  for (const path of files) {
+    const rel = path.replace(REPO_INSTACLAW + "/", "");
+    if (excludePaths.includes(rel)) continue;
+    let content: string;
+    try {
+      content = readFileSync(path, "utf-8");
+    } catch {
+      continue;
+    }
+    // The wrapper's name OR the canonical RPC call. Either signals
+    // allocation enforcement is in the production code path.
+    if (/\bcallToolRouter\s*\(/.test(content)) {
+      callerHits.push(rel);
+    }
+    if (/\.rpc\(\s*["']instaclaw_consume_toolrouter_searches["']/.test(content)) {
+      rpcHits.push(rel);
+    }
+  }
+
+  if (callerHits.length === 0 && rpcHits.length === 0) {
+    record({
+      name: "8.1 wrapper wiring (callToolRouter callers)",
+      severity: "INFO",
+      detail:
+        "no production callers — Task K.4 deferred at v1. Allocation columns track top-up purchases but never decrement on tool calls. dashboard card is decorative until K.4 lands.",
+    });
+  } else {
+    const all = [...new Set([...callerHits, ...rpcHits])].sort();
+    record({
+      name: "8.1 wrapper wiring (callToolRouter callers)",
+      severity: "OK",
+      detail: `${all.length} caller(s): ${all.slice(0, 3).join(", ")}${all.length > 3 ? "…" : ""}`,
+    });
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
 // Main
 // ────────────────────────────────────────────────────────────────────
 
@@ -602,6 +694,9 @@ async function main(): Promise<void> {
 
   console.log("Section 7: TS/SQL tier-grant sync");
   checkTierGrantSync();
+
+  console.log("Section 8: Wrapper wiring (K.4 status)");
+  checkWrapperWiring();
 
   console.log("\n──────── results ────────");
   for (const r of results) {
