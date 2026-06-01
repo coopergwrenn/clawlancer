@@ -1,20 +1,20 @@
-# Changelog — generated 2026-05-30
+# Changelog — generated 2026-06-01
 
-Window: `eb002895f34e1480e8314ca577de7afe4cb325aa` → `HEAD` (HEAD = `d9f7409f`)
-Total commits: 4
+Window: `d9f7409fa80ac67f8f2182ce2fdeba9435af0be9` → `HEAD` (HEAD = `b97c29dc`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: d9f7409fa80ac67f8f2182ce2fdeba9435af0be9 -->
+<!-- LAST_GENERATED_SHA: b97c29dc5898835f2ad5661bbbbad7cd0de3121d -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 2
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
-- AI-assisted commits (co-authored): 3
-- Merge commits: 1
+- **Docs / PRD only:** 1
+- AI-assisted commits (co-authored): 1
+- Merge commits: 0
 
 ## What changed for users
 
@@ -22,10 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `4c4954e9` 2026-05-30 — feat(the-floor): real-time agent activity → 3D office (MVP) + H1/L3/M4 fixes [22 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
-- `d9f7409f` 2026-05-30 — Merge feat/the-floor: The Floor MVP — real-time agent activity → 3D office [0 files] _(ai-assisted; merge)_
-- `1950f999` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
-- `7a626ebe` 2026-05-30 — docs(the-floor): complete build notes — Phase 2 status + self-audit + follow-ups [1 files] _(ai-assisted)_
+- `7744a1fb` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `b97c29dc` 2026-06-01 — feat(the-floor): proxy-coverage message_in — perk-up works for ALL users [7 files] _(multi: [infrastructure, docs]; ai-assisted)_
 
 ## By category
 
@@ -33,10 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (2)
+### Infrastructure (1)
 
-- `4c4954e9` 2026-05-30 — feat(the-floor): real-time agent activity → 3D office (MVP) + H1/L3/M4 fixes [22 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
-- `d9f7409f` 2026-05-30 — Merge feat/the-floor: The Floor MVP — real-time agent activity → 3D office [0 files] _(ai-assisted; merge)_
+- `b97c29dc` 2026-06-01 — feat(the-floor): proxy-coverage message_in — perk-up works for ALL users [7 files] _(multi: [infrastructure, docs]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -46,28 +43,23 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `1950f999` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
-- `7a626ebe` 2026-05-30 — docs(the-floor): complete build notes — Phase 2 status + self-audit + follow-ups [1 files] _(ai-assisted)_
+- `7744a1fb` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `4c4954e9` 2026-05-30 — [infrastructure, feature, docs] — feat(the-floor): real-time agent activity → 3D office (MVP) + H1/L3/M4 fixes
+- `b97c29dc` 2026-06-01 — [infrastructure, docs] — feat(the-floor): proxy-coverage message_in — perk-up works for ALL users
 
-## AI-assisted commits (3)
+## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `4c4954e9` 2026-05-30 — feat(the-floor): real-time agent activity → 3D office (MVP) + H1/L3/M4 fixes
-- `7a626ebe` 2026-05-30 — docs(the-floor): complete build notes — Phase 2 status + self-audit + follow-ups
-- `d9f7409f` 2026-05-30 — Merge feat/the-floor: The Floor MVP — real-time agent activity → 3D office
+- `b97c29dc` 2026-06-01 — feat(the-floor): proxy-coverage message_in — perk-up works for ALL users
 
 ## Appendix — every commit (chronological)
 
-- `1950f999` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
-- `4c4954e9` 2026-05-30 — feat(the-floor): real-time agent activity → 3D office (MVP) + H1/L3/M4 fixes [22 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
-- `7a626ebe` 2026-05-30 — docs(the-floor): complete build notes — Phase 2 status + self-audit + follow-ups [1 files] _(ai-assisted)_
-- `d9f7409f` 2026-05-30 — Merge feat/the-floor: The Floor MVP — real-time agent activity → 3D office [0 files] _(ai-assisted; merge)_
+- `7744a1fb` 2026-05-30 — chore(changelog): auto-update [skip ci] [2 files]
+- `b97c29dc` 2026-06-01 — feat(the-floor): proxy-coverage message_in — perk-up works for ALL users [7 files] _(multi: [infrastructure, docs]; ai-assisted)_
