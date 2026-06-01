@@ -13,6 +13,7 @@
 import {
   evaluateSpend,
   effectiveBands,
+  clampOverrides,
   DEFAULT_BANDS_BY_TIER,
   type FrontierTier,
   type SpendContext,
@@ -125,6 +126,54 @@ expect("negative spentToday → deny", "starter", { ...ok(), amountUsd: 1, spent
     console.error(`FAIL: effectiveBands staker doubling — got jdtTx=${s.justDoItPerTx} minBal=${s.minWalletBalance}`);
   }
 })();
+
+// ── clampOverrides (tighten-only) ──
+(() => {
+  const base = DEFAULT_BANDS_BY_TIER.pro; // jdtTx5 jdtDay25 nvTx50 nvDay200 minBal10
+  const t = (label: string, cond: boolean) => { if (cond) passed++; else { failed++; console.error(`FAIL: ${label}`); } };
+
+  // tighten a ceiling down — allowed
+  t("override lowers neverPerTx", clampOverrides(base, { neverPerTx: 20 }).neverPerTx === 20);
+  // attempt to RAISE a ceiling — ignored (clamped to base)
+  t("override cannot raise neverPerTx", clampOverrides(base, { neverPerTx: 999 }).neverPerTx === 50);
+  // raise the wallet floor — allowed
+  t("override raises minWalletBalance", clampOverrides(base, { minWalletBalance: 40 }).minWalletBalance === 40);
+  // attempt to LOWER the floor — ignored
+  t("override cannot lower minWalletBalance", clampOverrides(base, { minWalletBalance: 1 }).minWalletBalance === 10);
+  // coherence: lowering neverPerTx below justDoItPerTx re-coerces jdt down
+  const c = clampOverrides(base, { neverPerTx: 3 });
+  t("ceiling below jdt re-coerces just_do_it ≤ never (per-tx)", c.justDoItPerTx === 3 && c.neverPerTx === 3);
+  const c2 = clampOverrides(base, { neverPerDay: 10 });
+  t("ceiling below jdt re-coerces just_do_it ≤ never (daily)", c2.justDoItPerDay === 10 && c2.neverPerDay === 10);
+  // invalid override values fall back to base (never less safe)
+  t("negative override ignored", clampOverrides(base, { neverPerTx: -5 }).neverPerTx === 50);
+  t("NaN override ignored", clampOverrides(base, { minWalletBalance: NaN }).minWalletBalance === 10);
+  // empty override = base unchanged
+  const e = clampOverrides(base, {});
+  t("empty override = base", e.neverPerTx === 50 && e.minWalletBalance === 10);
+})();
+
+// ── evaluateSpend honors overrides end-to-end ──
+// A pro user tightens neverPerTx to 20; a $30 spend (under tier's 50, over the
+// override's 20) must now deny.
+expect(
+  "override tightens: pro $30 with neverPerTx=20 → deny",
+  "pro",
+  { ...ok(), amountUsd: 30, overrides: { neverPerTx: 20 } },
+  "deny",
+  "exceeds_per_tx_ceiling",
+);
+// Same spend without the override is allowed (ask_first) — proves the override
+// is what flipped it.
+expect("no override: pro $30 → ask_first", "pro", { ...ok(), amountUsd: 30 }, "ask_first");
+// Raising the floor forces a drain-deny that wouldn't fire at the tier default.
+expect(
+  "override raises floor: pro $5 leaving $8 (floor 12) → deny",
+  "pro",
+  { ...ok(), amountUsd: 5, walletBalanceUsd: 13, overrides: { minWalletBalance: 12 } },
+  "deny",
+  "would_drain_wallet",
+);
 
 console.log(`\nfrontier-policy: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

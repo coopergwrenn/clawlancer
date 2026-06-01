@@ -53,6 +53,31 @@ export const DEFAULT_BANDS_BY_TIER: Record<FrontierTier, TierBands> = {
 /** Stakers get 2x ceilings (caps), floor unchanged. */
 const STAKER_CEILING_MULTIPLIER = 2;
 
+/** Per-VM autonomy overrides (dashboard-set). Any subset of the bands. */
+export type PolicyOverrides = Partial<Record<keyof TierBands, number>>;
+
+/**
+ * Apply user overrides to a band set, TIGHTEN-ONLY. The dashboard can make an
+ * agent more conservative than its paid bands, never more aggressive — ceilings
+ * can only go DOWN, the wallet floor can only go UP. Loosening beyond the tier
+ * (×staker) is gated behind tier/staking, not a free override. Invalid override
+ * values (negative / non-finite / absent) silently fall back to the base (the
+ * agent never ends up LESS safe because of a bad override).
+ */
+export function clampOverrides(base: TierBands, ov: PolicyOverrides): TierBands {
+  const at = (v: number | undefined, fallback: number): number =>
+    typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : fallback;
+  const neverPerTx = Math.min(base.neverPerTx, at(ov.neverPerTx, base.neverPerTx));
+  const neverPerDay = Math.min(base.neverPerDay, at(ov.neverPerDay, base.neverPerDay));
+  const minWalletBalance = Math.max(base.minWalletBalance, at(ov.minWalletBalance, base.minWalletBalance));
+  // Re-coerce coherence: clamping a hard ceiling below the just-do-it band would
+  // leave just_do_it > never (auto-approve above the deny line). just_do_it must
+  // never exceed the hard ceiling.
+  const justDoItPerTx = Math.min(base.justDoItPerTx, at(ov.justDoItPerTx, base.justDoItPerTx), neverPerTx);
+  const justDoItPerDay = Math.min(base.justDoItPerDay, at(ov.justDoItPerDay, base.justDoItPerDay), neverPerDay);
+  return { justDoItPerTx, justDoItPerDay, neverPerTx, neverPerDay, minWalletBalance };
+}
+
 export interface SpendContext {
   amountUsd: number;
   /** Sum of today's already-settled + pending spends, in USD. */
@@ -71,6 +96,8 @@ export interface SpendContext {
    * accepting funds / agent-to-agent commerce keeps it true.)
    */
   requireVerifiedCounterparty?: boolean;
+  /** Per-VM dashboard overrides (tighten-only; see clampOverrides). */
+  overrides?: PolicyOverrides | null;
 }
 
 export interface SpendEvaluation {
@@ -81,17 +108,27 @@ export interface SpendEvaluation {
   effectiveBands: TierBands;
 }
 
-/** Apply the staker 2x ceiling multiplier (floor untouched). */
-export function effectiveBands(tier: FrontierTier, isStaker: boolean): TierBands {
+/**
+ * Resolve the effective bands: tier defaults → staker 2x ceilings (floor
+ * untouched) → tighten-only user overrides. Order matters: staking loosens,
+ * overrides may only tighten what's left.
+ */
+export function effectiveBands(
+  tier: FrontierTier,
+  isStaker: boolean,
+  overrides?: PolicyOverrides | null,
+): TierBands {
   const base = DEFAULT_BANDS_BY_TIER[tier];
-  if (!isStaker) return base;
-  return {
-    justDoItPerTx: base.justDoItPerTx * STAKER_CEILING_MULTIPLIER,
-    justDoItPerDay: base.justDoItPerDay * STAKER_CEILING_MULTIPLIER,
-    neverPerTx: base.neverPerTx * STAKER_CEILING_MULTIPLIER,
-    neverPerDay: base.neverPerDay * STAKER_CEILING_MULTIPLIER,
-    minWalletBalance: base.minWalletBalance, // floor, not a ceiling — unchanged
-  };
+  const staked: TierBands = isStaker
+    ? {
+        justDoItPerTx: base.justDoItPerTx * STAKER_CEILING_MULTIPLIER,
+        justDoItPerDay: base.justDoItPerDay * STAKER_CEILING_MULTIPLIER,
+        neverPerTx: base.neverPerTx * STAKER_CEILING_MULTIPLIER,
+        neverPerDay: base.neverPerDay * STAKER_CEILING_MULTIPLIER,
+        minWalletBalance: base.minWalletBalance, // floor, not a ceiling — unchanged
+      }
+    : base;
+  return overrides ? clampOverrides(staked, overrides) : staked;
 }
 
 /**
@@ -109,7 +146,7 @@ export function effectiveBands(tier: FrontierTier, isStaker: boolean): TierBands
  *   8. otherwise                                        → ask_first
  */
 export function evaluateSpend(tier: FrontierTier, ctx: SpendContext): SpendEvaluation {
-  const bands = effectiveBands(tier, ctx.isStaker ?? false);
+  const bands = effectiveBands(tier, ctx.isStaker ?? false, ctx.overrides);
   const requireVerified = ctx.requireVerifiedCounterparty ?? true;
   const amount = ctx.amountUsd;
   const spentToday = ctx.spentTodayUsd;
