@@ -196,6 +196,22 @@
     {
       "path": "/api/cron/reconcile-stuck-vms",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/frontier-verify-settlements",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/frontier-burn-executor",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/frontier-lifetime-rollup",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/frontier-refund-reconcile",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
