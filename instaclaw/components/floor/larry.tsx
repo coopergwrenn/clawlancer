@@ -48,6 +48,8 @@ const EYE_IRIS = "#73401f"; // warm amber-brown — reads alive, not a dead dot
 const EYE_PUPIL = "#1b0f07";
 const CATCH_LIGHT = "#fffaf0"; // emissive highlight — the spark of life
 const MOUTH = "#3a2316";
+const CLAW_TONE = "#d2742e"; // pincer jaws — lighter than the leg tone so the
+//                              claw reads as a claw, not a dark hole.
 
 // ── Stage positions (world units; ~1 unit ≈ one floor tile) ─────────────────
 const HOME_POS = new THREE.Vector3(1.15, 0, 0.85); // resting spot, front-right
@@ -113,21 +115,22 @@ function CrabEye({ side }: { side: number }) {
         <cylinderGeometry args={[0.027, 0.032, 0.08, 12]} />
         <meshStandardMaterial color={CRAB_ORANGE} roughness={0.5} />
       </mesh>
-      {/* eyeball — oversized + forward (the single biggest appeal lever) */}
+      {/* eyeball — oversized + forward (the single biggest appeal lever). Low
+          roughness = a glossy, *wet* eye that catches a crisp specular. */}
       <mesh castShadow position={[0, 0.1, 0]}>
         <sphereGeometry args={[0.085, 32, 24]} />
-        <meshStandardMaterial color={EYE_WHITE} roughness={0.16} metalness={0} />
+        <meshStandardMaterial color={EYE_WHITE} roughness={0.11} metalness={0} />
       </mesh>
       {/* iris — warm amber, gazing straight forward + a touch down (endearing,
           deliberately NOT converged — straight pupils read friendliest head-on). */}
       <mesh position={[0, 0.09, 0.07]}>
         <sphereGeometry args={[0.046, 24, 18]} />
-        <meshStandardMaterial color={EYE_IRIS} roughness={0.25} />
+        <meshStandardMaterial color={EYE_IRIS} roughness={0.32} metalness={0} />
       </mesh>
-      {/* pupil */}
+      {/* pupil — glossy black so it picks up a tiny secondary glint */}
       <mesh position={[0, 0.088, 0.083]}>
         <sphereGeometry args={[0.026, 18, 14]} />
-        <meshStandardMaterial color={EYE_PUPIL} roughness={0.2} />
+        <meshStandardMaterial color={EYE_PUPIL} roughness={0.13} metalness={0} />
       </mesh>
       {/* catch-light — the spark of life. Emissive + un-tonemapped so it stays a
           crisp white glint and the bloom pass blooms it. */}
@@ -162,12 +165,12 @@ function Cheliped({ side }: { side: number }) {
         rotation={[0.2, 0, side * 0.85]}
       >
         <capsuleGeometry args={[0.042, 0.13, 8, 16]} />
-        <meshStandardMaterial color={CRAB_ORANGE} roughness={0.46} />
+        <ShellMaterial color={CRAB_ORANGE} roughness={0.4} emissiveIntensity={0.1} />
       </mesh>
       {/* palm / knuckle — a chunky rounded hand */}
       <mesh castShadow position={[0, 0, 0.05]} scale={[1, 0.92, 1.05]}>
         <sphereGeometry args={[0.11, 28, 22]} />
-        <meshStandardMaterial color={CRAB_ORANGE} roughness={0.42} />
+        <ShellMaterial color={CRAB_ORANGE} roughness={0.36} emissiveIntensity={0.12} />
       </mesh>
       {/* lower (fixed) jaw — a tapered pincer pointing forward */}
       <mesh
@@ -176,7 +179,13 @@ function Cheliped({ side }: { side: number }) {
         rotation={[-Math.PI / 2 + 0.16, 0, 0]}
       >
         <coneGeometry args={[0.062, 0.21, 16]} />
-        <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.46} />
+        <meshStandardMaterial
+          color={CLAW_TONE}
+          roughness={0.4}
+          metalness={0}
+          emissive={CLAW_TONE}
+          emissiveIntensity={0.08}
+        />
       </mesh>
       {/* upper (movable) jaw — raised to leave a clear pincer gap */}
       <mesh
@@ -185,7 +194,13 @@ function Cheliped({ side }: { side: number }) {
         rotation={[-Math.PI / 2 - 0.36, 0, 0]}
       >
         <coneGeometry args={[0.052, 0.18, 16]} />
-        <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.46} />
+        <meshStandardMaterial
+          color={CLAW_TONE}
+          roughness={0.4}
+          metalness={0}
+          emissive={CLAW_TONE}
+          emissiveIntensity={0.08}
+        />
       </mesh>
     </group>
   );
@@ -204,13 +219,13 @@ function CrabLeg({ x, z, splay }: { x: number; z: number; splay: number }) {
       <group rotation={[0, 0, sign * 0.95]}>
         <mesh castShadow position={[0, -0.1, 0]}>
           <cylinderGeometry args={[0.024, 0.018, 0.2, 8]} />
-          <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.5} />
+          <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.45} metalness={0} emissive={CRAB_ORANGE_DARK} emissiveIntensity={0.06} />
         </mesh>
         {/* lower segment — bends back in and down to a pointed foot */}
         <group position={[0, -0.2, 0]} rotation={[0, 0, sign * -1.3]}>
           <mesh castShadow position={[0, -0.09, 0]}>
             <cylinderGeometry args={[0.016, 0.004, 0.18, 8]} />
-            <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.5} />
+            <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.45} metalness={0} emissive={CRAB_ORANGE_DARK} emissiveIntensity={0.06} />
           </mesh>
         </group>
       </group>
@@ -227,6 +242,62 @@ const LEG_LAYOUT = [
   { x: 0.34, z: 0.0, splay: 0.0 },
   { x: 0.3, z: -0.17, splay: 0.55 },
 ];
+
+// ── Stylized-PBR shell material ──────────────────────────────────────────────
+// A MeshStandardMaterial patched with a Fresnel rim term that ADDS to the
+// emissive channel: grazing-angle edges glow warm, separating Larry from the
+// background and giving the bloom pass (Step 6) a living edge to catch — the
+// "rim/bloom" half of the stylized-PBR direction.
+//
+// Why a constant module-level `onBeforeCompile`: three's default
+// `customProgramCacheKey` is `onBeforeCompile.toString()`, so a single stable
+// function lets every shell part share ONE compiled program (cheap) while each
+// material keeps its own color/roughness uniforms. `vViewPosition` + `normal`
+// are both defined by the time `<emissivemap_fragment>` runs.
+const SHELL_RIM_COLOR = new THREE.Color("#ffc78f");
+
+function shellRimOnBeforeCompile(shader: THREE.WebGLProgramParametersWithUniforms) {
+  shader.uniforms.uRimColor = { value: SHELL_RIM_COLOR };
+  shader.uniforms.uRimIntensity = { value: 0.5 };
+  shader.uniforms.uRimPower = { value: 2.6 };
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      "#include <common>",
+      `#include <common>
+       uniform vec3 uRimColor;
+       uniform float uRimIntensity;
+       uniform float uRimPower;`,
+    )
+    .replace(
+      "#include <emissivemap_fragment>",
+      `#include <emissivemap_fragment>
+       float _rim = pow(1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0), uRimPower);
+       totalEmissiveRadiance += uRimColor * _rim * uRimIntensity;`,
+    );
+}
+
+/** The warm, soft, faintly self-lit shell surface. Reused on every orange body
+ *  part (carapace, underbelly, arms, palms) so Larry reads as one creature. */
+function ShellMaterial({
+  color,
+  roughness = 0.38,
+  emissiveIntensity = 0.12,
+}: {
+  color: string;
+  roughness?: number;
+  emissiveIntensity?: number;
+}) {
+  return (
+    <meshStandardMaterial
+      color={color}
+      roughness={roughness}
+      metalness={0}
+      emissive={color}
+      emissiveIntensity={emissiveIntensity}
+      onBeforeCompile={shellRimOnBeforeCompile}
+    />
+  );
+}
 
 export function Larry() {
   const invalidate = useThree((s) => s.invalidate);
@@ -357,19 +428,25 @@ export function Larry() {
         {/* ── Carapace — a wide, low dome (crab shell, not a ball) ── */}
         <mesh castShadow receiveShadow position={[0, 0.02, 0]} scale={[1.35, 0.6, 1.08]}>
           <sphereGeometry args={[0.34, 64, 48]} />
-          <meshStandardMaterial color={CRAB_ORANGE} roughness={0.45} metalness={0} />
+          <ShellMaterial color={CRAB_ORANGE} roughness={0.36} emissiveIntensity={0.13} />
         </mesh>
 
         {/* Shell rim — the carapace lip that reads "crab shell" at a glance */}
         <mesh position={[0, 0.0, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[1.33, 1.06, 0.52]}>
           <torusGeometry args={[0.34, 0.03, 16, 80]} />
-          <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.5} metalness={0} />
+          <meshStandardMaterial
+            color={CRAB_ORANGE_DARK}
+            roughness={0.42}
+            metalness={0}
+            emissive={CRAB_ORANGE_DARK}
+            emissiveIntensity={0.08}
+          />
         </mesh>
 
         {/* Underbelly — a flatter, sun-warmed plate beneath the dome */}
         <mesh position={[0, -0.06, 0.01]} scale={[1.26, 0.34, 1.0]}>
           <sphereGeometry args={[0.34, 48, 32]} />
-          <meshStandardMaterial color={CRAB_UNDERBELLY} roughness={0.6} metalness={0} />
+          <ShellMaterial color={CRAB_UNDERBELLY} roughness={0.52} emissiveIntensity={0.1} />
         </mesh>
 
         {/* Mouth — a small dark mandible at the front-bottom (subtle character) */}
