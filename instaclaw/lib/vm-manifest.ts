@@ -24,6 +24,7 @@ import {
   MEMORY_SNAPSHOT_SCRIPT,
 } from "./agent-intelligence";
 import { WORKSPACE_EARN_MD } from "./earn-md-template";
+import { TOOLROUTER_WRAPPER_MJS } from "./toolrouter-wrapper-script";
 import {
   DAILY_RESTART_SERVICE_UNIT,
   DAILY_RESTART_TIMER_UNIT,
@@ -109,6 +110,7 @@ export const TEMPLATE_REGISTRY: Record<string, string> = {
   SOUL_MD_MEMORY_FILING_SYSTEM,
   WORKSPACE_INDEX_SCRIPT,
   MEMORY_SNAPSHOT_SCRIPT,
+  TOOLROUTER_WRAPPER_MJS,
   // STRIP_THINKING_SCRIPT and AUTO_APPROVE_PAIRING_SCRIPT are registered
   // at runtime by ssh.ts to avoid circular imports (they're defined there
   // as template literals with interpolated values like ${512 * 1024}).
@@ -2255,6 +2257,36 @@ export const VM_MANIFEST = {
       templateKey: "MEMORY_SNAPSHOT_SCRIPT",
       mode: "overwrite",
       executable: true,
+    },
+    {
+      // K.4 ToolRouter wrapper — the stdio man-in-the-middle that
+      // observes every MCP tools/call response and POSTs the
+      // structuredContent (charged, trace_id, path) to
+      // /api/agent/toolrouter/record-usage for allocation enforcement.
+      // Spawned by OpenClaw via mcp.servers.toolrouter.command="node"
+      // + args=[<this path>]. stepToolRouter writes the MCP config
+      // pointing at this script ONLY AFTER confirming it exists on
+      // disk (Gate 5 in lib/vm-reconcile.ts:stepToolRouter), so a
+      // stepFiles failure cleanly defers the wire-up to the next
+      // reconcile tick instead of breaking ToolRouter calls.
+      //
+      // Sentinels per Rule 23 (refuse to write if the in-memory
+      // template lacks the load-bearing markers — catches the
+      // 2026-05-02 stale-module-cache failure mode):
+      //   TOOLROUTER_WRAPPER_V1 — version tag at the top of the script
+      //   toolrouter-wrapper started — the startup log line
+      //   record-usage POST — the action that defines the wrapper
+      remotePath: "~/.openclaw/scripts/toolrouter-wrapper.mjs",
+      source: "template",
+      templateKey: "TOOLROUTER_WRAPPER_MJS",
+      mode: "overwrite",
+      executable: false, // launched via `node <path>`, not as an executable
+      useSFTP: true,
+      requiredSentinels: [
+        "TOOLROUTER_WRAPPER_V1",
+        "toolrouter-wrapper started",
+        "record-usage POST",
+      ],
     },
     {
       remotePath: "~/.openclaw/scripts/strip-thinking.py",
