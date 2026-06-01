@@ -55,12 +55,23 @@ export interface ToolRouterEnv {
 }
 
 export interface ToolRouterMcpConfigStdio {
-  command: "toolrouter";
+  // K.4: command can be either "toolrouter" (v1 direct shape, no
+  // wrapper) or "node" (wrapper-pointed shape — OpenClaw spawns
+  // node <wrapperPath> and the wrapper spawns the toolrouter binary
+  // as its child). buildToolRouterMcpConfig picks based on the
+  // wrapperConfig argument.
+  command: "toolrouter" | "node";
   args: string[];
-  env: {
-    TOOLROUTER_API_KEY: string;
-    TOOLROUTER_API_URL: string;
-  };
+  // env carries TOOLROUTER_API_KEY + TOOLROUTER_API_URL for both
+  // shapes (the wrapper forwards them to the child binary, which
+  // reads them from process.env per the binary's startStdioServer
+  // signature). The wrapper shape ALSO carries:
+  //   - GATEWAY_TOKEN — wrapper authenticates to InstaClaw's
+  //     /api/agent/toolrouter/record-usage endpoint
+  //   - INSTACLAW_API_URL — where to POST
+  //   - TOOLROUTER_WRAPPER_CHILD_CMD — the child binary name
+  //     ("toolrouter" by default; overridable for tests)
+  env: Record<string, string>;
 }
 
 export interface ToolRouterMcpConfigStreamableHttp {
@@ -122,10 +133,36 @@ export function getToolRouterEnv(): ToolRouterEnv | null {
  * Hot-reloadable per Rule 32 (`mcp.servers.*` is in the verified
  * hot-reloadable set — see lib/vm-reconcile.ts:117).
  */
+/**
+ * K.4 wrapper config — when present, the stdio MCP shape points OpenClaw at
+ * our wrapper script (.command="node", .args=[wrapperPath]) instead of the
+ * raw `toolrouter` binary. The wrapper observes every MCP tools/call response
+ * and POSTs the structuredContent (charged, trace_id, path) to InstaClaw for
+ * allocation enforcement. See lib/toolrouter-wrapper-script.ts.
+ *
+ * - wrapperPath: absolute path on the VM where the wrapper .mjs lives.
+ *   Conventionally /home/openclaw/.openclaw/scripts/toolrouter-wrapper.mjs;
+ *   deployed via stepFiles from the manifest's files[] entry.
+ * - gatewayToken: the per-VM gateway_token (used by the wrapper to authenticate
+ *   to /api/agent/toolrouter/record-usage). Sourced from instaclaw_vms.gateway_token.
+ * - instaclawApiUrl: base URL for the record-usage POST. Defaults to
+ *   https://instaclaw.io when undefined.
+ *
+ * If wrapperConfig is omitted (or null), buildToolRouterMcpConfig falls back to
+ * the v1 direct-toolrouter shape — useful for tests and the v1.5 streamable-http
+ * transport (which doesn't spawn a subprocess on the VM at all).
+ */
+export interface ToolRouterWrapperConfig {
+  wrapperPath: string;
+  gatewayToken: string;
+  instaclawApiUrl?: string;
+}
+
 export function buildToolRouterMcpConfig(
   apiKey: string,
   transport: ToolRouterTransport,
   apiUrl: string = TOOLROUTER_API_BASE_DEFAULT,
+  wrapperConfig: ToolRouterWrapperConfig | null = null,
 ): ToolRouterMcpConfig {
   if (!TOOLROUTER_API_KEY_SHAPE.test(apiKey)) {
     throw new Error(`buildToolRouterMcpConfig: apiKey failed shape check (prefix=${apiKey.slice(0, 5)}, len=${apiKey.length})`);
@@ -139,6 +176,28 @@ export function buildToolRouterMcpConfig(
       connectionTimeoutMs: 5000,
     };
   }
+  // K.4 wrapper-pointed shape: OpenClaw spawns `node <wrapper.mjs>`, which
+  // spawns the real `toolrouter` binary as a child and observes the
+  // bidirectional MCP traffic. The wrapper inherits the env we set here:
+  //   - TOOLROUTER_API_KEY + TOOLROUTER_API_URL flow through to the child
+  //   - GATEWAY_TOKEN + INSTACLAW_API_URL feed the wrapper's record-usage POST
+  //   - TOOLROUTER_WRAPPER_CHILD_CMD pins the child binary name
+  if (wrapperConfig) {
+    const instaclawUrl = (wrapperConfig.instaclawApiUrl ?? "https://instaclaw.io").replace(/\/+$/, "");
+    return {
+      command: "node",
+      args: [wrapperConfig.wrapperPath],
+      env: {
+        TOOLROUTER_API_KEY: apiKey,
+        TOOLROUTER_API_URL: normalizedUrl,
+        TOOLROUTER_WRAPPER_CHILD_CMD: "toolrouter",
+        GATEWAY_TOKEN: wrapperConfig.gatewayToken,
+        INSTACLAW_API_URL: instaclawUrl,
+      },
+    };
+  }
+  // Back-compat fallback: direct toolrouter shape, unobserved. Used by tests
+  // and by transports where the wrapper makes no sense (streamable-http).
   return {
     command: "toolrouter",
     args: [],

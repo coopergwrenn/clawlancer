@@ -112,6 +112,7 @@ export default auth((req) => {
     "/api/agent-economy/offerings", // DUAL-AUTH: gateway token (agent frontier.add_offering) OR session (dashboard). Route's resolveVm() self-auths either way and scopes to one vmId. Listed so the gateway-token path isn't 401'd by the session gate. See app/api/agent-economy/offerings/route.ts.
     "/api/agent-economy/reputation", // Authorization: Bearer or X-Gateway-Token (Frontier VM queues ERC-8004 feedback). from_vm_id from token; feedback must anchor to the caller's own transaction. Covers /reputation/queue. See app/api/agent-economy/reputation/queue/route.ts.
     "/api/agent-economy/refund", // Authorization: Bearer or X-Gateway-Token (seller VM refunds a buyer). Atomic settled→refunded compare-and-set prevents double-refund; queues an on-chain refund for the worker (no funds move in-API). See app/api/agent-economy/refund/route.ts.
+    "/api/agent/toolrouter/record-usage", // Authorization: Bearer or X-Gateway-Token (K.4 wrapper reports a ToolRouter tool call from each VM). vm_id + user_id resolved from token, NEVER body. Idempotent on trace_id via consume RPC. See app/api/agent/toolrouter/record-usage/route.ts.
     "/api/webhook/index-encounter", // X-Index-Signature HMAC-SHA256 auth (Index Network opportunity.accepted webhook → matchpool_outcomes INSERT)
   ];
 
