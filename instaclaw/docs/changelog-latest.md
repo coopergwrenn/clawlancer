@@ -1,31 +1,29 @@
 # Changelog — generated 2026-06-01
 
-Window: `2c6f25e23de717647779febd8d7737dd75fbc26b` → `HEAD` (HEAD = `61a6ab3b`)
-Total commits: 5
+Window: `61a6ab3b912c101ef03bcbc508ec29e46687c87b` → `HEAD` (HEAD = `715eb02d`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 61a6ab3b912c101ef03bcbc508ec29e46687c87b -->
+<!-- LAST_GENERATED_SHA: 715eb02d1065fd1e490f2e92279fe911e6be7a2b -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 3
+- **Infrastructure:** 1
 - **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 4
+- AI-assisted commits (co-authored): 2
 - Merge commits: 1
 
 ## What changed for users
 
-- `b7ffa149` 2026-06-01 — feat(dashboard): Premium Tools allocation card [2 files] _(ai-assisted)_
+- `e300512a` 2026-06-01 — fix(floor): audit fixes — nap rests at ~0 GPU + graceful no-WebGL fallback [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `8a26a477` 2026-06-01 — feat(scripts): _verify-toolrouter-canary pre-flight automation [1 files] _(ai-assisted)_
-- `bb31c16a` 2026-06-01 — chore(migrations): promote toolrouter_allocation to migrations/ (applied) [2 files] _(ai-assisted)_
-- `61a6ab3b` 2026-06-01 — Merge feat/toolrouter-v1-followups: dashboard card + canary verifier + migration promotion [0 files] _(ai-assisted; merge)_
-- `459e62d3` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `715eb02d` 2026-06-01 — Merge: Floor audit fixes (nap GPU rest + no-WebGL fallback) [0 files] _(ai-assisted; merge)_
+- `d178c668` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,15 +31,13 @@ Total commits: 5
 
 _(none)_
 
-### Infrastructure (3)
+### Infrastructure (1)
 
-- `8a26a477` 2026-06-01 — feat(scripts): _verify-toolrouter-canary pre-flight automation [1 files] _(ai-assisted)_
-- `bb31c16a` 2026-06-01 — chore(migrations): promote toolrouter_allocation to migrations/ (applied) [2 files] _(ai-assisted)_
-- `61a6ab3b` 2026-06-01 — Merge feat/toolrouter-v1-followups: dashboard card + canary verifier + migration promotion [0 files] _(ai-assisted; merge)_
+- `715eb02d` 2026-06-01 — Merge: Floor audit fixes (nap GPU rest + no-WebGL fallback) [0 files] _(ai-assisted; merge)_
 
 ### Feature (user-facing) (1)
 
-- `b7ffa149` 2026-06-01 — feat(dashboard): Premium Tools allocation card [2 files] _(ai-assisted)_
+- `e300512a` 2026-06-01 — fix(floor): audit fixes — nap rests at ~0 GPU + graceful no-WebGL fallback [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -49,21 +45,17 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `459e62d3` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `d178c668` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (4)
+## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `b7ffa149` 2026-06-01 — feat(dashboard): Premium Tools allocation card
-- `8a26a477` 2026-06-01 — feat(scripts): _verify-toolrouter-canary pre-flight automation
-- `bb31c16a` 2026-06-01 — chore(migrations): promote toolrouter_allocation to migrations/ (applied)
-- `61a6ab3b` 2026-06-01 — Merge feat/toolrouter-v1-followups: dashboard card + canary verifier + migration promotion
+- `e300512a` 2026-06-01 — fix(floor): audit fixes — nap rests at ~0 GPU + graceful no-WebGL fallback
+- `715eb02d` 2026-06-01 — Merge: Floor audit fixes (nap GPU rest + no-WebGL fallback)
 
 ## Appendix — every commit (chronological)
 
-- `b7ffa149` 2026-06-01 — feat(dashboard): Premium Tools allocation card [2 files] _(ai-assisted)_
-- `8a26a477` 2026-06-01 — feat(scripts): _verify-toolrouter-canary pre-flight automation [1 files] _(ai-assisted)_
-- `bb31c16a` 2026-06-01 — chore(migrations): promote toolrouter_allocation to migrations/ (applied) [2 files] _(ai-assisted)_
-- `459e62d3` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
-- `61a6ab3b` 2026-06-01 — Merge feat/toolrouter-v1-followups: dashboard card + canary verifier + migration promotion [0 files] _(ai-assisted; merge)_
+- `d178c668` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `e300512a` 2026-06-01 — fix(floor): audit fixes — nap rests at ~0 GPU + graceful no-WebGL fallback [2 files] _(ai-assisted)_
+- `715eb02d` 2026-06-01 — Merge: Floor audit fixes (nap GPU rest + no-WebGL fallback) [0 files] _(ai-assisted; merge)_
