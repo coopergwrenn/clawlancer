@@ -33,6 +33,7 @@ import {
   Telescope,
   Link2,
   Mic,
+  Waves,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -3228,20 +3229,26 @@ export default function CommandCenterPage() {
           >
             Command Center
           </h1>
-          {/* The Floor — compact watch-live entry, flush-right on the title
-              row so it never steals vertical space from the task list. Built
-              from the page's own tokens (var(--border)/var(--foreground),
-              text-sm font-medium, rounded-full, the → CTA); the emerald
-              live-dot matches the Floor's own LiveDot. Desktop-only like the
-              title — mobile reaches The Floor via primaryNav. */}
+          {/* The Floor — compact watch-live entry, flush-right on the title row
+              so it never steals vertical space from the task list. Matches the
+              FilterPills frosting (backdrop-blur + translucent fill + subtle
+              border + inset top-highlight sheen + hover bg-tint shift) so it
+              reads as a sibling to the pills right below it. Lucide Waves icon
+              (same as the nav entry — one identity across surfaces); the emerald
+              live-dot signals real-time. Desktop-only like the title — mobile
+              reaches The Floor via primaryNav. */}
           <Link
             href="/floor"
-            className="group flex items-center gap-2 shrink-0 rounded-full pl-2.5 pr-3 py-1.5 text-sm font-medium transition-all hover:shadow-sm"
-            style={{ border: "1px solid var(--border)", color: "var(--foreground)" }}
+            className="group flex items-center gap-2 shrink-0 rounded-full pl-2.5 pr-3 py-1.5 text-sm font-medium backdrop-blur-md border border-black/[0.08] bg-white/[0.45] transition-colors hover:bg-white/[0.65]"
+            style={{
+              color: "var(--foreground)",
+              boxShadow:
+                "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
+            }}
           >
-            <span className="relative flex items-center justify-center text-base leading-none">
-              {"\u{1F980}"}
-              <span className="absolute -top-1 -right-1 flex h-2 w-2">
+            <span className="relative flex items-center justify-center">
+              <Waves className="w-4 h-4" style={{ color: "var(--muted)" }} />
+              <span className="absolute -top-1.5 -right-1.5 flex h-2 w-2">
                 <span
                   className="absolute inline-flex h-full w-full rounded-full animate-ping"
                   style={{ background: "#34d399", opacity: 0.65 }}
@@ -3256,6 +3263,7 @@ export default function CommandCenterPage() {
             <span
               aria-hidden="true"
               className="transition-transform group-hover:translate-x-0.5"
+              style={{ color: "var(--muted)" }}
             >
               &rarr;
             </span>
