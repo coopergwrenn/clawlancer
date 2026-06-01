@@ -208,6 +208,10 @@
     {
       "path": "/api/cron/frontier-lifetime-rollup",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/frontier-refund-reconcile",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
