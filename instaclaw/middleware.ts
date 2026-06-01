@@ -108,6 +108,7 @@ export default auth((req) => {
     "/api/edge/verify-otp", // Public — 2026-05-22 three-auth-paths refactor. Anonymous attendees POST {email, code} → we call EdgeOS authenticate, create/link the instaclaw_users row, mint a one-shot HMAC token (lib/edge-otp-token.ts), return to the client which calls signIn(EDGE_EMAIL_OTP_PROVIDER_ID, {otpToken}). Gated server-side by the edge_verified_email signed cookie.
     "/api/internal", // X-Gateway-Token header auth (VM-side internal endpoints, e.g. check-privacy-mode for the SSH bridge)
     "/api/match", // Authorization: Bearer or X-Gateway-Token (matchpool VM bridge endpoints — POST /v1/profile, etc.)
+    "/api/agent-economy/transaction", // Authorization: Bearer or X-Gateway-Token (Frontier VM reports a settled transaction). vm_id from token never body; idempotent on (vm_id, request_id). Record-only — no value moves here. See app/api/agent-economy/transaction/route.ts.
     "/api/webhook/index-encounter", // X-Index-Signature HMAC-SHA256 auth (Index Network opportunity.accepted webhook → matchpool_outcomes INSERT)
   ];
 
