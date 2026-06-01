@@ -52,21 +52,51 @@ export function OfficeRoom() {
         <meshStandardMaterial color={WALL_SHADE} roughness={0.9} />
       </mesh>
 
-      {/* ── Window (emissive — the "daylight"; day/night tint comes later) ── */}
+      {/* ── Window — the cool "daylight" pane. Bright emissive so it reads as a
+          real light source (and the bloom pass will halo it); the cool fill +
+          rim lights in FloorScene are this glow made physical. Step 4 swaps the
+          flat fill for a sky/sea gradient (the tidepool porthole). ── */}
       <mesh position={[-1.3, 1.5, -1.44]}>
         <planeGeometry args={[1.3, 1.0]} />
         <meshStandardMaterial
-          color="#bfe3f5"
-          emissive="#cdeafb"
-          emissiveIntensity={0.55}
-          roughness={0.4}
+          color="#d4ecfb"
+          emissive="#cfe6fb"
+          emissiveIntensity={1.5}
+          roughness={0.35}
+          toneMapped={false}
         />
       </mesh>
-      {/* window frame */}
-      <mesh position={[-1.3, 1.5, -1.43]}>
-        <boxGeometry args={[1.42, 1.12, 0.04]} />
-        <meshStandardMaterial color={DESK} roughness={0.7} />
-      </mesh>
+      {/* window frame — a HOLLOW frame (4 bars + a cottage muntin cross) so the
+          cool daylight pane actually shows through and reads as a window/light
+          source, instead of a solid slab that looked like a dark painting. */}
+      <group position={[-1.3, 1.5, -1.43]}>
+        {/* outer frame bars */}
+        <mesh position={[0, 0.55, 0]}>
+          <boxGeometry args={[1.5, 0.1, 0.07]} />
+          <meshStandardMaterial color={DESK} roughness={0.7} />
+        </mesh>
+        <mesh position={[0, -0.55, 0]}>
+          <boxGeometry args={[1.5, 0.1, 0.07]} />
+          <meshStandardMaterial color={DESK} roughness={0.7} />
+        </mesh>
+        <mesh position={[-0.7, 0, 0]}>
+          <boxGeometry args={[0.1, 1.2, 0.07]} />
+          <meshStandardMaterial color={DESK} roughness={0.7} />
+        </mesh>
+        <mesh position={[0.7, 0, 0]}>
+          <boxGeometry args={[0.1, 1.2, 0.07]} />
+          <meshStandardMaterial color={DESK} roughness={0.7} />
+        </mesh>
+        {/* muntin cross (thin, just in front of the pane) */}
+        <mesh position={[0, 0, 0.005]}>
+          <boxGeometry args={[1.36, 0.04, 0.05]} />
+          <meshStandardMaterial color={DESK} roughness={0.7} />
+        </mesh>
+        <mesh position={[0, 0, 0.005]}>
+          <boxGeometry args={[0.04, 1.06, 0.05]} />
+          <meshStandardMaterial color={DESK} roughness={0.7} />
+        </mesh>
+      </group>
 
       {/* ── Desk ── */}
       <group position={[0, 0, -0.55]}>

@@ -17,7 +17,7 @@
 
 import { useEffect, useRef } from "react";
 import { useThree, useFrame } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { OrbitControls, Environment, Lightformer } from "@react-three/drei";
 import * as THREE from "three";
 import { useFloorStore } from "@/lib/floor/store";
 import { Larry } from "./larry";
@@ -53,7 +53,7 @@ function DeskLamp() {
   const light = useRef<THREE.PointLight>(null);
   useFrame((_, delta) => {
     const d = useFloorStore.getState().director;
-    let target = 0.6; // resting glow
+    let target = 1.1; // resting glow — a cozy warm pool on the desk even at idle
     if (d.behavior === "working") {
       target = d.intensity === 3 ? 2.4 : d.intensity === 2 ? 1.7 : 1.2;
     } else if (d.behavior === "incoming") {
@@ -89,17 +89,67 @@ export function FloorScene() {
   const invalidate = useThree((s) => s.invalidate);
   return (
     <>
-      {/* ── Lighting ── soft, warm, cozy. Premium bloom/AO/god-rays land in
-          the polish phase; this is the readable, correct MVP base. */}
-      <ambientLight intensity={0.45} color="#fff3e0" />
-      <hemisphereLight args={["#fff6e8", "#9b7b58", 0.5]} />
+      {/* ── Lighting ── cozy-cinematic: a warm key + soft shadows, a COOL window
+          fill so shadows read cool-not-black (the warm/cool contrast that makes
+          a room feel cozy rather than clinical), a cool back/rim light to peel
+          Larry off the background, and a file-free Environment of Lightformer
+          cards so the low-roughness shell + wet eyes have soft warm/cool
+          reflections to catch (what makes the stylized PBR sing). All of it is
+          static, so frameloop="demand" still rests at ~0 GPU. */}
+
+      {/* Reflections / IBL — baked once (frames={1}) → demand-safe. The cards
+          tell the warm-key / cool-window story IN the reflections, too. */}
+      {/* IBL is tuned LOW — its job here is soft warm/cool *reflections* on the
+          shell + eyes (sheen), NOT to fill the room. The dark env background
+          keeps overall irradiance down so the room stays moody, not washed. */}
+      <Environment resolution={128} frames={1}>
+        <color attach="background" args={["#150f0a"]} />
+        {/* warm key card (front-right) */}
+        <Lightformer
+          form="rect"
+          intensity={1.1}
+          color="#ffd6a0"
+          position={[3, 3, 2.5]}
+          scale={[5, 5, 1]}
+          target={[0, 0.5, 0]}
+        />
+        {/* cool window card (back-left) */}
+        <Lightformer
+          form="rect"
+          intensity={0.8}
+          color="#bcd6ff"
+          position={[-3, 2.2, -2.5]}
+          scale={[4, 4, 1]}
+          target={[0, 0.5, 0]}
+        />
+        {/* faint warm overhead bounce */}
+        <Lightformer
+          form="rect"
+          intensity={0.35}
+          color="#fff1dc"
+          position={[0, 4.5, 0]}
+          rotation={[Math.PI / 2, 0, 0]}
+          scale={[6, 6, 1]}
+        />
+      </Environment>
+
+      {/* Ambient — very low; just keeps shadows warm rather than crushed. */}
+      <ambientLight intensity={0.1} color="#ffe2bc" />
+
+      {/* Hemisphere — gentle warm-sky / warm-wood bounce. */}
+      <hemisphereLight args={["#ffdcae", "#4f3320", 0.2]} />
+
+      {/* KEY — warm, upper-front-right, the shadow-caster. The main pool of warm
+          light; everything else falls toward warm shadow (cozy, not flat). */}
       <directionalLight
-        position={[3, 5, 2]}
-        intensity={1.1}
-        color="#fff1da"
+        position={[3.4, 5.2, 2.6]}
+        intensity={2.6}
+        color="#ffca8a"
         castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-bias={-0.0004}
+        shadow-radius={3.5}
         shadow-camera-near={0.5}
         shadow-camera-far={20}
         shadow-camera-left={-4}
@@ -107,6 +157,16 @@ export function FloorScene() {
         shadow-camera-top={4}
         shadow-camera-bottom={-4}
       />
+
+      {/* COOL FILL — from the window side, no shadow; tints the shadow side cool
+          so the warm/cool contrast reads cozy. The window's daylight, physical. */}
+      <directionalLight position={[-3.2, 2.6, -2]} intensity={0.4} color="#9fc2ff" />
+
+      {/* RIM / BACK — cool, behind + above Larry toward camera; lights his top
+          edge so he peels off the dark backdrop (with the shell's Fresnel rim,
+          this is the "pop"). */}
+      <directionalLight position={[-1.4, 2.6, -3.6]} intensity={0.85} color="#cfe2ff" />
+
       <DeskLamp />
 
       {/* ── Render-on-demand external kick (PRD §12). LOAD-BEARING: in
