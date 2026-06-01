@@ -1,46 +1,53 @@
 # Changelog — generated 2026-06-01
 
-Window: `b97c29dc5898835f2ad5661bbbbad7cd0de3121d` → `HEAD` (HEAD = `470585f4`)
-Total commits: 4
+Window: `470585f490c89d3706f3c4f3888c895193900fac` → `HEAD` (HEAD = `2c6f25e2`)
+Total commits: 8
 
-<!-- LAST_GENERATED_SHA: 470585f490c89d3706f3c4f3888c895193900fac -->
+<!-- LAST_GENERATED_SHA: 2c6f25e23de717647779febd8d7737dd75fbc26b -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 2
+- **Reconciler / manifest:** 0
 - **Infrastructure:** 1
-- **Feature (user-facing):** 0
+- **Feature (user-facing):** 6
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 3
+- AI-assisted commits (co-authored): 7
 - Merge commits: 1
 
 ## What changed for users
 
-_None in this window._
+- `a1535f30` 2026-06-01 — feat(floor): Step 1 — Larry body upgrade (stylized crab rig) [3 files] _(ai-assisted)_
+- `99d9b9dc` 2026-06-01 — feat(floor): Step 2 — stylized-PBR materials pass [1 files] _(ai-assisted)_
+- `3562d9d8` 2026-06-01 — feat(floor): Step 3 — cozy-cinematic lighting + real window [2 files] _(ai-assisted)_
+- `8d0c833e` 2026-06-01 — feat(floor): Step 4 — tidepool caustic water-light (the signature touch) [2 files] _(ai-assisted)_
+- `b7fbe84c` 2026-06-01 — feat(floor): Step 5 — animation soul (12 principles) + desk staging [2 files] _(ai-assisted)_
+- `6ba6885c` 2026-06-01 — feat(floor): Step 6 — post-FX (selective bloom + ACES + vignette) [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `ac779ca1` 2026-05-27 — feat(toolrouter): v1 — sponsored-tier allocation + in-chat upsell ready for Cooper's self-serve key [18 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `3d606d5a` 2026-06-01 — fix(toolrouter): re-add imports lost in rebase + sync PRD to new pricing [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `470585f4` 2026-06-01 — Merge feat/toolrouter-v1: ToolRouter v1 — sponsored-tier allocation + in-chat upsell [0 files] _(ai-assisted; merge)_
-- `dcbd5b7d` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `2c6f25e2` 2026-06-01 — Merge: The Floor visual polish — Larry + cozy room + tidepool + post-FX [0 files] _(ai-assisted; merge)_
+- `89fdb43d` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (2)
+### Reconciler / manifest (0)
 
-- `ac779ca1` 2026-05-27 — feat(toolrouter): v1 — sponsored-tier allocation + in-chat upsell ready for Cooper's self-serve key [18 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `3d606d5a` 2026-06-01 — fix(toolrouter): re-add imports lost in rebase + sync PRD to new pricing [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+_(none)_
 
 ### Infrastructure (1)
 
-- `470585f4` 2026-06-01 — Merge feat/toolrouter-v1: ToolRouter v1 — sponsored-tier allocation + in-chat upsell [0 files] _(ai-assisted; merge)_
+- `2c6f25e2` 2026-06-01 — Merge: The Floor visual polish — Larry + cozy room + tidepool + post-FX [0 files] _(ai-assisted; merge)_
 
-### Feature (user-facing) (0)
+### Feature (user-facing) (6)
 
-_(none)_
+- `a1535f30` 2026-06-01 — feat(floor): Step 1 — Larry body upgrade (stylized crab rig) [3 files] _(ai-assisted)_
+- `99d9b9dc` 2026-06-01 — feat(floor): Step 2 — stylized-PBR materials pass [1 files] _(ai-assisted)_
+- `3562d9d8` 2026-06-01 — feat(floor): Step 3 — cozy-cinematic lighting + real window [2 files] _(ai-assisted)_
+- `8d0c833e` 2026-06-01 — feat(floor): Step 4 — tidepool caustic water-light (the signature touch) [2 files] _(ai-assisted)_
+- `b7fbe84c` 2026-06-01 — feat(floor): Step 5 — animation soul (12 principles) + desk staging [2 files] _(ai-assisted)_
+- `6ba6885c` 2026-06-01 — feat(floor): Step 6 — post-FX (selective bloom + ACES + vignette) [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -48,26 +55,27 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `dcbd5b7d` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `89fdb43d` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
 
-## Multi-category commits (2)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `ac779ca1` 2026-05-27 — [reconciler, infrastructure, docs] — feat(toolrouter): v1 — sponsored-tier allocation + in-chat upsell ready for Cooper's self-serve key
-- `3d606d5a` 2026-06-01 — [reconciler, infrastructure, docs] — fix(toolrouter): re-add imports lost in rebase + sync PRD to new pricing
-
-## AI-assisted commits (3)
+## AI-assisted commits (7)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `ac779ca1` 2026-05-27 — feat(toolrouter): v1 — sponsored-tier allocation + in-chat upsell ready for Cooper's self-serve key
-- `3d606d5a` 2026-06-01 — fix(toolrouter): re-add imports lost in rebase + sync PRD to new pricing
-- `470585f4` 2026-06-01 — Merge feat/toolrouter-v1: ToolRouter v1 — sponsored-tier allocation + in-chat upsell
+- `a1535f30` 2026-06-01 — feat(floor): Step 1 — Larry body upgrade (stylized crab rig)
+- `99d9b9dc` 2026-06-01 — feat(floor): Step 2 — stylized-PBR materials pass
+- `3562d9d8` 2026-06-01 — feat(floor): Step 3 — cozy-cinematic lighting + real window
+- `8d0c833e` 2026-06-01 — feat(floor): Step 4 — tidepool caustic water-light (the signature touch)
+- `b7fbe84c` 2026-06-01 — feat(floor): Step 5 — animation soul (12 principles) + desk staging
+- `6ba6885c` 2026-06-01 — feat(floor): Step 6 — post-FX (selective bloom + ACES + vignette)
+- `2c6f25e2` 2026-06-01 — Merge: The Floor visual polish — Larry + cozy room + tidepool + post-FX
 
 ## Appendix — every commit (chronological)
 
-- `ac779ca1` 2026-05-27 — feat(toolrouter): v1 — sponsored-tier allocation + in-chat upsell ready for Cooper's self-serve key [18 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `dcbd5b7d` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
-- `3d606d5a` 2026-06-01 — fix(toolrouter): re-add imports lost in rebase + sync PRD to new pricing [2 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `470585f4` 2026-06-01 — Merge feat/toolrouter-v1: ToolRouter v1 — sponsored-tier allocation + in-chat upsell [0 files] _(ai-assisted; merge)_
+- `89fdb43d` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `a1535f30` 2026-06-01 — feat(floor): Step 1 — Larry body upgrade (stylized crab rig) [3 files] _(ai-assisted)_
+- `99d9b9dc` 2026-06-01 — feat(floor): Step 2 — stylized-PBR materials pass [1 files] _(ai-assisted)_
+- `3562d9d8` 2026-06-01 — feat(floor): Step 3 — cozy-cinematic lighting + real window [2 files] _(ai-assisted)_
+- `8d0c833e` 2026-06-01 — feat(floor): Step 4 — tidepool caustic water-light (the signature touch) [2 files] _(ai-assisted)_
+- `b7fbe84c` 2026-06-01 — feat(floor): Step 5 — animation soul (12 principles) + desk staging [2 files] _(ai-assisted)_
+- `6ba6885c` 2026-06-01 — feat(floor): Step 6 — post-FX (selective bloom + ACES + vignette) [2 files] _(ai-assisted)_
+- `2c6f25e2` 2026-06-01 — Merge: The Floor visual polish — Larry + cozy room + tidepool + post-FX [0 files] _(ai-assisted; merge)_
