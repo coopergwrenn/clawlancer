@@ -265,3 +265,48 @@ export async function POST(req: NextRequest) {
     { status: existing ? 200 : 201 },
   );
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * DELETE /api/agent-economy/offerings?slug=<slug>  (or ?id=<uuid>)
+ *
+ * Soft-delete: sets active=false (the x402 server stops serving it) rather than
+ * removing the row. A hard delete would null offering_id on every historical
+ * transaction (FK is ON DELETE SET NULL) — permanent provenance loss while the
+ * VM is alive. Soft-delete keeps the slug reusable (POST upserts/reactivates)
+ * and preserves which offering each past sale was for. Idempotent: deleting an
+ * already-inactive offering still 200s; a non-existent one 404s.
+ */
+export async function DELETE(req: NextRequest) {
+  const r = await resolveVm(req);
+  if ("error" in r) return NextResponse.json({ error: r.error }, { status: r.status });
+
+  const slug = req.nextUrl.searchParams.get("slug");
+  const id = req.nextUrl.searchParams.get("id");
+  if (!slug && !id) {
+    return NextResponse.json({ error: "provide ?slug= or ?id=" }, { status: 400 });
+  }
+  if (slug && !SLUG_RE.test(slug)) {
+    return NextResponse.json({ error: "slug must match ^[a-z0-9][a-z0-9-]{0,63}$" }, { status: 400 });
+  }
+  if (id && !UUID_RE.test(id)) {
+    return NextResponse.json({ error: "id must be a UUID" }, { status: 400 });
+  }
+
+  const supabase = getSupabase();
+  // Scope to the caller's VM, then match by id (preferred) or slug. No active
+  // filter → idempotent regardless of current state.
+  let q = supabase.from("frontier_offerings").update({ active: false }).eq("vm_id", r.vmId);
+  q = id ? q.eq("id", id) : q.eq("slug", slug as string);
+  const { data: affected, error } = await q.select("id");
+
+  if (error) {
+    console.error("[/api/agent-economy/offerings DELETE] update failed:", error);
+    return NextResponse.json({ error: "failed to delete offering" }, { status: 500 });
+  }
+  if (!affected || affected.length === 0) {
+    return NextResponse.json({ error: "offering not found" }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true, deactivated: true, offering_id: affected[0].id });
+}
