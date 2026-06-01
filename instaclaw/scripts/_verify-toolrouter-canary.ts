@@ -251,7 +251,12 @@ async function checkDatabaseSchema(): Promise<void> {
       p_user_id: "00000000-0000-0000-0000-000000000000",
       p_weight: 0,
       p_endpoint_id: "_canary_verifier_probe",
-      p_charged: false, // critical — short-circuits without mutating state
+      // K.4 (post-migration 20260601200500): charged=false now ALSO inserts
+      // a call_log row (sponsored_agentkit path). That INSERT FK-violates on
+      // a zero UUID. Switch the probe to charged=true: the RPC does
+      // FOR UPDATE on instaclaw_users FIRST, returns {allowed:false,error:no_user}
+      // when the row doesn't exist, and SKIPS the INSERT. No side effects.
+      p_charged: true,
       p_trace_id: "_canary_verifier",
     });
     if (error) {
@@ -261,12 +266,20 @@ async function checkDatabaseSchema(): Promise<void> {
         detail: `${error.code ?? "?"}: ${error.message.slice(0, 140)}`,
       });
     } else {
-      const allowed = (data as { allowed?: boolean } | null)?.allowed;
-      const okShape = allowed === true;
+      // Two valid "RPC is callable" shapes given a zero-UUID input:
+      //   - {allowed: true, ...}   ← happy path (won't happen for zero UUID)
+      //   - {allowed: false, error: "no_user"}   ← expected for zero UUID
+      // Anything else means the RPC returned but in an unexpected shape.
+      const result = data as { allowed?: boolean; error?: string } | null;
+      const isCallable =
+        result?.allowed === true ||
+        (result?.allowed === false && result?.error === "no_user");
       record({
         name: "2.3 instaclaw_consume_toolrouter_searches RPC",
-        severity: okShape ? "OK" : "SOFT",
-        detail: okShape ? "callable, sponsored-agentkit short-circuit returned allowed=true" : `unexpected shape: ${JSON.stringify(data).slice(0, 100)}`,
+        severity: isCallable ? "OK" : "SOFT",
+        detail: isCallable
+          ? `callable, returns no_user for zero UUID as expected (allowed=${result?.allowed}, error=${result?.error ?? "—"})`
+          : `unexpected shape: ${JSON.stringify(data).slice(0, 100)}`,
       });
     }
   }

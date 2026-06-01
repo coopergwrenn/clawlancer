@@ -284,11 +284,12 @@ export const TOOLROUTER_BILLING_V1_AGENTS_BLOCK = `<!-- TOOLROUTER_BILLING_V1 --
 
 Every InstaClaw plan includes a generous monthly tier of "premium searches" (Starter 60 / Pro 400 / Power 1500), sponsored by our World Foundation AgentKit partnership. Most users never exhaust it. Power users who do can add a 100-search pack for $10.
 
-### 3-step decision tree (run BEFORE choosing a tool)
+### 2-step decision tree (run BEFORE choosing a tool)
 
 1. **Is the right tool a ToolRouter premium tool?** If free local (\`brave-search\` / local \`chromium\` / \`curl\`) is genuinely adequate for THIS query, use free. No upsell consideration.
-2. **Will this call come from the AgentKit-free path?** Predict from §1.5 of the routing table above. If FREE → call without checking allocation. If PAID → go to step 3.
-3. **Allocation remaining?** Read \`$TOOLROUTER_BALANCE\` from \`~/.openclaw/.env\`. If \`balance >= weight\`, call the tool. If \`balance < weight\`, present the §M3 100%-reached message and let the user choose.
+2. **Will this call come from the AgentKit-free path?** Predict from §1.5 of the routing table above. If FREE → call freely, no user-side cost. If PAID → call it (the platform meters transparently — you do NOT pre-gate); when the call is likely to consume non-trivial allocation (weight ≥ 5, e.g. \`manus.research\` deep), proactively name the cost to the user before invoking ("this'll use ~15 of your 400 monthly premium searches — proceed?"). Direct any balance questions to the dashboard's Premium Tools card on instaclaw.io.
+
+**Important:** The platform's K.4 wrapper meters every premium-tool call server-side. The legacy "read \`$TOOLROUTER_BALANCE\` from .env" guidance is OBSOLETE — that env var is not set; allocation is enforced at the wrapper layer, not by you. Make calls naturally; the platform NEVER blocks you mid-call. If the user has used heavy premium calls recently and asks about extending, present §M2 (top-up nudge). If they're surprised by an exhausted balance shown on the dashboard, present §M3.
 
 ### When the wrapper returns \`{toolrouter_unavailable: true}\`
 
