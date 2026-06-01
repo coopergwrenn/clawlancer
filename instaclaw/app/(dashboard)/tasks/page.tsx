@@ -3221,12 +3221,46 @@ export default function CommandCenterPage() {
       />
       {/* ── Static header (never scrolls) ───────────────────── */}
       <div className="shrink-0">
-        <h1
-          className="hidden sm:block text-3xl sm:text-4xl font-normal tracking-[-0.5px]"
-          style={{ fontFamily: "var(--font-serif)" }}
-        >
-          Command Center
-        </h1>
+        <div className="hidden sm:flex items-center justify-between gap-4">
+          <h1
+            className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            Command Center
+          </h1>
+          {/* The Floor — compact watch-live entry, flush-right on the title
+              row so it never steals vertical space from the task list. Built
+              from the page's own tokens (var(--border)/var(--foreground),
+              text-sm font-medium, rounded-full, the → CTA); the emerald
+              live-dot matches the Floor's own LiveDot. Desktop-only like the
+              title — mobile reaches The Floor via primaryNav. */}
+          <Link
+            href="/floor"
+            className="group flex items-center gap-2 shrink-0 rounded-full pl-2.5 pr-3 py-1.5 text-sm font-medium transition-all hover:shadow-sm"
+            style={{ border: "1px solid var(--border)", color: "var(--foreground)" }}
+          >
+            <span className="relative flex items-center justify-center text-base leading-none">
+              {"\u{1F980}"}
+              <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                <span
+                  className="absolute inline-flex h-full w-full rounded-full animate-ping"
+                  style={{ background: "#34d399", opacity: 0.65 }}
+                />
+                <span
+                  className="relative inline-flex h-2 w-2 rounded-full"
+                  style={{ background: "#10b981" }}
+                />
+              </span>
+            </span>
+            The Floor
+            <span
+              aria-hidden="true"
+              className="transition-transform group-hover:translate-x-0.5"
+            >
+              &rarr;
+            </span>
+          </Link>
+        </div>
         <p className="hidden sm:block text-base mt-2" style={{ color: "var(--muted)" }}>
           Your agent works around the clock. Here&apos;s everything
           it&apos;s handling.
@@ -3302,58 +3336,6 @@ export default function CommandCenterPage() {
                     </button>
                   </div>
                 )}
-
-                {/* ── The Floor — watch-live entry point ──────────────
-                    The Command Center says "here's what your agent is
-                    handling"; The Floor says "watch it happen." Built in
-                    this page's OWN card language (var(--card)/var(--border),
-                    serif heading, var(--muted) body, the → CTA) so it reads
-                    as a natural extension, not a bolted-on banner. The
-                    emerald live-dot matches the Floor's own LiveDot. */}
-                <Link href="/floor" className="group block mb-6">
-                  <div
-                    className="flex items-center gap-3 sm:gap-4 rounded-xl px-4 py-3 transition-shadow hover:shadow-sm"
-                    style={{ background: "var(--card)", border: "1px solid var(--border)" }}
-                  >
-                    <div
-                      className="relative w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0"
-                      style={{ background: "var(--background)", border: "1px solid var(--border)" }}
-                    >
-                      {"\u{1F980}"}
-                      <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
-                        <span
-                          className="absolute inline-flex h-full w-full rounded-full animate-ping"
-                          style={{ background: "#34d399", opacity: 0.65 }}
-                        />
-                        <span
-                          className="relative inline-flex h-2.5 w-2.5 rounded-full"
-                          style={{ background: "#10b981" }}
-                        />
-                      </span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className="text-sm sm:text-[15px] font-normal leading-tight"
-                        style={{ fontFamily: "var(--font-serif)", color: "var(--foreground)" }}
-                      >
-                        Watch your agent work, live
-                      </p>
-                      <p
-                        className="hidden sm:block text-[13px] mt-0.5 leading-snug"
-                        style={{ color: "var(--muted)" }}
-                      >
-                        Larry&apos;s on the floor, handling your tasks in real time.
-                      </p>
-                    </div>
-                    <span
-                      className="flex items-center gap-1.5 text-sm font-medium shrink-0 transition-transform group-hover:translate-x-0.5"
-                      style={{ color: "var(--foreground)" }}
-                    >
-                      The Floor
-                      <span aria-hidden="true">&rarr;</span>
-                    </span>
-                  </div>
-                </Link>
 
                 {isLoadingTasks ? (
                   <TasksSkeleton />
