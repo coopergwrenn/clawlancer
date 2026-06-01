@@ -470,10 +470,20 @@ export function Larry() {
       eyeStalks.current.rotation.y = eyeRotY;
     }
 
-    // ── 7. Blink (secondary action) — periodic while awake, shut when asleep ─
-    const awake = d.behavior !== "asleep" && d.behavior !== "offline";
+    // ── 7. Blink (secondary action) ─────────────────────────────────────────
+    // Eyes shut when asleep/offline. Otherwise blink ONLY while the scene is
+    // already animating (behaviorNeedsAnimation === true). Crucially NO blink
+    // during a deep nap (idle level 2): a blink there would re-arm the governor
+    // (blinkStart >= 0) and wake the GPU every few seconds, breaking the PRD §12
+    // "a napping Larry rests at ~0 GPU" budget. Any in-flight blink is cancelled
+    // on entering a resting state so `needsMore` can settle to false.
+    const eyesShut = d.behavior === "asleep" || d.behavior === "offline";
     let blinkScaleY = 1;
-    if (awake) {
+    if (eyesShut) {
+      blinkStart.current = -1; // cancel any in-flight blink
+      blinkScaleY = 0.12; // eyes closed while sleeping
+    } else if (behaviorNeedsAnimation(d)) {
+      // Active state — the GPU is already drawing, so a blink rides along free.
       if (blinkStart.current < 0 && t >= nextBlinkAt.current) blinkStart.current = t;
       if (blinkStart.current >= 0) {
         const bt = (t - blinkStart.current) / 0.14; // a 140ms blink
@@ -486,7 +496,9 @@ export function Larry() {
         }
       }
     } else {
-      blinkScaleY = 0.12; // eyes shut while sleeping
+      // Deep nap (idle L2): eyes rest open-but-droopy; cancel any in-flight blink
+      // so the demand governor can go quiet and the GPU truly idles.
+      blinkStart.current = -1;
     }
     for (const eye of eyes.current) if (eye) eye.scale.y = blinkScaleY;
 

@@ -12,7 +12,7 @@
  * line, one share button, a title. The scene is the star.
  */
 
-import { useMemo } from "react";
+import { Component, useMemo, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { useFloorStore } from "@/lib/floor/store";
 import { useFloorEngine } from "@/lib/floor/use-floor-engine";
@@ -34,6 +34,25 @@ function ScenePoster({ label }: { label: string }) {
       </div>
     </div>
   );
+}
+
+/**
+ * Catches a failed WebGL init (unsupported / blocked / context-create error) so
+ * a device without WebGL gets a graceful poster instead of a crashed page. R3F
+ * throws on mount when it can't create a GL context; this boundary turns that
+ * throw into the fallback. (No new dependency — a tiny class boundary.)
+ */
+class CanvasErrorBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    return this.state.hasError ? this.props.fallback : this.props.children;
+  }
 }
 
 export function FloorView() {
@@ -70,7 +89,13 @@ export function FloorView() {
         {status === "no_office" ? (
           <ScenePoster label="Your office is being set up — check back in a few minutes." />
         ) : (
-          <FloorCanvas />
+          <CanvasErrorBoundary
+            fallback={
+              <ScenePoster label="Your agent is running — but this device can't show the 3D view." />
+            }
+          >
+            <FloorCanvas />
+          </CanvasErrorBoundary>
         )}
 
         {/* Transient-error toast — overlaid, non-blocking; canvas keeps running. */}
