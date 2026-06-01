@@ -46,6 +46,7 @@
  */
 
 import { logger } from "./logger";
+import { verifyToolRouterApiKey } from "./toolrouter-client";
 
 const PROBE_TIMEOUT_MS = 10_000;
 
@@ -501,6 +502,11 @@ export const SECRET_VERIFIERS: SecretVerifier[] = [
     label: "Index Network — HMAC shared secret for opportunity.accepted webhook (shape only — we own the receiver)",
     partnerGate: "edge_city",
     verify: verifyIndexWebhookSecret,
+  },
+  {
+    envKey: "TOOLROUTER_API_KEY",
+    label: "ToolRouter platform API key (shape + /health + /v1/endpoints smoke test)",
+    verify: verifyToolRouterApiKey,
   },
 ];
 
