@@ -131,6 +131,54 @@ director flips to `incoming` + bumps `perkSeq` → RenderKicker invalidates → 
 `useFrame` sees the bump → eyestalks shoot up, body pops → auto-advances to typing
 (lamp brightens by intensity) → `complete` → celebrate hop → settle.
 
+## Proxy-coverage fix (2026-06-01) — the perk-up now works for ALL users
+
+**Production verification on prep day found the pipeline live but the activity
+table EMPTY after ~2 days.** Not a bug — a coverage gap. The `message_in` trigger
+was wired ONLY to the inbound webhooks (shared-bot `@myinstaclaw_bot` + iMessage),
+but **~56% of active agents use their OWN Telegram bot**, whose messages go
+Telegram → the VM's own plugin → the VM gateway directly, never touching our
+inbound webhooks. (Their LLM calls DO hit our proxy — that's where the `user`
+usage_log rows come from — but the proxy wasn't writing `message_in`.) Net: a
+typical own-bot user got no perk-up. Write path itself verified correct via a
+faithful service-role insert (succeeded; probe row cleaned up).
+
+**Fix:** the proxy is the UNIVERSAL message-arrival signal. Added a `message_in`
+write at the proxy entry path (`app/api/gateway/proxy/route.ts`, right after the
+`isHeartbeat` classification, ~480 lines BEFORE the upstream LLM fetch), gated on
+`isManualMessage && !isHeartbeat && !isInfrastructureCall && !strictCanaryBypass
+&& !matchPipelineBypass && vm.assigned_to` (= the conditions that make
+`callType==='user'`, and stricter — `isManualMessage` already excludes
+heartbeat-frame/ping/tool-continuation/virtuals + requires >20 chars, so a
+multi-tool turn writes ONE message_in, not one per tool call). Fire-and-forget via
+`after()`; never blocks/fails the chat completion. Added `assigned_to` to the
+proxy VM lookup (needed for the owner `user_id`).
+
+**Double-write dedupe.** A shared-bot user's message now reaches BOTH producers
+(webhook at arrival; the relay then echoes back through the proxy). New
+`recordMessageIn(input, now)` in `lib/floor-activity.ts` dedupes: (1) per-lambda
+in-process recency map (Fluid Compute reuse → catches the common same-lambda echo
+with zero I/O), then (2) a DB-recency probe (cross-instance echo), then insert.
+Window = `MESSAGE_IN_DEDUPE_WINDOW_MS` (15s). Both webhooks switched from
+`recordFloorActivity` to `recordMessageIn` so the paths share the dedupe. Proven
+by `scripts/_test-floor-dedupe.ts` (15/15).
+
+**Residual edge (documented, accepted):** two GENUINELY-distinct user messages to
+the same agent within 15s → the second is suppressed (no second perk-up).
+Acceptable because Larry is already `working` for 60–90s after the first message;
+the re-pop only matters once settled (won't be in 15s). Shorten the window or
+thread a per-message id if it ever matters.
+
+**Also:** `/floor` added to `middleware.ts` `protectedPages` (defense-in-depth; the
+API was already 401-gated). Tests: director 42 + store 25 + activity 22 + dedupe
+15 = 104, all passing. tsc 0 errors. (The 7 eslint `any` errors in proxy/route.ts
+are PRE-EXISTING message-parsing lines, none in the added region.)
+
+**Recovery note (process):** today's edits were briefly stashed by another
+terminal's branch rebase (the cross-terminal stash hazard). Recovered intact from
+a mine-only stash applied in an isolated worktree; no work lost. Committed promptly
+to a branch this time so it can't be stashed-away again.
+
 ## Self-audit fixes (2026-05-30, post-migration)
 
 Adversarial re-read of every file found 8 issues. Three that affect real behavior were

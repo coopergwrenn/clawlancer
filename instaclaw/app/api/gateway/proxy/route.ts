@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
+import { recordMessageIn } from "@/lib/floor-activity";
 import { logger } from "@/lib/logger";
 import { sendAdminAlertEmail } from "@/lib/email";
 import { sendPerVmAlertDeduped } from "@/lib/admin-alert";
@@ -221,7 +222,10 @@ export async function POST(req: NextRequest) {
     const lookupStart = Date.now();
     const vm = await lookupVMByGatewayToken(
       gatewayToken,
-      "id, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls, user_timezone, cron_breaker_active, telegram_bot_token, telegram_chat_id"
+      // `assigned_to` added 2026-06-01 for The Floor: the proxy is the universal
+      // perk-up trigger (most agents use their own bot and never hit our inbound
+      // webhooks). recordMessageIn needs the owner user_id. (PRD §35.)
+      "id, assigned_to, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls, user_timezone, cron_breaker_active, telegram_bot_token, telegram_chat_id"
     );
     profile.vm_lookup_ms = Date.now() - lookupStart;
 
@@ -715,6 +719,43 @@ export async function POST(req: NextRequest) {
       if (parsedBody) {
         parsedBody.model = "minimax-m2.5";
       }
+    }
+
+    // --- THE FLOOR: perk-up trigger (PRD §35, 2026-06-01 proxy-coverage fix) ---
+    // The proxy is the UNIVERSAL message-arrival signal: most agents use their
+    // own Telegram bot / web / mini-app, whose messages never touch our inbound
+    // webhooks but DO route their LLM call through here. We write `message_in`
+    // the instant a real user message enters — BEFORE the upstream LLM fetch
+    // (~480 lines below) — so Larry perks up while the agent is still thinking.
+    //
+    // Trigger == the existing "real user-typed message" classification:
+    //   isManualMessage (>20 chars, not heartbeat-frame / ping / tool-cont /
+    //   virtuals) AND not a heartbeat AND not infrastructure/canary/match
+    //   (i.e. exactly the conditions that make callType==='user' at line ~1719).
+    // recordMessageIn dedupes against the shared-bot/iMessage webhook write for
+    // the same message (that relay echoes back through this proxy), so a
+    // shared-bot user gets exactly ONE perk-up, not two.
+    //
+    // Fire-and-forget via after(): runs after the response is sent, never adds
+    // latency to or risks failing the user's chat completion. Guard on
+    // assigned_to (an unassigned VM has no owner office to animate).
+    if (
+      isManualMessage &&
+      !isHeartbeat &&
+      !isInfrastructureCall &&
+      !strictCanaryBypass &&
+      !matchPipelineBypass &&
+      vm.assigned_to
+    ) {
+      const floorVmId = vm.id;
+      const floorUserId = vm.assigned_to as string;
+      after(async () => {
+        await recordMessageIn({
+          vmId: floorVmId,
+          userId: floorUserId,
+          channel: "web", // proxy path is channel-agnostic; "web" = "via the agent's own surface"
+        });
+      });
     }
 
     // --- Bug A fix: advance heartbeat_next_at UNCONDITIONALLY before upstream ---

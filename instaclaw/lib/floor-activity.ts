@@ -120,6 +120,109 @@ export function buildActivityRow(input: FloorActivityInput): FloorActivityRow {
 }
 
 /**
+ * Dedupe window for `message_in` (PRD §35 / proxy coverage fix, 2026-06-01).
+ *
+ * A single user message can reach TWO producers:
+ *   1. the inbound webhook (shared-bot / iMessage) writes message_in at arrival;
+ *   2. that relay then calls the VM's OpenClaw gateway, whose LLM call routes
+ *      BACK through our proxy — where `isManualMessage` is also true — so the
+ *      proxy would write a SECOND message_in ~seconds later → a double perk-up.
+ *
+ * Most agents (own Telegram bot / web / mini-app) only ever hit the proxy, so
+ * the proxy write is REQUIRED for coverage; we just need to suppress the echo
+ * for the shared-bot subset. The dedupe is a short recency window per VM:
+ *   - cheap in-process guard (Fluid Compute reuses instances, so the webhook +
+ *     proxy writes frequently land on the same warm lambda → caught for free);
+ *   - plus a DB-recency check (covers the cross-instance case) before insert.
+ *
+ * Window is generous enough to cover relay→gateway→proxy round-trip latency
+ * (a few seconds) but far shorter than any realistic gap between two genuinely
+ * distinct user messages.
+ */
+export const MESSAGE_IN_DEDUPE_WINDOW_MS = 15_000;
+
+/** In-process last-message_in timestamp per vm_id (best-effort, per-lambda). */
+const _lastMessageInByVm = new Map<string, number>();
+
+/**
+ * Decide whether a message_in for this VM is a duplicate of one just recorded,
+ * using ONLY the in-process map. Pure-ish (mutates the module map). The unit
+ * test drives it directly. Returns true = "duplicate, skip"; false = "record it"
+ * (and stamps the map so the next call within the window is deduped).
+ */
+export function isDuplicateMessageInLocal(
+  vmId: string,
+  now: number,
+  windowMs: number = MESSAGE_IN_DEDUPE_WINDOW_MS,
+): boolean {
+  const last = _lastMessageInByVm.get(vmId);
+  if (last !== undefined && now - last < windowMs) return true;
+  _lastMessageInByVm.set(vmId, now);
+  // Opportunistic cleanup so the map can't grow unbounded on a long-lived
+  // lambda: drop entries older than 2× the window.
+  if (_lastMessageInByVm.size > 500) {
+    const cutoff = now - windowMs * 2;
+    for (const [k, v] of _lastMessageInByVm) {
+      if (v < cutoff) _lastMessageInByVm.delete(k);
+    }
+  }
+  return false;
+}
+
+/** Test-only: clear the in-process dedupe map between cases. */
+export function __resetMessageInDedupeForTests(): void {
+  _lastMessageInByVm.clear();
+}
+
+/**
+ * Record a `message_in` event with double-write dedupe (see the window doc).
+ * Use this from BOTH the inbound webhooks and the proxy entry path — whichever
+ * fires first wins; the echo within the window is dropped. Fire-and-forget;
+ * never throws.
+ *
+ * Order of checks (cheapest first):
+ *   1. in-process recency map (no I/O) — catches the common same-lambda echo;
+ *   2. DB recency probe — catches the cross-instance echo;
+ *   3. insert.
+ */
+export async function recordMessageIn(
+  input: Omit<FloorActivityInput, "kind">,
+  now: number = Date.now(),
+): Promise<void> {
+  // 1. In-process guard. If true, a very recent message_in for this VM already
+  //    happened on THIS lambda — skip without any I/O.
+  if (isDuplicateMessageInLocal(input.vmId, now)) {
+    return;
+  }
+  try {
+    // 2. Cross-instance guard: was a message_in written for this VM within the
+    //    window by another lambda (e.g. webhook on instance A, proxy on B)?
+    const sinceIso = new Date(now - MESSAGE_IN_DEDUPE_WINDOW_MS).toISOString();
+    const { data: recent, error: probeErr } = await getSupabase()
+      .from("instaclaw_agent_activity")
+      .select("id")
+      .eq("vm_id", input.vmId)
+      .eq("kind", "message_in")
+      .gte("created_at", sinceIso)
+      .limit(1);
+    if (!probeErr && recent && recent.length > 0) {
+      // An echo from the other producer already landed — drop this one.
+      return;
+    }
+    // 3. No recent message_in → record it.
+    await recordFloorActivity({ ...input, kind: "message_in" });
+  } catch (err) {
+    // Best-effort. A missed message_in is a missed perk-up beat, not a broken
+    // agent reply — swallow exactly like recordFloorActivity.
+    logger.warn("[floor-activity] recordMessageIn threw (non-fatal)", {
+      route: "lib/floor-activity",
+      vmId: input.vmId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
  * Record one real agent activity event. Fire-and-forget: do NOT block a
  * latency-sensitive path on it; never throws. Returns a promise only so
  * callers inside `after()` (and tests) can await if they choose.

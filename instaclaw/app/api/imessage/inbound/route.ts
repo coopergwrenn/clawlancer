@@ -66,7 +66,7 @@ import {
   WELCOME_GAP_2_TO_3_MS,
 } from "@/lib/welcome-messages";
 import { forwardInboundToVm } from "@/lib/channel-routing";
-import { recordFloorActivity, recordForwardOutcome } from "@/lib/floor-activity";
+import { recordMessageIn, recordForwardOutcome } from "@/lib/floor-activity";
 
 export const maxDuration = 300;
 
@@ -288,10 +288,12 @@ export async function POST(req: NextRequest) {
         // Larry reacts in <2s. Guard on vmId: no live VM → no office. Fire-
         // and-forget; never throws.
         if (resolution.vmId) {
-          await recordFloorActivity({
+          // recordMessageIn (not recordFloorActivity) so this arrival-time write
+          // dedupes against the proxy's entry-time write for the same message
+          // (the relay echoes back through the proxy). See PRD §35.
+          await recordMessageIn({
             vmId: resolution.vmId,
             userId: resolution.userId,
-            kind: "message_in",
             channel: "imessage",
           });
         }
