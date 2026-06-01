@@ -28,6 +28,7 @@ import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
 // route. See commit message for the design rationale.
 import { BankrWalletCard } from "@/components/dashboard/bankr-wallet-card";
 import { AgentWalletFundingCard } from "@/components/dashboard/agent-wallet-funding-card";
+import { PremiumToolsCard } from "@/components/dashboard/premium-tools-card";
 import { GmailConnectPopup } from "@/components/dashboard/gmail-connect-popup";
 import { EdgePersonalizationPopup } from "@/components/dashboard/edge-personalization-popup";
 import { ChatGPTConnectModal } from "@/components/dashboard/chatgpt-connect-modal";
@@ -673,6 +674,11 @@ export default function DashboardPage() {
           bankrMaintenance={vmStatus?.bankrMaintenance ?? false}
         />
       )}
+
+      {/* Premium Tools — monthly allocation for ToolRouter-routed web search,
+          browser automation, deep research. Card hides silently if the
+          backend isn't ready or the user isn't entitled. */}
+      {vm && <PremiumToolsCard />}
 
       {vmStatus?.status === "assigned" && vm ? (
         <>
