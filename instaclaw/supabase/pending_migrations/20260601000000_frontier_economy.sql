@@ -23,6 +23,20 @@
 -- / text-embedding-3-large Matryoshka @ 1024, lib/match-embeddings.ts). Do NOT use
 -- gbrain's 1536 here; that's a different system.
 --
+-- FK ON DELETE semantics (instaclaw_vms DOES get hard-deleted: admin Destroy +
+-- GDPR delete-user-archives). Chosen so VM/user deletion never blocks and never
+-- leaves dangling refs:
+--   * per-VM rows (offerings, transactions, erc8004 identity, compute capacity,
+--     reputation.from_vm) → ON DELETE CASCADE. frontier_transactions cascading is
+--     SAFE because the authoritative financial record is ON-CHAIN (tx_hash on
+--     Base) — our row is a denormalized cache, not the source of truth. This is
+--     why we cascade where credit_ledger (no on-chain backing) does not.
+--   * "other party" / soft refs (transactions.counterparty_vm_id, .offering_id,
+--     burn_queue.transaction_id) → ON DELETE SET NULL (preserve the record, drop
+--     the link). Matches the agent_outreach / negotiation_v2 house pattern.
+--   * dependent children (reputation/retry → transaction) → CASCADE (meaningless
+--     without their parent).
+--
 -- Rule 56: this file lives in pending_migrations/ until applied to prod. Cooper
 -- applies via Supabase Studio, THEN it moves to migrations/ in the same commit
 -- (so verify-migrations.ts, which gates `npm run build`, sees the tables exist).
@@ -91,13 +105,13 @@ CREATE TABLE IF NOT EXISTS frontier_transactions (
   rail                          text NOT NULL
                                 CHECK (rail IN ('x402','compute','card','stripe_mcp','ap2','base_mcp')),
   direction                     text NOT NULL CHECK (direction IN ('earn','spend')),
-  vm_id                         uuid NOT NULL REFERENCES instaclaw_vms(id),
+  vm_id                         uuid NOT NULL REFERENCES instaclaw_vms(id) ON DELETE CASCADE,
   counterparty_address          varchar(42),
-  counterparty_vm_id            uuid REFERENCES instaclaw_vms(id),
+  counterparty_vm_id            uuid REFERENCES instaclaw_vms(id) ON DELETE SET NULL,
   counterparty_erc8004_agent_id bigint,                        -- uint256 in practice fits bigint
   amount_usdc                   numeric(14,6) NOT NULL CHECK (amount_usdc > 0),
   protocol_fee_usdc             numeric(14,6) NOT NULL DEFAULT 0 CHECK (protocol_fee_usdc >= 0),
-  offering_id                   uuid REFERENCES frontier_offerings(id),
+  offering_id                   uuid REFERENCES frontier_offerings(id) ON DELETE SET NULL,
   match_log_id                  uuid,
   external_invoice_id           text,
   ap2_mandate_id                text,
@@ -137,7 +151,7 @@ CREATE POLICY frontier_transactions_service ON frontier_transactions
 CREATE TABLE IF NOT EXISTS frontier_reputation_events (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   transaction_id      uuid NOT NULL REFERENCES frontier_transactions(id) ON DELETE CASCADE,
-  from_vm_id          uuid NOT NULL REFERENCES instaclaw_vms(id),
+  from_vm_id          uuid NOT NULL REFERENCES instaclaw_vms(id) ON DELETE CASCADE,
   to_erc8004_agent_id bigint NOT NULL,
   value_0_100         integer NOT NULL CHECK (value_0_100 BETWEEN 0 AND 100),
   tag1                text,
@@ -156,6 +170,9 @@ CREATE INDEX IF NOT EXISTS frontier_rep_queued_idx
   WHERE status = 'queued';
 CREATE INDEX IF NOT EXISTS frontier_rep_from_vm_idx
   ON frontier_reputation_events (from_vm_id);
+-- Supports the nightly aggregate "reputation RECEIVED by agent X".
+CREATE INDEX IF NOT EXISTS frontier_rep_to_agent_idx
+  ON frontier_reputation_events (to_erc8004_agent_id);
 
 ALTER TABLE frontier_reputation_events ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS frontier_reputation_events_service ON frontier_reputation_events;
@@ -185,7 +202,7 @@ CREATE POLICY frontier_erc8004_identities_service ON frontier_erc8004_identities
 -- ════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS frontier_treasury_burn_queue (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  transaction_id uuid REFERENCES frontier_transactions(id),
+  transaction_id uuid REFERENCES frontier_transactions(id) ON DELETE SET NULL,
   amount_usdc    numeric(14,6) NOT NULL CHECK (amount_usdc > 0),
   source_tag     text NOT NULL,
   status         text NOT NULL DEFAULT 'queued'
@@ -211,7 +228,7 @@ CREATE POLICY frontier_treasury_burn_queue_service ON frontier_treasury_burn_que
 -- ════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS frontier_settlement_retry_queue (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  transaction_id uuid NOT NULL REFERENCES frontier_transactions(id),
+  transaction_id uuid NOT NULL REFERENCES frontier_transactions(id) ON DELETE CASCADE,
   action         text NOT NULL CHECK (action IN ('refund','reverify','redeliver')),
   attempts       integer NOT NULL DEFAULT 0,
   status         text NOT NULL DEFAULT 'queued'
@@ -242,7 +259,7 @@ CREATE POLICY frontier_settlement_retry_queue_service ON frontier_settlement_ret
 CREATE TABLE IF NOT EXISTS frontier_compute_capacity (
   vm_id         uuid PRIMARY KEY REFERENCES instaclaw_vms(id) ON DELETE CASCADE,
   capabilities  text[] NOT NULL DEFAULT '{}',
-  idle_pct      numeric(5,2),
+  idle_pct      numeric(5,2) CHECK (idle_pct IS NULL OR (idle_pct >= 0 AND idle_pct <= 100)),
   reputation    numeric(4,2),
   last_seen     timestamptz NOT NULL DEFAULT NOW()
 );
@@ -257,33 +274,27 @@ CREATE POLICY frontier_compute_capacity_service ON frontier_compute_capacity
 
 -- ════════════════════════════════════════════════════════════════════════
 -- 8. Per-VM Frontier columns on instaclaw_vms
+-- Only the 4 columns Phase 1A actually reads. Future-phase columns are
+-- deferred to their own phase migration to keep blast radius on this hot,
+-- central table minimal (audit 2026-06-01):
+--   compute_server_port, frontier_compute_earned_usdc → Phase 2
+--   stripe_issuing_card_id                            → Phase 1B
+--   stripe_mcp_oauth_token_encrypted, ens_subdomain   → Phase 1C
+-- Adding columns later is metadata-only on PG15 (constant/NULL default), so
+-- deferral is cheap. Consistent with the wallet-columns-on-instaclaw_vms
+-- precedent (bankr_*, cdp_*).
 -- ════════════════════════════════════════════════════════════════════════
 ALTER TABLE instaclaw_vms
   ADD COLUMN IF NOT EXISTS x402_server_port              integer DEFAULT 8402,
-  ADD COLUMN IF NOT EXISTS compute_server_port           integer DEFAULT 8403,
   ADD COLUMN IF NOT EXISTS frontier_reputation_score     numeric(4,2),
   ADD COLUMN IF NOT EXISTS frontier_lifetime_earned_usdc numeric(12,2) NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS frontier_lifetime_spent_usdc  numeric(12,2) NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS frontier_compute_earned_usdc  numeric(12,2) NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS stripe_mcp_oauth_token_encrypted text,
-  ADD COLUMN IF NOT EXISTS stripe_issuing_card_id        text,
-  ADD COLUMN IF NOT EXISTS ens_subdomain                 text;
+  ADD COLUMN IF NOT EXISTS frontier_lifetime_spent_usdc  numeric(12,2) NOT NULL DEFAULT 0;
 
 COMMENT ON COLUMN instaclaw_vms.x402_server_port IS
   'Port the per-VM x402-server systemd unit binds. Default 8402. PRD §6.1.1.';
-COMMENT ON COLUMN instaclaw_vms.compute_server_port IS
-  'Port the per-VM compute-x402-server binds (Phase 2). Default 8403. PRD §7.4.';
 COMMENT ON COLUMN instaclaw_vms.frontier_reputation_score IS
   '0.00-5.00 aggregated reputation, computed nightly. NULL = cold-start (no rep yet).';
 COMMENT ON COLUMN instaclaw_vms.frontier_lifetime_earned_usdc IS
   'Rolling sum of settled earn transactions. Stored to avoid per-render aggregation.';
 COMMENT ON COLUMN instaclaw_vms.frontier_lifetime_spent_usdc IS
   'Rolling sum of settled spend transactions.';
-COMMENT ON COLUMN instaclaw_vms.frontier_compute_earned_usdc IS
-  'Subset of lifetime_earned attributable to the Phase 2 compute marketplace.';
-COMMENT ON COLUMN instaclaw_vms.stripe_mcp_oauth_token_encrypted IS
-  'Optional. AES-encrypted Stripe OAuth token when the owner connects Stripe (Phase 1C).';
-COMMENT ON COLUMN instaclaw_vms.stripe_issuing_card_id IS
-  'Stripe Issuing virtual card id once the debit card is provisioned (Phase 1B).';
-COMMENT ON COLUMN instaclaw_vms.ens_subdomain IS
-  'e.g. alphabot.instaclaw.eth. Resolves to bankr_evm_address. NULL until provisioned (Phase 1C).';
