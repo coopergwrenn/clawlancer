@@ -57,11 +57,23 @@ const FETCH_LIMIT = 200;
 // Lookback window: 65 minutes (5 min overlap with the previous hourly
 // run, so a row arriving in the boundary window isn't missed).
 const LOOKBACK_MINUTES = 65;
-// Drift threshold for P1 alert. The hourly drift should be near zero
-// in steady state. >5 missing rows in an hour is investigation-worthy.
-const DRIFT_ALERT_THRESHOLD = 5;
+// Drift threshold for P1 alert.
+//
+// Audit finding (2026-06-01): the v1 threshold of 5/hr left a blind
+// spot — drift of 1-4/hr is silent, so an attacker bypassing the
+// wrapper via openclaw.json edit (~4/hr per VM, easy) would never
+// trigger any alert. Lowered to 2: a single hourly blip (network
+// glitch) is absorbed by the 6h dedup window; systematic issues
+// (wrapper bug, fleet-wide network glitch, agent bypass) cross the
+// line within one hour and surface immediately.
+const DRIFT_ALERT_THRESHOLD = 2;
 const ALERT_DEDUP_KEY = "toolrouter_drift_p1";
 const ALERT_DEDUP_HOURS = 6;
+// Separate dedup key for the "unrecognized response shape" alert.
+// Shape drift can happen independently of count drift (e.g.,
+// ToolRouter renames `data` to `requests`); alerting on it separately
+// means one type of failure doesn't silence the other via dedup.
+const SHAPE_ALERT_DEDUP_KEY = "toolrouter_shape_p1";
 
 interface ToolRouterRequestRow {
   id?: string;
@@ -121,10 +133,43 @@ async function fetchToolRouterAuditLog(): Promise<ToolRouterRequestRow[] | null>
     else if (Array.isArray(data?.items)) rows = data.items;
     else if (Array.isArray(data?.rows)) rows = data.rows;
     else {
-      logger.warn("reconcile-toolrouter-usage: unrecognized response shape", {
+      // Audit finding (2026-06-01): a silent return-null here made the
+      // cron a no-op the next time ToolRouter ships a response-shape
+      // change (e.g., renames `data` to `requests`). Operator sees
+      // "0 missing rows" forever while drift accumulates undetected.
+      // Fail-loud: log + fire a dedicated P1 alert (separate dedup
+      // key so drift alerts don't silence shape alerts).
+      const keys = typeof data === "object" && data ? Object.keys(data).slice(0, 10) : [];
+      logger.error("reconcile-toolrouter-usage: UNRECOGNIZED response shape — backstop blind until fixed", {
         route: "cron/reconcile-toolrouter-usage",
-        keys: typeof data === "object" && data ? Object.keys(data).slice(0, 10) : [],
+        keys,
+        sample: typeof data === "object" && data ? JSON.stringify(data).slice(0, 300) : String(data).slice(0, 300),
       });
+      // Fire alert (best-effort; dedup checked inside). The cron's
+      // exit value still reports ok:false so operators can correlate.
+      void shouldFireAlert(SHAPE_ALERT_DEDUP_KEY).then((fire) => {
+        if (fire) {
+          return sendAdminAlertEmail(
+            "[P1] ToolRouter response-shape change — drift backstop is BLIND",
+            [
+              "GET /v1/requests returned a shape we don't recognize.",
+              "The reconcile-toolrouter-usage cron has stopped detecting drift",
+              "because none of the known array wrappers (data, requests, items, rows)",
+              "matched. Every wrapper-missed call is now invisible until this is fixed.",
+              "",
+              `Response top-level keys: ${keys.join(", ") || "(none)"}`,
+              "",
+              "Investigate:",
+              "  - Has Andy renamed the field? Check toolrouter.world/docs.",
+              "  - Did our Bearer auth start returning a different format?",
+              "  - Update app/api/cron/reconcile-toolrouter-usage/route.ts",
+              "    fetchToolRouterAuditLog() to walk the new shape.",
+              "",
+              `Deduped for ${ALERT_DEDUP_HOURS}h.`,
+            ].join("\n"),
+          );
+        }
+      }).catch(() => { /* swallow */ });
       return null;
     }
 

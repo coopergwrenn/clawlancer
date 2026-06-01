@@ -3339,13 +3339,27 @@ async function stepToolRouter(
       result.warnings.push("toolrouter: vm.gateway_token missing (wrapper requires it)");
       return;
     }
+    // Audit finding (2026-06-01): bare `test -f` doesn't catch a
+    // corrupted wrapper (0 bytes, truncated write, syntax error in
+    // a partial deploy). Combine three signals:
+    //   1. File exists (`test -f`)
+    //   2. File has non-zero size (`test -s`)
+    //   3. File contains the version sentinel (`grep -q TOOLROUTER_WRAPPER_V1`)
+    // Any failure → defer. The wrapper deploys atomically via SFTP
+    // putFile so all three should land together; the combined check
+    // means a half-written file blocks the MCP wire-up instead of
+    // OpenClaw spawning a broken script.
     const wrapperProbe = await ssh.execCommand(
-      `test -f "${TOOLROUTER_WRAPPER_PATH}" && echo ok || echo missing`,
+      `test -s "${TOOLROUTER_WRAPPER_PATH}" && ` +
+      `grep -q TOOLROUTER_WRAPPER_V1 "${TOOLROUTER_WRAPPER_PATH}" && ` +
+      `echo ok || echo missing`,
     );
     if (!wrapperProbe.stdout.includes("ok")) {
-      // Wrapper not yet deployed. stepFiles will write it on this or
-      // the next reconcile cycle. Defer cleanly.
-      result.warnings.push("toolrouter: wrapper .mjs not yet deployed, deferring MCP wire");
+      // Wrapper not deployed, empty, or corrupted. stepFiles will
+      // write it on this or the next reconcile cycle. Defer cleanly.
+      result.warnings.push(
+        "toolrouter: wrapper .mjs missing/empty/sentinel-absent — deferring MCP wire",
+      );
       return;
     }
     wrapperConfig = {

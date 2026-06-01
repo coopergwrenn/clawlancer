@@ -105,11 +105,39 @@ interface RecordUsageBody {
   args?: Record<string, unknown> | null;
 }
 
+// Body size cap (defense in depth against a malicious/malfunctioning
+// wrapper sending oversized payloads). The endpoint receives small
+// records — endpoint_id + trace_id + ~6 small fields + optional args.
+// 64KB is generous (Vercel's default limit is higher, but we want a
+// clear local boundary). Args field has its own cap inside Section 3.
+const MAX_BODY_BYTES = 64 * 1024;
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
   // ── Auth ──
   const token = extractGatewayToken(req);
   if (!token) {
     return NextResponse.json({ error: "missing gateway token" }, { status: 401 });
+  }
+
+  // ── Body size guard (cheap pre-parse check via Content-Length header) ──
+  // Audit finding (2026-06-01): an oversized POST could DoS the endpoint by
+  // forcing await req.json() to buffer a large body into memory before
+  // validation. Reject early when the wrapper announces a body bigger than
+  // the legitimate envelope can possibly need.
+  const contentLength = req.headers.get("content-length");
+  if (contentLength) {
+    const n = Number(contentLength);
+    if (Number.isFinite(n) && n > MAX_BODY_BYTES) {
+      logger.warn("toolrouter record-usage: oversized body rejected", {
+        route: "agent/toolrouter/record-usage",
+        content_length: n,
+        max: MAX_BODY_BYTES,
+      });
+      return NextResponse.json(
+        { error: "body too large", max_bytes: MAX_BODY_BYTES },
+        { status: 413 },
+      );
+    }
   }
 
   const vm = (await lookupVMByGatewayToken(
@@ -213,6 +241,35 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json(
       { error: "rpc failed", code: rpcErr.code ?? null },
       { status: 500 },
+    );
+  }
+
+  // ── Inspect RPC result for in-band errors ──
+  // The RPC returns JSON whether or not the consume "succeeded":
+  //   {allowed: true, ...}                        ← happy path
+  //   {allowed: false, error: "no_user"}          ← user lookup failed (data drift)
+  //   {allowed: false, allocation_source: "post_hoc_exceeded", ...} ← call already
+  //                                                  happened, user out of allocation
+  //   {allowed: true, idempotent_replay: true}    ← duplicate trace_id, no-op
+  //
+  // Audit finding (2026-06-01): the endpoint previously returned 200 OK for
+  // ALL of these. The "no_user" branch hides a real data-drift bug — the
+  // gateway_token lookup found a VM whose assigned_to points at a deleted
+  // user. The wrapper would swallow this silently and the call would never
+  // get accounted. Surface it as a 422 so the wrapper logs a warning and
+  // the operator can investigate.
+  const rpcShape = rpcResult as
+    | { allowed?: boolean; error?: string; allocation_source?: string; idempotent_replay?: boolean }
+    | null;
+  if (rpcShape?.allowed === false && rpcShape?.error === "no_user") {
+    logger.warn("toolrouter record-usage: RPC returned no_user (gateway_token points at orphan VM)", {
+      route: "agent/toolrouter/record-usage",
+      vm_id: vm.id,
+      assigned_to_orphan: vm.assigned_to,
+    });
+    return NextResponse.json(
+      { error: "no_user", vm_id: vm.id, note: "VM.assigned_to points at a deleted user" },
+      { status: 422 },
     );
   }
 
