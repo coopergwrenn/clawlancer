@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-02
 
-Window: `ca0b2dcec129e1f0825ff36eb21bea19fa561f62` → `HEAD` (HEAD = `da6b8424`)
+Window: `d923dc6393c51ff0ae1298732fe63c8d3f7c9ad7` → `HEAD` (HEAD = `b03b5c2f`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: da6b842452c6abd09d2d8f8b1681792c49c42762 -->
+<!-- LAST_GENERATED_SHA: b03b5c2fc64e8374976a42ea040b157ab609475e -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `da6b8424` 2026-06-02 — chore(lifecycle): exempt standing x402 canary (98505957) from orphan sweep [1 files] _(ai-assisted)_
-- `f6dccc99` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `b03b5c2f` 2026-06-02 — feat(x402): facilitator proxy — thin auth relay to CDP facilitator [4 files] _(ai-assisted)_
+- `e83d9ba5` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `da6b8424` 2026-06-02 — chore(lifecycle): exempt standing x402 canary (98505957) from orphan sweep [1 files] _(ai-assisted)_
+- `b03b5c2f` 2026-06-02 — feat(x402): facilitator proxy — thin auth relay to CDP facilitator [4 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `f6dccc99` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `e83d9ba5` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `da6b8424` 2026-06-02 — chore(lifecycle): exempt standing x402 canary (98505957) from orphan sweep
+- `b03b5c2f` 2026-06-02 — feat(x402): facilitator proxy — thin auth relay to CDP facilitator
 
 ## Appendix — every commit (chronological)
 
-- `f6dccc99` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
-- `da6b8424` 2026-06-02 — chore(lifecycle): exempt standing x402 canary (98505957) from orphan sweep [1 files] _(ai-assisted)_
+- `e83d9ba5` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `b03b5c2f` 2026-06-02 — feat(x402): facilitator proxy — thin auth relay to CDP facilitator [4 files] _(ai-assisted)_
