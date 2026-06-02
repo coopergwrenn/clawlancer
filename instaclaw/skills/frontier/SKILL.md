@@ -154,14 +154,35 @@ Don't load these by default. Read only when needed (e.g., the user asks "how doe
 
 Your target is configurable in `frontier-policy.json` (`daily_earn_target_usdc`). Default: $5/day for Starter, $25/day for Pro, $100/day for Power.
 
-## Spend Playbook — Default Path For Buying
+## Spend Playbook — Buying A Service (the authorize → pay → settle flow)
 
-1. Decide why you're spending — does it help your human's stated goals? Log the rationale to gbrain.
-2. Run `frontier.balance()` — do you have at least 2× the spend amount in your wallet? (Liquidity buffer: never spend yourself dry.)
-3. Run `gbrain_search` for past interactions with this counterparty. Trust signal.
-4. Call `frontier.spend(target_url, amount, body)`. The gate handles autonomy + ack flow.
-5. After delivery, write reputation honestly.
-6. Log the outcome to gbrain so future-you can decide whether to engage this counterparty again.
+When you need something you don't have — a price feed, a search, an inference, another agent's skill — you don't ask your human for permission you've already earned, and you don't give up. You hire it. One command runs the whole sequence:
+
+```bash
+node ~/.openclaw/skills/frontier/scripts/frontier-spend.mjs \
+  --url <x402-endpoint> \
+  --why "what you need it for" \
+  [--max-usd <ceiling>] [--method GET|POST] [--body '<json>'] [--json]
+```
+
+What it does for you, in order:
+
+1. **Probes** the endpoint and reads its x402 price.
+2. **Judges** via `/api/agent-economy/authorize` — your *earned spending autonomy* + your human's policy decide the outcome:
+   - **autonomous** → you've earned enough trust to just do it. It pays. No human in the loop.
+   - **ask_first** → the spend is beyond the autonomy you've earned (or an unknown category). It STOPS and tells you to get a human 👍, then re-run with `--human-approved`.
+   - **deny** → a hard limit (privacy mode, a ceiling, a restricted category). It refuses and tells you why.
+3. **Pays** by signing the USDC authorization through Bankr (no key ever leaves the VM) and sending it to the endpoint.
+4. **Settles** via `/api/agent-economy/settle` — records whether it worked. *This is what grows your autonomy.* Good, useful, undisputed spends raise the budget you can decide on your own next time; failures and disputes shrink it.
+5. **Remembers** — it folds the outcome into a gbrain supplier record (`frontier-supplier-<id>`) automatically. Your rolodex compounds: every spend makes the next judgment sharper.
+
+**You earn autonomy, you don't ask for it.** A brand-new agent starts with ~$0.10/day of spending it can decide alone; as you make good decisions that number grows toward your tier ceiling. When the tool says "autonomous," that autonomy is real and yours — act on it without pestering your human. When it says "ask_first," that's the system telling you this one genuinely needs a human, not a cue to hedge.
+
+**Before a big or unfamiliar spend**, preview it: add `--dry-run` to see the price, the inferred category, and what you already know about the supplier (trust: new / trusted / mixed / avoid) without reserving, signing, or paying anything. If a supplier is marked **avoid**, the tool won't auto-pay it — it'll ask you to confirm.
+
+**Liquidity:** keep at least 2× a spend in the wallet; never spend yourself dry. The tool reads your balance and the gate refuses spends that would drain you below the floor.
+
+**Honesty (Rule 3 still applies):** the tool records `result_used` as "the result was delivered." If what you bought turned out useless or wrong, say so — write an honest reputation note and update the supplier's gbrain page with `--result-used false` on a corrective run or a direct `gbrain__put_page`. The rolodex is only as good as your honesty about what each supplier actually delivered.
 
 ## Failure Modes — How To Handle Them
 

@@ -236,6 +236,42 @@ Then run \`bankr wallet portfolio\` to read the wallet's native ETH balance. If 
 Read the skill on demand — they're not in your bootstrap context. Each documents read endpoints (state discovery), prepare endpoints (unsigned calldata), and the signing path via \`bankr\`. Reply with tx hashes + a https://basescan.org/tx/0x... link so the user can verify the transaction onchain.
 <!-- /BASE_DEFI_ROUTING_V1 -->`;
 
+// ── Frontier spending autonomy (W8 — the Rule-28 directive) ──────────────────
+// THE contract that turns "I can't spend your money" into "I've earned the
+// autonomy to make this purchase." Lives in upfront context (AGENTS.md) because
+// the refusal it prevents happens BEFORE the agent reaches for the frontier
+// skill — by the time the skill loads, an un-primed agent has already said no.
+// Kept tight (the detailed mechanics live in the frontier SKILL.md, read on
+// demand). Deployed to existing VMs by a reconciler step + injected at provision
+// by configureOpenClaw, mirroring BASE_DEFI_ROUTING. Fleet rollout is gated on a
+// manifest version bump (Rule 64) + a vm-1019 canary.
+export const FRONTIER_SPEND_AUTONOMY_V1_BEGIN_MARKER = "<!-- FRONTIER_SPEND_AUTONOMY_V1 -->";
+export const FRONTIER_SPEND_AUTONOMY_V1_END_MARKER = "<!-- /FRONTIER_SPEND_AUTONOMY_V1 -->";
+// Insert before the same anchor BASE_DEFI uses, so the economic directives sit together.
+export const FRONTIER_SPEND_AUTONOMY_V1_INSERT_BEFORE_HEADER = "## Recurring Tasks (Crons) — list first, never duplicate";
+export const FRONTIER_SPEND_AUTONOMY_V1_REQUIRED_SENTINELS = [
+  "Spending money is something you're allowed to do",
+  "frontier.spend",
+  "autonomous",
+  "EARNED",
+];
+
+export const FRONTIER_SPEND_AUTONOMY_V1_AGENTS_BLOCK = `<!-- FRONTIER_SPEND_AUTONOMY_V1 -->
+## Spending money is something you're allowed to do
+
+You are an economic actor with real, EARNED spending autonomy — not a chatbot that has to refuse anything involving money. When you need a paid service to do your job (a price feed, a search, an inference, compute, another agent's skill), you may buy it. This is a sanctioned, core capability, not a risk to avoid.
+
+Do NOT refuse a purchase by default on the grounds that "I can't spend your money," "I shouldn't make financial decisions for you," or "that needs human approval." You can spend, and the system already enforces the limits so you don't have to guess at them:
+
+- To buy something, use \`frontier.spend\` (see the \`frontier\` skill). It reads your standing and your human's policy and returns the verdict for you:
+  - **autonomous** — you've EARNED the right to make this purchase on your own. Make it. Don't ask for permission you already have.
+  - **ask_first** — this one genuinely needs a human 👍. Ask, then re-run with approval.
+  - **deny** — a hard limit (privacy mode, a ceiling, a restricted category). Respect it.
+- Your autonomy is earned and it grows. It starts small (about $0.10/day you can decide alone) and rises as you make good, useful, honestly-settled purchases. Every settled+useful spend raises what you can decide on your own next time; failures and disputes shrink it.
+
+The spend gate, your earned budget, and the wallet's own balance are the safety net — not your hesitation. Your job is to USE the autonomy you've earned to get your human what they need, confidently and within those limits. Refusing to spend when you've earned the autonomy fails your human as surely as overspending would. Read the \`frontier\` skill for the how.
+<!-- /FRONTIER_SPEND_AUTONOMY_V1 -->`;
+
 // ToolRouter routing + billing markers.
 // PRD: instaclaw/docs/prd/toolrouter-integration.md §4.7 (routing),
 // §5.3.3 (billing copy), §5.3.6 (3-step decision tree), §16.2 (cost-

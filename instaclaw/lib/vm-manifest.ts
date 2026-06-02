@@ -2809,6 +2809,11 @@ export const VM_MANIFEST = {
     // DegenClaw trading competition — reference docs
     { skillName: "dgclaw", localPath: "references/api.md", remotePath: "references/api.md" },
     { skillName: "dgclaw", localPath: "references/strategy-playbook.md", remotePath: "references/strategy-playbook.md" },
+    // Frontier — the spend tool (W6) + supplier-rolodex core (W7). Self-contained
+    // node ESM (built-ins only); frontier-spend.mjs imports frontier-spend-core.mjs
+    // from the same dir on the VM. Fleet rollout is gated on a manifest version bump (Rule 64).
+    { skillName: "frontier", localPath: "scripts/frontier-spend-core.mjs", remotePath: "scripts/frontier-spend-core.mjs" },
+    { skillName: "frontier", localPath: "scripts/frontier-spend.mjs", remotePath: "scripts/frontier-spend.mjs" },
   ] as ManifestExtraSkillFile[],
 
   // ── Cron jobs ──
