@@ -1,29 +1,29 @@
 # Changelog — generated 2026-06-02
 
-Window: `395609b41f9e5ed447ebfee5480eb83bdcf34423` → `HEAD` (HEAD = `201bfcc6`)
-Total commits: 2
+Window: `201bfcc6dbad9c6b787acf91eceee356fa482dcb` → `HEAD` (HEAD = `60115b03`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 201bfcc6dbad9c6b787acf91eceee356fa482dcb -->
+<!-- LAST_GENERATED_SHA: 60115b03170d23e044b0df21bc2cae692080fcfc -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
 - **Infrastructure:** 1
-- **Feature (user-facing):** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
-- Merge commits: 0
+- Merge commits: 1
 
 ## What changed for users
 
-_None in this window._
+- `a9f733df` 2026-06-02 — feat(floor): draw the crab claw (Shape + ExtrudeGeometry), don't assemble it [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `201bfcc6` 2026-06-02 — fix(frontier): x402 v2 compatibility in the spend tool (caught pre-canary) [3 files] _(ai-assisted)_
-- `f5901153` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `60115b03` 2026-06-02 — Merge remote-tracking branch 'origin/main' into feat/floor-claw-extrude [0 files] _(merge)_
+- `044c4abd` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,11 +33,11 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `201bfcc6` 2026-06-02 — fix(frontier): x402 v2 compatibility in the spend tool (caught pre-canary) [3 files] _(ai-assisted)_
+- `60115b03` 2026-06-02 — Merge remote-tracking branch 'origin/main' into feat/floor-claw-extrude [0 files] _(merge)_
 
-### Feature (user-facing) (0)
+### Feature (user-facing) (1)
 
-_(none)_
+- `a9f733df` 2026-06-02 — feat(floor): draw the crab claw (Shape + ExtrudeGeometry), don't assemble it [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,15 +45,16 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `f5901153` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `044c4abd` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `201bfcc6` 2026-06-02 — fix(frontier): x402 v2 compatibility in the spend tool (caught pre-canary)
+- `a9f733df` 2026-06-02 — feat(floor): draw the crab claw (Shape + ExtrudeGeometry), don't assemble it
 
 ## Appendix — every commit (chronological)
 
-- `f5901153` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
-- `201bfcc6` 2026-06-02 — fix(frontier): x402 v2 compatibility in the spend tool (caught pre-canary) [3 files] _(ai-assisted)_
+- `044c4abd` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `a9f733df` 2026-06-02 — feat(floor): draw the crab claw (Shape + ExtrudeGeometry), don't assemble it [1 files] _(ai-assisted)_
+- `60115b03` 2026-06-02 — Merge remote-tracking branch 'origin/main' into feat/floor-claw-extrude [0 files] _(merge)_
