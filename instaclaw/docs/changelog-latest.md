@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-02
 
-Window: `2c468f818b3db9607d211041ab0ff2d4a4a173bc` → `HEAD` (HEAD = `8a310d96`)
+Window: `8a310d9693c440caac448e91b67ac5ad223cb547` → `HEAD` (HEAD = `21b40b99`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 8a310d9693c440caac448e91b67ac5ad223cb547 -->
+<!-- LAST_GENERATED_SHA: 21b40b99c9e6423e601a060a5125e6acb7fe3c10 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `8a310d96` 2026-06-02 — fix(billing): credit_pack P0 self-audit — orphan-detection cron + remove dead 3-arg callers [5 files] _(multi: [infrastructure, docs]; ai-assisted)_
-- `8aaeb1e7` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `21b40b99` 2026-06-02 — feat(frontier): W4/W5 — the spend gate (authorize) and the feedback loop (settle) [7 files] _(ai-assisted)_
+- `e985efa4` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `8a310d96` 2026-06-02 — fix(billing): credit_pack P0 self-audit — orphan-detection cron + remove dead 3-arg callers [5 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `21b40b99` 2026-06-02 — feat(frontier): W4/W5 — the spend gate (authorize) and the feedback loop (settle) [7 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `8aaeb1e7` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `8a310d96` 2026-06-02 — [infrastructure, docs] — fix(billing): credit_pack P0 self-audit — orphan-detection cron + remove dead 3-arg callers
+- `e985efa4` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `8a310d96` 2026-06-02 — fix(billing): credit_pack P0 self-audit — orphan-detection cron + remove dead 3-arg callers
+- `21b40b99` 2026-06-02 — feat(frontier): W4/W5 — the spend gate (authorize) and the feedback loop (settle)
 
 ## Appendix — every commit (chronological)
 
-- `8aaeb1e7` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
-- `8a310d96` 2026-06-02 — fix(billing): credit_pack P0 self-audit — orphan-detection cron + remove dead 3-arg callers [5 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `e985efa4` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `21b40b99` 2026-06-02 — feat(frontier): W4/W5 — the spend gate (authorize) and the feedback loop (settle) [7 files] _(ai-assisted)_
