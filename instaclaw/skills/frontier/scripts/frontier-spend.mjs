@@ -223,7 +223,10 @@ async function main() {
 
   const offer = await probe.json().catch(() => ({}));
   const accepts = offer?.accepts;
-  const description = offer?.accepts?.[0]?.description ?? offer?.error ?? null;
+  // x402 v2 carries description + tags on a top-level `resource` object; v1 put them per-accept.
+  const description = offer?.resource?.description ?? offer?.accepts?.[0]?.description ?? offer?.error ?? null;
+  const resourceTags = Array.isArray(offer?.resource?.tags) ? offer.resource.tags.filter((t) => typeof t === "string") : [];
+  const x402Version = typeof offer?.x402Version === "number" ? offer.x402Version : 1;
 
   // ── SELECT which requirement to satisfy ──
   const maxUsd = args["max-usd"] !== undefined ? Number(args["max-usd"]) : Infinity;
@@ -237,7 +240,7 @@ async function main() {
   const supplierLabel = (() => { try { return new URL(url).hostname; } catch { return supplierId; } })();
   const slug = supplierSlug(supplierId);
   const category = inferCategory({ explicit: args.category, resourceUrl: url, description });
-  const tags = tagsFromResource(url);
+  const tags = [...new Set([...tagsFromResource(url), ...resourceTags])].slice(0, 12);
 
   // 5(read) ── REMEMBER: consult the rolodex before engaging ──
   const prevRec = await readSupplier(gbrainBearer, slug);
@@ -290,7 +293,7 @@ async function main() {
     });
     const typedData = buildTransferTypedData(authorizationMsg, { asset, name: requirement.extra?.name, version: requirement.extra?.version });
     const signature = await bankrSign(bankrKey, typedData);
-    const xPayment = buildXPaymentHeader({ signature, authorization: authorizationMsg, network: requirement.network });
+    const xPayment = buildXPaymentHeader({ signature, authorization: authorizationMsg, network: requirement.network, scheme: requirement.scheme, x402Version });
 
     const payRes = await fetch(url, { method, body: reqBody, headers: { "X-PAYMENT": xPayment, ...(reqBody ? { "Content-Type": "application/json" } : {}) }, signal: AbortSignal.timeout(60000) });
     if (payRes.ok) {
