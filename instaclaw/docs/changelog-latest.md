@@ -1,45 +1,43 @@
 # Changelog — generated 2026-06-02
 
-Window: `e5c40a6e538cff4c0c4b3dffde5b39abc6a9bf79` → `HEAD` (HEAD = `e320364b`)
-Total commits: 4
+Window: `e320364bf87f975aa4c99348722e425cc57e811f` → `HEAD` (HEAD = `96b3496f`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: e320364bf87f975aa4c99348722e425cc57e811f -->
+<!-- LAST_GENERATED_SHA: 96b3496f20b678579a999da716217c93739b41ab -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 2
-- **Feature (user-facing):** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 3
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-- `fbffec63` 2026-06-02 — fix(deploying): Edge CTA → "enter the village" + fix grace-branch chat dead-end [3 files] _(multi: [feature, edge]; ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `d93afa9e` 2026-06-02 — fix(edge): bump edge_verified cookie TTL 15min → 60min for slow-auth runway [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `e320364b` 2026-06-02 — fix(toolrouter): AGENTS.md stopgap — agent passes maxUsd:0.03 on exa_search [1 files] _(ai-assisted)_
-- `45376f75` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `96b3496f` 2026-06-02 — fix(gbrain): flip default to fleet-wide + recycle privacy wipe (P1 — 13 customers had no memory) [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `cedc3ee4` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `96b3496f` 2026-06-02 — fix(gbrain): flip default to fleet-wide + recycle privacy wipe (P1 — 13 customers had no memory) [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
 
-### Infrastructure (2)
+### Feature (user-facing) (0)
 
-- `d93afa9e` 2026-06-02 — fix(edge): bump edge_verified cookie TTL 15min → 60min for slow-auth runway [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `e320364b` 2026-06-02 — fix(toolrouter): AGENTS.md stopgap — agent passes maxUsd:0.03 on exa_search [1 files] _(ai-assisted)_
-
-### Feature (user-facing) (1)
-
-- `fbffec63` 2026-06-02 — fix(deploying): Edge CTA → "enter the village" + fix grace-branch chat dead-end [3 files] _(multi: [feature, edge]; ai-assisted)_
+_(none)_
 
 ### Edge City partner (0)
 
@@ -47,26 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `45376f75` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `cedc3ee4` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
-## Multi-category commits (2)
+## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `fbffec63` 2026-06-02 — [feature, edge] — fix(deploying): Edge CTA → "enter the village" + fix grace-branch chat dead-end
-- `d93afa9e` 2026-06-02 — [infrastructure, edge] — fix(edge): bump edge_verified cookie TTL 15min → 60min for slow-auth runway
+- `96b3496f` 2026-06-02 — [reconciler, infrastructure, edge] — fix(gbrain): flip default to fleet-wide + recycle privacy wipe (P1 — 13 customers had no memory)
 
-## AI-assisted commits (3)
+## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `fbffec63` 2026-06-02 — fix(deploying): Edge CTA → "enter the village" + fix grace-branch chat dead-end
-- `d93afa9e` 2026-06-02 — fix(edge): bump edge_verified cookie TTL 15min → 60min for slow-auth runway
-- `e320364b` 2026-06-02 — fix(toolrouter): AGENTS.md stopgap — agent passes maxUsd:0.03 on exa_search
+- `96b3496f` 2026-06-02 — fix(gbrain): flip default to fleet-wide + recycle privacy wipe (P1 — 13 customers had no memory)
 
 ## Appendix — every commit (chronological)
 
-- `45376f75` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
-- `fbffec63` 2026-06-02 — fix(deploying): Edge CTA → "enter the village" + fix grace-branch chat dead-end [3 files] _(multi: [feature, edge]; ai-assisted)_
-- `d93afa9e` 2026-06-02 — fix(edge): bump edge_verified cookie TTL 15min → 60min for slow-auth runway [1 files] _(multi: [infrastructure, edge]; ai-assisted)_
-- `e320364b` 2026-06-02 — fix(toolrouter): AGENTS.md stopgap — agent passes maxUsd:0.03 on exa_search [1 files] _(ai-assisted)_
+- `cedc3ee4` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `96b3496f` 2026-06-02 — fix(gbrain): flip default to fleet-wide + recycle privacy wipe (P1 — 13 customers had no memory) [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
