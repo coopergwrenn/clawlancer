@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-02
 
-Window: `46827001c5025abf7462591e5b3072f559c244c2` → `HEAD` (HEAD = `c0dfc2e8`)
+Window: `c0dfc2e8bd7ed0475ae020189d3217b84a4cc116` → `HEAD` (HEAD = `0d7faab9`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: c0dfc2e8bd7ed0475ae020189d3217b84a4cc116 -->
+<!-- LAST_GENERATED_SHA: 0d7faab98dca5a90ba20b1b00dbb6bc11e28c505 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `c0dfc2e8` 2026-06-02 — fix(frontier): authorize trio — real World-ID gate, server-side balance, atomic reserve (P1-2/3/4) [3 files] _(ai-assisted)_
-- `ab193fa5` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `0d7faab9` 2026-06-02 — test(frontier): P2-1 route tests for the money routes + extract settle pure helpers [2 files] _(ai-assisted)_
+- `a4681667` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `c0dfc2e8` 2026-06-02 — fix(frontier): authorize trio — real World-ID gate, server-side balance, atomic reserve (P1-2/3/4) [3 files] _(ai-assisted)_
+- `0d7faab9` 2026-06-02 — test(frontier): P2-1 route tests for the money routes + extract settle pure helpers [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `ab193fa5` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `a4681667` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `c0dfc2e8` 2026-06-02 — fix(frontier): authorize trio — real World-ID gate, server-side balance, atomic reserve (P1-2/3/4)
+- `0d7faab9` 2026-06-02 — test(frontier): P2-1 route tests for the money routes + extract settle pure helpers
 
 ## Appendix — every commit (chronological)
 
-- `ab193fa5` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
-- `c0dfc2e8` 2026-06-02 — fix(frontier): authorize trio — real World-ID gate, server-side balance, atomic reserve (P1-2/3/4) [3 files] _(ai-assisted)_
+- `a4681667` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `0d7faab9` 2026-06-02 — test(frontier): P2-1 route tests for the money routes + extract settle pure helpers [2 files] _(ai-assisted)_
