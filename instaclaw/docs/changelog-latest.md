@@ -1,29 +1,29 @@
 # Changelog — generated 2026-06-02
 
-Window: `e9f20986ca0841426beead25a4c3e1aa9af1d68c` → `HEAD` (HEAD = `54301461`)
-Total commits: 3
+Window: `54301461ba0374856353fabfbc2f8ed0076854e6` → `HEAD` (HEAD = `18f3a307`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 54301461ba0374856353fabfbc2f8ed0076854e6 -->
+<!-- LAST_GENERATED_SHA: 18f3a307a6481c542552a16033cf9012c5d8ec66 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
 - **Infrastructure:** 1
-- **Feature (user-facing):** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 0
-- Merge commits: 1
+- AI-assisted commits (co-authored): 1
+- Merge commits: 0
 
 ## What changed for users
 
-- `5d9668d3` 2026-06-02 — feat(floor): voxel Larry — pivot from organic to Pokemon-Quest blocky [2 files]
+_None in this window._
 
 ## What changed under the hood
 
-- `54301461` 2026-06-02 — Merge remote-tracking branch 'origin/main' into feat/floor-voxel [0 files] _(merge)_
-- `c4dec231` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `18f3a307` 2026-06-02 — chore(migrations): promote credit_pack overload drop to migrations/ after prod apply [2 files] _(ai-assisted)_
+- `d5bbe548` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,11 +33,11 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `54301461` 2026-06-02 — Merge remote-tracking branch 'origin/main' into feat/floor-voxel [0 files] _(merge)_
+- `18f3a307` 2026-06-02 — chore(migrations): promote credit_pack overload drop to migrations/ after prod apply [2 files] _(ai-assisted)_
 
-### Feature (user-facing) (1)
+### Feature (user-facing) (0)
 
-- `5d9668d3` 2026-06-02 — feat(floor): voxel Larry — pivot from organic to Pokemon-Quest blocky [2 files]
+_(none)_
 
 ### Edge City partner (0)
 
@@ -45,10 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `c4dec231` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `d5bbe548` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+
+## AI-assisted commits (1)
+
+Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+
+- `18f3a307` 2026-06-02 — chore(migrations): promote credit_pack overload drop to migrations/ after prod apply
 
 ## Appendix — every commit (chronological)
 
-- `5d9668d3` 2026-06-02 — feat(floor): voxel Larry — pivot from organic to Pokemon-Quest blocky [2 files]
-- `c4dec231` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
-- `54301461` 2026-06-02 — Merge remote-tracking branch 'origin/main' into feat/floor-voxel [0 files] _(merge)_
+- `d5bbe548` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `18f3a307` 2026-06-02 — chore(migrations): promote credit_pack overload drop to migrations/ after prod apply [2 files] _(ai-assisted)_
