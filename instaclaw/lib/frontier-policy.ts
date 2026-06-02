@@ -98,6 +98,14 @@ export interface SpendContext {
   requireVerifiedCounterparty?: boolean;
   /** Per-VM dashboard overrides (tighten-only; see clampOverrides). */
   overrides?: PolicyOverrides | null;
+  /** The capability category of this purchase (W3). Omit to skip the category gate. */
+  category?: SpendCategory;
+  /**
+   * Categories the agent may buy autonomously (human-set; defaults per tier via
+   * DEFAULT_ALLOWED_CATEGORIES_BY_TIER). Omit to skip the category gate
+   * (backward-compatible). If provided, a `category` not in this list → deny.
+   */
+  allowedCategories?: readonly SpendCategory[];
 }
 
 export interface SpendEvaluation {
@@ -176,6 +184,13 @@ export function evaluateSpend(tier: FrontierTier, ctx: SpendContext): SpendEvalu
     return result("deny", "unverified_counterparty");
   }
 
+  // 3.5 Category allowlist (W3) — a human-set safety boundary on WHAT may be
+  // bought. Enforced only when both the purchase category and an allowlist are
+  // provided (backward-compatible: omit either to skip).
+  if (ctx.category && ctx.allowedCategories && !ctx.allowedCategories.includes(ctx.category)) {
+    return result("deny", "category_not_allowed");
+  }
+
   // 4–5. Hard ceilings (per-tx, then aggregate daily).
   if (amount > bands.neverPerTx) {
     return result("deny", "exceeds_per_tx_ceiling");
@@ -206,3 +221,59 @@ export function evaluateSpend(tier: FrontierTier, ctx: SpendContext): SpendEvalu
   // 8. Everything else falls in the ask-first band.
   return result("ask_first", "within_ask_first_band");
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// W3 — Category model (PRD §7.3 diversity factor + the spend category allowlist).
+// A capability taxonomy + Bazaar-tag mapping + per-tier default allowlists. The
+// allowlist is a SAFETY dimension: a human can restrict what KINDS of things the
+// agent may buy ("data + search, never trading"). Categories also feed the
+// activity-diversity factor of the credit score (frontier-ledger).
+// ───────────────────────────────────────────────────────────────────────────
+
+export type SpendCategory =
+  | "data" // prices, feeds, datasets, weather, telemetry
+  | "search" // web/search/scrape/intelligence
+  | "inference" // LLM/GPU/model inference
+  | "compute" // sandboxes, code execution, rendering
+  | "market" // prediction markets, trading signals, on-chain market data
+  | "media" // images, audio, video generation
+  | "agent" // hiring another agent's service (A2A)
+  | "other";
+
+export const ALL_CATEGORIES: readonly SpendCategory[] = [
+  "data", "search", "inference", "compute", "market", "media", "agent", "other",
+];
+
+/** Bazaar tag → category. First match wins; unknown tags → null (caller defaults to "other"). */
+const TAG_CATEGORY_RULES: ReadonlyArray<[RegExp, SpendCategory]> = [
+  [/price|feed|market[_-]?cap|ticker|ohlc|telemetry|weather|dataset|data\b/i, "data"],
+  [/search|scrape|crawl|serp|web[_-]?search|intelligence|lookup/i, "search"],
+  [/inference|llm|gpt|llama|mistral|embedding|model|completion|gpu/i, "inference"],
+  [/compute|sandbox|exec|render|build|container/i, "compute"],
+  [/prediction|polymarket|trade|trading|signal|defi|swap|orderbook/i, "market"],
+  [/image|audio|video|tts|speech|music|render/i, "media"],
+  [/agent|a2a|hire|delegate/i, "agent"],
+];
+
+/** Map a resource's tags to a single category (the first rule any tag matches). */
+export function mapTagsToCategory(tags: string[] | null | undefined): SpendCategory | null {
+  if (!tags || tags.length === 0) return null;
+  for (const [re, cat] of TAG_CATEGORY_RULES) {
+    if (tags.some((t) => re.test(t))) return cat;
+  }
+  return null;
+}
+
+/**
+ * Default category allowlist per tier. Conservative-by-default: the categories an
+ * agent may buy autonomously without an explicit human opt-in. "market" (trading
+ * adjacency) is OFF by default at every tier — buying trading signals/DeFi actions
+ * is the category most likely to cause harm, so it requires deliberate opt-in.
+ * The human can widen or narrow this from the dashboard (stored as an override).
+ */
+export const DEFAULT_ALLOWED_CATEGORIES_BY_TIER: Record<FrontierTier, readonly SpendCategory[]> = {
+  starter: ["data", "search", "agent"],
+  pro: ["data", "search", "inference", "compute", "media", "agent"],
+  power: ["data", "search", "inference", "compute", "media", "agent", "other"],
+  // "market" intentionally excluded from all defaults — opt-in only.
+};
