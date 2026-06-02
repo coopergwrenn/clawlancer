@@ -1,0 +1,66 @@
+-- Drop the legacy 3-param instaclaw_add_credits function to resolve a
+-- function-overload ambiguity that has silently broken EVERY message/media
+-- credit-pack purchase webhook from 2026-04-28 through 2026-06-02 (35 days).
+--
+-- ROOT CAUSE
+-- ----------
+-- Migration 20260326_add_credits_source_param.sql added a 4-param version
+-- of instaclaw_add_credits via CREATE OR REPLACE FUNCTION. But because the
+-- new signature added a parameter (p_source TEXT DEFAULT 'stripe'),
+-- PostgreSQL treated it as a NEW overload rather than a replacement — the
+-- old 3-param version was NOT removed. Result: TWO functions named
+-- instaclaw_add_credits live in pg_proc with overlapping argument lists.
+-- PostgREST's RPC router cannot choose between them and returns
+-- PGRST203 "Could not choose the best candidate function" on every call.
+--
+-- The webhook handler at app/api/billing/webhook/route.ts:245-249 invokes
+-- instaclaw_add_credits with 3 params (p_vm_id, p_credits, p_reference_id).
+-- That 3-param call matches BOTH the old function and the new function
+-- (since p_source has a DEFAULT). PostgREST errors out instead of picking
+-- one, throw bubbles up, the handler returns 500, Stripe retries
+-- indefinitely with the same error.
+--
+-- BLAST RADIUS
+-- ------------
+-- Verified deterministic failure via 3 direct RPC invocations 2026-06-02.
+-- Last successful ledger insert via this RPC: 2026-04-28T17:37:39 UTC.
+-- 7 orphan paid purchases (5 users, $90) accumulated 2026-04-29 → 2026-05-21.
+-- + 2 fresh orphans 2026-06-02 (Robbie Rhead, $35 — the customer report
+-- that surfaced this). All 9 orphan credit_purchases rows were backfilled
+-- manually 2026-06-02 12:14-12:20 UTC via explicit 4-param RPC calls
+-- (p_source='stripe') that disambiguate at PostgREST resolution time.
+--
+-- FIX
+-- ---
+-- DROP the legacy 3-param function. After this drop, only the 4-param
+-- version remains; the webhook handler's 3-param call resolves cleanly
+-- to it because p_source has DEFAULT 'stripe'.
+--
+-- The companion code change at app/api/billing/webhook/route.ts explicitly
+-- passes p_source='stripe' in the RPC call — defense-in-depth so any
+-- future re-introduction of an overload would not silently regress this
+-- code path. (The handler's call becomes 4-arg, which can only match the
+-- 4-param signature even if a different overload is added later.)
+--
+-- IDEMPOTENT
+-- ----------
+-- DROP FUNCTION IF EXISTS — safe to re-run; no error if function is already
+-- absent. The explicit argument list (uuid, integer, text) targets ONLY
+-- the 3-param overload; the 4-param signature (uuid, integer, text, text)
+-- is preserved.
+
+DROP FUNCTION IF EXISTS public.instaclaw_add_credits(uuid, integer, text);
+
+-- Verification queries to run after applying:
+--
+--   -- Confirm only one instaclaw_add_credits remains:
+--   SELECT proname, pg_get_function_arguments(oid) AS args
+--   FROM pg_proc WHERE proname = 'instaclaw_add_credits';
+--
+--   -- Confirm the RPC works with a 3-param call (no-op test):
+--   SELECT public.instaclaw_add_credits(
+--     '00000000-0000-0000-0000-000000000000'::uuid,
+--     0,
+--     'POST_FIX_VERIFICATION_2026_06_02'
+--   );
+--   -- Expected: NULL (no row matched p_vm_id, but no PGRST203 error).

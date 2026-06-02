@@ -242,10 +242,24 @@ async function handleCreditPackPurchase(session: any): Promise<void> {
 
   if (!mustAddCredits) return;
 
+  // p_source MUST be passed explicitly. Until 2026-04-28, only the 3-param
+  // RPC existed; the 4-param overload (which added p_source) was introduced
+  // by migration 20260326_add_credits_source_param.sql without DROPping the
+  // old one. PostgreSQL kept BOTH overloads in pg_proc, and PostgREST's
+  // function router returns PGRST203 "Could not choose the best candidate
+  // function" for any 3-argument call because both signatures match. The
+  // companion migration 20260602120000_drop_instaclaw_add_credits_legacy_overload.sql
+  // drops the 3-param version; this explicit 4th argument is defense-in-depth
+  // so a future re-introduction of any overload cannot silently regress this
+  // code path. (Other callers — vm/assign, poll-delegation-confirmations,
+  // bankr/webhook — already pass p_source explicitly for the same reason.)
+  // The 35-day silent breakage 2026-04-28 → 2026-06-02 cost 6 users $90 of
+  // unapplied credits; see docs/postmortems/2026-06-02-credit-pack-overload.md.
   const { data: newBalance, error: rpcErr } = await supabase.rpc("instaclaw_add_credits", {
     p_vm_id: vmId,
     p_credits: credits,
     p_reference_id: paymentIntent,
+    p_source: "stripe",
   });
   if (rpcErr) {
     logger.error("Credit pack webhook: instaclaw_add_credits RPC failed — throwing for Stripe retry", {
