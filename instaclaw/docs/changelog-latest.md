@@ -1,15 +1,15 @@
 # Changelog — generated 2026-06-02
 
-Window: `e320364bf87f975aa4c99348722e425cc57e811f` → `HEAD` (HEAD = `96b3496f`)
+Window: `96b3496f20b678579a999da716217c93739b41ab` → `HEAD` (HEAD = `d8ea5430`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 96b3496f20b678579a999da716217c93739b41ab -->
+<!-- LAST_GENERATED_SHA: d8ea5430ffa97ed801c596f523efe96ecc111c00 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `96b3496f` 2026-06-02 — fix(gbrain): flip default to fleet-wide + recycle privacy wipe (P1 — 13 customers had no memory) [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
-- `cedc3ee4` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `d8ea5430` 2026-06-02 — feat(frontier): W11 canary — first autonomous on-chain USDC spend, proven live [8 files] _(ai-assisted)_
+- `b8944627` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `96b3496f` 2026-06-02 — fix(gbrain): flip default to fleet-wide + recycle privacy wipe (P1 — 13 customers had no memory) [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `d8ea5430` 2026-06-02 — feat(frontier): W11 canary — first autonomous on-chain USDC spend, proven live [8 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `cedc3ee4` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `96b3496f` 2026-06-02 — [reconciler, infrastructure, edge] — fix(gbrain): flip default to fleet-wide + recycle privacy wipe (P1 — 13 customers had no memory)
+- `b8944627` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `96b3496f` 2026-06-02 — fix(gbrain): flip default to fleet-wide + recycle privacy wipe (P1 — 13 customers had no memory)
+- `d8ea5430` 2026-06-02 — feat(frontier): W11 canary — first autonomous on-chain USDC spend, proven live
 
 ## Appendix — every commit (chronological)
 
-- `cedc3ee4` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
-- `96b3496f` 2026-06-02 — fix(gbrain): flip default to fleet-wide + recycle privacy wipe (P1 — 13 customers had no memory) [3 files] _(multi: [reconciler, infrastructure, edge]; ai-assisted)_
+- `b8944627` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `d8ea5430` 2026-06-02 — feat(frontier): W11 canary — first autonomous on-chain USDC spend, proven live [8 files] _(ai-assisted)_
