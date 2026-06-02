@@ -197,87 +197,77 @@ const CrabEye = forwardRef<
 });
 
 /**
- * One curved crab finger, built leg-style from two box segments so it reads as
- * a tapering pincer without ever blobbing.
+ * The claw silhouette — DRAWN, not assembled (the category shift after five
+ * failed attempts to fuse separate primitives into a pincer).
  *
- * `dir = +1` → the LOWER finger (pollex): hinges off the palm bottom, sweeps
- * forward, then curls UP toward the bite line.
- * `dir = -1` → the UPPER finger (dactyl): mirror — hinges off the palm top,
- * sweeps forward, curls DOWN toward the bite line.
+ * A `THREE.Shape` is a hand-authored 2D outline of an OPEN crab pincer: a solid
+ * rounded palm for the lower half that splits into two prongs up top with a
+ * concave "bite" valley between them. Because it's ONE continuous contour, the
+ * silhouette is exactly what's drawn — there are no sub-shapes that can fail to
+ * fuse. `ExtrudeGeometry` then gives it real depth + a fat bevel so it reads as
+ * a chunky lit 3D object (catches ShellMaterial + the rim light) rather than a
+ * flat sticker. The shape is symmetric about x=0 and opens +Y, so BOTH claws
+ * share one geometry — no mirroring, no negative-scale normal flips.
  *
- * Both fingers converge to nearly-touching tapered tips at the front, so the
- * negative space between them is a TEARDROP: wide at the hinge (palm), pinched
- * to a thin gap at the tips. That teardrop is what makes it read as a claw.
+ * SIDE PROFILE, forward-opening, ASYMMETRIC — this is what makes it read as a
+ * crab claw instead of a tulip. The claw points outward (+X for `dir=+1`), the
+ * palm at the back (toward the body), splitting at the front into a small upper
+ * jaw (dactyl) and a bigger lower jaw (pollex) with the mouth opening forward.
+ * Two symmetric prongs opening UP always read as ears/tulip; an asymmetric
+ * forward-opening profile reads as a claw. `dir` negates X to mirror cleanly for
+ * the other side (extruded fresh so normals stay correct — no scale(-1) flip).
  *
- * Construction per finger (nested groups, so the curve composes cleanly):
- *   - base segment: thick, sockets into the palm front, splays out ~6°
- *   - tip segment: ~70% width/height (the taper), hinged off the base's far
- *     end and curled ~25° back toward centerline, overlapping ≥30% into the
- *     base so the joint never shows a seam (the joint bends toward the camera,
- *     unlike the legs, so generous overlap is load-bearing)
- *   - dark tip cap: the snap point, in CRAB_ORANGE_DARK
+ * Authored ~0.45 long × 0.27 tall; chunky depth + fat bevel so it's a solid 3D
+ * claw, not a flat slab.
  */
-function Finger({ dir }: { dir: number }) {
-  return (
-    <group position={[0, -dir * 0.07, 0.08]} rotation={[dir * 0.2, 0, 0]}>
-      {/* base segment — thick, grows forward out of the palm */}
-      <RoundedBox
-        args={[0.16, 0.11, 0.19]}
-        radius={0.045}
-        smoothness={4}
-        castShadow
-        position={[0, 0, 0.085]}
-      >
-        <ShellMaterial color={CLAW_TONE} roughness={0.36} emissiveIntensity={0.1} />
-      </RoundedBox>
-
-      {/* tip hinge — at the base's far end; curls back toward the bite line.
-          ~20° curl leaves an OPEN gap between the tips so the pincer "C" reads
-          (a hairline gap is invisible from the hero camera). */}
-      <group position={[0, 0, 0.16]} rotation={[-dir * 0.35, 0, 0]}>
-        {/* tip segment — thinner (taper), overlaps back into the base */}
-        <RoundedBox
-          args={[0.11, 0.08, 0.15]}
-          radius={0.035}
-          smoothness={4}
-          castShadow
-          position={[0, 0, 0.05]}
-        >
-          <ShellMaterial color={CLAW_TONE} roughness={0.36} emissiveIntensity={0.1} />
-        </RoundedBox>
-
-        {/* dark tip — the snap point, 4th orange shade. ROUNDED (not a box) so
-            it never presents a flat dark face to the camera — a box cap reads as
-            "a block stuck on the end" when seen end-on; a rounded cap always
-            reads as a darkened claw-tip. */}
-        <mesh castShadow position={[0, 0, 0.11]}>
-          <sphereGeometry args={[0.05, 18, 14]} />
-          <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.5} />
-        </mesh>
-      </group>
-    </group>
-  );
+function buildClawShape(dir: number): THREE.Shape {
+  const x = (v: number) => v * dir;
+  const s = new THREE.Shape();
+  s.moveTo(x(-0.16), 0.1); // back-top of palm
+  s.quadraticCurveTo(x(-0.02), 0.14, x(0.1), 0.12); // palm top → forward
+  s.quadraticCurveTo(x(0.22), 0.11, x(0.265), 0.04); // upper jaw → tip (curls down)
+  s.quadraticCurveTo(x(0.24), 0.0, x(0.19), 0.02); // upper jaw inner (mouth top)
+  s.quadraticCurveTo(x(0.11), 0.0, x(0.18), -0.035); // into the bite cavity
+  s.quadraticCurveTo(x(0.27), -0.05, x(0.27), -0.08); // lower jaw tip (curls up)
+  s.quadraticCurveTo(x(0.22), -0.13, x(0.08), -0.13); // lower jaw bottom → back
+  s.quadraticCurveTo(x(-0.1), -0.12, x(-0.16), -0.06); // palm bottom
+  s.quadraticCurveTo(x(-0.19), 0.02, x(-0.16), 0.1); // palm back edge → close
+  return s;
 }
 
+function extrudeClaw(dir: number): THREE.ExtrudeGeometry {
+  const g = new THREE.ExtrudeGeometry(buildClawShape(dir), {
+    depth: 0.2,
+    bevelEnabled: true,
+    bevelThickness: 0.06,
+    bevelSize: 0.06,
+    bevelSegments: 5,
+    curveSegments: 24,
+  });
+  g.center(); // pivot at the claw's center so group rotation is sane
+  return g;
+}
+
+// One geometry per side (mirrored), so each claw opens OUTWARD away from the body.
+const CLAW_GEO_RIGHT = extrudeClaw(1);
+const CLAW_GEO_LEFT = extrudeClaw(-1);
+
 /**
- * One front claw (cheliped) — the HERO feature, anatomy-correct teardrop build.
+ * One front claw (cheliped) — the HERO feature, single extruded pincer.
  *
- * A real crab chela is: a swollen rounded PALM (manus) with two curved fingers
- * growing out of its front — the fixed pollex (bottom) and movable dactyl (top).
- * The fingers taper, curve toward each other, and nearly touch at the tips. The
- * negative space between them is a teardrop — wide at the hinge, near-closed at
- * the tips. That silhouette is what reads as "crab claw" in under a second.
+ * The claw is ONE extruded mesh (drawn asymmetric profile), the side-correct
+ * mirror per `side`. Its flat profile faces +Z (the hero camera), the mouth
+ * opens OUTWARD away from the body, tilted slightly up for the elevated camera.
+ * A short thick arm grounds the palm to the body so it never floats on a stick.
  *
- * Build = rounded-oval palm + two `Finger` segments (pollex + dactyl). No dark
- * interior box to start — geometry shadow + AO carry the teardrop. `side`
- * mirrors L/R. Lives inside the leftClaw/rightClaw ref'd group; the inward
- * angle comes from that group's rotation.y, so the teardrop face stays roughly
- * parallel to the screen from the hero camera.
+ * `side` (-1 L / +1 R) selects the mirrored geometry + placement. Lives inside
+ * the leftClaw/rightClaw ref'd group whose animated rotation.x drives tap/raise.
  */
 function Cheliped({ side }: { side: number }) {
+  const clawGeo = side < 0 ? CLAW_GEO_LEFT : CLAW_GEO_RIGHT;
   return (
     <group>
-      {/* arm — SHORT + THICK, overlapping body (back) and palm (front) so the
+      {/* arm — SHORT + THICK, overlapping body (back) and claw (front) so the
           claw never floats on a stick. */}
       <RoundedBox
         args={[0.17, 0.17, 0.2]}
@@ -290,20 +280,14 @@ function Cheliped({ side }: { side: number }) {
         <ShellMaterial color={CRAB_ORANGE} roughness={0.4} emissiveIntensity={0.1} />
       </RoundedBox>
 
-      {/* ── the CLAW — rounded-oval palm + two converging fingers ──
-          Raised (~20°) and yawed OUTWARD so the vertical scissor plane angles
-          toward the hero camera — that's the only orientation where the teardrop
-          negative space reads as a pincer (head-on, you'd see the tips end-on). */}
-      <group position={[side * 0.02, 0.05, 0.14]} rotation={[-0.35, side * 0.6, 0]}>
-        {/* palm (manus) — rounded oval (high corner radius → egg, not box).
-            CLAW_TONE so the hero feature pops off the body shell. */}
-        <RoundedBox args={[0.3, 0.24, 0.3]} radius={0.11} smoothness={5} castShadow receiveShadow>
+      {/* ── the CLAW — one drawn-and-extruded asymmetric profile ──
+          Profile faces +Z (camera); mouth opens outward; raised + the mouth
+          rolled up (rotation.z) into a perky "claws up" pose; tilted toward the
+          elevated hero camera (rotation.x). */}
+      <group position={[side * 0.06, 0.06, 0.16]} rotation={[-0.2, 0, side * 0.22]}>
+        <mesh geometry={clawGeo} castShadow receiveShadow>
           <ShellMaterial color={CLAW_TONE} roughness={0.36} emissiveIntensity={0.12} />
-        </RoundedBox>
-
-        {/* pollex (lower) curls up + dactyl (upper) curls down → teardrop gap */}
-        <Finger dir={1} />
-        <Finger dir={-1} />
+        </mesh>
       </group>
     </group>
   );
