@@ -32,6 +32,10 @@ export default function AgentChatPreview() {
   >("telegram");
   const [userFirstName, setUserFirstName] = useState<string | null>("Cooper");
   const [isComplete, setIsComplete] = useState(false);
+  // Edge attendee toggle — ?edge=1 → CTA becomes "enter the village →
+  // /edge/intents" with the olive .cta-edge tint, superseding the
+  // channel-based CTA.
+  const [isEdge, setIsEdge] = useState(false);
   // Auto-complete after a delay so the sequence plays out naturally
   // and the CTA appears. Disabled if ?complete=1 (fires on mount) or
   // ?manual=1 (user controls via button).
@@ -46,6 +50,9 @@ export default function AgentChatPreview() {
     }
     if (url.searchParams.get("noname") === "1") {
       setUserFirstName(null);
+    }
+    if (url.searchParams.get("edge") === "1") {
+      setIsEdge(true);
     }
     if (url.searchParams.get("complete") === "1") {
       setIsComplete(true);
@@ -88,6 +95,7 @@ export default function AgentChatPreview() {
         userFirstName={userFirstName}
         botUsername="myinstaclaw_bot"
         isComplete={isComplete}
+        isEdge={isEdge}
       />
 
       {/* Debug overlay — bottom-left, dev only. */}

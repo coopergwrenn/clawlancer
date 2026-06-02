@@ -75,6 +75,20 @@ interface AgentChatProps {
    * early sequence has played to its end, the final message fires.
    */
   isComplete: boolean;
+  /**
+   * Edge Esmeralda attendee (partner = edge_city). When true, the
+   * final CTA SUPERSEDES the channel-based destination: instead of
+   * "open telegram and say hi → t.me/...", the agent's last line
+   * hands off to the mandatory intent gate ("enter the village →
+   * /edge/intents"). An Edge attendee's true next step isn't "go
+   * chat with your agent" — it's seeding the village matching engine
+   * with one intent, which is what makes the agent useful in the
+   * village context. The intent gate is mandatory (dashboard layout
+   * enforces it as defense-in-depth), so the CTA routes there
+   * directly rather than letting the user reach a dead-end dashboard
+   * that would just bounce them back.
+   */
+  isEdge?: boolean;
 }
 
 interface ChatEvent {
@@ -128,12 +142,32 @@ function buildSequence(userFirstName: string | null | undefined): ChatEvent[] {
 function buildFinalCta(
   channel: AgentChatProps["channel"],
   botUsername: string | null | undefined,
+  isEdge?: boolean,
 ): {
   label: string;
   href: string | null;
   external: boolean;
   modifier: string;
 } {
+  // Edge attendees supersede ALL channel logic. The agent has just
+  // come alive ("okay. i'm ready."); for a village resident the next
+  // beat isn't "go message your agent" — it's crossing the threshold
+  // into the village by telling the agent what they're here for. The
+  // intent gate at /edge/intents is mandatory (dashboard layout
+  // enforces it), so we route there directly. ".cta-edge" gives the
+  // olive tint that matches the Edge palette the attendee has seen
+  // since /edge/claim. "enter the village" keeps the emotional
+  // altitude of the moment (belonging, threshold-crossing) rather
+  // than dropping to a functional "fill out this form" instruction;
+  // the intents page itself does the instructing on arrival.
+  if (isEdge) {
+    return {
+      label: "enter the village",
+      href: "/edge/intents",
+      external: false,
+      modifier: "cta-edge",
+    };
+  }
   if (channel === "telegram" && botUsername) {
     return {
       label: "open telegram and say hi",
@@ -179,6 +213,7 @@ export function AgentChat({
   channel,
   botUsername,
   isComplete,
+  isEdge,
 }: AgentChatProps) {
   const sequence = buildSequence(userFirstName);
   /**
@@ -254,7 +289,7 @@ export function AgentChat({
   const lastEvent = visibleEvents[visibleEvents.length - 1];
   const showTrailingTyping =
     lastEvent?.kind === "typing" && !showFinal;
-  const finalCta = buildFinalCta(channel, botUsername);
+  const finalCta = buildFinalCta(channel, botUsername, isEdge);
 
   return (
     <div className="agent-chat-root">

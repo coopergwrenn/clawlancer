@@ -260,6 +260,18 @@ function DeployingPageContent() {
   const [recoveryChecking, setRecoveryChecking] = useState(false);
   const [showCheckAnyway, setShowCheckAnyway] = useState(false);
   const [checkingAnyway, setCheckingAnyway] = useState(false);
+  // 2026-05-31: explicit "deploy is done enough for the agent to take a
+  // message" flag, driving AgentChat's isComplete. Previously isComplete
+  // was computed inline as `configuredRef.current && healthStatus ===
+  // "healthy"`, which had a dead-end: the 5s-grace branch (gateway up,
+  // health metric still lagging) calls setPolling(false) + clearInterval,
+  // freezing vmAccordionState.healthStatus at a non-"healthy" value — so
+  // isComplete could never become true and the chat's CTA never appeared,
+  // stranding the user on a perpetual typing indicator with no way
+  // forward. Set true in BOTH happy-path branches (full-healthy AND
+  // grace-elapsed) so the chat always reaches its CTA on a successful
+  // deploy regardless of which branch confirms it.
+  const [deployComplete, setDeployComplete] = useState(false);
 
   // Track which steps just completed (for the bounce animation)
   const [justCompleted, setJustCompleted] = useState<Set<string>>(new Set());
@@ -503,32 +515,46 @@ function DeployingPageContent() {
             updateStep("telegram", "done");
 
             if (data.vm.healthStatus === "healthy") {
-              // Fully ready. 2026-05-30: auto-redirect removed for
-              // non-Edge users — the AgentChat's "open telegram and
-              // say hi →" CTA is the user's action. The chat's
-              // climax is destroyed if we yank the page out from
-              // under it. Edge attendees keep the auto-redirect
-              // because /edge/intents is a mandatory gate (matching
-              // engine needs at least one intent seeded).
+              // Fully ready. 2026-05-31: NO auto-redirect on the happy
+              // path — for ANYONE, Edge or not. The AgentChat's final
+              // CTA is the user's action and the emotional climax of
+              // the whole flow ("okay. i'm ready." → tap to enter):
+              //   - non-Edge → "open telegram and say hi →"
+              //   - Edge     → "enter the village →" (/edge/intents)
+              // Yanking the page out from under the chat with a timed
+              // redirect destroyed that moment (it fired before the CTA
+              // even appeared). The Edge intent gate stays mandatory —
+              // the dashboard layout enforces it (FUP-3a) as defense in
+              // depth, so a user who somehow lands on /dashboard without
+              // an intent is still bounced to /edge/intents. The
+              // recovery paths below (soft-timeout, "check anyway",
+              // manual button) DO still redirect — those are degraded
+              // states where the chat moment is already gone.
               updateStep("health", "done");
               setPolling(false);
               setSoftTimeout(false);
+              setDeployComplete(true);
               clearInterval(interval);
-              if (isEdge) {
-                setTimeout(() => { window.location.href = deploySuccessDestination; }, 1500);
-              }
             } else if (pollCount - (configuredAtPoll.current ?? pollCount) >= 5) {
-              // 5-second grace period elapsed — gateway is running. Same
-              // pattern as the fully-healthy branch above: non-Edge
-              // users stay on the chat (CTA fires); Edge users get
-              // redirected to /edge/intents for the mandatory gate.
+              // 5-second grace period elapsed — gateway is running but
+              // the health metric hasn't flipped "healthy" yet (health-
+              // check cron lag). We treat gateway-up + 5s as "done
+              // enough": stop polling, mark deploy complete, let the
+              // AgentChat CTA own the next step. No auto-redirect (see
+              // comment above).
+              //
+              // setDeployComplete(true) here is load-bearing: it drives
+              // AgentChat's isComplete directly, so the chat reaches its
+              // CTA in this branch even though polling stops and
+              // vmAccordionState.healthStatus stays frozen at a non-
+              // "healthy" value. (Before deployComplete existed,
+              // isComplete was gated on that frozen value and the chat
+              // stranded the user on a perpetual typing indicator here.)
               updateStep("health", "done");
               setPolling(false);
               setSoftTimeout(false);
+              setDeployComplete(true);
               clearInterval(interval);
-              if (isEdge) {
-                setTimeout(() => { window.location.href = deploySuccessDestination; }, 1500);
-              }
             } else {
               // Within 5s grace period — still checking health
               updateStep("health", "active");
@@ -956,10 +982,20 @@ function DeployingPageContent() {
                 vmAccordionState.telegramBotUsername ? "telegram" : "web"
               }
               botUsername={vmAccordionState.telegramBotUsername}
-              isComplete={
-                configuredRef.current &&
-                vmAccordionState.healthStatus === "healthy"
-              }
+              // deployComplete is set true in BOTH happy-path branches
+              // (full-healthy AND 5s-grace-elapsed). Using it — instead
+              // of the old inline `configuredRef && healthStatus ===
+              // "healthy"` — means the chat reaches its CTA on a
+              // successful deploy even when the grace branch confirms it
+              // (where polling stops and healthStatus would stay frozen
+              // at a non-"healthy" value). See the setDeployComplete
+              // call sites + the state declaration comment.
+              isComplete={deployComplete}
+              // Edge attendees: the final CTA becomes "enter the village
+              // → /edge/intents" instead of a channel-based destination.
+              // This replaces the old auto-redirect (removed below) that
+              // raced — and won against — the chat's emotional climax.
+              isEdge={isEdge}
             />
           </div>
 
