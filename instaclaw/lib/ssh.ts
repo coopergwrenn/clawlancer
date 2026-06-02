@@ -10205,6 +10205,25 @@ export async function wipeVMForNextUser(vm: VMRecord): Promise<{ success: boolea
         'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && systemctl --user stop openclaw-gateway 2>/dev/null || true'
       );
 
+      // Stop + disable + hard-kill gbrain BEFORE wiping ~/.gbrain. This is a
+      // cross-tenant privacy requirement: the gbrain knowledge graph
+      // (~/.gbrain/brain.pglite) holds the previous customer's memories,
+      // facts, people, and pages. Without this teardown a recycled VM would
+      // carry that data into the next customer's agent. We must also remove
+      // the per-VM bearer + config so the reinstall mints fresh secrets.
+      //
+      // SIGKILL (not SIGTERM) is correct here per CLAUDE.md Rule 54: SIGTERM
+      // corrupts PGLite on graceful close, but we're about to delete the data
+      // dir entirely, so any post-kill state is moot — pkill -KILL avoids the
+      // graceful-shutdown path and any lock that would block the rm. `disable`
+      // ensures the unit doesn't auto-restart against a deleted data dir
+      // (which would error-loop). install-gbrain.sh re-enables on reinstall.
+      await ssh.execCommand(
+        'export XDG_RUNTIME_DIR="/run/user/$(id -u)" && ' +
+        'systemctl --user disable --now gbrain.service 2>/dev/null || true; ' +
+        'pkill -KILL -f "gbrain.*serve" 2>/dev/null || true'
+      );
+
       const wipeCmd = [
         // ── USER DATA (highest priority — data privacy) ──
 
@@ -10268,6 +10287,16 @@ export async function wipeVMForNextUser(vm: VMRecord): Promise<{ success: boolea
 
         // 16. Clear notification state from previous user
         'rm -f ~/.openclaw/notifications/* 2>/dev/null || true',
+
+        // 17. Wipe gbrain user-state (CROSS-TENANT PRIVACY — highest priority).
+        // ~/.gbrain/ holds the previous customer's entire knowledge graph
+        // (brain.pglite = memories/facts/people/pages), the per-VM bearer
+        // token, config.json, and any *.tar.gz hot-backups. Removing the whole
+        // dot-dir forces install-gbrain.sh to fully re-init for the next user
+        // (fresh brain + freshly-minted bearer). The gbrain REPO CLONE lives at
+        // ~/gbrain (no leading dot) — that's code, left intact to speed the
+        // reinstall. Service already stopped+disabled+killed above so no lock.
+        'rm -rf ~/.gbrain 2>/dev/null || true',
       ].join(' && ');
 
       const result = await ssh.execCommand(wipeCmd);
@@ -10279,22 +10308,44 @@ export async function wipeVMForNextUser(vm: VMRecord): Promise<{ success: boolea
         });
       }
 
-      // Post-wipe verification: confirm no user identity files remain
+      // Post-wipe verification — GATES the return value. A recycled VM is
+      // reused by the next customer, so an unverified wipe is a cross-tenant
+      // data leak. We confirm BOTH (a) no user identity files remain in the
+      // workspace and (b) the gbrain knowledge graph is gone. If either
+      // persists we return success:false; the recycle/terminate callers then
+      // leave the VM intact and retry next cycle rather than handing stale
+      // data to the next user.
+      //
+      // (Pre-2026-06-02 this check only logged on failure and still returned
+      // success:true — a latent bug. It now gates, and additionally covers
+      // ~/.gbrain/brain.pglite which the wipe previously never touched.)
       const verifyResult = await ssh.execCommand(
         'ls ~/.openclaw/workspace/USER.md ~/.openclaw/workspace/IDENTITY.md ~/.openclaw/workspace/MEMORY.md 2>/dev/null | wc -l'
       );
       const remainingFiles = parseInt(verifyResult.stdout?.trim() ?? "0", 10);
-      if (remainingFiles > 0) {
-        logger.error("WIPE_INCOMPLETE: user identity files still exist after wipe", {
+
+      const verifyGbrain = await ssh.execCommand(
+        'ls -d ~/.gbrain/brain.pglite 2>/dev/null | wc -l'
+      );
+      const gbrainBrainRemains = parseInt(verifyGbrain.stdout?.trim() ?? "0", 10);
+
+      if (remainingFiles > 0 || gbrainBrainRemains > 0) {
+        logger.error("WIPE_INCOMPLETE: privacy-critical state still present after wipe", {
           vmId: vm.id,
-          remainingFiles,
+          vmName: (vm as unknown as Record<string, unknown>).name,
+          identityFilesRemaining: remainingFiles,
+          gbrainBrainRemaining: gbrainBrainRemains,
         });
+        return {
+          success: false,
+          error: `wipe incomplete: identity=${remainingFiles} gbrain_brain=${gbrainBrainRemains}`,
+        };
       }
 
       logger.info("VM wiped for next user", {
         vmId: vm.id,
         vmName: (vm as unknown as Record<string, unknown>).name,
-        verified: remainingFiles === 0,
+        verified: true,
       });
 
       return { success: true };

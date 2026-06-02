@@ -319,6 +319,13 @@ export async function createUserVM(
         region,
         tier: p.tier,
         api_mode: p.apiMode,
+        // Belt-and-suspenders for the 2026-06-02 gbrain default flip: set the
+        // flag explicitly at assignment so the DB column reflects reality
+        // (true, not NULL) for observability/audits. Functionally redundant
+        // with isGbrainEligibleForVM's new NULL→true default, but makes intent
+        // explicit and survives any future re-narrowing of that default.
+        // Atomic part of the row INSERT — no added failure surface.
+        gbrain_enabled: true,
         // 2026-05-21 P0: removed `api_key: p.apiKey ?? null` — the column
         // never existed on instaclaw_vms (verified 126-col schema probe vs
         // 'api_key' lookup returns false). The INSERT failed for shelpinc's
@@ -699,6 +706,25 @@ export async function assignOrProvisionUserVm(
       userId,
       vmId: String(poolVm.id),
     });
+    // Belt-and-suspenders for the 2026-06-02 gbrain default flip: the pool
+    // is claimed via the `instaclaw_assign_vm` RPC, which doesn't touch
+    // gbrain_enabled, so a pool VM lands with the snapshot's NULL. Set it
+    // true explicitly so the DB reflects reality. Best-effort + non-fatal:
+    // isGbrainEligibleForVM's NULL→true default already makes the VM
+    // eligible, so a failure here is purely cosmetic (loses the explicit
+    // flag, not the capability). Never block assignment on it.
+    try {
+      await supabase
+        .from("instaclaw_vms")
+        .update({ gbrain_enabled: true })
+        .eq("id", poolVm.id);
+    } catch (e) {
+      logger.warn("assignOrProvisionUserVm: gbrain_enabled set failed (non-fatal; NULL→true default covers it)", {
+        route: "lib/createUserVM",
+        vmId: String(poolVm.id),
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
     return {
       vmId: String(poolVm.id),
       ipAddress: String(poolVm.ip_address),

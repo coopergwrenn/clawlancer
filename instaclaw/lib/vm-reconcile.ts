@@ -197,28 +197,56 @@ function keyRequiresGatewayRestart(key: string): boolean {
 export const GBRAIN_PARTNER_ALLOWLIST: ReadonlySet<string> = new Set(["edge_city"]);
 
 /**
- * v107 canary-rollout gating helper.
+ * gbrain eligibility helper.
  *
  * Three-state semantics on `instaclaw_vms.gbrain_enabled`:
- *   - true  → explicitly enable (canary cohort or post-canary opt-in)
  *   - false → explicitly disable (rollback hatch for VMs with known issues)
- *   - NULL  → follow partner allowlist (pre-v107 behavior preserved)
+ *   - true  → explicitly enable
+ *   - NULL  → DEFAULT ON, fleet-wide (see 2026-06-02 default flip below)
  *
  * Used by stepGbrain, stepDeployGbrainSoulProtocol,
  * stepDeployGbrainSoulRouting, and configureOpenClaw's conditional inject.
- * Single source of truth — when the canary expands to fleet-wide, only
- * this function (and the DB column values) need to change.
+ * Single source of truth.
  *
- * PRD: docs/prd/gbrain-fleet-rollout-canary-2026-05-19.md.
+ * ── 2026-06-02 default flip (NULL → eligible, fleet-wide) ──
+ * The v107 canary (PRD gbrain-fleet-rollout-canary-2026-05-19) shipped a
+ * phased rollout where NULL meant "follow the edge_city-only partner
+ * allowlist" and cohorts were opted in via `UPDATE gbrain_enabled=true`
+ * (scripts/_deploy-gbrain-canary-cohort.ts). Phases 1-3 enabled the entire
+ * EXISTING non-edge fleet — but the steady-state default for NEWLY
+ * provisioned VMs was never flipped. Result: every customer who signed up
+ * after the rollout finished got gbrain_enabled=NULL → ineligible → no
+ * cross-session memory (13 paying customers found 2026-06-02, since
+ * backfilled). Rule 26: the migration enabled the population but the
+ * default was never changed.
+ *
+ * This flips the last switch the rollout was always heading toward
+ * (Phase 3 = "fleet-wide"). gbrain is a core feature for every customer
+ * VM, not a partner perk — approved universal across all tiers including
+ * starter (memory is core, not a premium upsell).
+ *
+ * Safety of NULL → true: every CODE caller of this helper operates on an
+ * already-narrowed VM set. stepGbrain runs only inside reconcileVM, whose
+ * sole driver (reconcile-fleet cron) pre-filters status='assigned' AND
+ * health_status='healthy' AND cv<manifest, batch size 1 — so the flip
+ * cannot cause a fleet-wide install stampede; installs serialize at one
+ * VM per cron tick. The 5-invariant idempotency gate in install-gbrain.sh
+ * makes a re-run on an already-installed VM a no-op (no brain wipe).
+ *
+ * `false` remains the explicit per-VM opt-out / rollback hatch.
+ * GBRAIN_PARTNER_ALLOWLIST is retained (imported by lib/ssh.ts) but no
+ * longer gates the default — kept as documentation of legacy partner
+ * intent and for any future partner-specific branching.
  */
 export function isGbrainEligibleForVM(
   vm: { partner?: string | null; gbrain_enabled?: boolean | null },
 ): boolean {
-  // Explicit overrides take precedence over partner-allowlist default.
+  // Explicit overrides take precedence over the default.
   if (vm.gbrain_enabled === false) return false; // explicit disable (rollback hatch)
-  if (vm.gbrain_enabled === true) return true; // explicit enable (canary cohort)
-  // NULL → fall back to partner allowlist (current behavior preserved)
-  return Boolean(vm.partner && GBRAIN_PARTNER_ALLOWLIST.has(vm.partner));
+  if (vm.gbrain_enabled === true) return true; // explicit enable
+  // NULL → default ON, fleet-wide (2026-06-02 flip). gbrain is universal
+  // for every customer VM. Partner allowlist no longer gates the default.
+  return true;
 }
 // HTTP sidecar architecture. Pin to a specific commit per Rule 35;
 // operator manually bumps after canary validation when newer version is desired.
