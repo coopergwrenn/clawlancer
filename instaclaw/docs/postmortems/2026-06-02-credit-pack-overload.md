@@ -2,9 +2,9 @@
 
 ## Severity & scope
 
-**P0** — 6 paying customers, $90 of paid credits not delivered, 35-day window.
+**P0** — 6 paying customers, **$120 total (1800 credits)** of paid credits not delivered, 35-day window. Breakdown: $85 (1250 credits) across 5 customers who never reported + $35 (550 credits) for Robbie Rhead, the one who reported.
 
-7 orphan credit-pack purchases between 2026-04-29 and 2026-06-02. Discovered via customer report (Robbie Rhead, lagomera.boy@googlemail.com) the day after he paid $35 for credits that never appeared. Audit then surfaced 5 prior affected customers who had not reported.
+9 orphan credit-pack purchases between 2026-04-29 and 2026-06-02 (7 from the 5 silent customers + 2 from Robbie). Discovered via customer report (Robbie Rhead, lagomera.boy@googlemail.com) the day after he paid $35 for credits that never appeared. Audit then surfaced 5 prior affected customers who had not reported.
 
 Affected (all paid, all backfilled 2026-06-02 12:14-12:20 UTC):
 
@@ -60,7 +60,7 @@ Three coordinated changes:
 
 ## Blast radius
 
-- 6 customers, $90 directly impacted.
+- 6 customers, $120 (1800 credits) directly impacted.
 - Detection lag: 35 days (April 28 → June 2). Reported by customer, not by alerting.
 - Resolution: ~25 minutes from report to all-credits-applied (Robbie was made whole within 5 minutes of receiving the report).
 
@@ -70,12 +70,13 @@ Three coordinated changes:
 - Any future migration adding/removing a function parameter must `DROP FUNCTION IF EXISTS <name>(<old_signature>)` BEFORE the `CREATE OR REPLACE FUNCTION`. `CREATE OR REPLACE` does not handle signature changes — this is a known PostgreSQL behavior.
 - Optional follow-up: a CI gate that flags any migration containing `CREATE OR REPLACE FUNCTION` for a function name that already exists in earlier migrations with a DIFFERENT parameter list. (Wishlist; mechanical check is non-trivial without parsing SQL.)
 
-**Detection:**
-- Optional follow-up: alert when `instaclaw_credit_purchases` has rows with no matching `instaclaw_credit_ledger` entry for >5 minutes. Would have detected this within minutes of the first orphan instead of 35 days. P1.
-- Optional follow-up: surface Stripe's `pending_webhooks > 0` count on a dashboard; sustained non-zero pending across days is a strong signal that a webhook is silently failing. P1.
+**Detection (SHIPPED 2026-06-02):**
+- ✅ **Signal 5 of `app/api/cron/usage-anomaly-check`** (hourly, minute 7) now alerts CRITICAL when any `instaclaw_credit_purchases` row has no matching `instaclaw_credit_ledger` entry (match key `vm_id` + `reference_id`=`stripe_payment_intent`), older than a 15-minute delivery grace, within a 7-day lookback. This is the exact orphan-detection query (SQL 5) from the incident, now running on a cron. Had it existed, this bug would have alerted within ~1 hour of the first failed purchase (2026-04-29) instead of going 35 days to a customer report. The alert body lists the orphan rows and the paste-ready `instaclaw_add_credits(...)` backfill statement. Verified against prod 2026-06-02: fires zero alerts (all 9 historical orphans backfilled).
+- Optional follow-up: surface Stripe's `pending_webhooks > 0` count on a dashboard; sustained non-zero pending across days is a strong signal that a webhook is silently failing. P2.
 
 **Code:**
 - All RPC callsites already use the explicit-`p_source` pattern except this one. Existing convention was right; webhook handler was missed. The fix brings it into the canonical shape.
+- ✅ **Hardened the other two callers (2026-06-02):** `app/api/vm/assign` and `app/api/cron/poll-delegation-confirmations` each had a vestigial `if (err.message.includes("p_source"))` fallback that re-called `instaclaw_add_credits` with 3 args. Those were dead code from the 20260326 migration-rollout window (and never matched the actual `PGRST203` overload error anyway). Removed so the codebase now has ZERO 3-argument call sites — every caller passes `p_source` explicitly. Verified by grep: 4/4 call sites pass `p_source`.
 
 ## Related rules
 

@@ -262,6 +262,15 @@ export async function GET(req: NextRequest) {
     }
 
     if (vmIdForUpdate) {
+      // p_source is passed explicitly (4-arg call). The 3-arg overload was
+      // dropped 2026-06-02 (migration 20260602120000) to fix a 35-day
+      // credit_pack outage caused by PostgREST overload ambiguity. The old
+      // `includes("p_source")` fallback that re-called with 3 args is gone:
+      // it was vestigial from the 20260326 migration-rollout window (meant
+      // to catch "function does not exist yet" before the 4-param version
+      // deployed) and never matched the actual overload error anyway. Any
+      // RPC error now is a genuine failure → mark credit_failed for manual
+      // retry. The RPC remains idempotent on p_reference_id.
       const { error: rpcErr } = await supabase.rpc("instaclaw_add_credits", {
         p_vm_id: vmIdForUpdate,
         p_credits: row.credits_granted,
@@ -269,42 +278,17 @@ export async function GET(req: NextRequest) {
         p_source: "wld",
       });
       if (rpcErr) {
-        // Fallback for the older RPC signature (no p_source) — same as
-        // confirm route. If this also fails, we mark credit_failed and
-        // bail; ops can retry manually.
-        if (rpcErr.message?.includes("p_source")) {
-          const { error: rpcErr2 } = await supabase.rpc("instaclaw_add_credits", {
-            p_vm_id: vmIdForUpdate,
-            p_credits: row.credits_granted,
-            p_reference_id: `wld_delegation_${row.id}`,
-          });
-          if (rpcErr2) {
-            errors++;
-            await supabase
-              .from("instaclaw_wld_delegations")
-              .update({ status: "credit_failed", transaction_hash: result.hash ?? null })
-              .eq("id", row.id);
-            logger.error("poll-delegation-confirmations: credit RPC failed (fallback)", {
-              route: "cron/poll-delegation-confirmations",
-              delegationId: row.id,
-              error: rpcErr2.message,
-            });
-            continue;
-          }
-          creditsGranted += row.credits_granted;
-        } else {
-          errors++;
-          await supabase
-            .from("instaclaw_wld_delegations")
-            .update({ status: "credit_failed", transaction_hash: result.hash ?? null })
-            .eq("id", row.id);
-          logger.error("poll-delegation-confirmations: credit RPC failed", {
-            route: "cron/poll-delegation-confirmations",
-            delegationId: row.id,
-            error: rpcErr.message,
-          });
-          continue;
-        }
+        errors++;
+        await supabase
+          .from("instaclaw_wld_delegations")
+          .update({ status: "credit_failed", transaction_hash: result.hash ?? null })
+          .eq("id", row.id);
+        logger.error("poll-delegation-confirmations: credit RPC failed", {
+          route: "cron/poll-delegation-confirmations",
+          delegationId: row.id,
+          error: rpcErr.message,
+        });
+        continue;
       } else {
         creditsGranted += row.credits_granted;
       }
