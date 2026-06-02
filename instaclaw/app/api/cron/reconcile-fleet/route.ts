@@ -119,6 +119,7 @@ const LOCK_TTL_SECONDS = 660; // > maxDuration with 60s headroom (was 360 when m
 // completely stuck. Option C (decouple secret_version to its own cron)
 // is the proper structural fix and is filed as a follow-up.
 const CONFIG_AUDIT_BATCH_SIZE = 1;
+// nft cache-bust auto-touch (vm-manifest.ts changed): 2026-06-02 23:04 UTC
 // nft cache-bust auto-touch (vm-manifest.ts changed): 2026-06-02 16:10 UTC
 // nft cache-bust auto-touch (vm-manifest.ts changed): 2026-06-02 13:07 UTC
 // nft cache-bust auto-touch (vm-manifest.ts changed): 2026-06-02 11:53 UTC

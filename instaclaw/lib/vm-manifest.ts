@@ -2290,6 +2290,12 @@ export const VM_MANIFEST = {
         "toolrouter-wrapper started",
         "record-usage POST",
         "BINARY_RESOLVED_BY_EXECPATH",
+        // 2026-06-02: first-call failure forensics. The wrapper writes a rich
+        // diag (exact child error + spawn age + CPU/event-loop state) to a
+        // local JSONL on every tool_error, to root-cause the intermittent
+        // first-call bounce. Sentinel guards against a stale-cache deploy
+        // dropping the instrumentation (Rule 23).
+        "FIRSTCALL_DIAG_V1",
       ],
     },
     {

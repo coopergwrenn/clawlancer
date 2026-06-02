@@ -52,6 +52,16 @@ export const TOOLROUTER_WRAPPER_MJS = `#!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { Transform } from "node:stream";
 import path from "node:path";
+import os from "node:os";
+import fs from "node:fs";
+import { monitorEventLoopDelay } from "node:perf_hooks";
+// FIRSTCALL_DIAG_V1 — first-call failure forensics (Rule 23 sentinel). Pure
+// observation: captures the EXACT child error + system state on a tool_error,
+// to root-cause the intermittent first-call bounce. Zero behavior change —
+// all capture runs in the observation handlers AFTER passthrough push, fully
+// guarded; if any of it throws it can never affect a tool call. Static import
+// (perf_hooks is a Node core module) so module-init timing is unchanged; the
+// monitor's construction + every read is itself try/caught.
 
 // Resolve the toolrouter binary. OpenClaw spawns this wrapper with a
 // stripped env (only the keys we set in mcp.servers.toolrouter.env — no
@@ -142,6 +152,114 @@ setInterval(() => {
     pending.delete(oldest);
   }
 }, PENDING_SWEEP_MS).unref();
+
+// ── FIRSTCALL_DIAG_V1: first-call failure forensics (pure observation) ──
+// Captures, on each tool_error, the exact child error + system state so the
+// next real failure tells us the root cause with certainty. Lightweight
+// fields (spawn age / call seq / prior successes) ride on EVERY record-usage
+// POST so we can compare the failed call to the warm retry. The rich diag is
+// written SYNCHRONOUSLY to a local JSONL (crash-proof: survives a process
+// kill that the fire-and-forget POST would not) AND attached to the POST.
+const WRAPPER_SPAWN_TS = Date.now();
+let callSeq = 0; // increments per observed tools/call (req side)
+let priorSuccessCount = 0; // successful tool responses seen so far this spawn
+// Lifetime event-loop-delay monitor. For a young wrapper (first-call failures
+// have small spawn-age) the lifetime window IS the failure window, so max/p99
+// reflect contention around the failure. Construction guarded — null if the
+// runtime rejects it.
+let eld = null;
+try {
+  if (typeof monitorEventLoopDelay === "function") {
+    eld = monitorEventLoopDelay({ resolution: 20 });
+    eld.enable();
+  }
+} catch { eld = null; }
+// Durable local sink. os.homedir() reads the OS user db (works under the
+// stripped MCP env that lacks $HOME); fall back to the known fleet home.
+let DIAG_FILE = null;
+try {
+  const home = os.homedir() || process.env.HOME || "/home/openclaw";
+  const dir = path.join(home, ".openclaw", "logs");
+  try { fs.mkdirSync(dir, { recursive: true }); } catch { /* dir may exist */ }
+  DIAG_FILE = path.join(dir, "toolrouter-firstcall-diag.jsonl");
+} catch { DIAG_FILE = null; }
+
+// Cheap fields included on EVERY record-usage POST (success + failure).
+function liteFields(req) {
+  return {
+    spawn_age_ms: Date.now() - WRAPPER_SPAWN_TS,
+    call_seq: (req && typeof req.seq === "number") ? req.seq : null,
+    prior_success_count: priorSuccessCount,
+  };
+}
+
+// Rich diag built ONLY on a tool_error. Fully defensive — any throw returns a
+// minimal object; never propagates.
+function buildDiag(req, msg, latency) {
+  const d = {
+    ts: new Date().toISOString(),
+    endpoint: (req && req.name) || null,
+    call_seq: (req && typeof req.seq === "number") ? req.seq : null,
+    prior_success_count: priorSuccessCount,
+    spawn_age_ms: Date.now() - WRAPPER_SPAWN_TS,
+    latency_ms: latency,
+    child_pid: (typeof child !== "undefined" && child) ? child.pid : null,
+  };
+  try {
+    const result = msg && msg.result;
+    d.is_error = !!(result && result.isError === true);
+    // MCP tool error text lives in result.content[].text; capture all of it.
+    if (result && Array.isArray(result.content)) {
+      d.error_text = result.content
+        .map((c) => (c && typeof c.text === "string" ? c.text : ""))
+        .join(" ")
+        .slice(0, 2000);
+    } else {
+      d.error_text = null;
+    }
+    d.result_keys = result && typeof result === "object" ? Object.keys(result).slice(0, 20) : null;
+    // JSON-RPC protocol error (distinct from a tool-result error).
+    if (msg && msg.error) {
+      d.rpc_error = { code: msg.error.code ?? null, message: String(msg.error.message ?? "").slice(0, 500) };
+    }
+    // Capped raw sample for full forensics on anything the fields miss.
+    d.raw_result_sample = result !== undefined ? JSON.stringify(result).slice(0, 2000) : null;
+  } catch (e) {
+    d.diag_build_error = String((e && e.message) || e).slice(0, 200);
+  }
+  // System state at the moment of failure — proves/disproves CPU contention.
+  try {
+    d.loadavg = os.loadavg(); // [1m,5m,15m] — VM-wide; [0,0,0] if unsupported
+  } catch { d.loadavg = null; }
+  try {
+    const cu = process.cpuUsage(); // microseconds of CPU since process start
+    d.cpu_user_us = cu.user;
+    d.cpu_system_us = cu.system;
+  } catch { /* leave undefined */ }
+  try {
+    d.rss_mb = Math.round(process.memoryUsage().rss / 1048576);
+  } catch { /* leave undefined */ }
+  try {
+    if (eld) {
+      d.eventloop_p99_ms = +(eld.percentile(99) / 1e6).toFixed(1);
+      d.eventloop_max_ms = +(eld.max / 1e6).toFixed(1);
+      d.eventloop_mean_ms = +(eld.mean / 1e6).toFixed(1);
+    }
+  } catch { /* leave undefined */ }
+  return d;
+}
+
+// Synchronous append so the record survives a process kill. On the rare
+// error path only, AFTER the response has already been forwarded — cannot
+// delay or mask the call.
+function writeDiag(diag) {
+  if (!DIAG_FILE) return;
+  try {
+    fs.appendFileSync(DIAG_FILE, JSON.stringify(diag) + "\\n");
+  } catch (e) {
+    log("warn", "diag write failed: " + String((e && e.message) || e).slice(0, 120));
+  }
+}
 
 // ── Fire-and-forget POST to InstaClaw ──
 function reportUsage(data) {
@@ -279,10 +397,12 @@ function onClientMessage(msg) {
   const args = msg.params && msg.params.arguments;
   if (typeof name !== "string") return;
 
+  callSeq += 1; // FIRSTCALL_DIAG_V1: which call number in this spawn lifetime
   pending.set(msg.id, {
     name,
     args: typeof args === "object" && args !== null ? args : null,
     startedAt: Date.now(),
+    seq: callSeq,
   });
 }
 
@@ -300,8 +420,17 @@ function onServerMessage(msg) {
   const sc = result && result.structuredContent;
 
   if (!sc) {
-    // No structuredContent — likely an error response from the binary
-    // or a tool that doesn't surface metadata. Best-effort report.
+    // No structuredContent — an error response from the binary (or a tool
+    // that doesn't surface metadata). FIRSTCALL_DIAG_V1: this is the failure
+    // pattern we're root-causing. Build + persist the rich diag (sync local
+    // file = crash-proof) and attach it to the POST. All guarded; the
+    // response has ALREADY been forwarded by the Transform's push() above, so
+    // none of this can delay or mask the call.
+    let diag = null;
+    try {
+      diag = buildDiag(req, msg, latency);
+      writeDiag(diag);
+    } catch { /* observation must never throw */ }
     reportUsage({
       endpoint_id: req.name,
       trace_id: null,
@@ -313,10 +442,17 @@ function onServerMessage(msg) {
       error_class: result && result.isError === true ? "tool_error" : "no_metadata",
       args: req.args,
       weight_claimed: null,
+      ...liteFields(req),
+      ...(diag ? { diag } : {}),
     });
     return;
   }
 
+  // Success. Snapshot the prior-success count (value BEFORE this success) so
+  // the lite fields read consistently, then increment so a later failure
+  // knows exactly how many calls succeeded before it (cold-start proof).
+  const priorBefore = priorSuccessCount;
+  priorSuccessCount += 1;
   reportUsage({
     endpoint_id: sc.endpoint_id || req.name,
     trace_id: typeof sc.trace_id === "string" ? sc.trace_id : null,
@@ -328,6 +464,9 @@ function onServerMessage(msg) {
     error_class: result.isError === true ? "tool_error" : null,
     args: req.args,
     weight_claimed: null,
+    spawn_age_ms: Date.now() - WRAPPER_SPAWN_TS,
+    call_seq: typeof req.seq === "number" ? req.seq : null,
+    prior_success_count: priorBefore,
   });
 }
 

@@ -103,6 +103,15 @@ interface RecordUsageBody {
   // accepted only as an additional sanity check (we log if they differ).
   weight_claimed?: number | null;
   args?: Record<string, unknown> | null;
+  // FIRSTCALL_DIAG_V1 (2026-06-02): wrapper-side instrumentation to root-cause
+  // the intermittent first-call tool_error. Lite fields ride on every call;
+  // `diag` is present only on a tool_error (rich forensics — exact child
+  // error, CPU/event-loop state). The durable copy is a local JSONL on the
+  // VM; these are the platform-side mirror for log search.
+  spawn_age_ms?: number | null;
+  call_seq?: number | null;
+  prior_success_count?: number | null;
+  diag?: Record<string, unknown> | null;
 }
 
 // Body size cap (defense in depth against a malicious/malfunctioning
@@ -204,6 +213,42 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       endpoint_id: endpointId,
       weight_claimed: weightClaimed,
       weight_server: weight,
+    });
+  }
+
+  // ── FIRSTCALL_DIAG_V1 (2026-06-02): first-call failure forensics ──
+  // Mirror the wrapper-side instrumentation to the platform logs. The durable
+  // capture is the on-VM JSONL; this makes the data searchable in Vercel logs
+  // and gives a loud, greppable line when a tool_error carries a diag. The
+  // lite fields (spawn age / call seq / prior successes) let us compare a
+  // failed call to the warm retry without SSH. No DB write — the local file +
+  // the existing call_log tool_error row (vm_id + ts) are the persistence.
+  const spawnAgeMs = body.spawn_age_ms !== undefined ? asPositiveInt(body.spawn_age_ms) : null;
+  const callSeq = body.call_seq !== undefined ? asPositiveInt(body.call_seq) : null;
+  const priorSuccess = body.prior_success_count !== undefined ? asPositiveInt(body.prior_success_count) : null;
+  if (body.diag && typeof body.diag === "object") {
+    // tool_error with rich diag — the failure we're hunting. Loud + searchable.
+    logger.warn("TOOLROUTER_FIRSTCALL_DIAG", {
+      route: "agent/toolrouter/record-usage",
+      vm_id: vm.id,
+      user_id: vm.assigned_to,
+      endpoint_id: endpointId,
+      error_class: errorClass,
+      spawn_age_ms: spawnAgeMs,
+      call_seq: callSeq,
+      prior_success_count: priorSuccess,
+      diag: body.diag, // bounded by the 64KB body cap; wrapper caps text fields
+    });
+  } else if (spawnAgeMs !== null || callSeq !== null) {
+    // Baseline (success) — light breadcrumb for the failed-vs-retry comparison.
+    logger.info("toolrouter record-usage: call meta", {
+      route: "agent/toolrouter/record-usage",
+      vm_id: vm.id,
+      endpoint_id: endpointId,
+      path,
+      spawn_age_ms: spawnAgeMs,
+      call_seq: callSeq,
+      prior_success_count: priorSuccess,
     });
   }
 
