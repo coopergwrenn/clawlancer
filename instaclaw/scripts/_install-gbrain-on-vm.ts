@@ -102,7 +102,10 @@ echo "gw_health=$(curl -s -m 3 -o /dev/null -w '%{http_code}' http://localhost:1
     if (mm) m[mm[1]] = mm[2].trim();
   }
   const checks = {
-    tasks_max_120: m.tasks_max === "120",
+    // v120 (Rule 65) removed the 120 cap → TasksMax=infinity is now the correct
+    // fleet value. gbrain's precondition was "≥120 task headroom"; infinity satisfies
+    // it strictly. Accept infinity OR any numeric ≥120 (the old baked value).
+    tasks_max_120: m.tasks_max === "infinity" || Number(m.tasks_max) >= 120,
     gcc_present: m.gcc.startsWith("/"),
     prctl_pkg_present: !!m.prctl_pkg,
     prctl_dropin_present: m.prctl_dropin === "PRESENT",
@@ -195,11 +198,25 @@ curl -s -m 280 -X POST -H "Authorization: Bearer $GATEWAY_TOKEN" -H "Content-Typ
   const ts = new Date().toISOString().replace(/[-:.]/g, "").replace("T", "T").slice(0, 15) + "Z";
   const remotePath = `/tmp/install-gbrain.${ts}.sh`;
   const remoteVerifyPath = `/tmp/verify-gbrain-mcp.py`;
+  // Phase C2 (PGLite checkpoint MCP tool, Rule 54) requires this patch at the
+  // stable path /tmp/0001-add-checkpoint-mcp-tool.patch. stepGbrain uploads it;
+  // this standalone wrapper predated the patch — add it so Phase C2 doesn't FATAL.
+  const patchPath = path.resolve(__dirname, "gbrain-patches", "0001-add-checkpoint-mcp-tool.patch");
+  const patchContent = readFileSync(patchPath, "utf-8");
+  const remotePatchPath = `/tmp/0001-add-checkpoint-mcp-tool.patch`;
+  // Phase I (Rule 54 PGLite-staleness checkpoint cron) needs this at /tmp/pglite-checkpoint.sh.
+  const checkpointShPath = path.resolve(__dirname, "pglite-checkpoint.sh");
+  const checkpointShContent = readFileSync(checkpointShPath, "utf-8");
+  const remoteCheckpointShPath = `/tmp/pglite-checkpoint.sh`;
   await uploadFile(c, scriptContent, remotePath);
   await uploadFile(c, verifyPyContent, remoteVerifyPath);
-  await exec(c, `chmod +x ${remotePath} ${remoteVerifyPath}`, 5_000);
+  await uploadFile(c, patchContent, remotePatchPath);
+  await uploadFile(c, checkpointShContent, remoteCheckpointShPath);
+  await exec(c, `chmod +x ${remotePath} ${remoteVerifyPath} ${remoteCheckpointShPath}`, 5_000);
   console.log(`  ✓ install-gbrain.sh    → ${remotePath} (${scriptContent.length} bytes)`);
-  console.log(`  ✓ verify-gbrain-mcp.py → ${remoteVerifyPath} (${verifyPyContent.length} bytes)\n`);
+  console.log(`  ✓ verify-gbrain-mcp.py → ${remoteVerifyPath} (${verifyPyContent.length} bytes)`);
+  console.log(`  ✓ checkpoint patch     → ${remotePatchPath} (${patchContent.length} bytes)`);
+  console.log(`  ✓ pglite-checkpoint.sh → ${remoteCheckpointShPath} (${checkpointShContent.length} bytes)\n`);
 
   // ── 4. Execute with pinned env vars, capture output ──
   console.log("[4/6] Executing install script (timeout 600s)…");
