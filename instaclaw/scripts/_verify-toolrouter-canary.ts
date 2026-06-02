@@ -851,6 +851,188 @@ async function checkWrapperDeployedOnCanary(): Promise<void> {
 }
 
 // ────────────────────────────────────────────────────────────────────
+// Section 10 — WorldID-gate state consistency (2026-06-02)
+// ────────────────────────────────────────────────────────────────────
+//
+// The product promise: premium tools unlock when user.world_id_verified=true.
+// The reconciler enforces this via stepToolRouter + wireToolRouterMcp /
+// unwireToolRouterMcp. This section asserts the invariant holds on the
+// canary VM:
+//
+//   user.world_id_verified === true   ↔   mcp.servers.toolrouter.command === "node"
+//   user.world_id_verified === false  ↔   mcp.servers.toolrouter absent
+//
+// Any mismatch is HARD — either:
+//   - the gate code regressed (failing to wire on verified, or failing to
+//     unwire on unverified), or
+//   - the canary VM's stepToolRouter hasn't run yet (transient — re-run
+//     after the next reconcile tick), or
+//   - the instant-unlock hook in propagateVerificationToVM didn't fire,
+//     and the safety net hasn't converged yet.
+//
+// In all three cases the operator needs to investigate; the gate is the
+// core product promise.
+
+async function checkWorldIdGateConsistency(): Promise<void> {
+  const canaryName = process.env.TOOLROUTER_CANARY_VM === undefined
+    ? TOOLROUTER_CANARY_VM_DEFAULT
+    : process.env.TOOLROUTER_CANARY_VM;
+
+  if (!canaryName) {
+    record({
+      name: "10.1 WorldID gate state consistency",
+      severity: "INFO",
+      detail: "skipped (TOOLROUTER_CANARY_VM='')",
+    });
+    return;
+  }
+
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.SSH_PRIVATE_KEY_B64) {
+    record({
+      name: "10.1 WorldID gate state consistency",
+      severity: "SOFT",
+      detail: "SKIPPED — need SUPABASE_SERVICE_ROLE_KEY + SSH_PRIVATE_KEY_B64",
+    });
+    return;
+  }
+
+  const { getSupabase } = await import("../lib/supabase");
+  const supabase = getSupabase();
+  const { data: vm, error: lookupErr } = await supabase
+    .from("instaclaw_vms")
+    .select("id, name, ip_address, assigned_to, health_status, status")
+    .eq("name", canaryName)
+    .maybeSingle();
+  if (lookupErr || !vm) {
+    record({
+      name: "10.1 WorldID gate state consistency",
+      severity: "SOFT",
+      detail: `canary VM "${canaryName}" not found: ${lookupErr?.message ?? "no row"}`,
+    });
+    return;
+  }
+  if (vm.status !== "assigned" || vm.health_status !== "healthy") {
+    record({
+      name: "10.1 WorldID gate state consistency",
+      severity: "SOFT",
+      detail: `canary "${canaryName}" not eligible (status=${vm.status}, health=${vm.health_status})`,
+    });
+    return;
+  }
+  if (!vm.assigned_to) {
+    record({
+      name: "10.1 WorldID gate state consistency",
+      severity: "INFO",
+      detail: `canary "${canaryName}" has no assigned_to (pool VM); gate consistency N/A`,
+    });
+    return;
+  }
+
+  // Resolve user.world_id_verified
+  const { data: user, error: userErr } = await supabase
+    .from("instaclaw_users")
+    .select("id, email, world_id_verified")
+    .eq("id", vm.assigned_to)
+    .maybeSingle();
+  if (userErr) {
+    record({
+      name: "10.1 WorldID gate state consistency",
+      severity: "SOFT",
+      detail: `user lookup failed: ${userErr.message}`,
+    });
+    return;
+  }
+  if (!user) {
+    record({
+      name: "10.1 WorldID gate state consistency",
+      severity: "INFO",
+      detail: `${canaryName} is orphan VM (assigned_to references deleted user); gate should unwire`,
+    });
+    return;
+  }
+  const verified = user.world_id_verified === true;
+
+  // SSH-probe the MCP state
+  const { NodeSSH } = await import("node-ssh");
+  const ssh = new NodeSSH();
+  let sshPrivateKey: string;
+  try {
+    sshPrivateKey = Buffer.from(process.env.SSH_PRIVATE_KEY_B64!, "base64").toString("utf-8");
+  } catch (e) {
+    record({
+      name: "10.1 WorldID gate state consistency",
+      severity: "SOFT",
+      detail: `SSH_PRIVATE_KEY_B64 decode failed: ${e instanceof Error ? e.message.slice(0, 100) : String(e)}`,
+    });
+    return;
+  }
+
+  try {
+    await ssh.connect({
+      host: vm.ip_address,
+      username: "openclaw",
+      privateKey: sshPrivateKey,
+      readyTimeout: 8_000,
+    });
+
+    const probe = await ssh.execCommand(
+      `jq -r '.mcp.servers.toolrouter // null | if . == null then "ABSENT" else (.command // "") end' "$HOME/.openclaw/openclaw.json" 2>/dev/null`,
+    );
+    const mcpState = (probe.stdout || "").trim();
+    const wired = mcpState === "node";
+
+    // The invariant assertion
+    if (verified && wired) {
+      record({
+        name: "10.1 WorldID gate state consistency",
+        severity: "OK",
+        detail: `${canaryName} (${user.email}): verified=true ↔ MCP wired (command=node) ✓`,
+      });
+    } else if (!verified && mcpState === "ABSENT") {
+      record({
+        name: "10.1 WorldID gate state consistency",
+        severity: "OK",
+        detail: `${canaryName} (${user.email}): verified=false ↔ MCP absent ✓`,
+      });
+    } else if (verified && mcpState === "ABSENT") {
+      // Verified user, no wire — the wire hasn't landed yet OR the gate is broken.
+      // Could be transient (waiting for next reconcile tick after a recent verify).
+      // Mark SOFT so re-running the verifier in a few min resolves a transient lag.
+      record({
+        name: "10.1 WorldID gate state consistency",
+        severity: "SOFT",
+        detail: `${canaryName} (${user.email}): verified=true but MCP ABSENT — wire pending or gate broken; re-run in ~5 min`,
+      });
+    } else if (!verified && wired) {
+      // Unverified user with active wire — the gate failed to unwire OR
+      // a manual `openclaw mcp set` planted a stale entry. HARD failure:
+      // an unverified user is receiving premium tools they didn't unlock.
+      record({
+        name: "10.1 WorldID gate state consistency",
+        severity: "HARD",
+        detail: `${canaryName} (${user.email}): verified=false but MCP WIRED (command=node) — gate failed to unwire OR stale manual entry; investigate`,
+      });
+    } else {
+      // Catch-all: MCP present but command !== "node" (legacy v1 shape, or partial).
+      record({
+        name: "10.1 WorldID gate state consistency",
+        severity: "HARD",
+        detail: `${canaryName} (${user.email}): unexpected state — verified=${verified}, mcp.command="${mcpState}" (expected "node" or "ABSENT")`,
+      });
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    record({
+      name: "10.1 WorldID gate state consistency",
+      severity: "SOFT",
+      detail: `${canaryName} SSH probe failed: ${msg.slice(0, 120)}`,
+    });
+  } finally {
+    try { ssh.dispose(); } catch { /* swallow */ }
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
 // Main
 // ────────────────────────────────────────────────────────────────────
 
@@ -885,6 +1067,9 @@ async function main(): Promise<void> {
 
   console.log("Section 9: K.4 wrapper deployed on canary VM (SSH probe)");
   await checkWrapperDeployedOnCanary();
+
+  console.log("Section 10: WorldID gate state consistency (verified ↔ wired)");
+  await checkWorldIdGateConsistency();
 
   console.log("\n──────── results ────────");
   for (const r of results) {

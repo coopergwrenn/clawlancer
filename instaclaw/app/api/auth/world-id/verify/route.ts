@@ -269,7 +269,7 @@ async function propagateVerificationToVM(
   // Get user's VM and user's nullifier
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, ip_address, ssh_port, ssh_user, system_prompt")
+    .select("id, ip_address, ssh_port, ssh_user, system_prompt, gateway_token")
     .eq("assigned_to", userId)
     .single();
 
@@ -366,6 +366,72 @@ async function propagateVerificationToVM(
         `grep -q "## World ID Verification" "$HOME/.openclaw/agents/main/agent/MEMORY.md" 2>/dev/null || ` +
         `echo -e '${memoryBlock}' >> "$HOME/.openclaw/agents/main/agent/MEMORY.md"`
       );
+
+      // ── HERO MOMENT: instant-unlock ToolRouter premium tools ──
+      // The user just tapped verify on the dashboard, Worldcoin confirmed,
+      // we're already SSH'd in writing identity state. Add the MCP config
+      // for the ToolRouter wrapper in the same session — by the time the
+      // user gets back to Telegram and asks "use Exa to search X", the
+      // tools are already in the agent's catalog. No 3-minute cron wait.
+      //
+      // The reconciler's stepToolRouter (lib/vm-reconcile.ts) is the
+      // safety net: if this write fails or doesn't fire, it converges
+      // within ~3 min on the next reconcile-fleet tick. file-drift
+      // converges within ~5 min independent of cv.
+      //
+      // Failure posture: try/catch isolates this from the rest of the
+      // verification flow. If the MCP wire fails (e.g., wrapper not yet
+      // deployed on a fresh VM), the user's verification STILL succeeds
+      // (system_prompt + WORLD_ID.md + .env + MEMORY.md all landed
+      // above) and the reconciler fills the gap quietly.
+      try {
+        const { wireToolRouterMcp } = await import("@/lib/toolrouter-mcp-wire");
+        const wireResult = await wireToolRouterMcp(ssh, {
+          dryRun: false,
+          vmId: vm.id,
+          gatewayToken: vm.gateway_token ?? null,
+          instaclawApiUrl: process.env.INSTACLAW_API_URL || "https://instaclaw.io",
+        });
+        if (wireResult.status === "wired") {
+          logger.info("World ID verify: ToolRouter premium tools UNLOCKED (instant)", {
+            userId,
+            vmId: vm.id,
+            transport: wireResult.transport,
+            route: "world-id/verify",
+          });
+        } else if (wireResult.status === "already-correct") {
+          logger.info("World ID verify: ToolRouter already wired (no-op)", {
+            userId,
+            vmId: vm.id,
+            route: "world-id/verify",
+          });
+        } else {
+          // deferred / skipped / failed → reconciler will retry.
+          logger.warn(
+            "World ID verify: ToolRouter instant-unlock deferred (reconciler will retry within ~3 min)",
+            {
+              userId,
+              vmId: vm.id,
+              status: wireResult.status,
+              reason: wireResult.reason,
+              route: "world-id/verify",
+            },
+          );
+        }
+      } catch (err) {
+        // Hard fault inside the helper — log and continue. Verification
+        // STILL succeeded; only the instant-unlock missed. Reconciler
+        // is the safety net.
+        logger.warn(
+          "World ID verify: ToolRouter wire-up threw (verification unaffected; reconciler will retry)",
+          {
+            userId,
+            vmId: vm.id,
+            error: String(err).slice(0, 240),
+            route: "world-id/verify",
+          },
+        );
+      }
     } finally {
       ssh.dispose();
     }

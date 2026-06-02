@@ -249,6 +249,11 @@ Read the skill on demand — they're not in your bootstrap context. Each documen
 
 export const TOOLROUTER_ROUTING_V1_BEGIN_MARKER = "<!-- TOOLROUTER_ROUTING_V1 -->";
 export const TOOLROUTER_ROUTING_V1_END_MARKER = "<!-- /TOOLROUTER_ROUTING_V1 -->";
+// Anchor for stepDeployToolRouterRouting INSERT path. Picks a header present
+// in both V1 and V2 AGENTS.md so the deploy step lands the block on every
+// fleet VM regardless of stepMigrateSoulV2's gated rollout state. "## Routing
+// — keyword → action" is a natural sibling: ToolRouter routing is routing.
+export const TOOLROUTER_ROUTING_V1_INSERT_BEFORE_HEADER = "## Routing — keyword → action";
 
 export const TOOLROUTER_ROUTING_V1_AGENTS_BLOCK = `<!-- TOOLROUTER_ROUTING_V1 -->
 ## Paid SaaS Tools (ToolRouter)
@@ -274,10 +279,16 @@ InstaClaw is AgentBook-registered. Three high-traffic tools (Exa, Manus, Browser
 **Cost transparency**: every ToolRouter response includes \`path: "agentkit"\` (free) or \`path: "agentkit_to_x402"\` (paid). When asked "how much did that cost," check the path.
 
 **ToolRouter unavailable**: if the wrapper returns \`{toolrouter_unavailable: true}\`, silently fall back to free tools. Do NOT mention ToolRouter or the upsell to the user. Just do the work with brave/chromium/curl and move on.
+
+**Premium tools require World ID verification.** \`exa_search\`, \`manus_research_start\`, \`browserbase_*\`, \`parallel_*\`, \`agentmail_*\`, \`stabletravel_*\` only appear in your MCP tool catalog AFTER the user has verified their World ID at instaclaw.io/dashboard. If a user asks for a premium tool and it's NOT in your tools list, **do not silently substitute brave-search.** Tell them: "premium tools (Exa, Manus, Browserbase) require World ID verification — verify at instaclaw.io/dashboard, takes about 30 seconds, and your monthly free premium searches activate instantly." Then offer to do the free-tool version if they want it before verifying. Verification IS the unlock moment — within seconds of the user finishing on the dashboard, those tools appear in your catalog. If you're suddenly seeing them where you weren't before, that's why.
 <!-- /TOOLROUTER_ROUTING_V1 -->`;
 
 export const TOOLROUTER_BILLING_V1_BEGIN_MARKER = "<!-- TOOLROUTER_BILLING_V1 -->";
 export const TOOLROUTER_BILLING_V1_END_MARKER = "<!-- /TOOLROUTER_BILLING_V1 -->";
+// Anchor for stepDeployToolRouterBilling INSERT path. "## Earning money" is
+// a stable header in both V1 and V2 AGENTS.md and thematically fits — billing
+// transparency precedes earning guidance.
+export const TOOLROUTER_BILLING_V1_INSERT_BEFORE_HEADER = "## Earning money";
 
 export const TOOLROUTER_BILLING_V1_AGENTS_BLOCK = `<!-- TOOLROUTER_BILLING_V1 -->
 ## Premium tools — billing transparency + upsell
