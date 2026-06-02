@@ -1,9 +1,9 @@
-# Changelog — generated 2026-06-01
+# Changelog — generated 2026-06-02
 
-Window: `3a30c6ff24a46ec8e0cf33245bf1a09048226d6a` → `HEAD` (HEAD = `d18fb16e`)
+Window: `d18fb16e5c5482fc7aed2b190d55d96e9a1fa090` → `HEAD` (HEAD = `ca0b2dce`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: d18fb16e5c5482fc7aed2b190d55d96e9a1fa090 -->
+<!-- LAST_GENERATED_SHA: ca0b2dcec129e1f0825ff36eb21bea19fa561f62 -->
 
 ## Summary
 
@@ -13,16 +13,16 @@ Total commits: 2
 - **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
 
-- `d18fb16e` 2026-06-01 — polish(floor): header link = landing-hero liquid-glass nav button (no icon/dot) [1 files] _(ai-assisted)_
+- `ca0b2dce` 2026-06-02 — feat(floor): make Larry a character + dress the room (creative 3D pass) [4 files]
 
 ## What changed under the hood
 
-- `dfc41a57` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `3e22cadf` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `d18fb16e` 2026-06-01 — polish(floor): header link = landing-hero liquid-glass nav button (no icon/dot) [1 files] _(ai-assisted)_
+- `ca0b2dce` 2026-06-02 — feat(floor): make Larry a character + dress the room (creative 3D pass) [4 files]
 
 ### Edge City partner (0)
 
@@ -44,15 +44,9 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `dfc41a57` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
-
-## AI-assisted commits (1)
-
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
-
-- `d18fb16e` 2026-06-01 — polish(floor): header link = landing-hero liquid-glass nav button (no icon/dot)
+- `3e22cadf` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Appendix — every commit (chronological)
 
-- `dfc41a57` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
-- `d18fb16e` 2026-06-01 — polish(floor): header link = landing-hero liquid-glass nav button (no icon/dot) [1 files] _(ai-assisted)_
+- `3e22cadf` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `ca0b2dce` 2026-06-02 — feat(floor): make Larry a character + dress the room (creative 3D pass) [4 files]
