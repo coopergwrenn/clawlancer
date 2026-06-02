@@ -268,7 +268,7 @@ async function main() {
     counterparty_address: payTo,
     category: category ?? undefined,
     tags,
-    wallet_balance_usd: walletBalanceUsd ?? undefined,
+    // wallet balance is now read server-side by /authorize (P1-3); no longer sent.
     human_approved: !!args["human-approved"],
     rail: "x402",
   });

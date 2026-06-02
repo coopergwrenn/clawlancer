@@ -52,7 +52,7 @@
  *     "category": "data"|"search"|"inference"|"compute"|"market"|"media"|"agent"|"other",
  *     "tags":     <string[]>,                    // mapped to a category if `category` omitted
  *     // context:
- *     "wallet_balance_usd":  <number>,          // agent's spendable balance; omit → ask_first (never auto-spend blind)
+ *     "wallet_balance_usd":  <number>,          // IGNORED (P1-3) — balance is read server-side from bankr_evm_address; kept for backward-compat
  *     "rail":     "x402"|"compute"|"card"|"stripe_mcp"|"ap2"|"base_mcp", // default x402
  *     "protocol_fee_usd":    <number >= 0>,     // optional
  *     "require_verified_counterparty": <bool>,  // default: true for A2A, false for public endpoints
@@ -81,7 +81,7 @@ import {
 } from "@/lib/frontier-policy";
 import { deriveTrackRecord } from "@/lib/frontier-ledger";
 import { creditStanding, type CreditStanding } from "@/lib/frontier-standing";
-import { toLedgerRow, reserveAwareSpentTodayUsd, type FrontierTxnDbRow } from "@/lib/frontier-ledger-db";
+import { toLedgerRow, reserveAwareSpentTodayUsd, HOLD_TTL_MS, SPEND_WINDOW_MS, type FrontierTxnDbRow } from "@/lib/frontier-ledger-db";
 import { decideAuthorization } from "@/lib/frontier-authz";
 
 export const dynamic = "force-dynamic";
@@ -99,15 +99,35 @@ const MAX_TAGS = 20;
 const MAX_TAG_LEN = 60;
 const RECENT_SCAN_LIMIT = 500; // recent rows for standing + reserve (matches /state)
 
-// InstaClaw signup is World-ID-gated (the World mini app), so the fleet
-// population is World-ID-verified. The standing engine caps unverified agents at
-// audit/500; defaulting true keeps that cap dormant for our verified population.
-// TODO(frontier): when a non-verified sub-population can exist (e.g. a non-World
-// onboarding path), read the per-user attestation (instaclaw_users World ID) and
-// thread the real value here so the unverified cap binds the right agents.
-const OWNER_WORLD_ID_VERIFIED = true;
+// Base mainnet USDC — for the authoritative server-side wallet-balance read (P1-3).
+const USDC_BASE_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const BASE_RPC_URL = process.env.BASE_RPC_URL || "https://mainnet.base.org";
 
-function extractGatewayToken(req: NextRequest): string | null {
+/**
+ * Read the wallet's on-chain USDC balance (USD) on Base, server-side (P1-3).
+ * The drain guard must not trust a client-supplied balance — an agent could lie
+ * to bypass the wallet floor. null on ANY failure → the gate forces ask_first
+ * ("never auto-spend blind"), so a read failure is safe, never permissive.
+ */
+async function readUsdcBalanceUsd(address: string | null | undefined): Promise<number | null> {
+  if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) return null;
+  try {
+    const data = "0x70a08231" + address.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+    const res = await fetch(BASE_RPC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: USDC_BASE_ADDRESS, data }, "latest"] }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const j = await res.json();
+    if (!j?.result || j.result === "0x") return null;
+    return Math.round((Number(BigInt(j.result)) / 1e6) * 1e6) / 1e6;
+  } catch {
+    return null;
+  }
+}
+
+export function extractGatewayToken(req: NextRequest): string | null {
   const authHeader = req.headers.get("authorization");
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const token = authHeader.slice(7).trim();
@@ -123,6 +143,19 @@ function isUUID(s: unknown): s is string {
 }
 
 const round6 = (x: number) => Math.round(x * 1e6) / 1e6;
+
+/**
+ * Map an existing hold's status to the idempotent-reply kind for a retried
+ * authorize (request_id is single-use). Pure — tested in P2-1.
+ *   live     — still pending: return the same hold, authorized:true.
+ *   settled  — already paid: return it, don't let the agent re-pay.
+ *   consumed — failed/refunded/disputed: request_id spent → use a fresh one.
+ */
+export function classifyExistingHold(status: string): "live" | "settled" | "consumed" {
+  if (status === "pending") return "live";
+  if (status === "settled") return "settled";
+  return "consumed";
+}
 
 function standingSummary(s: CreditStanding) {
   return {
@@ -150,7 +183,7 @@ interface CleanAuthz {
   human_approved: boolean;
 }
 
-function validate(raw: unknown): CleanAuthz | { error: string } {
+export function validate(raw: unknown): CleanAuthz | { error: string } {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { error: "body must be a JSON object" };
   const b = raw as Record<string, unknown>;
 
@@ -317,11 +350,25 @@ export async function POST(req: NextRequest) {
   }
   const isSameHuman = (id: string) => sameHumanVms.has(id);
 
+  // ── P1-2: real World-ID gate — read the owner's verification, never hardcode.
+  // Unverified owners are capped at audit/500 by the standing engine (the sybil
+  // root of trust). Missing user row → false (correctly unverified).
+  const { data: ownerRow } = await supabase
+    .from("instaclaw_users")
+    .select("world_id_verified")
+    .eq("id", ownerId)
+    .maybeSingle();
+  const ownerWorldIdVerified = ownerRow?.world_id_verified === true;
+
+  // ── P1-3: authoritative server-side wallet balance (never trust a client value).
+  // A read failure → null → the policy forces ask_first (never auto-spend blind).
+  const walletBalanceUsd = await readUsdcBalanceUsd(vm.bankr_evm_address as string | null);
+
   // ── Pure pipeline: rows → track record → standing → policy → decision ──
   const ledgerRows = dbRows.map(toLedgerRow);
   const trackRecord = {
     ...deriveTrackRecord(ledgerRows, { nowMs, isSameHuman }),
-    worldIdVerified: OWNER_WORLD_ID_VERIFIED,
+    worldIdVerified: ownerWorldIdVerified,
   };
   const tier: FrontierTier = TIERS.includes(vm.tier as FrontierTier) ? (vm.tier as FrontierTier) : "starter";
   const standing = creditStanding(trackRecord, tier, { nowMs, isStaker: false });
@@ -333,7 +380,7 @@ export async function POST(req: NextRequest) {
   const evaluation = evaluateSpend(tier, {
     amountUsd: v.amount_usd,
     spentTodayUsd: reserveAwareSpent,
-    walletBalanceUsd: v.wallet_balance_usd, // null/undefined → policy forces ask_first (never auto-spend blind)
+    walletBalanceUsd, // P1-3: server-read on-chain balance; null → ask_first (never auto-spend blind)
     privacyModeOn,
     counterpartyVerified: v.counterparty_verified,
     isStaker: false,
@@ -367,80 +414,105 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ authorized: false, mode: null, ...commonBody }, { status: 200 });
   }
 
-  // ── Authorized: atomically reserve the spend as a pending hold. ──
-  const holdRow = {
-    request_id: v.request_id,
-    rail: v.rail,
-    direction: "spend" as const,
-    vm_id: vmId,
-    counterparty_address: v.counterparty_address,
-    counterparty_vm_id: v.counterparty_vm_id,
-    amount_usdc: v.amount_usd,
-    protocol_fee_usdc: v.protocol_fee_usd,
-    status: "pending" as const,
-    facilitator: "coinbase",
-    metadata: {
-      hold: true,
-      mode: decision.mode,
-      endpoint: v.endpoint,
-      category: v.category,
-      tags: v.tags,
-      score_at_authorize: standing.score,
-      earned_budget_at_authorize: standing.earnedDailyBudgetUsd,
-    },
+  // ── Authorized: atomically reserve the spend as a pending hold (P1-4). ──
+  const holdMeta = {
+    hold: true,
+    mode: decision.mode,
+    endpoint: v.endpoint,
+    category: v.category,
+    tags: v.tags,
+    score_at_authorize: standing.score,
+    earned_budget_at_authorize: standing.earnedDailyBudgetUsd,
   };
 
-  const { data: inserted, error: insertErr } = await supabase
-    .from("frontier_transactions")
-    .insert(holdRow)
-    .select("id")
-    .single();
-
-  if (!insertErr && inserted) {
-    return NextResponse.json(
-      { authorized: true, mode: decision.mode, hold_id: inserted.id, idempotent: false, ...commonBody },
-      { status: 201 },
+  const authorizedResponse = (holdId: string, idempotent: boolean) =>
+    NextResponse.json(
+      { authorized: true, mode: decision.mode, hold_id: holdId, idempotent, ...commonBody },
+      { status: idempotent ? 200 : 201 },
     );
-  }
 
   // Idempotent retry — a request_id is single-use. Return the EXISTING hold's
-  // true state so the agent never reserves or pays twice.
-  if (insertErr?.code === "23505") {
+  // true state (via classifyExistingHold) so the agent never reserves/pays twice.
+  const idempotentReplyForExisting = async () => {
     const { data: existing } = await supabase
       .from("frontier_transactions")
       .select("id, status")
       .eq("vm_id", vmId)
       .eq("request_id", v.request_id)
-      .single();
-    if (existing) {
-      if (existing.status === "pending") {
-        return NextResponse.json(
-          { authorized: true, mode: decision.mode, hold_id: existing.id, idempotent: true, ...commonBody },
-          { status: 200 },
-        );
-      }
-      if (existing.status === "settled") {
-        return NextResponse.json(
-          { authorized: true, hold_id: existing.id, idempotent: true, already_settled: true, ...commonBody },
-          { status: 200 },
-        );
-      }
-      // failed / refunded / disputed → this request_id is consumed; use a fresh one.
+      .maybeSingle();
+    if (!existing) return NextResponse.json({ error: "conflict re-read failed, retry" }, { status: 503 });
+    const kind = classifyExistingHold(existing.status as string);
+    if (kind === "live") return authorizedResponse(existing.id, true);
+    if (kind === "settled") {
       return NextResponse.json(
-        { authorized: false, hold_id: existing.id, idempotent: true, outcome: "deny", reason: "request_id_consumed", consumed_status: existing.status, standing: standingSummary(standing) },
+        { authorized: true, hold_id: existing.id, idempotent: true, already_settled: true, ...commonBody },
         { status: 200 },
       );
     }
-    return NextResponse.json({ error: "conflict re-read failed, retry" }, { status: 503 });
+    return NextResponse.json(
+      { authorized: false, hold_id: existing.id, idempotent: true, outcome: "deny", reason: "request_id_consumed", consumed_status: existing.status, standing: standingSummary(standing) },
+      { status: 200 },
+    );
+  };
+
+  // ── Primary: the atomic-reserve RPC (advisory-locked re-check + insert). ──
+  const { data: rpcData, error: rpcErr } = await supabase.rpc("frontier_reserve_spend", {
+    p_vm_id: vmId,
+    p_request_id: v.request_id,
+    p_rail: v.rail,
+    p_counterparty_address: v.counterparty_address,
+    p_counterparty_vm_id: v.counterparty_vm_id,
+    p_amount: v.amount_usd,
+    p_protocol_fee: v.protocol_fee_usd,
+    p_metadata: holdMeta,
+    p_cap_daily: evaluation.effectiveBands.neverPerDay,
+    p_cap_earned: decision.earnedDailyBudgetUsd,
+    p_human_approved: v.human_approved,
+    p_window_start: new Date(nowMs - SPEND_WINDOW_MS).toISOString(),
+    p_fresh_pending_cutoff: new Date(nowMs - HOLD_TTL_MS).toISOString(),
+  });
+
+  const rpcMissing =
+    !!rpcErr &&
+    (rpcErr.code === "PGRST202" ||
+      rpcErr.code === "42883" ||
+      /could not find the function|does not exist|schema cache/i.test(rpcErr.message || ""));
+
+  if (!rpcErr && rpcData) {
+    const r = rpcData as { reserved?: boolean; id?: string; conflict?: boolean; reason?: string };
+    if (r.reserved && r.id) return authorizedResponse(r.id, false);
+    if (r.conflict) return idempotentReplyForExisting();
+    if (r.reason === "invalid_counterparty") {
+      return NextResponse.json({ error: "counterparty_vm_id does not exist" }, { status: 400 });
+    }
+    // Lost the locked budget re-check — a concurrent reserve consumed the headroom
+    // the non-locked decision saw. Bounce to the human rather than over-reserve.
+    return NextResponse.json(
+      { authorized: false, mode: null, ...commonBody, outcome: "ask_first", reason: r.reason ?? "budget_race_lost" },
+      { status: 200 },
+    );
+  }
+  if (rpcErr && !rpcMissing) {
+    console.error("[/api/agent-economy/authorize] reserve RPC failed:", rpcErr);
+    return NextResponse.json({ error: "failed to reserve spend" }, { status: 500 });
   }
 
-  if (insertErr?.code === "23503") {
-    return NextResponse.json({ error: "counterparty_vm_id does not exist" }, { status: 400 });
-  }
-  if (insertErr?.code === "23514") {
-    return NextResponse.json({ error: "value failed a database constraint" }, { status: 400 });
-  }
-
+  // ── Fallback: RPC not yet applied (migration pending). Plain insert — the prior
+  // non-atomic-but-wallet-bounded behavior. Logged so the gap is visible; remove
+  // once frontier_reserve_spend is applied fleet-wide. ──
+  console.warn("[/api/agent-economy/authorize] frontier_reserve_spend RPC absent — non-atomic insert fallback (apply the pending migration to activate the per-VM lock)");
+  const holdRow = {
+    request_id: v.request_id, rail: v.rail, direction: "spend" as const, vm_id: vmId,
+    counterparty_address: v.counterparty_address, counterparty_vm_id: v.counterparty_vm_id,
+    amount_usdc: v.amount_usd, protocol_fee_usdc: v.protocol_fee_usd, status: "pending" as const,
+    facilitator: "coinbase", metadata: holdMeta,
+  };
+  const { data: inserted, error: insertErr } = await supabase
+    .from("frontier_transactions").insert(holdRow).select("id").single();
+  if (!insertErr && inserted) return authorizedResponse(inserted.id, false);
+  if (insertErr?.code === "23505") return idempotentReplyForExisting();
+  if (insertErr?.code === "23503") return NextResponse.json({ error: "counterparty_vm_id does not exist" }, { status: 400 });
+  if (insertErr?.code === "23514") return NextResponse.json({ error: "value failed a database constraint" }, { status: 400 });
   console.error("[/api/agent-economy/authorize] hold insert failed:", insertErr);
   return NextResponse.json({ error: "failed to reserve spend" }, { status: 500 });
 }
