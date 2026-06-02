@@ -58,13 +58,20 @@ check("missing payTo rejected", "error" in selectPaymentRequirement([req({ payTo
   check("v2: preserves original network for the envelope", "selected" in r && r.selected.network === "eip155:8453");
   check("v2: ignores the solana leg, picks the EVM payTo", "selected" in r && r.selected.payTo === "0x127462e296fAc1A7F5cF33bA57bB2f0FFf5cD0B6");
 }
-// X-PAYMENT envelope echoes the requirement's version + original network (v2)
+// X-PAYMENT v2 envelope (PaymentPayloadV2Schema): { x402Version:2, accepted:<requirement>, payload }
 {
   const auth = buildAuthorization({ from: "0xA", to: "0xB", amountAtomic: "1000", nonceHex: "0xN", nowSec: 0 });
-  const hdr = buildXPaymentHeader({ signature: "0xSIG", authorization: auth, network: "eip155:8453", x402Version: 2 });
+  const reqObj = { scheme: "exact", network: "eip155:8453", asset: USDC_BASE_ADDRESS, amount: "1000", payTo: "0xSeller", maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2" } };
+  const hdr = buildXPaymentHeader({ signature: "0xSIG", authorization: auth, requirement: reqObj, x402Version: 2 });
   const decoded = JSON.parse(Buffer.from(hdr, "base64").toString("utf8"));
   check("v2 envelope: x402Version 2", decoded.x402Version === 2);
-  check("v2 envelope: network preserved (eip155:8453)", decoded.network === "eip155:8453");
+  check("v2 envelope: `accepted` = full requirement, NO top-level scheme/network",
+    JSON.stringify(decoded.accepted) === JSON.stringify(reqObj) && decoded.scheme === undefined && decoded.network === undefined);
+  check("v2 envelope: payload carries signature + authorization", decoded.payload.signature === "0xSIG" && decoded.payload.authorization.value === "1000");
+  // resource is included when passed (canonical @x402 client behavior)
+  const hdrR = buildXPaymentHeader({ signature: "0xSIG", authorization: auth, requirement: reqObj, resource: { url: "https://x.com/p" }, x402Version: 2 });
+  const decR = JSON.parse(Buffer.from(hdrR, "base64").toString("utf8"));
+  check("v2 envelope: top-level resource included when provided", decR.resource?.url === "https://x.com/p");
 }
 
 // ── EIP-3009 authorization ──

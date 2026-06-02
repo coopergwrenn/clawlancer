@@ -59,7 +59,7 @@ function parseArgs(argv) {
     const t = argv[i];
     if (!t.startsWith("--")) continue;
     const key = t.slice(2);
-    const flagOnly = ["human-approved", "dry-run", "json"];
+    const flagOnly = ["human-approved", "dry-run", "json", "debug"];
     if (flagOnly.includes(key)) { a[key] = true; continue; }
     a[key] = argv[++i];
   }
@@ -284,7 +284,7 @@ async function main() {
   if (!json) console.log(renderHiredSpecialist({ amountUsd, supplierLabel, what: why, outcome: mode, earnedDailyBudgetUsd: d.earned_daily_budget_usd, spentTodayUsd: d.spent_today_usd, trust }));
 
   // 3 ── PAY: sign EIP-3009 via Bankr, send X-PAYMENT, get the result ──
-  let paid = false, txHash = null, resultBody = null, payErr = null;
+  let paid = false, txHash = null, resultBody = null, payErr = null, payErrBody = null, xPaymentDebug = null;
   try {
     if (!bankrKey || !wallet) throw new Error("bankr_not_configured");
     const authorizationMsg = buildAuthorization({
@@ -293,16 +293,21 @@ async function main() {
     });
     const typedData = buildTransferTypedData(authorizationMsg, { asset, name: requirement.extra?.name, version: requirement.extra?.version });
     const signature = await bankrSign(bankrKey, typedData);
-    const xPayment = buildXPaymentHeader({ signature, authorization: authorizationMsg, network: requirement.network, scheme: requirement.scheme, x402Version });
+    const xPayment = buildXPaymentHeader({ signature, authorization: authorizationMsg, requirement, resource: offer?.resource, network: requirement.network, scheme: requirement.scheme, x402Version });
+    if (args.debug) { try { xPaymentDebug = JSON.parse(Buffer.from(xPayment, "base64").toString("utf8")); xPaymentDebug.payload.signature = String(signature).slice(0, 20) + "…"; } catch { /* ignore */ } }
 
-    const payRes = await fetch(url, { method, body: reqBody, headers: { "X-PAYMENT": xPayment, ...(reqBody ? { "Content-Type": "application/json" } : {}) }, signal: AbortSignal.timeout(60000) });
+    // x402 v2 resource servers read the payment from PAYMENT-SIGNATURE (extractPayment in @x402/core);
+    // X-PAYMENT is the v1 name. Send BOTH for v1+v2 compatibility (matching the canonical @x402 client).
+    const payRes = await fetch(url, { method, body: reqBody, headers: { "PAYMENT-SIGNATURE": xPayment, "X-PAYMENT": xPayment, ...(reqBody ? { "Content-Type": "application/json" } : {}) }, signal: AbortSignal.timeout(60000) });
     if (payRes.ok) {
       paid = true;
       resultBody = await payRes.text();
-      const xpr = payRes.headers.get("x-payment-response");
+      // v2 servers return the settlement in the `payment-response` header; v1 used `x-payment-response`.
+      const xpr = payRes.headers.get("payment-response") || payRes.headers.get("x-payment-response");
       if (xpr) { try { txHash = JSON.parse(Buffer.from(xpr, "base64").toString("utf8"))?.transaction ?? null; } catch { /* tx hash best-effort */ } }
     } else {
       payErr = `pay_http_${payRes.status}`;
+      payErrBody = (await payRes.text().catch(() => "")).slice(0, 800);
     }
   } catch (e) {
     payErr = String(e?.message ?? e);
@@ -334,6 +339,7 @@ async function main() {
       narration: renderHiredSpecialist({ amountUsd, supplierLabel, what: why, outcome: "paid" }), result: resultBody });
   }
   return out({ ok: false, paid: false, mode, hold_id: holdId, reason: payErr, supplier: supplierId,
+    pay_error_body: payErrBody, x_payment_sent: xPaymentDebug,
     narration: renderHiredSpecialist({ amountUsd, supplierLabel, what: why, outcome: "failed", reason: payErr }) });
 }
 

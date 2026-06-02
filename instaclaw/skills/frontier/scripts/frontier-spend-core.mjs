@@ -139,14 +139,33 @@ export function buildTransferTypedData(authorization, opts) {
   };
 }
 
-/** The X-PAYMENT header: base64(JSON({x402Version, scheme, network, payload:{signature, authorization}})). */
+/**
+ * The X-PAYMENT header: base64(JSON(PaymentPayload)). The envelope shape DIFFERS
+ * by protocol version (verified against @x402/core's PaymentPayloadV2Schema):
+ *   v2 → { x402Version:2, accepted:<full selected requirement>, payload:{signature, authorization} }
+ *        (NO top-level scheme/network — they live inside `accepted`; `accepted` is REQUIRED)
+ *   v1 → { x402Version:1, scheme, network, payload:{signature, authorization} } (flat)
+ * Passing the v1 flat shape to a v2 facilitator fails schema validation and the
+ * server silently re-issues a 402.
+ */
 export function buildXPaymentHeader(args) {
-  const envelope = {
-    x402Version: args.x402Version ?? 1,
-    scheme: args.scheme ?? "exact",
-    network: args.network ?? BASE_NETWORK,
-    payload: { signature: args.signature, authorization: args.authorization },
-  };
+  const version = args.x402Version ?? 1;
+  let envelope;
+  if (version >= 2) {
+    envelope = {
+      x402Version: 2,
+      ...(args.resource ? { resource: args.resource } : {}), // top-level resource — the canonical @x402 client includes it
+      accepted: args.requirement, // the full selected accepts[] entry (scheme, network, asset, amount, payTo, maxTimeoutSeconds, extra)
+      payload: { signature: args.signature, authorization: args.authorization },
+    };
+  } else {
+    envelope = {
+      x402Version: 1,
+      scheme: args.scheme ?? "exact",
+      network: args.network ?? BASE_NETWORK,
+      payload: { signature: args.signature, authorization: args.authorization },
+    };
+  }
   return Buffer.from(JSON.stringify(envelope), "utf8").toString("base64");
 }
 
