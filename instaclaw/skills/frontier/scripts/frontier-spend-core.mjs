@@ -55,6 +55,13 @@ function isUsdc(asset) {
  * asset USDC, priced at or below the agent's ceiling; cheapest among valid.
  * Returns { selected } or { error } with a stable machine reason.
  */
+// x402 v2 names the atomic price `amount`; the original spec used `maxAmountRequired`. Support both.
+function atomicOf(a) {
+  if (typeof a.amount === "string") return a.amount;
+  if (typeof a.maxAmountRequired === "string") return a.maxAmountRequired;
+  return null;
+}
+
 export function selectPaymentRequirement(accepts, opts) {
   if (!Array.isArray(accepts) || accepts.length === 0) return { error: "no_payment_requirements" };
   const exactBaseUsdc = accepts.filter(
@@ -63,11 +70,11 @@ export function selectPaymentRequirement(accepts, opts) {
       normNetwork(a.network) === BASE_NETWORK &&
       isUsdc(a.asset) &&
       typeof a.payTo === "string" && !!a.payTo &&
-      typeof a.maxAmountRequired === "string",
+      typeof atomicOf(a) === "string",
   );
   if (exactBaseUsdc.length === 0) return { error: "no_exact_base_usdc_requirement" };
   const priced = exactBaseUsdc
-    .map((a) => ({ a, usd: usdcToUsd(a.maxAmountRequired) }))
+    .map((a) => ({ a, usd: usdcToUsd(atomicOf(a)) }))
     .filter((x) => Number.isFinite(x.usd) && x.usd > 0)
     .sort((x, y) => x.usd - y.usd);
   if (priced.length === 0) return { error: "invalid_requirement_amount" };
@@ -77,9 +84,10 @@ export function selectPaymentRequirement(accepts, opts) {
     selected: {
       requirement: cheapest.a,
       amountUsd: cheapest.usd,
-      amountAtomic: cheapest.a.maxAmountRequired,
+      amountAtomic: atomicOf(cheapest.a),
       payTo: cheapest.a.payTo,
       asset: cheapest.a.asset,
+      network: cheapest.a.network, // preserve original (e.g. "eip155:8453") for the X-PAYMENT envelope
     },
   };
 }

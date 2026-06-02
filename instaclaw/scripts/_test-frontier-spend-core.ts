@@ -46,6 +46,27 @@ check("network eip155:8453 normalizes", "selected" in selectPaymentRequirement([
 check("asset case-insensitive", "selected" in selectPaymentRequirement([req({ asset: USDC_BASE_ADDRESS.toLowerCase() })], { maxAmountUsd: 1 }));
 check("missing payTo rejected", "error" in selectPaymentRequirement([req({ payTo: undefined })], { maxAmountUsd: 1 }));
 
+// ── x402 v2 compatibility — the REAL anchor-x402 402 shape (`amount`, eip155:8453, x402Version 2) ──
+{
+  const anchorAccepts = [
+    { scheme: "exact", network: "eip155:8453", asset: USDC_BASE_ADDRESS, amount: "1000", payTo: "0x127462e296fAc1A7F5cF33bA57bB2f0FFf5cD0B6", maxTimeoutSeconds: 300, extra: { name: "USD Coin", version: "2" } },
+    { scheme: "exact", network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", amount: "1000", payTo: "6apuZvJQ51Led9iEjnHw6f5jfnXL4qjt8S1h58PeXzuR" },
+  ];
+  const r = selectPaymentRequirement(anchorAccepts, { maxAmountUsd: 1 });
+  check("v2: selects Base/USDC entry by `amount` field", "selected" in r && r.selected.amountUsd === 0.001);
+  check("v2: amountAtomic from `amount`", "selected" in r && r.selected.amountAtomic === "1000");
+  check("v2: preserves original network for the envelope", "selected" in r && r.selected.network === "eip155:8453");
+  check("v2: ignores the solana leg, picks the EVM payTo", "selected" in r && r.selected.payTo === "0x127462e296fAc1A7F5cF33bA57bB2f0FFf5cD0B6");
+}
+// X-PAYMENT envelope echoes the requirement's version + original network (v2)
+{
+  const auth = buildAuthorization({ from: "0xA", to: "0xB", amountAtomic: "1000", nonceHex: "0xN", nowSec: 0 });
+  const hdr = buildXPaymentHeader({ signature: "0xSIG", authorization: auth, network: "eip155:8453", x402Version: 2 });
+  const decoded = JSON.parse(Buffer.from(hdr, "base64").toString("utf8"));
+  check("v2 envelope: x402Version 2", decoded.x402Version === 2);
+  check("v2 envelope: network preserved (eip155:8453)", decoded.network === "eip155:8453");
+}
+
 // ── EIP-3009 authorization ──
 {
   const auth = buildAuthorization({ from: "0xA", to: "0xB", amountAtomic: "1000", nonceHex: "0xNONCE", nowSec: 1000, maxTimeoutSeconds: 300 });
