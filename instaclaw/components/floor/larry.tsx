@@ -29,7 +29,6 @@
 
 import { forwardRef, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 import { useFloorStore } from "@/lib/floor/store";
 import {
@@ -42,8 +41,7 @@ import {
 // darker shell-rim/leg tone for read, and eyes built for *life* — a warm iris
 // plus a bright emissive catch-light the bloom pass will turn into a spark.
 const CRAB_ORANGE = "#ec8a3e"; // carapace
-const CRAB_ORANGE_DARK = "#bf5f24"; // shell rim, legs, finger tips
-const CRAB_UNDERBELLY = "#f6b06a"; // lighter belly + arm undersides
+const CRAB_ORANGE_DARK = "#bf5f24"; // legs, finger tips
 const EYE_WHITE = "#fdf7ee";
 const EYE_IRIS = "#73401f"; // warm amber-brown — reads alive, not a dead dot
 const EYE_PUPIL = "#1b0f07";
@@ -194,56 +192,67 @@ const CrabEye = forwardRef<
 });
 
 /**
- * One front claw (cheliped): a short arm + a chunky rounded palm + a two-finger
- * pincer (fixed lower jaw, raised upper jaw leaving a friendly open gap). Lives
- * inside the leftClaw/rightClaw ref'd group, which the frame loop rotates for
- * the "typing" tap. `side` mirrors the geometry left↔right.
+ * One curved pincer jaw, built leg-style from two capsule segments so it reads
+ * as a smooth CRESCENT (not a straight cone or a flat block). `dir`: +1 = lower
+ * jaw (sits low, curls UP toward the bite line); -1 = upper jaw (sits high,
+ * curls DOWN) — together they form the iconic open-pincer "C".
+ */
+function PincerJaw({ dir }: { dir: number }) {
+  return (
+    <group position={[0, -dir * 0.055, 0]}>
+      {/* base segment — thick, points forward, only a slight pre-angle toward the
+          bite line (capsule's default axis is Y; rotation.x ≈ π/2 lays it +Z) */}
+      <mesh castShadow rotation={[Math.PI / 2 - dir * 0.12, 0, 0]} position={[0, 0, 0.085]}>
+        <capsuleGeometry args={[0.05, 0.13, 8, 16]} />
+        <ShellMaterial color={CRAB_ORANGE} roughness={0.36} emissiveIntensity={0.1} />
+      </mesh>
+      {/* tip segment — slimmer, curls MODERATELY toward center so the two jaws
+          form an OPEN crescent (a clear gap you could see through), never a
+          clamped fist. dir +1 curls up, dir -1 curls down → the iconic "C". */}
+      <group position={[0, dir * 0.012, 0.2]} rotation={[Math.PI / 2 - dir * 0.42, 0, 0]}>
+        <mesh castShadow position={[0, 0, 0.055]}>
+          <capsuleGeometry args={[0.037, 0.11, 8, 16]} />
+          <ShellMaterial color={CRAB_ORANGE} roughness={0.36} emissiveIntensity={0.1} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+/**
+ * One front claw (cheliped) — the HERO feature (Tamatoa / Sebastian / Mr. Krabs:
+ * the claws are the character's expressive "hands", big enough to dominate the
+ * silhouette). A chunky rounded arm → a big meaty palm → two CURVED jaws meeting
+ * in an open crescent. Lives inside the leftClaw/rightClaw ref'd group, which the
+ * frame loop rotates for the "typing" tap. `side` mirrors the geometry.
  */
 function Cheliped({ side }: { side: number }) {
   return (
     <group>
-      {/* upper arm — a rounded capsule linking the claw back to the body */}
+      {/* upper arm — CHUNKY rounded capsule from the body up & forward to the
+          wrist (same friendly rounded language as the legs). */}
       <mesh
         castShadow
-        position={[side * -0.05, -0.07, -0.04]}
-        rotation={[0.35, 0, side * 0.55]}
+        position={[side * -0.04, -0.02, 0.0]}
+        rotation={[0.6, 0, side * 0.45]}
       >
-        <capsuleGeometry args={[0.04, 0.17, 8, 16]} />
+        <capsuleGeometry args={[0.062, 0.16, 8, 16]} />
         <ShellMaterial color={CRAB_ORANGE} roughness={0.4} emissiveIntensity={0.1} />
       </mesh>
-      {/* claw "hand" — a chunky rounded ovoid, elongated forward */}
-      <mesh castShadow position={[0, 0.03, 0.03]} scale={[1, 1.02, 1.28]}>
-        <sphereGeometry args={[0.1, 28, 22]} />
-        <ShellMaterial color={CRAB_ORANGE} roughness={0.34} emissiveIntensity={0.12} />
-      </mesh>
-      {/* lower jaw (fixed) — a ROUNDED pincer (not a pointy cone), curving
-          forward and a touch up; the rounded form reads friendly, not spiky. */}
-      <RoundedBox
-        args={[0.09, 0.07, 0.18]}
-        radius={0.034}
-        smoothness={5}
-        castShadow
-        position={[0, -0.012, 0.18]}
-        rotation={[0.12, 0, 0]}
-      >
-        <ShellMaterial color={CRAB_ORANGE} roughness={0.36} emissiveIntensity={0.1} />
-      </RoundedBox>
-      {/* upper jaw (movable) — rounded, angled up to leave a clear pincer gap */}
-      <RoundedBox
-        args={[0.085, 0.06, 0.16]}
-        radius={0.03}
-        smoothness={5}
-        castShadow
-        position={[0, 0.075, 0.17]}
-        rotation={[-0.46, 0, 0]}
-      >
-        <ShellMaterial color={CRAB_ORANGE} roughness={0.36} emissiveIntensity={0.1} />
-      </RoundedBox>
-      {/* dark inner mouth — fills the gap so the pincer OPENING reads as a claw */}
-      <mesh position={[0, 0.028, 0.18]} scale={[0.75, 0.55, 0.5]}>
-        <sphereGeometry args={[0.055, 14, 12]} />
-        <meshStandardMaterial color={MOUTH} roughness={0.7} />
-      </mesh>
+      {/* claw assembly — the big palm + the two curved jaws, lifted up & forward
+          and tilted so the open pincer faces the hero camera (front + above). */}
+      <group position={[side * 0.02, 0.12, 0.12]} rotation={[-0.5, side * 0.12, 0]}>
+        {/* palm (manus) — the big meaty base; the dominant mass of the claw */}
+        <mesh castShadow scale={[1.0, 1.06, 1.16]}>
+          <sphereGeometry args={[0.145, 32, 24]} />
+          <ShellMaterial color={CRAB_ORANGE} roughness={0.34} emissiveIntensity={0.12} />
+        </mesh>
+        {/* the two curved pincer jaws, meeting in an open crescent at the front */}
+        <group position={[0, 0, 0.1]}>
+          <PincerJaw dir={1} />
+          <PincerJaw dir={-1} />
+        </group>
+      </group>
     </group>
   );
 }
@@ -570,36 +579,15 @@ export function Larry() {
   return (
     <group ref={root} position={[HOME_POS.x, GROUND_Y, HOME_POS.z]}>
       <group ref={body}>
-        {/* ── Carapace — a rounded, friendly dome (a pebble, not a pancake).
-            Taller + a touch smaller than before so the big eyes + raised claws
-            read as the dominant, characterful features (baby-schema). ── */}
-        <mesh castShadow receiveShadow position={[0, 0.05, 0]} scale={[1.16, 0.84, 1.04]}>
+        {/* ── Carapace — ONE cohesive, friendly dome (a smooth river-pebble, in
+            the spirit of Sebastian / an Animal-Crossing crab). Deliberately a
+            SINGLE form: no dark rim "belt", no separate underbelly plate — those
+            stacked up into a hamburger read. The smooth shell IS the body; the
+            big eyes + hero claws carry all the character. A hair fuller
+            (taller/wider) so it sits as a confident dome, not a thin disc. ── */}
+        <mesh castShadow receiveShadow position={[0, 0.06, 0]} scale={[1.2, 0.99, 1.1]}>
           <sphereGeometry args={[0.32, 64, 48]} />
           <ShellMaterial color={CRAB_ORANGE} roughness={0.34} emissiveIntensity={0.14} />
-        </mesh>
-
-        {/* Shell rim — the carapace lip where the dome meets the belly */}
-        <mesh position={[0, -0.04, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[1.15, 1.03, 0.5]}>
-          <torusGeometry args={[0.32, 0.028, 16, 80]} />
-          <meshStandardMaterial
-            color={CRAB_ORANGE_DARK}
-            roughness={0.42}
-            metalness={0}
-            emissive={CRAB_ORANGE_DARK}
-            emissiveIntensity={0.08}
-          />
-        </mesh>
-
-        {/* Underbelly — a sun-warmed plate beneath the dome */}
-        <mesh position={[0, -0.1, 0.0]} scale={[1.08, 0.42, 0.96]}>
-          <sphereGeometry args={[0.32, 48, 32]} />
-          <ShellMaterial color={CRAB_UNDERBELLY} roughness={0.5} emissiveIntensity={0.1} />
-        </mesh>
-
-        {/* Mouth — a small dark mandible at the front-bottom (subtle character) */}
-        <mesh position={[0, -0.04, 0.31]} rotation={[0.35, 0, 0]} scale={[1.1, 0.5, 0.5]}>
-          <sphereGeometry args={[0.05, 16, 12]} />
-          <meshStandardMaterial color={MOUTH} roughness={0.65} />
         </mesh>
 
         {/* ── Eyes on stalks (raised/drooped as a unit; each eye blinks) ── */}
@@ -630,7 +618,7 @@ export function Larry() {
         <group ref={leftClaw} position={[-0.38, 0.05, 0.24]} rotation={[0, -0.2, 0.16]}>
           <Cheliped side={-1} />
         </group>
-        <group ref={rightClaw} position={[0.38, 0.05, 0.24]} rotation={[0, 0.2, -0.16]}>
+        <group ref={rightClaw} position={[0.42, 0.05, 0.26]} rotation={[0, -0.05, -0.16]}>
           <Cheliped side={1} />
         </group>
 
