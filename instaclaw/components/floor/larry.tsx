@@ -29,6 +29,7 @@
 
 import { forwardRef, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
+import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 import { useFloorStore } from "@/lib/floor/store";
 import {
@@ -40,8 +41,13 @@ import {
 // Stylized-PBR warmth: a saturated shell, a lighter sun-warmed underbelly, a
 // darker shell-rim/leg tone for read, and eyes built for *life* — a warm iris
 // plus a bright emissive catch-light the bloom pass will turn into a spark.
-const CRAB_ORANGE = "#ec8a3e"; // carapace
-const CRAB_ORANGE_DARK = "#bf5f24"; // legs, finger tips
+// ── Voxel palette — 4 shades of orange (Pokemon-Quest / Crossy-Road blocky).
+// The character is now built from BOXES, not spheres: boxes can't melt into
+// blobs, and a rectangular gap between two box jaws reads as a pincer from ANY
+// angle. The warm rim shader (ShellMaterial) catches every cube edge.
+const CRAB_ORANGE = "#ec8a3e"; // main carapace
+const CRAB_ORANGE_LIGHT = "#f6ad5e"; // top shell cap / sun-lit faces
+const CRAB_ORANGE_DARK = "#bf5f24"; // legs, claw-tip accents
 const EYE_WHITE = "#fdf7ee";
 const EYE_IRIS = "#73401f"; // warm amber-brown — reads alive, not a dead dot
 const EYE_PUPIL = "#1b0f07";
@@ -192,66 +198,67 @@ const CrabEye = forwardRef<
 });
 
 /**
- * One curved pincer jaw, built leg-style from two capsule segments so it reads
- * as a smooth CRESCENT (not a straight cone or a flat block). `dir`: +1 = lower
- * jaw (sits low, curls UP toward the bite line); -1 = upper jaw (sits high,
- * curls DOWN) — together they form the iconic open-pincer "C".
- */
-function PincerJaw({ dir }: { dir: number }) {
-  return (
-    <group position={[0, -dir * 0.055, 0]}>
-      {/* base segment — thick, points forward, only a slight pre-angle toward the
-          bite line (capsule's default axis is Y; rotation.x ≈ π/2 lays it +Z) */}
-      <mesh castShadow rotation={[Math.PI / 2 - dir * 0.12, 0, 0]} position={[0, 0, 0.085]}>
-        <capsuleGeometry args={[0.05, 0.13, 8, 16]} />
-        <ShellMaterial color={CRAB_ORANGE} roughness={0.36} emissiveIntensity={0.1} />
-      </mesh>
-      {/* tip segment — slimmer, curls MODERATELY toward center so the two jaws
-          form an OPEN crescent (a clear gap you could see through), never a
-          clamped fist. dir +1 curls up, dir -1 curls down → the iconic "C". */}
-      <group position={[0, dir * 0.012, 0.2]} rotation={[Math.PI / 2 - dir * 0.42, 0, 0]}>
-        <mesh castShadow position={[0, 0, 0.055]}>
-          <capsuleGeometry args={[0.037, 0.11, 8, 16]} />
-          <ShellMaterial color={CRAB_ORANGE} roughness={0.36} emissiveIntensity={0.1} />
-        </mesh>
-      </group>
-    </group>
-  );
-}
-
-/**
- * One front claw (cheliped) — the HERO feature (Tamatoa / Sebastian / Mr. Krabs:
- * the claws are the character's expressive "hands", big enough to dominate the
- * silhouette). A chunky rounded arm → a big meaty palm → two CURVED jaws meeting
- * in an open crescent. Lives inside the leftClaw/rightClaw ref'd group, which the
- * frame loop rotates for the "typing" tap. `side` mirrors the geometry.
+ * One front claw (cheliped) — the HERO feature, now VOXEL. Built from boxes:
+ * a chunky box arm → a big box palm → TWO box jaws separated by a clear
+ * rectangular GAP. That gap is the whole trick — two parallel prongs with a
+ * slot between them read as an open pincer "C" from front, side, AND above, and
+ * boxes can never melt into the blob the organic version became. The movable
+ * (upper) jaw tilts up so the mouth reads open, not clamped. `side` mirrors L/R.
+ * Lives inside the leftClaw/rightClaw ref'd group (the frame loop taps it).
  */
 function Cheliped({ side }: { side: number }) {
   return (
     <group>
-      {/* upper arm — CHUNKY rounded capsule from the body up & forward to the
-          wrist (same friendly rounded language as the legs). */}
-      <mesh
+      {/* upper arm — one chunky box from the shoulder out to the wrist */}
+      <RoundedBox
+        args={[0.16, 0.15, 0.22]}
+        radius={0.045}
+        smoothness={4}
         castShadow
-        position={[side * -0.04, -0.02, 0.0]}
-        rotation={[0.6, 0, side * 0.45]}
+        position={[side * -0.02, -0.02, 0.02]}
+        rotation={[0.35, 0, side * 0.12]}
       >
-        <capsuleGeometry args={[0.062, 0.16, 8, 16]} />
         <ShellMaterial color={CRAB_ORANGE} roughness={0.4} emissiveIntensity={0.1} />
-      </mesh>
-      {/* claw assembly — the big palm + the two curved jaws, lifted up & forward
-          and tilted so the open pincer faces the hero camera (front + above). */}
-      <group position={[side * 0.02, 0.12, 0.12]} rotation={[-0.5, side * 0.12, 0]}>
-        {/* palm (manus) — the big meaty base; the dominant mass of the claw */}
-        <mesh castShadow scale={[1.0, 1.06, 1.16]}>
-          <sphereGeometry args={[0.145, 32, 24]} />
-          <ShellMaterial color={CRAB_ORANGE} roughness={0.34} emissiveIntensity={0.12} />
+      </RoundedBox>
+      {/* claw assembly — big palm + the two box jaws, held up & forward so the
+          open pincer faces the hero camera. */}
+      <group position={[side * 0.03, 0.12, 0.16]} rotation={[-0.12, side * 0.12, 0]}>
+        {/* palm (manus) — the big blocky base; dominant mass of the claw. A
+            distinct CLAW_TONE orange so the hero feature pops off the body. */}
+        <RoundedBox args={[0.24, 0.27, 0.24]} radius={0.05} smoothness={4} castShadow>
+          <ShellMaterial color={CLAW_TONE} roughness={0.36} emissiveIntensity={0.12} />
+        </RoundedBox>
+        {/* lower jaw (fixed) — box prong forward from the palm's bottom-front */}
+        <RoundedBox
+          args={[0.17, 0.1, 0.27]}
+          radius={0.035}
+          smoothness={4}
+          castShadow
+          position={[0, -0.075, 0.22]}
+        >
+          <ShellMaterial color={CLAW_TONE} roughness={0.36} emissiveIntensity={0.1} />
+        </RoundedBox>
+        {/* upper jaw (movable) — box prong from the palm's top-front, tilted UP so
+            a clear rectangular GAP opens between the jaws = unmistakable pincer */}
+        <RoundedBox
+          args={[0.17, 0.1, 0.23]}
+          radius={0.035}
+          smoothness={4}
+          castShadow
+          position={[0, 0.085, 0.21]}
+          rotation={[-0.32, 0, 0]}
+        >
+          <ShellMaterial color={CLAW_TONE} roughness={0.36} emissiveIntensity={0.1} />
+        </RoundedBox>
+        {/* dark finger-tip caps — the 4th shade; defines the snapping ends */}
+        <mesh castShadow position={[0, -0.075, 0.36]}>
+          <boxGeometry args={[0.16, 0.092, 0.05]} />
+          <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.5} />
         </mesh>
-        {/* the two curved pincer jaws, meeting in an open crescent at the front */}
-        <group position={[0, 0, 0.1]}>
-          <PincerJaw dir={1} />
-          <PincerJaw dir={-1} />
-        </group>
+        <mesh castShadow position={[0, 0.13, 0.305]} rotation={[-0.32, 0, 0]}>
+          <boxGeometry args={[0.16, 0.092, 0.05]} />
+          <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.5} />
+        </mesh>
       </group>
     </group>
   );
@@ -269,18 +276,16 @@ const CrabLeg = forwardRef<
   const sign = x < 0 ? -1 : 1;
   return (
     <group ref={ref} position={[x, LEG_BASE_Y, z]} rotation={[0, splay, 0]}>
-      {/* upper segment — swings out and down from under the shell */}
+      {/* upper segment — a chunky box thigh swinging out and down */}
       <group rotation={[0, 0, sign * 0.95]}>
-        <mesh castShadow position={[0, -0.1, 0]}>
-          <capsuleGeometry args={[0.028, 0.18, 6, 10]} />
+        <RoundedBox args={[0.07, 0.2, 0.07]} radius={0.025} smoothness={3} castShadow position={[0, -0.1, 0]}>
           <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.45} metalness={0} emissive={CRAB_ORANGE_DARK} emissiveIntensity={0.06} />
-        </mesh>
-        {/* lower segment — bends back in and down to a pointed foot */}
+        </RoundedBox>
+        {/* lower segment — a box shin bending back in and down to the foot */}
         <group position={[0, -0.2, 0]} rotation={[0, 0, sign * -1.3]}>
-          <mesh castShadow position={[0, -0.09, 0]}>
-            <capsuleGeometry args={[0.02, 0.16, 6, 10]} />
+          <RoundedBox args={[0.055, 0.17, 0.055]} radius={0.02} smoothness={3} castShadow position={[0, -0.09, 0]}>
             <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.45} metalness={0} emissive={CRAB_ORANGE_DARK} emissiveIntensity={0.06} />
-          </mesh>
+          </RoundedBox>
         </group>
       </group>
     </group>
@@ -579,19 +584,35 @@ export function Larry() {
   return (
     <group ref={root} position={[HOME_POS.x, GROUND_Y, HOME_POS.z]}>
       <group ref={body}>
-        {/* ── Carapace — ONE cohesive, friendly dome (a smooth river-pebble, in
-            the spirit of Sebastian / an Animal-Crossing crab). Deliberately a
-            SINGLE form: no dark rim "belt", no separate underbelly plate — those
-            stacked up into a hamburger read. The smooth shell IS the body; the
-            big eyes + hero claws carry all the character. A hair fuller
-            (taller/wider) so it sits as a confident dome, not a thin disc. ── */}
-        <mesh castShadow receiveShadow position={[0, 0.06, 0]} scale={[1.2, 0.99, 1.1]}>
-          <sphereGeometry args={[0.32, 64, 48]} />
-          <ShellMaterial color={CRAB_ORANGE} roughness={0.34} emissiveIntensity={0.14} />
-        </mesh>
+        {/* ── Carapace — a chunky VOXEL shell (Pokemon-Quest / Crossy-Road). A
+            single wide, slightly-flattened RoundedBox is the body; a lighter box
+            "shell cap" sits on top for the 2-tone blocky read. Boxes, not
+            spheres: the form is intentionally blocky and can never blob. ── */}
+        <RoundedBox
+          args={[0.74, 0.46, 0.64]}
+          radius={0.06}
+          smoothness={4}
+          castShadow
+          receiveShadow
+          position={[0, 0.05, 0]}
+        >
+          <ShellMaterial color={CRAB_ORANGE} roughness={0.4} emissiveIntensity={0.13} />
+        </RoundedBox>
+        {/* top shell cap — a lighter, slightly-inset box plate for the 2-tone
+            voxel shell (sits ON the body, not a belt around it). */}
+        <RoundedBox
+          args={[0.62, 0.16, 0.52]}
+          radius={0.05}
+          smoothness={4}
+          castShadow
+          position={[0, 0.27, -0.01]}
+        >
+          <ShellMaterial color={CRAB_ORANGE_LIGHT} roughness={0.42} emissiveIntensity={0.12} />
+        </RoundedBox>
 
-        {/* ── Eyes on stalks (raised/drooped as a unit; each eye blinks) ── */}
-        <group ref={eyeStalks} position={[0, 0.16, 0.2]}>
+        {/* ── Eyes on stalks (raised/drooped as a unit; each eye blinks) ──
+            Perched on the front-top edge of the box shell. ── */}
+        <group ref={eyeStalks} position={[0, 0.22, 0.3]}>
           <CrabEye
             ref={(el) => {
               eyes.current[0] = el;
@@ -615,10 +636,10 @@ export function Larry() {
         {/* ── Front claws — held UP and forward (the iconic crab pose) so they
             read as pincers from the hero camera; tap while "typing", raise on
             celebrate. rotation.x is the animated tap axis; y/z set the pose. ── */}
-        <group ref={leftClaw} position={[-0.38, 0.05, 0.24]} rotation={[0, -0.2, 0.16]}>
+        <group ref={leftClaw} position={[-0.36, 0.14, 0.32]} rotation={[0.1, -0.5, 0.22]}>
           <Cheliped side={-1} />
         </group>
-        <group ref={rightClaw} position={[0.42, 0.05, 0.26]} rotation={[0, -0.05, -0.16]}>
+        <group ref={rightClaw} position={[0.36, 0.14, 0.32]} rotation={[0.1, 0.5, -0.22]}>
           <Cheliped side={1} />
         </group>
 

@@ -48,7 +48,7 @@ function RenderKicker() {
 
 // The point the camera frames — Larry's head height at his home spot. Kept in
 // sync with OrbitControls.target below.
-const FRAME_TARGET = new THREE.Vector3(1.0, 0.42, 0.85);
+const FRAME_TARGET = new THREE.Vector3(1.0, 0.34, 0.85);
 
 /**
  * Aspect-responsive framing (LOAD-BEARING for mobile, PRD §"opens it on their
@@ -70,8 +70,9 @@ function ResponsiveFraming() {
     const aspect = width / height;
     const dist = camera.position.distanceTo(FRAME_TARGET);
     // Larry + held-up claws, with the target slightly off his center.
-    const halfH = 0.62;
-    const halfW = 0.74;
+    // Tuned for the voxel box body (shorter + wider than the old sphere).
+    const halfH = 0.5;
+    const halfW = 0.66;
     const vfovForHeight = 2 * Math.atan(halfH / dist);
     const hfovForWidth = 2 * Math.atan(halfW / dist);
     const vfovForWidth = 2 * Math.atan(Math.tan(hfovForWidth / 2) / aspect);
@@ -244,7 +245,7 @@ export function FloorScene() {
         maxAzimuthAngle={Math.PI * 0.34}
         enableDamping
         dampingFactor={0.08}
-        target={[1.0, 0.42, 0.85]}
+        target={[1.0, 0.34, 0.85]}
         onChange={() => invalidate()}
       />
 
