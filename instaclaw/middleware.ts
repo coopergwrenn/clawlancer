@@ -47,6 +47,7 @@ export default auth((req) => {
   //   /api/invite/validate — public
   const selfAuthAPIs = [
     "/api/auth",
+    "/api/x402/facilitator", // x402 facilitator proxy — own auth via X-X402-Proxy-Secret header; relays verify/settle to CDP facilitator with CDP creds held backend-side (VMs never hold CDP_API_KEY_SECRET)
     "/api/billing/webhook",
     "/api/cron",
     "/api/vm/configure",
