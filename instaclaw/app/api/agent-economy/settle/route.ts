@@ -88,6 +88,93 @@ function isUUID(s: unknown): s is string {
 
 const round6 = (x: number) => Math.round(x * 1e6) / 1e6;
 
+export interface CleanSettle {
+  success: boolean;
+  holdId: string | null;
+  requestId: string | null;
+  txHash: string | null;
+  summary: string | null;
+  resultUsed: boolean;
+  protocolFee: number | null;
+}
+
+/**
+ * Validate + normalize the settle body. Pure — tested in P2-1. Returns the
+ * cleaned shape, or { error } for any 400. Does NOT include the
+ * protocol-fee-vs-hold-amount check (that needs the hold from the DB) — that
+ * stays in POST after the hold is loaded.
+ */
+export function validateSettleBody(raw: unknown): CleanSettle | { error: string } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { error: "body must be a JSON object" };
+  const b = raw as Record<string, unknown>;
+
+  // result — required.
+  if (b.result !== "success" && b.result !== "failed") {
+    return { error: 'result must be "success" or "failed"' };
+  }
+  const success = b.result === "success";
+
+  // Hold identity — hold_id preferred, else request_id; at least one.
+  let holdId: string | null = null;
+  if (b.hold_id !== undefined && b.hold_id !== null) {
+    if (!isUUID(b.hold_id)) return { error: "hold_id must be a UUID" };
+    holdId = b.hold_id;
+  }
+  let requestId: string | null = null;
+  if (b.request_id !== undefined && b.request_id !== null) {
+    if (typeof b.request_id !== "string" || !b.request_id.trim()) {
+      return { error: "request_id must be a non-empty string" };
+    }
+    requestId = b.request_id.trim().slice(0, MAX_REQUEST_ID);
+  }
+  if (!holdId && !requestId) {
+    return { error: "hold_id or request_id is required" };
+  }
+
+  // Optional fields.
+  let txHash: string | null = null;
+  if (b.tx_hash !== undefined && b.tx_hash !== null) {
+    if (typeof b.tx_hash !== "string") return { error: "tx_hash must be a string" };
+    const t = b.tx_hash.trim().slice(0, MAX_TX_HASH);
+    txHash = t === "" ? null : t;
+  }
+  let summary: string | null = null;
+  if (b.response_summary !== undefined && b.response_summary !== null) {
+    if (typeof b.response_summary !== "string") {
+      return { error: "response_summary must be a string" };
+    }
+    const s = b.response_summary.trim().slice(0, MAX_SUMMARY);
+    summary = s === "" ? null : s;
+  }
+  // result_used only carries meaning on success (a failed spend delivered nothing).
+  const resultUsed = success && b.result_used === true;
+
+  let protocolFee: number | null = null;
+  if (b.protocol_fee_usd !== undefined && b.protocol_fee_usd !== null) {
+    if (typeof b.protocol_fee_usd !== "number" || !Number.isFinite(b.protocol_fee_usd) || b.protocol_fee_usd < 0) {
+      return { error: "protocol_fee_usd must be a non-negative finite number" };
+    }
+    protocolFee = round6(b.protocol_fee_usd);
+  }
+
+  return { success, holdId, requestId, txHash, summary, resultUsed, protocolFee };
+}
+
+/**
+ * Disambiguate a settle against a hold's current status. Pure — tested in P2-1.
+ *   proceed       — pending: this call may attempt the CAS flip.
+ *   idempotent    — already in the requested terminal state: 200, no-op.
+ *   contradictory — terminal but a DIFFERENT state: 409 (e.g. settle-success on a failed hold).
+ */
+export function classifySettleOutcome(
+  currentStatus: string,
+  intendedStatus: "settled" | "failed",
+): "proceed" | "idempotent" | "contradictory" {
+  if (currentStatus === "pending") return "proceed";
+  if (currentStatus === intendedStatus) return "idempotent";
+  return "contradictory";
+}
+
 export async function POST(req: NextRequest) {
   const gatewayToken = extractGatewayToken(req);
   if (!gatewayToken) return NextResponse.json({ error: "Missing authentication" }, { status: 401 });
@@ -102,59 +189,9 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "body must be valid JSON" }, { status: 400 });
   }
-  if (!bodyJson || typeof bodyJson !== "object" || Array.isArray(bodyJson)) {
-    return NextResponse.json({ error: "body must be a JSON object" }, { status: 400 });
-  }
-  const b = bodyJson as Record<string, unknown>;
-
-  // result — required.
-  if (b.result !== "success" && b.result !== "failed") {
-    return NextResponse.json({ error: 'result must be "success" or "failed"' }, { status: 400 });
-  }
-  const success = b.result === "success";
-
-  // Hold identity — hold_id preferred, else request_id; at least one.
-  let holdId: string | null = null;
-  if (b.hold_id !== undefined && b.hold_id !== null) {
-    if (!isUUID(b.hold_id)) return NextResponse.json({ error: "hold_id must be a UUID" }, { status: 400 });
-    holdId = b.hold_id;
-  }
-  let requestId: string | null = null;
-  if (b.request_id !== undefined && b.request_id !== null) {
-    if (typeof b.request_id !== "string" || !b.request_id.trim()) {
-      return NextResponse.json({ error: "request_id must be a non-empty string" }, { status: 400 });
-    }
-    requestId = b.request_id.trim().slice(0, MAX_REQUEST_ID);
-  }
-  if (!holdId && !requestId) {
-    return NextResponse.json({ error: "hold_id or request_id is required" }, { status: 400 });
-  }
-
-  // Optional fields.
-  let txHash: string | null = null;
-  if (b.tx_hash !== undefined && b.tx_hash !== null) {
-    if (typeof b.tx_hash !== "string") return NextResponse.json({ error: "tx_hash must be a string" }, { status: 400 });
-    const t = b.tx_hash.trim().slice(0, MAX_TX_HASH);
-    txHash = t === "" ? null : t;
-  }
-  let summary: string | null = null;
-  if (b.response_summary !== undefined && b.response_summary !== null) {
-    if (typeof b.response_summary !== "string") {
-      return NextResponse.json({ error: "response_summary must be a string" }, { status: 400 });
-    }
-    const s = b.response_summary.trim().slice(0, MAX_SUMMARY);
-    summary = s === "" ? null : s;
-  }
-  // result_used only carries meaning on success (a failed spend delivered nothing).
-  const resultUsed = success && b.result_used === true;
-
-  let protocolFee: number | null = null;
-  if (b.protocol_fee_usd !== undefined && b.protocol_fee_usd !== null) {
-    if (typeof b.protocol_fee_usd !== "number" || !Number.isFinite(b.protocol_fee_usd) || b.protocol_fee_usd < 0) {
-      return NextResponse.json({ error: "protocol_fee_usd must be a non-negative finite number" }, { status: 400 });
-    }
-    protocolFee = round6(b.protocol_fee_usd);
-  }
+  const v = validateSettleBody(bodyJson);
+  if ("error" in v) return NextResponse.json({ error: v.error }, { status: 400 });
+  const { success, holdId, requestId, txHash, summary, resultUsed, protocolFee } = v;
 
   const supabase = getSupabase();
 
@@ -175,13 +212,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "hold does not belong to this VM" }, { status: 403 });
   }
 
-  const intendedStatus = success ? "settled" : "failed";
+  const intendedStatus: "settled" | "failed" = success ? "settled" : "failed";
 
   // Already terminal — disambiguate idempotent vs contradictory.
-  if (hold.status !== "pending") {
-    if (hold.status === intendedStatus) {
-      return NextResponse.json({ ok: true, hold_id: hold.id, status: hold.status, idempotent: true }, { status: 200 });
-    }
+  const preOutcome = classifySettleOutcome(hold.status as string, intendedStatus);
+  if (preOutcome === "idempotent") {
+    return NextResponse.json({ ok: true, hold_id: hold.id, status: hold.status, idempotent: true }, { status: 200 });
+  }
+  if (preOutcome === "contradictory") {
     return NextResponse.json(
       { error: `hold is already ${hold.status}; cannot settle as ${intendedStatus}` },
       { status: 409 },
