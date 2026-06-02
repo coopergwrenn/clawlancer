@@ -23,9 +23,28 @@
  *   - exp:      unix-seconds expiry
  *   - hmacHex:  HMAC-SHA256(`<emailB64>.<exp>`, secret) as lowercase hex
  *
- * TTL is 15 minutes — long enough to complete OAuth round-trip
- * (Google + ~30s for the user to click around), short enough that a
- * leaked cookie is operationally useless within minutes.
+ * TTL is 60 minutes (bumped from 15 on 2026-05-31). The 15-min window
+ * was too tight for the slowest realistic Edge path: a conference
+ * attendee on spotty wifi picking the ChatGPT device-code auth (the
+ * PRIMARY path on /edge/claim) must leave the tab, log into ChatGPT,
+ * paste a device code, and return — OpenAI's own device code is valid
+ * ~15 min, but OUR 15-min clock started 1-2 min EARLIER at email
+ * unlock, so a distracted attendee could exhaust it mid-auth.
+ *
+ * Why bumping is the SAFE direction (not the risky one): if this
+ * cookie expires mid-auth, the user experience does NOT break — the
+ * separate 7-day `instaclaw_partner` cookie still tags them edge_city
+ * (so billing, the Edge /plan variant, and Edge skills all work). The
+ * ONLY thing lost on expiry is the write of `edge_verified_email`,
+ * which backs the 1-agent-per-EdgeOS-email dual-claim UNIQUE lock. So
+ * a LONGER TTL means that abuse guard is MORE likely to be applied for
+ * slow-auth users — tighter enforcement, not looser. The cost is a
+ * larger leak window, but a leaked signed cookie's exploit value is
+ * near-zero: an attacker would need a victim's real registered EdgeOS
+ * email AND their httpOnly cookie to claim a sponsor slot they don't
+ * own. 60 min gives comfortable runway for the worst realistic
+ * conference scenario while keeping the cookie operationally
+ * short-lived.
  *
  * Server secret: `EDGE_VERIFIED_COOKIE_SECRET` env var. Cooper sets in
  * Vercel. If absent, the module returns failure and refuses to mint —
@@ -36,7 +55,7 @@
 import crypto from "crypto";
 
 export const EDGE_VERIFIED_COOKIE_NAME = "edge_verified_email";
-export const EDGE_VERIFIED_COOKIE_MAX_AGE_S = 60 * 15; // 15 minutes
+export const EDGE_VERIFIED_COOKIE_MAX_AGE_S = 60 * 60; // 60 minutes (see header)
 
 interface SignResult {
   ok: boolean;
