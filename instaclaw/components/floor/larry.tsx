@@ -29,6 +29,7 @@
 
 import { forwardRef, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
+import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 import { useFloorStore } from "@/lib/floor/store";
 import {
@@ -47,6 +48,8 @@ const EYE_WHITE = "#fdf7ee";
 const EYE_IRIS = "#73401f"; // warm amber-brown — reads alive, not a dead dot
 const EYE_PUPIL = "#1b0f07";
 const CATCH_LIGHT = "#fffaf0"; // emissive highlight — the spark of life
+const EYE_LID = "#e07e34"; // eyelid skin — a hair deeper than the carapace so the closed lid reads
+const LASH_LINE = "#7a3f1c"; // soft lash seam on the closed lid (warm brown, not harsh black)
 const MOUTH = "#3a2316";
 const CLAW_TONE = "#d2742e"; // pincer jaws — lighter than the leg tone so the
 //                              claw reads as a claw, not a dark hole.
@@ -122,10 +125,10 @@ function perkStretch(tn: number): number {
  * front of Larry so he reads as *looking at you*; an emissive catch-light gives
  * the "alive, not plastic" glint (the bloom pass will make it sparkle).
  */
-const CrabEye = forwardRef<THREE.Group, { side: number }>(function CrabEye(
-  { side },
-  ref,
-) {
+const CrabEye = forwardRef<
+  THREE.Group,
+  { side: number; lidRef?: (el: THREE.Group | null) => void }
+>(function CrabEye({ side, lidRef }, ref) {
   return (
     <group position={[side * 0.1, 0, 0]}>
       {/* stalk — short, slightly outward, so the eye perches on the shell front */}
@@ -142,20 +145,21 @@ const CrabEye = forwardRef<THREE.Group, { side: number }>(function CrabEye(
           <sphereGeometry args={[0.085, 32, 24]} />
           <meshStandardMaterial color={EYE_WHITE} roughness={0.11} metalness={0} />
         </mesh>
-        {/* iris — warm amber, gazing straight forward + a touch down. */}
-        <mesh position={[0, -0.01, 0.07]}>
+        {/* iris — warm amber, gazing forward + a touch UP (curious/friendly,
+            not the intense downward stare). */}
+        <mesh position={[0, 0.014, 0.072]}>
           <sphereGeometry args={[0.046, 24, 18]} />
           <meshStandardMaterial color={EYE_IRIS} roughness={0.32} metalness={0} />
         </mesh>
         {/* pupil — glossy black so it picks up a tiny secondary glint */}
-        <mesh position={[0, -0.012, 0.083]}>
+        <mesh position={[0, 0.018, 0.084]}>
           <sphereGeometry args={[0.026, 18, 14]} />
           <meshStandardMaterial color={EYE_PUPIL} roughness={0.13} metalness={0} />
         </mesh>
-        {/* catch-light — the spark of life. Emissive + un-tonemapped so it stays
-            a crisp white glint and the bloom pass blooms it. */}
-        <mesh position={[side * 0.022, 0.022, 0.066]}>
-          <sphereGeometry args={[0.015, 12, 10]} />
+        {/* catch-light — the spark of life, up top. Emissive + un-tonemapped so
+            it stays a crisp white glint and the bloom pass blooms it. */}
+        <mesh position={[side * 0.02, 0.05, 0.066]}>
+          <sphereGeometry args={[0.016, 12, 10]} />
           <meshStandardMaterial
             color={CATCH_LIGHT}
             emissive={CATCH_LIGHT}
@@ -163,6 +167,27 @@ const CrabEye = forwardRef<THREE.Group, { side: number }>(function CrabEye(
             toneMapped={false}
           />
         </mesh>
+        {/* ── Eyelid — a skin-toned dome that closes OVER the eye for a peaceful
+            nap (asleep/offline). Hidden (scale 0) while awake; the frame loop
+            scales it to 1 when Larry sleeps. A soft downward-bowed lash seam
+            sits on it so the closed eye reads CONTENT, not the angry white slit
+            you get from just squashing the eyeball. ── */}
+        <group ref={lidRef} scale={[0, 0, 0]}>
+          {/* lid dome — a hair larger than the eyeball so it fully covers the
+              white + iris; squashed slightly so it domes like a real lid */}
+          <mesh position={[0, 0.006, 0.02]} scale={[1, 0.92, 1]}>
+            <sphereGeometry args={[0.093, 24, 18]} />
+            <meshStandardMaterial color={EYE_LID} roughness={0.5} metalness={0} />
+          </mesh>
+          {/* lash seam — a soft arched lid-line on the FRONT of the lid (facing
+              camera), giving the closed eye its gentle ∩ curve (a calm, content
+              sleeping lid). A half-torus in the lid's front plane; the eyestalk's
+              forward tilt angles it toward the hero camera. */}
+          <mesh position={[0, -0.004, 0.099]}>
+            <torusGeometry args={[0.052, 0.009, 10, 28, Math.PI]} />
+            <meshStandardMaterial color={LASH_LINE} roughness={0.6} metalness={0} />
+          </mesh>
+        </group>
       </group>
     </group>
   );
@@ -176,52 +201,48 @@ const CrabEye = forwardRef<THREE.Group, { side: number }>(function CrabEye(
  */
 function Cheliped({ side }: { side: number }) {
   return (
-    // Turn the claw slightly OUTWARD so the camera reads the open pincer profile
-    // (the "C" gap) rather than looking end-on into the jaws.
-    <group rotation={[0, side * 0.34, 0]}>
-      {/* upper arm — a rounded capsule linking the pincer back to the body */}
+    <group>
+      {/* upper arm — a rounded capsule linking the claw back to the body */}
       <mesh
         castShadow
-        position={[side * -0.09, -0.01, -0.04]}
-        rotation={[0.2, 0, side * 0.85]}
+        position={[side * -0.05, -0.07, -0.04]}
+        rotation={[0.35, 0, side * 0.55]}
       >
-        <capsuleGeometry args={[0.042, 0.13, 8, 16]} />
+        <capsuleGeometry args={[0.04, 0.17, 8, 16]} />
         <ShellMaterial color={CRAB_ORANGE} roughness={0.4} emissiveIntensity={0.1} />
       </mesh>
-      {/* palm / knuckle — a chunky rounded hand */}
-      <mesh castShadow position={[0, 0, 0.05]} scale={[1, 0.92, 1.05]}>
-        <sphereGeometry args={[0.11, 28, 22]} />
-        <ShellMaterial color={CRAB_ORANGE} roughness={0.36} emissiveIntensity={0.12} />
+      {/* claw "hand" — a chunky rounded ovoid, elongated forward */}
+      <mesh castShadow position={[0, 0.03, 0.03]} scale={[1, 1.02, 1.28]}>
+        <sphereGeometry args={[0.1, 28, 22]} />
+        <ShellMaterial color={CRAB_ORANGE} roughness={0.34} emissiveIntensity={0.12} />
       </mesh>
-      {/* lower (fixed) jaw — a tapered pincer pointing forward */}
-      <mesh
+      {/* lower jaw (fixed) — a ROUNDED pincer (not a pointy cone), curving
+          forward and a touch up; the rounded form reads friendly, not spiky. */}
+      <RoundedBox
+        args={[0.09, 0.07, 0.18]}
+        radius={0.034}
+        smoothness={5}
         castShadow
-        position={[0, -0.035, 0.16]}
-        rotation={[-Math.PI / 2 + 0.16, 0, 0]}
+        position={[0, -0.012, 0.18]}
+        rotation={[0.12, 0, 0]}
       >
-        <coneGeometry args={[0.062, 0.21, 16]} />
-        <meshStandardMaterial
-          color={CLAW_TONE}
-          roughness={0.4}
-          metalness={0}
-          emissive={CLAW_TONE}
-          emissiveIntensity={0.08}
-        />
-      </mesh>
-      {/* upper (movable) jaw — raised to leave a clear pincer gap */}
-      <mesh
+        <ShellMaterial color={CRAB_ORANGE} roughness={0.36} emissiveIntensity={0.1} />
+      </RoundedBox>
+      {/* upper jaw (movable) — rounded, angled up to leave a clear pincer gap */}
+      <RoundedBox
+        args={[0.085, 0.06, 0.16]}
+        radius={0.03}
+        smoothness={5}
         castShadow
-        position={[0, 0.045, 0.15]}
-        rotation={[-Math.PI / 2 - 0.36, 0, 0]}
+        position={[0, 0.075, 0.17]}
+        rotation={[-0.46, 0, 0]}
       >
-        <coneGeometry args={[0.052, 0.18, 16]} />
-        <meshStandardMaterial
-          color={CLAW_TONE}
-          roughness={0.4}
-          metalness={0}
-          emissive={CLAW_TONE}
-          emissiveIntensity={0.08}
-        />
+        <ShellMaterial color={CRAB_ORANGE} roughness={0.36} emissiveIntensity={0.1} />
+      </RoundedBox>
+      {/* dark inner mouth — fills the gap so the pincer OPENING reads as a claw */}
+      <mesh position={[0, 0.028, 0.18]} scale={[0.75, 0.55, 0.5]}>
+        <sphereGeometry args={[0.055, 14, 12]} />
+        <meshStandardMaterial color={MOUTH} roughness={0.7} />
       </mesh>
     </group>
   );
@@ -242,13 +263,13 @@ const CrabLeg = forwardRef<
       {/* upper segment — swings out and down from under the shell */}
       <group rotation={[0, 0, sign * 0.95]}>
         <mesh castShadow position={[0, -0.1, 0]}>
-          <cylinderGeometry args={[0.024, 0.018, 0.2, 8]} />
+          <capsuleGeometry args={[0.028, 0.18, 6, 10]} />
           <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.45} metalness={0} emissive={CRAB_ORANGE_DARK} emissiveIntensity={0.06} />
         </mesh>
         {/* lower segment — bends back in and down to a pointed foot */}
         <group position={[0, -0.2, 0]} rotation={[0, 0, sign * -1.3]}>
           <mesh castShadow position={[0, -0.09, 0]}>
-            <cylinderGeometry args={[0.016, 0.004, 0.18, 8]} />
+            <capsuleGeometry args={[0.02, 0.16, 6, 10]} />
             <meshStandardMaterial color={CRAB_ORANGE_DARK} roughness={0.45} metalness={0} emissive={CRAB_ORANGE_DARK} emissiveIntensity={0.06} />
           </mesh>
         </group>
@@ -333,6 +354,7 @@ export function Larry() {
   const leftClaw = useRef<THREE.Group>(null);
   const rightClaw = useRef<THREE.Group>(null);
   const eyes = useRef<(THREE.Group | null)[]>([]); // 2 eye groups (blink scale.y)
+  const lids = useRef<(THREE.Group | null)[]>([]); // 2 eyelids (scale 0→1 on sleep)
   const legs = useRef<(THREE.Group | null)[]>([]); // 6 walking legs (gait lift)
 
   // One-shot bookkeeping (refs so they survive frames without re-render).
@@ -452,7 +474,10 @@ export function Larry() {
     );
     if (eyeStalks.current) {
       let eyeY = 0.12 + eyeRaise.current * 0.16;
-      let eyeRotX = (1 - eyeRaise.current) * 0.5; // droop tilts down
+      // Gaze: level when idle, tilts UP (engaged/curious) when alert/working,
+      // droops DOWN only when sleepy. (Was a constant down-tilt that made him
+      // stare at the floor.)
+      let eyeRotX = (0.55 - eyeRaise.current) * 0.7;
       let eyeRotY = 0;
       if (perkStart.current >= 0) {
         // FOLLOW-THROUGH: the eyes pop up a beat AFTER the body and overshoot.
@@ -481,7 +506,8 @@ export function Larry() {
     let blinkScaleY = 1;
     if (eyesShut) {
       blinkStart.current = -1; // cancel any in-flight blink
-      blinkScaleY = 0.12; // eyes closed while sleeping
+      // Eyeball stays full-size; the skin EYELID closes over it instead of
+      // squashing the white sphere into an angry slit. (lid scale set below.)
     } else if (behaviorNeedsAnimation(d)) {
       // Active state — the GPU is already drawing, so a blink rides along free.
       if (blinkStart.current < 0 && t >= nextBlinkAt.current) blinkStart.current = t;
@@ -501,6 +527,10 @@ export function Larry() {
       blinkStart.current = -1;
     }
     for (const eye of eyes.current) if (eye) eye.scale.y = blinkScaleY;
+    // Eyelids: closed (1) only when sleeping, hidden (0) when awake. Direct-set
+    // (no damp) so it never re-arms the demand governor during a deep nap.
+    const lidScale = eyesShut ? 1 : 0;
+    for (const lid of lids.current) if (lid) lid.scale.setScalar(lidScale);
 
     // ── 8. Claws: tap while working; raise high on celebrate ────────────────
     let clawTargetL = 0;
@@ -540,15 +570,17 @@ export function Larry() {
   return (
     <group ref={root} position={[HOME_POS.x, GROUND_Y, HOME_POS.z]}>
       <group ref={body}>
-        {/* ── Carapace — a wide, low dome (crab shell, not a ball) ── */}
-        <mesh castShadow receiveShadow position={[0, 0.02, 0]} scale={[1.35, 0.6, 1.08]}>
-          <sphereGeometry args={[0.34, 64, 48]} />
-          <ShellMaterial color={CRAB_ORANGE} roughness={0.36} emissiveIntensity={0.13} />
+        {/* ── Carapace — a rounded, friendly dome (a pebble, not a pancake).
+            Taller + a touch smaller than before so the big eyes + raised claws
+            read as the dominant, characterful features (baby-schema). ── */}
+        <mesh castShadow receiveShadow position={[0, 0.05, 0]} scale={[1.16, 0.84, 1.04]}>
+          <sphereGeometry args={[0.32, 64, 48]} />
+          <ShellMaterial color={CRAB_ORANGE} roughness={0.34} emissiveIntensity={0.14} />
         </mesh>
 
-        {/* Shell rim — the carapace lip that reads "crab shell" at a glance */}
-        <mesh position={[0, 0.0, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[1.33, 1.06, 0.52]}>
-          <torusGeometry args={[0.34, 0.03, 16, 80]} />
+        {/* Shell rim — the carapace lip where the dome meets the belly */}
+        <mesh position={[0, -0.04, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[1.15, 1.03, 0.5]}>
+          <torusGeometry args={[0.32, 0.028, 16, 80]} />
           <meshStandardMaterial
             color={CRAB_ORANGE_DARK}
             roughness={0.42}
@@ -558,14 +590,14 @@ export function Larry() {
           />
         </mesh>
 
-        {/* Underbelly — a flatter, sun-warmed plate beneath the dome */}
-        <mesh position={[0, -0.06, 0.01]} scale={[1.26, 0.34, 1.0]}>
-          <sphereGeometry args={[0.34, 48, 32]} />
-          <ShellMaterial color={CRAB_UNDERBELLY} roughness={0.52} emissiveIntensity={0.1} />
+        {/* Underbelly — a sun-warmed plate beneath the dome */}
+        <mesh position={[0, -0.1, 0.0]} scale={[1.08, 0.42, 0.96]}>
+          <sphereGeometry args={[0.32, 48, 32]} />
+          <ShellMaterial color={CRAB_UNDERBELLY} roughness={0.5} emissiveIntensity={0.1} />
         </mesh>
 
         {/* Mouth — a small dark mandible at the front-bottom (subtle character) */}
-        <mesh position={[0, -0.05, 0.33]} rotation={[0.35, 0, 0]} scale={[1, 0.55, 0.5]}>
+        <mesh position={[0, -0.04, 0.31]} rotation={[0.35, 0, 0]} scale={[1.1, 0.5, 0.5]}>
           <sphereGeometry args={[0.05, 16, 12]} />
           <meshStandardMaterial color={MOUTH} roughness={0.65} />
         </mesh>
@@ -576,21 +608,29 @@ export function Larry() {
             ref={(el) => {
               eyes.current[0] = el;
             }}
+            lidRef={(el) => {
+              lids.current[0] = el;
+            }}
             side={-1}
           />
           <CrabEye
             ref={(el) => {
               eyes.current[1] = el;
             }}
+            lidRef={(el) => {
+              lids.current[1] = el;
+            }}
             side={1}
           />
         </group>
 
-        {/* ── Front claws — tap while "typing"; snap on celebrate (Step 5) ── */}
-        <group ref={leftClaw} position={[-0.42, -0.01, 0.15]}>
+        {/* ── Front claws — held UP and forward (the iconic crab pose) so they
+            read as pincers from the hero camera; tap while "typing", raise on
+            celebrate. rotation.x is the animated tap axis; y/z set the pose. ── */}
+        <group ref={leftClaw} position={[-0.38, 0.05, 0.24]} rotation={[0, -0.2, 0.16]}>
           <Cheliped side={-1} />
         </group>
-        <group ref={rightClaw} position={[0.42, -0.01, 0.15]}>
+        <group ref={rightClaw} position={[0.38, 0.05, 0.24]} rotation={[0, 0.2, -0.16]}>
           <Cheliped side={1} />
         </group>
 

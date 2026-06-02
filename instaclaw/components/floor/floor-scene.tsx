@@ -46,6 +46,49 @@ function RenderKicker() {
   return null;
 }
 
+// The point the camera frames — Larry's head height at his home spot. Kept in
+// sync with OrbitControls.target below.
+const FRAME_TARGET = new THREE.Vector3(1.0, 0.42, 0.85);
+
+/**
+ * Aspect-responsive framing (LOAD-BEARING for mobile, PRD §"opens it on their
+ * phone"). A perspective camera has a FIXED vertical FOV, so a tall/narrow
+ * phone viewport crops Larry's claws horizontally. This fits Larry's bounding
+ * box to whichever axis is the binding constraint for the current aspect:
+ *   - wide (desktop): height-bound  → the hand-tuned intimate ~36° framing
+ *   - tall (phone):   width-bound   → widens vFOV so the claws never clip
+ * Runs on mount + every resize, then kicks one frame (demand-safe). It only
+ * sets fov, so it never fights OrbitControls for camera position.
+ */
+function ResponsiveFraming() {
+  const camera = useThree((s) => s.camera);
+  const width = useThree((s) => s.size.width);
+  const height = useThree((s) => s.size.height);
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    if (!(camera instanceof THREE.PerspectiveCamera) || height === 0) return;
+    const aspect = width / height;
+    const dist = camera.position.distanceTo(FRAME_TARGET);
+    // Larry + held-up claws, with the target slightly off his center.
+    const halfH = 0.62;
+    const halfW = 0.74;
+    const vfovForHeight = 2 * Math.atan(halfH / dist);
+    const hfovForWidth = 2 * Math.atan(halfW / dist);
+    const vfovForWidth = 2 * Math.atan(Math.tan(hfovForWidth / 2) / aspect);
+    // Looser margin on desktop (cozy room context); tighter on phone so the
+    // wide-vFOV portrait doesn't fill with empty floor.
+    const margin = aspect < 1 ? 1.1 : 1.3;
+    const fovDeg = THREE.MathUtils.radToDeg(
+      Math.max(vfovForHeight, vfovForWidth) * margin,
+    );
+    // Clamp so extreme aspects can't go fisheye or telephoto.
+    camera.fov = THREE.MathUtils.clamp(fovDeg, 30, 64);
+    camera.updateProjectionMatrix();
+    invalidate();
+  }, [camera, width, height, invalidate]);
+  return null;
+}
+
 /**
  * The desk lamp — a warm point light whose intensity tracks the agent's real
  * effort tier. Larry literally works under a brighter lamp when he's thinking
@@ -78,11 +121,11 @@ function DeskLamp() {
   return (
     <pointLight
       ref={light}
-      position={[0.5, 1.2, -0.2]}
+      position={[0.47, 0.98, -0.42]}
       color="#ffd9a0"
       intensity={0.6}
       distance={4.5}
-      decay={1.6}
+      decay={1.5}
       castShadow
     />
   );
@@ -136,11 +179,13 @@ export function FloorScene() {
         />
       </Environment>
 
-      {/* Ambient — very low; just keeps shadows warm rather than crushed. */}
-      <ambientLight intensity={0.1} color="#ffe2bc" />
+      {/* Ambient — very low; just keeps shadows warm rather than crushed. Kept
+          minimal so the warm key + desk-lamp pool define the mood (cozy needs
+          contrast, not flat fill). */}
+      <ambientLight intensity={0.06} color="#ffe2bc" />
 
       {/* Hemisphere — gentle warm-sky / warm-wood bounce. */}
-      <hemisphereLight args={["#ffdcae", "#4f3320", 0.2]} />
+      <hemisphereLight args={["#ffdcae", "#3a2616", 0.14]} />
 
       {/* KEY — warm, upper-front-right, the shadow-caster. The main pool of warm
           light; everything else falls toward warm shadow (cozy, not flat). */}
@@ -178,6 +223,7 @@ export function FloorScene() {
           the first frame. Without this, the perk-up would wait for the next
           drag. This is the half useFrame can't do itself. ── */}
       <RenderKicker />
+      <ResponsiveFraming />
 
       {/* ── World ── */}
       <OfficeRoom />
@@ -190,15 +236,15 @@ export function FloorScene() {
       <OrbitControls
         makeDefault
         enablePan={false}
-        minDistance={3}
-        maxDistance={7}
-        minPolarAngle={Math.PI * 0.18}
-        maxPolarAngle={Math.PI * 0.46}
-        minAzimuthAngle={-Math.PI * 0.32}
-        maxAzimuthAngle={Math.PI * 0.32}
+        minDistance={1.8}
+        maxDistance={4.2}
+        minPolarAngle={Math.PI * 0.3}
+        maxPolarAngle={Math.PI * 0.49}
+        minAzimuthAngle={-Math.PI * 0.34}
+        maxAzimuthAngle={Math.PI * 0.34}
         enableDamping
         dampingFactor={0.08}
-        target={[0, 0.5, 0]}
+        target={[1.0, 0.42, 0.85]}
         onChange={() => invalidate()}
       />
 
@@ -216,7 +262,7 @@ export function FloorScene() {
           mipmapBlur
         />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-        <Vignette eskil={false} offset={0.3} darkness={0.62} />
+        <Vignette eskil={false} offset={0.28} darkness={0.85} />
       </EffectComposer>
     </>
   );
