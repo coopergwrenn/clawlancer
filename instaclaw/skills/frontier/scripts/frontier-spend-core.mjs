@@ -285,6 +285,123 @@ export function parseSupplierRecord(content) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+// W7b — Thompson-sampling supplier selection (budgeted multi-armed bandit)
+//
+// Verbatim port of lib/frontier-rolodex.ts (kept in sync; cross-checked by the
+// shared tests). The .mjs can't import the .ts, so the pure math lives here too.
+// Given the supplier records the agent has accumulated in gbrain for a
+// capability, pick WHO to hire: mostly exploit the most-reliable affordable
+// supplier, occasionally explore. The posterior is Beta(1,1) + own history (+ a
+// fleet prior once W10 ships). RNG is injected so selection is deterministically
+// testable.
+// ════════════════════════════════════════════════════════════════════
+
+const BASE_ALPHA = 1;
+const BASE_BETA = 1;
+
+/** Beta posterior params for a (supplier, capability): base + fleet prior + own history. */
+export function posteriorFor(key, opts) {
+  let alpha = BASE_ALPHA;
+  let beta = BASE_BETA;
+  const fp = opts.fleetPriorBySupplier?.get(key);
+  if (fp) {
+    alpha += Math.max(0, fp.alpha);
+    beta += Math.max(0, fp.beta);
+  }
+  const own = opts.statsBySupplier?.get(key);
+  if (own) {
+    alpha += Math.max(0, own.successes);
+    beta += Math.max(0, own.failures);
+  }
+  return { alpha, beta };
+}
+
+// Beta sampler via two Gammas (Marsaglia–Tsang), normal via Box–Muller. Pure; injected rng.
+function sampleNormal(rng) {
+  let u = 0;
+  let v = 0;
+  while (u === 0) u = rng();
+  while (v === 0) v = rng();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+function sampleGamma(k, rng) {
+  if (k < 1) {
+    const u = rng();
+    return sampleGamma(1 + k, rng) * Math.pow(u === 0 ? 1e-12 : u, 1 / k);
+  }
+  const d = k - 1 / 3;
+  const c = 1 / Math.sqrt(9 * d);
+  for (let i = 0; i < 64; i++) {
+    let x = 0;
+    let vv = 0;
+    do {
+      x = sampleNormal(rng);
+      vv = 1 + c * x;
+    } while (vv <= 0);
+    vv = vv * vv * vv;
+    const u = rng();
+    if (u < 1 - 0.0331 * x * x * x * x) return d * vv;
+    if (Math.log(u) < 0.5 * x * x + d * (1 - vv + Math.log(vv))) return d * vv;
+  }
+  return d;
+}
+export function sampleBeta(alpha, beta, rng) {
+  const x = sampleGamma(alpha, rng);
+  const y = sampleGamma(beta, rng);
+  const s = x + y;
+  return s > 0 ? x / s : 0.5;
+}
+
+/**
+ * Pick which supplier to hire for a capability via Thompson sampling, within budget.
+ * Returns { choice, reason, ranked }. `ranked` is every affordable candidate scored
+ * (for the "I compared N suppliers, picked X" narration).
+ */
+export function selectSupplier(candidates, opts) {
+  const rng = opts.rng ?? Math.random;
+  const affordable = candidates.filter((c) => c.priceUsd <= opts.remainingBudgetUsd && c.priceUsd >= 0);
+  if (affordable.length === 0) {
+    return { choice: null, reason: candidates.length === 0 ? "no_candidates" : "none_within_budget", ranked: [] };
+  }
+  const ranked = affordable.map((candidate) => {
+    const key = `${candidate.supplierId}|${candidate.capability}`;
+    const { alpha, beta } = posteriorFor(key, opts);
+    const sampledTheta = sampleBeta(alpha, beta, rng);
+    // Reliability dominates; among similar reliability, prefer the cheaper supplier.
+    const costPenalty = Math.min(0.4, (candidate.priceUsd / Math.max(1e-9, opts.remainingBudgetUsd)) * 0.4);
+    const score = sampledTheta * (1 - costPenalty);
+    return { candidate, alpha, beta, meanSuccess: alpha / (alpha + beta), sampledTheta, score };
+  });
+  ranked.sort((a, b) => b.score - a.score);
+  return { choice: ranked[0].candidate, reason: "thompson_selected", ranked };
+}
+
+/**
+ * Bridge the agent's gbrain supplier records → bandit inputs for ONE capability.
+ * Returns { candidates, statsBySupplier }. A record is INCLUDED only if its
+ * category matches, it has an endpoint, and its trust is not "avoid" (we never
+ * auto-hire a supplier we've learned to avoid — the human can still --url it
+ * explicitly with --human-approved). priceUsd is the avg historical settled price
+ * (totalUsd/successes), or 0 when unknown (brand-new → always affordable → the
+ * bandit explores it). The REAL price is confirmed at the 402 and the REAL budget
+ * is enforced by /authorize; priceUsd here only ranks affordability + cost.
+ */
+export function buildSupplierCandidates(records, capability) {
+  const candidates = [];
+  const statsBySupplier = new Map();
+  for (const rec of records) {
+    if (!rec || rec.category !== capability || !rec.endpoint) continue;
+    if (supplierTrust(rec) === "avoid") continue;
+    const successes = Math.max(0, rec.successes || 0);
+    const failures = Math.max(0, (rec.failures || 0) + (rec.disputes || 0)); // disputes count against the bandit
+    const priceUsd = successes > 0 ? Math.round((rec.totalUsd / successes) * 1e6) / 1e6 : 0;
+    candidates.push({ supplierId: rec.supplierId, capability, priceUsd, endpoint: rec.endpoint });
+    statsBySupplier.set(`${rec.supplierId}|${capability}`, { supplierId: rec.supplierId, successes, failures });
+  }
+  return { candidates, statsBySupplier };
+}
+
+// ════════════════════════════════════════════════════════════════════
 // The "hired a specialist" narration — what the human reads
 // ════════════════════════════════════════════════════════════════════
 

@@ -10,7 +10,10 @@ import {
   buildXPaymentHeader, inferCategory, tagsFromResource, supplierSlug, mergeSupplierRecord,
   supplierTrust, serializeSupplierRecord, parseSupplierRecord, renderHiredSpecialist,
   USDC_BASE_ADDRESS, BASE_CHAIN_ID,
+  selectSupplier as selectSupplierMjs, buildSupplierCandidates, sampleBeta as sampleBetaMjs,
 } from "../skills/frontier/scripts/frontier-spend-core.mjs";
+// Parity oracle: the .mjs bandit is a hand port of the .ts. Same seed must yield identical output.
+import { selectSupplier as selectSupplierTs, sampleBeta as sampleBetaTs } from "../lib/frontier-rolodex";
 
 let passed = 0, failed = 0;
 function check(label: string, cond: boolean): void {
@@ -176,6 +179,126 @@ check("avoid trust surfaces a warning", renderHiredSpecialist({ amountUsd: 0.5, 
 
 function mk(p) {
   return { supplierId: "s", endpoint: null, category: null, firstUsedMs: 0, lastUsedMs: 0, spends: 0, successes: 0, failures: 0, disputes: 0, usefulCount: 0, totalUsd: 0, lastNote: "", ...p };
+}
+
+// ════════════════════════════════════════════════════════════════════
+// W7b — Thompson selection (the .mjs port) + buildSupplierCandidates bridge
+// ════════════════════════════════════════════════════════════════════
+
+/** mulberry32 — deterministic, seedable PRNG in [0,1). Mirrors the rolodex test. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ── PARITY: the .mjs sampleBeta must equal the .ts sampleBeta draw-for-draw ──
+{
+  let allEqual = true;
+  for (const [a, b, seed] of [[2, 5, 11], [8, 2, 42], [1, 1, 7], [13, 0.5, 99]] as const) {
+    const r1 = mulberry32(seed);
+    const r2 = mulberry32(seed);
+    for (let i = 0; i < 25; i++) {
+      if (sampleBetaMjs(a, b, r1) !== sampleBetaTs(a, b, r2)) { allEqual = false; break; }
+    }
+  }
+  check("bandit parity: sampleBeta .mjs === .ts (same seed)", allEqual);
+}
+
+// ── PARITY: selectSupplier .mjs === .ts (same candidates + seed → same pick + order) ──
+{
+  const cands = [
+    { supplierId: "url:a", capability: "data" as const, priceUsd: 0.01, endpoint: "https://a" },
+    { supplierId: "url:b", capability: "data" as const, priceUsd: 0.02, endpoint: "https://b" },
+    { supplierId: "url:c", capability: "data" as const, priceUsd: 0.005, endpoint: "https://c" },
+  ];
+  const own = new Map([
+    ["url:a|data", { supplierId: "url:a", successes: 9, failures: 1 }],
+    ["url:b|data", { supplierId: "url:b", successes: 1, failures: 4 }],
+  ]);
+  let pickMatch = true;
+  let orderMatch = true;
+  for (const seed of [1, 7, 42, 123, 999]) {
+    const rMjs = selectSupplierMjs(cands, { statsBySupplier: own, remainingBudgetUsd: 1, rng: mulberry32(seed) });
+    const rTs = selectSupplierTs(cands as never, { statsBySupplier: own as never, remainingBudgetUsd: 1, rng: mulberry32(seed) });
+    if (rMjs.choice?.supplierId !== rTs.choice?.supplierId) pickMatch = false;
+    const oMjs = rMjs.ranked.map((x: { candidate: { supplierId: string } }) => x.candidate.supplierId).join(",");
+    const oTs = rTs.ranked.map((x) => x.candidate.supplierId).join(",");
+    if (oMjs !== oTs) orderMatch = false;
+  }
+  check("bandit parity: selectSupplier choice .mjs === .ts (5 seeds)", pickMatch);
+  check("bandit parity: selectSupplier ranked order .mjs === .ts (5 seeds)", orderMatch);
+}
+
+// ── selectSupplier reasons ──
+check("select: empty → no_candidates", selectSupplierMjs([], { remainingBudgetUsd: 100, rng: mulberry32(1) }).reason === "no_candidates");
+check(
+  "select: all over budget → none_within_budget",
+  selectSupplierMjs([{ supplierId: "x", capability: "data", priceUsd: 9.99, endpoint: "https://x" }], { remainingBudgetUsd: 1, rng: mulberry32(1) }).reason === "none_within_budget",
+);
+{
+  const r = selectSupplierMjs([{ supplierId: "only", capability: "data", priceUsd: 0.01, endpoint: "https://only" }], { remainingBudgetUsd: 1, rng: mulberry32(1) });
+  check("select: single affordable → it wins", r.choice?.supplierId === "only" && r.reason === "thompson_selected");
+}
+{
+  // A dominant supplier (many successes) should be picked the large majority of the time.
+  const cands = [
+    { supplierId: "good", capability: "data" as const, priceUsd: 0.01, endpoint: "https://good" },
+    { supplierId: "bad", capability: "data" as const, priceUsd: 0.01, endpoint: "https://bad" },
+  ];
+  const own = new Map([
+    ["good|data", { supplierId: "good", successes: 40, failures: 1 }],
+    ["bad|data", { supplierId: "bad", successes: 1, failures: 20 }],
+  ]);
+  let goodPicks = 0;
+  const rng = mulberry32(2024);
+  for (let i = 0; i < 200; i++) {
+    if (selectSupplierMjs(cands, { statsBySupplier: own, remainingBudgetUsd: 1, rng }).choice?.supplierId === "good") goodPicks++;
+  }
+  check("select: exploits the reliable supplier (>90% of 200)", goodPicks > 180);
+}
+
+// ── buildSupplierCandidates: the gbrain-record → bandit bridge ──
+function rec(o: Record<string, unknown>) {
+  return {
+    supplierId: "url:x", endpoint: "https://x", category: "data",
+    spends: 0, successes: 0, failures: 0, disputes: 0, usefulCount: 0, totalUsd: 0,
+    firstUsedMs: 0, lastUsedMs: 0, lastNote: "", ...o,
+  };
+}
+{
+  const records = [
+    rec({ supplierId: "url:a", endpoint: "https://a", category: "data", spends: 5, successes: 4, failures: 1, totalUsd: 0.04 }), // mixed, included
+    rec({ supplierId: "url:b", endpoint: "https://b", category: "data", spends: 3, successes: 3, totalUsd: 0.03 }),                // trusted, included
+    rec({ supplierId: "url:c", endpoint: "https://c", category: "search", spends: 2, successes: 2, totalUsd: 0.02 }),               // wrong category, excluded
+    rec({ supplierId: "url:d", endpoint: "", category: "data", spends: 1, successes: 1, totalUsd: 0.01 }),                          // no endpoint, excluded
+    rec({ supplierId: "url:e", endpoint: "https://e", category: "data", spends: 5, successes: 0, failures: 3, disputes: 2 }),       // avoid, excluded
+    rec({ supplierId: "url:f", endpoint: "https://f", category: "data", spends: 0, successes: 0 }),                                 // brand-new, included (explore)
+  ];
+  const { candidates, statsBySupplier } = buildSupplierCandidates(records, "data");
+  const ids = candidates.map((c: { supplierId: string }) => c.supplierId).sort();
+  check("build: includes only data + endpoint + non-avoid", ids.join(",") === "url:a,url:b,url:f");
+  const a = candidates.find((c: { supplierId: string }) => c.supplierId === "url:a");
+  check("build: known price = totalUsd/successes", a && a.priceUsd === 0.01);
+  const f = candidates.find((c: { supplierId: string }) => c.supplierId === "url:f");
+  check("build: unknown price = 0 (always affordable → explore)", f && f.priceUsd === 0);
+  check("build: stats map keyed supplier|capability", statsBySupplier.get("url:a|data")?.successes === 4);
+}
+{
+  // disputes fold into the bandit's failures (heavier than a plain failure on trust, counted here too).
+  const records = [rec({ supplierId: "url:z", endpoint: "https://z", category: "data", spends: 6, successes: 4, failures: 1, disputes: 1, totalUsd: 0.04 })];
+  const { statsBySupplier } = buildSupplierCandidates(records, "data");
+  check("build: disputes counted as failures", statsBySupplier.get("url:z|data")?.failures === 2);
+}
+{
+  // cold-start: no records for the capability → empty candidate set (the CLI maps this to "give me a --url").
+  const { candidates } = buildSupplierCandidates([rec({ category: "search", endpoint: "https://s" })], "data");
+  check("build: cold-start → no candidates", candidates.length === 0);
 }
 
 console.log(`\nfrontier-spend-core: ${passed} passed, ${failed} failed`);

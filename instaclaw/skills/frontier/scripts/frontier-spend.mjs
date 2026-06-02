@@ -22,6 +22,10 @@
  *
  * Usage:
  *   node frontier-spend.mjs --url <x402-endpoint> [options]
+ *   node frontier-spend.mjs --capability <category> [options]   (rolodex picks the supplier)
+ *     --capability <cat>     no --url: Thompson-pick a supplier from your gbrain
+ *                            rolodex for this category (data|search|inference|compute|
+ *                            market|media|agent|other). Cold-start → asks for a --url.
  *     --max-usd <n>          most you'll pay (default: the 402's asking price)
  *     --why "<text>"         the rationale (logged + sent as the spend's summary)
  *     --method GET|POST      request method (default GET)
@@ -44,7 +48,7 @@ import {
   selectPaymentRequirement, buildAuthorization, buildTransferTypedData, buildXPaymentHeader,
   inferCategory, tagsFromResource, newRequestId, supplierSlug, mergeSupplierRecord,
   supplierTrust, serializeSupplierRecord, parseSupplierRecord, renderHiredSpecialist,
-  usdcToUsd, USDC_BASE_ADDRESS,
+  usdcToUsd, USDC_BASE_ADDRESS, CATEGORY_NAMES, selectSupplier, buildSupplierCandidates,
 } from "./frontier-spend-core.mjs";
 
 const API_BASE = process.env.INSTACLAW_API_BASE || "https://instaclaw.io";
@@ -127,13 +131,56 @@ function mcpText(result) {
   return typeof result === "string" ? result : null;
 }
 
+// get_page returns the MCP text block as a JSON ENVELOPE ({id,slug,compiled_truth,
+// frontmatter,tags,…}); the markdown body we wrote (human summary + ```json record)
+// lives in `compiled_truth`. Extract it before parsing — feeding the stringified
+// envelope to parseSupplierRecord never matches (its embedded fence is JSON-escaped),
+// which is why the supplier trust lookup silently always read "new" before this fix.
+function pageBody(getPageResult) {
+  const txt = mcpText(getPageResult);
+  if (!txt) return null;
+  try {
+    const env = JSON.parse(txt);
+    if (env && typeof env === "object" && !Array.isArray(env)) {
+      return env.compiled_truth ?? env.content ?? env.body ?? txt;
+    }
+  } catch { /* not an envelope (some gbrain builds return raw markdown) — use as-is */ }
+  return txt;
+}
+
 async function readSupplier(bearer, slug) {
   const r = await gbrainCall(bearer, "get_page", { slug });
-  return parseSupplierRecord(mcpText(r));
+  return parseSupplierRecord(pageBody(r));
 }
 async function writeSupplier(bearer, slug, rec) {
-  const title = `Frontier supplier: ${rec.supplierId}`;
-  await gbrainCall(bearer, "put_page", { slug, title, content: serializeSupplierRecord(rec) });
+  // Frontmatter type makes the page enumerable via list_pages({type:"frontier_supplier"})
+  // so `--capability` can find every supplier the agent has used. The authoritative
+  // record (category, stats, endpoint) stays in the JSON block serializeSupplierRecord writes.
+  const frontmatter = `---\ntype: frontier_supplier\ntags:\n  - frontier-supplier\n---\n`;
+  await gbrainCall(bearer, "put_page", { slug, content: frontmatter + serializeSupplierRecord(rec) });
+}
+
+// Enumerate the agent's supplier rolodex for `--capability`. Best-effort: gbrain is
+// optional, so any failure degrades to an empty list (→ cold-start, ask for a --url).
+// Only pages written with the frontmatter above are returned; suppliers last touched
+// before that change reappear here after their next spend re-writes the record.
+async function listSupplierRecords(bearer) {
+  if (!bearer) return [];
+  const r = await gbrainCall(bearer, "list_pages", { type: "frontier_supplier", limit: 200 });
+  let metas;
+  try {
+    metas = JSON.parse(mcpText(r) || "[]");
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(metas)) return [];
+  const recs = [];
+  for (const m of metas) {
+    if (!m?.slug) continue;
+    const rec = await readSupplier(bearer, m.slug);
+    if (rec) recs.push(rec);
+  }
+  return recs;
 }
 
 // ── chain balance (best-effort; null → the gate forces ask-first) ──
@@ -195,11 +242,13 @@ async function main() {
   const json = !!args.json;
   const out = (obj) => { if (json) console.log(JSON.stringify(obj)); else if (obj.narration) console.log(obj.narration); if (obj.result !== undefined && !json) console.log("\n--- result ---\n" + (typeof obj.result === "string" ? obj.result : JSON.stringify(obj.result, null, 2))); };
 
-  const url = args.url;
-  if (!url) fail("missing --url");
+  let url = args.url;
+  const capability = args.capability;
+  if (!url && !capability) fail("provide --url <endpoint> or --capability <category>");
   const method = (args.method || "GET").toUpperCase();
   const why = args.why || "a service I needed";
   const reqBody = args.body;
+  const maxUsd = args["max-usd"] !== undefined ? Number(args["max-usd"]) : Infinity;
 
   const env = loadEnv();
   const gatewayToken = env.GATEWAY_TOKEN;
@@ -207,6 +256,29 @@ async function main() {
   const wallet = env.BANKR_WALLET_ADDRESS;
   const gbrainBearer = (() => { try { return readFileSync(`${homedir()}/.gbrain/openclaw-bearer-token.txt`, "utf8").trim(); } catch { return null; } })();
   if (!gatewayToken) fail("frontier not configured: GATEWAY_TOKEN missing in ~/.openclaw/.env");
+
+  // 0 ── ROLODEX SELECT: no --url given → pick WHO to hire for --capability ──
+  // Thompson sampling over the agent's own supplier history (W7). The chosen
+  // endpoint then runs the SAME probe→authorize→pay→settle→remember flow below —
+  // selection picks the supplier; /authorize remains the sole budget authority.
+  if (!url) {
+    if (!CATEGORY_NAMES.includes(capability)) fail(`--capability must be one of ${CATEGORY_NAMES.join(", ")}`);
+    const records = await listSupplierRecords(gbrainBearer);
+    const { candidates, statsBySupplier } = buildSupplierCandidates(records, capability);
+    if (candidates.length === 0) {
+      // Cold-start: nothing known for this capability. Not an error — a real state.
+      return out({ ok: true, paid: false, no_supplier: true, capability,
+        narration: `I don't have a known supplier for "${capability}" yet. Give me a --url to try one and I'll remember whether it's worth hiring again.` });
+    }
+    const selection = selectSupplier(candidates, { statsBySupplier, remainingBudgetUsd: maxUsd });
+    if (!selection.choice) {
+      return out({ ok: true, paid: false, no_supplier: true, capability, reason: selection.reason,
+        narration: `I know ${candidates.length} supplier(s) for "${capability}", but none fit within $${maxUsd === Infinity ? "∞" : maxUsd}. Raise --max-usd or give me a --url.` });
+    }
+    url = selection.choice.endpoint;
+    const picked = (() => { try { return new URL(url).hostname; } catch { return url; } })();
+    if (!json) console.log(`Compared ${selection.ranked.length} supplier(s) for "${capability}" and picked ${picked}.`);
+  }
 
   // 1 ── PROBE: get the 402 ──
   let probe;
@@ -228,8 +300,7 @@ async function main() {
   const resourceTags = Array.isArray(offer?.resource?.tags) ? offer.resource.tags.filter((t) => typeof t === "string") : [];
   const x402Version = typeof offer?.x402Version === "number" ? offer.x402Version : 1;
 
-  // ── SELECT which requirement to satisfy ──
-  const maxUsd = args["max-usd"] !== undefined ? Number(args["max-usd"]) : Infinity;
+  // ── SELECT which requirement to satisfy (maxUsd hoisted to the top of main) ──
   const sel = selectPaymentRequirement(accepts, { maxAmountUsd: maxUsd });
   if ("error" in sel) {
     const supplierLabel = (() => { try { return new URL(url).hostname; } catch { return url; } })();
