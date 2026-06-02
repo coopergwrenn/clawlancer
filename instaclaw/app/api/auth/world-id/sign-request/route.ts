@@ -41,10 +41,16 @@ export async function GET() {
     // Strip 0x prefix and any trailing whitespace/newline artifacts from env var
     const cleanKey = signingKey.replace(/^0x/i, "").replace(/[\s\\n]+$/g, "").trim();
 
-    const { sig, nonce, createdAt, expiresAt } = signRequest(
-      "verify-instaclaw-agent",
-      cleanKey
-    );
+    // idkit-server 1.1.1 (idkit 4.1.8): signRequest takes a single options
+    // object `{ signingKeyHex, action?, ttl? }` (was positional
+    // `signRequest(action, key, ttl?)` in 1.0.0). Return shape is unchanged:
+    // { sig, nonce, createdAt, expiresAt }. `action` is required for our
+    // non-session (uniqueness) proof — it's hashed and appended to the signed
+    // message; session proofs omit it (we don't use sessions).
+    const { sig, nonce, createdAt, expiresAt } = signRequest({
+      action: "verify-instaclaw-agent",
+      signingKeyHex: cleanKey,
+    });
 
     logger.info("sign-request: success", {
       userId: session.user.id,

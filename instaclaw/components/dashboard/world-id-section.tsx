@@ -18,7 +18,12 @@ const IDKitRequestWidget = dynamic(
 );
 
 // Static imports for types and helpers (no WASM dependency)
-import { orbLegacy, IDKitErrorCodes, type IDKitResult, type RpContext } from "@worldcoin/idkit";
+// proofOfHuman (idkit 4.1.x): requests a World ID 4.0 proof-of-human credential
+// WITH legacy Orb fallback. Replaces orbLegacy() (4.0.x), which ONLY returned
+// World ID 3.0 proofs — that broke new users on V4-native World App builds
+// (world_id_3_not_available → "couldn't find the request"). proofOfHuman serves
+// both: V4 proof for new users, legacy V3 fallback for older World App versions.
+import { proofOfHuman, IDKitErrorCodes, type IDKitResult, type RpContext } from "@worldcoin/idkit";
 
 /**
  * IDKit uses CSS @media (max-width: 1024px) to switch between QR (desktop)
@@ -498,7 +503,7 @@ export function WorldIDSection() {
                   app_id={appId as `app_${string}`}
                   action="verify-instaclaw-agent"
                   rp_context={rpContext}
-                  preset={orbLegacy({ signal: status?.userId })}
+                  preset={proofOfHuman({ signal: status?.userId })}
                   allow_legacy_proofs={true}
                   open={widgetOpen}
                   onOpenChange={setWidgetOpen}

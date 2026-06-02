@@ -62,9 +62,17 @@ export async function POST(req: Request) {
 
     const firstResponse = body.responses?.[0];
     if (firstResponse?.nullifier && firstResponse?.proof) {
-      // IDKit 4.x format (both v3 and v4 protocol use responses[] array)
+      // IDKit 4.x format (both v3 and v4 protocol use responses[] array).
+      // proof is string[] on v4 / string on v3 — we only forward it (via the
+      // full `body` POST below), never typeof-check it, so both are fine.
       nullifier_hash = firstResponse.nullifier;
-      verification_level = firstResponse.identifier ?? "orb";
+      // The proofOfHuman preset returns identifier "proof_of_human" on V4 and
+      // the legacy "orb" identifier on the V3 fallback path. Normalize both to
+      // "orb" so the dashboard badge (isOrb = level === "orb") and every
+      // downstream `?? "orb"` consumer (VM WORLD_ID.md, .env WORLD_ID_LEVEL,
+      // agent-json) stay correct — proof_of_human IS the orb credential.
+      const rawIdentifier = firstResponse.identifier ?? "orb";
+      verification_level = rawIdentifier === "proof_of_human" ? "orb" : rawIdentifier;
     } else if (body.merkle_root && body.nullifier_hash && body.proof) {
       // Legacy flat format (IDKit 2.x — shouldn't happen with IDKit 4.x but kept as fallback)
       nullifier_hash = body.nullifier_hash;
