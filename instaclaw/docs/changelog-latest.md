@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-02
 
-Window: `c0dfc2e8bd7ed0475ae020189d3217b84a4cc116` → `HEAD` (HEAD = `0d7faab9`)
+Window: `0d7faab98dca5a90ba20b1b00dbb6bc11e28c505` → `HEAD` (HEAD = `c74983f1`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 0d7faab98dca5a90ba20b1b00dbb6bc11e28c505 -->
+<!-- LAST_GENERATED_SHA: c74983f1a1642b784a951f05edefa2a2f92455d7 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `0d7faab9` 2026-06-02 — test(frontier): P2-1 route tests for the money routes + extract settle pure helpers [2 files] _(ai-assisted)_
-- `a4681667` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `c74983f1` 2026-06-02 — feat(frontier): wire the supplier rolodex into the spend tool (P1-1) [3 files] _(ai-assisted)_
+- `839bb70e` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `0d7faab9` 2026-06-02 — test(frontier): P2-1 route tests for the money routes + extract settle pure helpers [2 files] _(ai-assisted)_
+- `c74983f1` 2026-06-02 — feat(frontier): wire the supplier rolodex into the spend tool (P1-1) [3 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `a4681667` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `839bb70e` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `0d7faab9` 2026-06-02 — test(frontier): P2-1 route tests for the money routes + extract settle pure helpers
+- `c74983f1` 2026-06-02 — feat(frontier): wire the supplier rolodex into the spend tool (P1-1)
 
 ## Appendix — every commit (chronological)
 
-- `a4681667` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
-- `0d7faab9` 2026-06-02 — test(frontier): P2-1 route tests for the money routes + extract settle pure helpers [2 files] _(ai-assisted)_
+- `839bb70e` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `c74983f1` 2026-06-02 — feat(frontier): wire the supplier rolodex into the spend tool (P1-1) [3 files] _(ai-assisted)_
