@@ -148,6 +148,14 @@ export async function POST(req: NextRequest) {
     try {
       const body = await req.clone().json().catch(() => ({}));
       if (body.initialCredits && typeof body.initialCredits === "number") {
+        // p_source passed explicitly (4-arg call). The 3-arg overload was
+        // dropped 2026-06-02 (migration 20260602120000) to fix the
+        // credit_pack overload-ambiguity outage. The old
+        // `includes("p_source")` fallback that re-called with 3 args is
+        // removed — it was vestigial from the 20260326 rollout window and
+        // never matched the actual overload error. Any RPC error now is a
+        // genuine failure → direct-update safety net (fresh VM, balance
+        // starts at 0, so a set is correct here).
         const { error: creditErr } = await supabase.rpc("instaclaw_add_credits", {
           p_vm_id: vm.id,
           p_credits: body.initialCredits,
@@ -155,21 +163,12 @@ export async function POST(req: NextRequest) {
           p_source: "wld",
         });
         if (creditErr) {
-          // Fallback if p_source not yet supported
-          if (creditErr.message?.includes("p_source")) {
-            await supabase.rpc("instaclaw_add_credits", {
-              p_vm_id: vm.id,
-              p_credits: body.initialCredits,
-              p_reference_id: `initial_wld_${targetUserId}`,
-            });
-          } else {
-            logger.error("Initial credits RPC failed, falling back to direct update", {
-              error: String(creditErr), vmId: vm.id, route: "vm/assign",
-            });
-            await supabase.from("instaclaw_vms")
-              .update({ credit_balance: body.initialCredits })
-              .eq("id", vm.id);
-          }
+          logger.error("Initial credits RPC failed, falling back to direct update", {
+            error: String(creditErr), vmId: vm.id, route: "vm/assign",
+          });
+          await supabase.from("instaclaw_vms")
+            .update({ credit_balance: body.initialCredits })
+            .eq("id", vm.id);
         }
         logger.info("Initial credits set on new VM", {
           vmId: vm.id,

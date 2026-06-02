@@ -58,6 +58,20 @@ const COST_SPIKE_X = 2.0;       // alert if last-hour cost > 2× baseline
 const MIN_BASELINE_ROWS = 50;   // skip volume/cost alerts if baseline window had too few rows (noisy)
 const USER_TO_MINIMAX_ALERT_THRESHOLD = 1; // any non-zero count is interesting
 
+// Signal 5 (credit_pack orphan) tuning — see INC-20260602 postmortem.
+// Grace period: a purchase whose ledger row hasn't landed yet may simply be
+// mid-delivery (synchronous webhook + Stripe-retry latency). 15 min is well
+// beyond the webhook's normal sub-second processing AND beyond a typical
+// Stripe retry, so anything older than this with no ledger row is a genuine
+// orphan: paid, credits not delivered.
+const CREDIT_ORPHAN_GRACE_MS = 15 * 60 * 1000;
+// Lookback window: bound the scan to recent purchases so the query stays
+// cheap and we don't re-alert forever on an ancient un-fixable row (e.g. a
+// purchase whose VM was later deleted). 7 days catches anything that slipped
+// past same-day attention; older orphans age out (still detectable via the
+// ad-hoc SQL in the postmortem if ever needed).
+const CREDIT_ORPHAN_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+
 interface Stats {
   totalRows: number;
   totalCostWeight: number;
@@ -335,6 +349,103 @@ export async function GET(req: NextRequest) {
               `  GROUP BY hint ORDER BY count(*) DESC;`,
             ].join("\n"),
           });
+        }
+      }
+    }
+
+    // ─── Signal 5: orphan credit-pack purchases (CRITICAL — INC-20260602) ───
+    // A paid credit_pack purchase whose credits never reached the customer.
+    // The detection: an instaclaw_credit_purchases row (idempotency claim,
+    // written first by the webhook) with NO matching instaclaw_credit_ledger
+    // row (written by instaclaw_add_credits, the step that actually grants).
+    // This is precisely the 35-day silent outage we just fixed (a duplicate
+    // instaclaw_add_credits overload → PGRST203 → handler 500 → credits
+    // never applied). That bug went undetected for 35 days because nothing
+    // watched purchase→ledger consistency. This signal closes that gap: any
+    // future orphan surfaces within ~1 hour instead of via a customer report.
+    //
+    // Match key is (vm_id, reference_id=stripe_payment_intent) — exactly the
+    // dedup key the webhook's orphan-recovery branch uses. We scan a bounded
+    // recent window and skip purchases inside the grace period (legit
+    // in-flight deliveries). Cheap: credit_purchases is tiny (tens of rows).
+    {
+      const orphanCutoff = new Date(now - CREDIT_ORPHAN_GRACE_MS).toISOString();
+      const lookbackStart = new Date(now - CREDIT_ORPHAN_LOOKBACK_MS).toISOString();
+      const { data: purchases, error: purchErr } = await supabase
+        .from("instaclaw_credit_purchases")
+        .select("vm_id, stripe_payment_intent, credits_purchased, amount_cents, created_at")
+        .gte("created_at", lookbackStart)
+        .lt("created_at", orphanCutoff);
+      if (purchErr) {
+        logger.warn("usage-anomaly-check: credit_purchases query failed (non-fatal)", {
+          route: `cron/${CRON_NAME}`,
+          error: purchErr.message,
+        });
+      } else if (purchases && purchases.length > 0) {
+        // Pull the ledger rows for the same window's PIs and diff in memory.
+        // reference_id holds the stripe_payment_intent for credit_pack grants.
+        const { data: ledgerRows, error: ledgerErr } = await supabase
+          .from("instaclaw_credit_ledger")
+          .select("vm_id, reference_id")
+          .gte("created_at", lookbackStart)
+          .like("reference_id", "pi_%");
+        if (ledgerErr) {
+          logger.warn("usage-anomaly-check: credit_ledger query failed (non-fatal)", {
+            route: `cron/${CRON_NAME}`,
+            error: ledgerErr.message,
+          });
+        } else {
+          const ledgerSet = new Set(
+            (ledgerRows ?? []).map((r) => `${r.vm_id}|${r.reference_id}`)
+          );
+          const orphans = (purchases as Array<{
+            vm_id: string;
+            stripe_payment_intent: string;
+            credits_purchased: number;
+            amount_cents: number;
+            created_at: string;
+          }>).filter((p) => !ledgerSet.has(`${p.vm_id}|${p.stripe_payment_intent}`));
+
+          if (orphans.length > 0) {
+            const totalDollars = orphans.reduce((s, o) => s + (o.amount_cents ?? 0), 0) / 100;
+            const totalCredits = orphans.reduce((s, o) => s + (o.credits_purchased ?? 0), 0);
+            const detail = orphans
+              .slice(0, 10)
+              .map((o) => `  ${o.created_at.slice(0, 19)}  vm=${o.vm_id.slice(0, 8)}  ${o.credits_purchased}cr  $${(o.amount_cents / 100).toFixed(2)}  ${o.stripe_payment_intent}`)
+              .join("\n");
+            alerts.push({
+              severity: "critical",
+              condition: "credit_pack_orphan",
+              subject: `[InstaClaw CRITICAL] ${orphans.length} paid credit-pack purchase(s) with NO credits delivered ($${totalDollars.toFixed(2)})`,
+              body: [
+                `${orphans.length} row(s) in instaclaw_credit_purchases (paid, idempotency claimed)`,
+                `have NO matching instaclaw_credit_ledger entry, and are older than the`,
+                `${CREDIT_ORPHAN_GRACE_MS / 60000}-minute delivery grace period.`,
+                ``,
+                `These are PAYING CUSTOMERS who were charged but did not receive credits.`,
+                `Total: ${totalCredits} credits / $${totalDollars.toFixed(2)} across ${orphans.length} purchase(s).`,
+                ``,
+                `This is the INC-20260602 bug class (instaclaw_add_credits RPC failure`,
+                `between the purchase-row insert and the ledger grant). Root cause then`,
+                `was a duplicate RPC overload (PGRST203); fixed by dropping the 3-param`,
+                `version + passing p_source explicitly. A recurrence means either that`,
+                `regressed, or a NEW failure mode sits between purchase-insert and`,
+                `ledger-grant in app/api/billing/webhook/route.ts:handleCreditPackPurchase.`,
+                ``,
+                `Orphans (up to 10 shown):`,
+                detail,
+                ``,
+                `FIX (per orphan, after confirming the Stripe charge is real):`,
+                `  SELECT public.instaclaw_add_credits(`,
+                `    '<vm_id>'::uuid, <credits>, '<stripe_payment_intent>', 'stripe');`,
+                `  -- idempotent on reference_id; safe to re-run. Verify a ledger row`,
+                `  -- appears and credit_balance increments.`,
+                ``,
+                `Then investigate WHY the webhook didn't apply them — check Vercel logs`,
+                `for app/api/billing/webhook 5xx and the RPC error message.`,
+              ].join("\n"),
+            });
+          }
         }
       }
     }

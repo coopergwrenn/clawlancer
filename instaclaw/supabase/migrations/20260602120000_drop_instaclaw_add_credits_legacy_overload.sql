@@ -24,7 +24,8 @@
 -- ------------
 -- Verified deterministic failure via 3 direct RPC invocations 2026-06-02.
 -- Last successful ledger insert via this RPC: 2026-04-28T17:37:39 UTC.
--- 7 orphan paid purchases (5 users, $90) accumulated 2026-04-29 → 2026-05-21.
+-- 7 orphan paid purchases (5 users, $85 / 1250 credits) accumulated
+-- 2026-04-29 → 2026-05-21.
 -- + 2 fresh orphans 2026-06-02 (Robbie Rhead, $35 — the customer report
 -- that surfaced this). All 9 orphan credit_purchases rows were backfilled
 -- manually 2026-06-02 12:14-12:20 UTC via explicit 4-param RPC calls
