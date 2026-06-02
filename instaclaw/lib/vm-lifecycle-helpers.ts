@@ -26,6 +26,7 @@ export const PROTECTED_INFRA_LINODE_IDS = new Set<string>([
   "93105031", // instaclaw-clob-proxy   (Toronto Polymarket proxy)
   "94293064", // clob-proxy-osaka       (Osaka backup proxy)
   "95430641", // instaclaw-monitoring   (Prometheus / Grafana host)
+  "98505957", // instaclaw-canary       (standing x402 / fleet-rollout test canary, replaces vm-1019; no DB row, so exempt it from the Pass -1 orphan sweep)
 ]);
 
 /** Min Linode age before we'll consider it a candidate for orphan delete.
