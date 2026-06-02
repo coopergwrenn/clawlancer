@@ -1,28 +1,29 @@
 # Changelog — generated 2026-06-02
 
-Window: `d18fb16e5c5482fc7aed2b190d55d96e9a1fa090` → `HEAD` (HEAD = `ca0b2dce`)
+Window: `ca0b2dcec129e1f0825ff36eb21bea19fa561f62` → `HEAD` (HEAD = `da6b8424`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: ca0b2dcec129e1f0825ff36eb21bea19fa561f62 -->
+<!-- LAST_GENERATED_SHA: da6b842452c6abd09d2d8f8b1681792c49c42762 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Infrastructure:** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 0
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-- `ca0b2dce` 2026-06-02 — feat(floor): make Larry a character + dress the room (creative 3D pass) [4 files]
+_None in this window._
 
 ## What changed under the hood
 
-- `3e22cadf` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `da6b8424` 2026-06-02 — chore(lifecycle): exempt standing x402 canary (98505957) from orphan sweep [1 files] _(ai-assisted)_
+- `f6dccc99` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -30,13 +31,13 @@ Total commits: 2
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
+
+- `da6b8424` 2026-06-02 — chore(lifecycle): exempt standing x402 canary (98505957) from orphan sweep [1 files] _(ai-assisted)_
+
+### Feature (user-facing) (0)
 
 _(none)_
-
-### Feature (user-facing) (1)
-
-- `ca0b2dce` 2026-06-02 — feat(floor): make Larry a character + dress the room (creative 3D pass) [4 files]
 
 ### Edge City partner (0)
 
@@ -44,9 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `3e22cadf` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
+- `f6dccc99` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+
+## AI-assisted commits (1)
+
+Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+
+- `da6b8424` 2026-06-02 — chore(lifecycle): exempt standing x402 canary (98505957) from orphan sweep
 
 ## Appendix — every commit (chronological)
 
-- `3e22cadf` 2026-06-01 — chore(changelog): auto-update [skip ci] [2 files]
-- `ca0b2dce` 2026-06-02 — feat(floor): make Larry a character + dress the room (creative 3D pass) [4 files]
+- `f6dccc99` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `da6b8424` 2026-06-02 — chore(lifecycle): exempt standing x402 canary (98505957) from orphan sweep [1 files] _(ai-assisted)_
