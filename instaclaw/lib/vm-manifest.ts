@@ -2276,6 +2276,9 @@ export const VM_MANIFEST = {
       //   TOOLROUTER_WRAPPER_V1 — version tag at the top of the script
       //   toolrouter-wrapper started — the startup log line
       //   record-usage POST — the action that defines the wrapper
+      //   BINARY_RESOLVED_BY_EXECPATH — 2026-06-01 fix (added when OpenClaw's
+      //     stripped spawn env was discovered to lack PATH, so bare-name
+      //     child cmd fails ENOENT; wrapper now resolves sibling-to-execPath)
       remotePath: "~/.openclaw/scripts/toolrouter-wrapper.mjs",
       source: "template",
       templateKey: "TOOLROUTER_WRAPPER_MJS",
@@ -2286,6 +2289,7 @@ export const VM_MANIFEST = {
         "TOOLROUTER_WRAPPER_V1",
         "toolrouter-wrapper started",
         "record-usage POST",
+        "BINARY_RESOLVED_BY_EXECPATH",
       ],
     },
     {

@@ -51,8 +51,22 @@ export const TOOLROUTER_WRAPPER_MJS = `#!/usr/bin/env node
 
 import { spawn } from "node:child_process";
 import { Transform } from "node:stream";
+import path from "node:path";
 
-const TOOLROUTER_BINARY = process.env.TOOLROUTER_WRAPPER_CHILD_CMD || "toolrouter";
+// Resolve the toolrouter binary. OpenClaw spawns this wrapper with a
+// stripped env (only the keys we set in mcp.servers.toolrouter.env — no
+// PATH). So spawning a bare-name child fails ENOENT. Two-rule resolver:
+//   - If TOOLROUTER_WRAPPER_CHILD_CMD contains a path separator, trust it
+//     verbatim (operator override, e.g., for testing).
+//   - Otherwise (default "toolrouter"), resolve sibling-to-process.execPath.
+//     The wrapper is launched via \`node\` and toolrouter is installed as
+//     an NVM sibling-of-node symlink, so dirname(execPath)/toolrouter is
+//     guaranteed to exist on every fleet VM regardless of node version.
+// Sentinel: BINARY_RESOLVED_BY_EXECPATH (Rule 23 — refuses stale-cache deploys).
+const TOOLROUTER_BINARY_ENV = process.env.TOOLROUTER_WRAPPER_CHILD_CMD || "toolrouter";
+const TOOLROUTER_BINARY = TOOLROUTER_BINARY_ENV.includes("/")
+  ? TOOLROUTER_BINARY_ENV
+  : path.join(path.dirname(process.execPath), TOOLROUTER_BINARY_ENV); // BINARY_RESOLVED_BY_EXECPATH
 const INSTACLAW_API_URL = process.env.INSTACLAW_API_URL || "https://instaclaw.io";
 const RECORD_USAGE_PATH = "/api/agent/toolrouter/record-usage";
 const POST_TIMEOUT_MS = 2_000;
