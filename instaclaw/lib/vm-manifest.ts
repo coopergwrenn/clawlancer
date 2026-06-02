@@ -1830,7 +1830,7 @@ export const VM_MANIFEST = {
    * file-content bump. Propagation via file-drift (15-min) + reconcile-
    * fleet (3-min, picks up cv<124). No gateway restart required.
    */
-  version: 127,
+  version: 128,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.

@@ -92,10 +92,19 @@ import {
   currentSourceMode as currentBaseSkillsSourceMode,
 } from "./base-skills-registry";
 import {
-  buildToolRouterMcpConfig,
-  getToolRouterEnv,
-  type ToolRouterTransport,
-} from "./toolrouter-client";
+  wireToolRouterMcp,
+  unwireToolRouterMcp,
+} from "./toolrouter-mcp-wire";
+import {
+  TOOLROUTER_ROUTING_V1_AGENTS_BLOCK,
+  TOOLROUTER_ROUTING_V1_BEGIN_MARKER,
+  TOOLROUTER_ROUTING_V1_END_MARKER,
+  TOOLROUTER_ROUTING_V1_INSERT_BEFORE_HEADER,
+  TOOLROUTER_BILLING_V1_AGENTS_BLOCK,
+  TOOLROUTER_BILLING_V1_BEGIN_MARKER,
+  TOOLROUTER_BILLING_V1_END_MARKER,
+  TOOLROUTER_BILLING_V1_INSERT_BEFORE_HEADER,
+} from "./workspace-templates-v2";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -452,6 +461,19 @@ export async function runFileDriftPass(
     // VM gets the block within ~15 min of the next file-drift tick. Per
     // Rule 39, failures push to result.warnings — non-load-bearing.
     await stepDeployBaseDefiRouting(wrappedSsh, result, dryRun);
+    // ToolRouter routing + billing blocks (Rule 47 continuous reconciliation).
+    // Universal (no WorldID gate); the routing block teaches the agent how to
+    // explain the WorldID unlock when an unverified user asks for Exa.
+    // 2026-06-02 — added with the WorldID-gate ship to deploy fleet-wide
+    // independent of stepMigrateSoulV2's gated V2 rollout.
+    await stepDeployToolRouterRouting(wrappedSsh, result, dryRun);
+    await stepDeployToolRouterBilling(wrappedSsh, result, dryRun);
+    // ToolRouter MCP wire/unwire — gated on user.world_id_verified. Lives in
+    // file-drift so the unwire-on-deverification path converges on caught-up
+    // VMs without waiting for a manifest version bump. The wire path also
+    // converges here when a user verifies after the instant-unlock hook
+    // somehow missed (SSH failure during verify endpoint, etc.).
+    await stepToolRouter(wrappedSsh, vm, result, dryRun, false);
     // Rule 70: daily gateway hygiene timer. Lives in file-drift (not just
     // reconcileVM) for the same reason as the routing block above — caught-
     // up VMs would otherwise never get the timer enabled if the manifest
@@ -946,6 +968,39 @@ export async function reconcileVM(
     // references are already on disk when the agent reads it.
     currentStep = "base-defi-routing-deploy";
     await stepDeployBaseDefiRouting(ssh, result, dryRun);
+
+    // ── Step 8f7b: ToolRouter routing + billing blocks in AGENTS.md ──
+    // Universal (no WorldID gate). Teaches the agent the routing rules
+    // (when to reach for Exa vs Manus vs free brave-search) AND the
+    // unverified-user response ("premium tools require World ID — verify
+    // at instaclaw.io/dashboard"). Marker-bounded for idempotency.
+    //
+    // Deployed both here and in runFileDriftPass per Rule 47 — must reach
+    // cv-current VMs that the lt(cv, MANIFEST.version) filter excludes.
+    currentStep = "toolrouter-routing-deploy";
+    await stepDeployToolRouterRouting(ssh, result, dryRun);
+    currentStep = "toolrouter-billing-deploy";
+    await stepDeployToolRouterBilling(ssh, result, dryRun);
+
+    // ── Step 8f7c: ToolRouter MCP wire/unwire (WorldID-gated) ──
+    // The load-bearing capability gate per the 2026-06-02 product launch:
+    // premium tools (Exa, Manus, Browserbase, parallel, AgentMail,
+    // StableTravel) unlock when user.world_id_verified=true. Looks up
+    // the user, writes mcp.servers.toolrouter on verified, unsets on
+    // unverified/orphan. Hot-reloadable per Rule 32.
+    //
+    // Runs AFTER stepFiles so the wrapper .mjs is guaranteed on disk
+    // when the MCP config that points at it gets written. Wire helper
+    // has its own defense (probes wrapper sentinel before writing).
+    //
+    // The instant-unlock hook in app/api/auth/world-id/verify/route.ts
+    // writes the same MCP config directly via the verify-time SSH
+    // session — this step is the converge-fleet safety net.
+    //
+    // Per Rule 39, all failure modes push to result.warnings, never
+    // result.errors. cv-bump never held by a ToolRouter wire issue.
+    currentStep = "toolrouter-wire";
+    await stepToolRouter(ssh, vm, result, dryRun, strict);
 
     // ── Step 8f8: WEB_ONLY_USER block in AGENTS.md (per-user conditional) ──
     // Inserts the WEB_ONLY_USER_V1 marker block when the VM's assigned user
@@ -3207,55 +3262,48 @@ async function stepEdgeOSApiKey(
 }
 
 /**
- * stepToolRouter — wire the ToolRouter MCP server onto every agent's
- * runtime (PRD: docs/prd/toolrouter-integration.md §4.5 + §7.3).
+ * stepToolRouter — wire (or unwire) the ToolRouter MCP server based on
+ * the user's World ID verification status.
  *
- * Universal (no partner gate) — ToolRouter brings the agent a paid SaaS
- * tool catalog (Exa search, Manus research, Browserbase, AgentMail,
- * StableTravel) behind a single MCP connection. v1 ships with a shared
- * platform API key from process.env.TOOLROUTER_API_KEY.
+ * PRD: docs/prd/toolrouter-integration.md §4.5 + §7.3 (K.4 trustless
+ *      allocation); WorldID-gate scope codified 2026-06-02.
  *
- * KEY-SOURCE BRANCHING (v1 vs v1.5):
- *   v1: platform key from TOOLROUTER_API_KEY env. SHARED across fleet.
- *   v1.5: per-user key from instaclaw_users.toolrouter_api_key if set,
- *         else platform key. Provisioned via Andy's programmatic
- *         account-creation API when the user connects their agent to
- *         AgentKit on the InstaClaw dashboard. Marketing hook: "Connect
- *         World ID to unlock free premium search credits for your agent."
- *         The v1.5 branch will live where the `const apiKey = env.apiKey`
- *         line is below — read the per-user column first, fall through.
+ * Product promise (Cooper, 2026-06-02): premium tools (Exa, Manus,
+ * Browserbase, parallel search, AgentMail, StableTravel) unlock when a
+ * user connects their World ID at instaclaw.io/dashboard. Unverified
+ * users keep all free tools (brave-search, local chromium, curl,
+ * gbrain) but don't see the premium catalog. The verification action
+ * IS the unlock — instaclaw_users.world_id_verified=true is the only
+ * gate. No admin allowlist, no partner-account auto-verify.
  *
- * Failure posture (Rule 39):
- *   ToolRouter is OPTIONAL paid SaaS — an agent without it still has free
- *   local tools (brave-search, local chromium, curl, gbrain). Every
- *   failure path pushes to result.warnings via recordHealWarning, NOT
- *   result.errors. cv-bump is never held by a ToolRouter issue. Same
- *   posture as stepIndexProvision / stepNodeExporter / stepEdgeOSApiKey.
+ * The reconciler is the SAFETY NET for the instant-unlock path in
+ * app/api/auth/world-id/verify/route.ts:propagateVerificationToVM —
+ * that function writes the MCP config via the open SSH session at
+ * verify-time so tools appear within seconds. This step converges
+ * fleet-wide every ~3 min in case the instant write missed.
  *
- * Rule 32 — MCP servers ARE hot-reloadable. After `openclaw mcp set
- * toolrouter`, the runtime picks up the new server on the next gateway
- * tick without restart. We still verify-after-set per Rule 10 by
- * re-reading the discriminating field per transport mode.
+ * Gate order:
+ *   1. TOOLROUTER_ENABLED env (Rule 61 boolean-value check)
+ *   2. strict-mode bypass (third-party HTTP defers to non-strict cron)
+ *   3. assigned_to present → if null, ensure-not-wired (pool VMs)
+ *   4. user.world_id_verified lookup
+ *        - lookup failed → defer (don't toggle on transient DB error)
+ *        - orphan VM (user deleted) → ensure-not-wired, log forensics
+ *        - verified=true → wireToolRouterMcp
+ *        - verified=false/null → unwireToolRouterMcp
  *
- * Gating env vars (Rule 61 enum + boolean):
- *   TOOLROUTER_ENABLED         "true"  → wire; else silent skip
- *   TOOLROUTER_TRANSPORT       "stdio" | "streamable-http" (default stdio)
- *   TOOLROUTER_API_KEY         tr_... — shape-checked in getToolRouterEnv()
+ * Failure posture (Rule 39): every outcome lands in result.warnings or
+ * result.fixed/alreadyCorrect. NEVER result.errors. cv-bump never held
+ * by a ToolRouter issue. Mirrors stepIndexProvision / stepEdgeOSApiKey.
  *
- * Idempotency (Rule 10): the verify-after-set check reads the
- * discriminating field per transport (.command for stdio, .transport
- * for streamable-http) — both writes are no-ops when already correct.
+ * Rule 32: mcp.servers.* is hot-reloadable. The helper writes via
+ * `openclaw mcp set toolrouter ...` and verifies the discriminator
+ * field post-write per Rule 10. No gateway restart required.
+ *
+ * Per-step Supabase lookup cost: ~50ms × CONFIG_AUDIT_BATCH_SIZE × cron
+ * cadence is trivial fleet-wide load (audited 2026-06-02).
  */
-// K.4 wrapper deploy path on every VM. Pinned constant so the reconciler,
-// the wrapper config builder, and any future audit script agree on the
-// absolute location. The wrapper itself is deployed via stepFiles from
-// the manifest's TOOLROUTER_WRAPPER_MJS template entry — see
-// lib/vm-manifest.ts:files[]. configureOpenClaw's stepFiles drives the
-// initial provisioning; the file-drift cron + reconciler stepFiles
-// drive updates on existing VMs.
-const TOOLROUTER_WRAPPER_PATH = "/home/openclaw/.openclaw/scripts/toolrouter-wrapper.mjs";
-
-async function stepToolRouter(
+export async function stepToolRouter(
   ssh: SSHConnection,
   vm: VMRecord & {
     name?: string | null;
@@ -3267,189 +3315,158 @@ async function stepToolRouter(
   strict: boolean,
 ): Promise<void> {
   // ── Gate 1: TOOLROUTER_ENABLED feature flag (Rule 61) ──
-  // Silent skip when disabled — operator hasn't enabled the integration yet.
-  // Cooper's self-serve flow at toolrouter.world produces the API key; once
-  // he sets it in Vercel and flips TOOLROUTER_ENABLED, this step starts firing.
-  const raw = process.env.TOOLROUTER_ENABLED;
-  if (raw !== "true") {
-    if (raw !== undefined && raw !== "" && raw !== "false" && raw !== "0" && raw !== "no") {
-      // Set-but-misconfigured (e.g., "True", "1", trailing newline). Rule 61
-      // pattern — warn loudly so the operator notices the typo.
+  // Silent skip when disabled. The helper has its own gate too;
+  // shortcutting here avoids the per-VM Supabase lookup when the
+  // operator hasn't enabled the integration at all.
+  const rawEnabled = process.env.TOOLROUTER_ENABLED;
+  if (rawEnabled !== "true") {
+    if (
+      rawEnabled !== undefined &&
+      rawEnabled !== "" &&
+      rawEnabled !== "false" &&
+      rawEnabled !== "0" &&
+      rawEnabled !== "no"
+    ) {
       logger.warn("stepToolRouter SKIPPED: TOOLROUTER_ENABLED is set but not 'true'", {
         route: "stepToolRouter",
-        actual: JSON.stringify(raw),
+        actual: JSON.stringify(rawEnabled),
         expected: "true",
       });
-      result.warnings.push(`stepToolRouter skipped: TOOLROUTER_ENABLED='${raw}' (expected 'true')`);
+      result.warnings.push(
+        `stepToolRouter skipped: TOOLROUTER_ENABLED='${rawEnabled}' (expected 'true')`,
+      );
     }
     return;
   }
 
   // ── Gate 2: strict-mode bypass ──
-  // Mirrors stepIndexProvision: third-party HTTP / network paths skip
-  // strict's 180s budget. The non-strict reconcile-fleet cron picks this
-  // step up on the next ~3-min tick.
+  // Mirrors stepIndexProvision: third-party HTTP/network paths skip
+  // strict's 180s budget. The non-strict reconcile-fleet cron picks
+  // this step up on the next ~3-min tick.
   if (strict) return;
 
-  // ── Gate 3: env config present + valid ──
-  // getToolRouterEnv returns null if the key is unset, empty, or fails
-  // the TOOLROUTER_API_KEY_SHAPE regex. Silent skip when unset (the key
-  // hasn't been deployed yet); warn only in production for missing config.
-  //
-  // [v1.5 KEY-SOURCE BRANCH POINT]: when per-user keys ship, the lookup
-  // becomes:
-  //   const userKey = vm.assigned_to
-  //     ? await getSupabase().from("instaclaw_users").select("toolrouter_api_key")...
-  //     : null;
-  //   const apiKey = userKey ?? env.apiKey;
-  //   const apiUrl = env.apiUrl;
-  // For v1 it's just the platform key.
-  const env = getToolRouterEnv();
-  if (!env) {
-    if (process.env.VERCEL_ENV === "production") {
-      recordHealWarning(
-        result,
-        "toolrouter: TOOLROUTER_API_KEY not set or failed shape check in this environment",
-      );
+  // ── Gate 3: pool VM with no assigned user ──
+  // Defensive ensure-not-wired so a stale entry from a previous owner
+  // (post-thaw, post-reassignment) can't leak across users. In normal
+  // pool flow there's no MCP config yet, so this is almost always a
+  // no-op no-write probe.
+  if (!vm.assigned_to) {
+    const r = await unwireToolRouterMcp(ssh, { dryRun });
+    if (r.status === "already-correct") {
+      result.alreadyCorrect.push("toolrouter: pool VM, not wired (no assigned_to)");
+    } else if (r.status === "wired") {
+      result.fixed.push(`toolrouter: unset (pool VM had stale entry; ${r.reason})`);
+    } else if (r.status === "failed") {
+      result.warnings.push(`toolrouter: pool-VM unwire failed: ${r.reason}`);
     }
     return;
   }
-  const apiKey = env.apiKey;
-  const apiUrl = env.apiUrl;
 
-  // ── Gate 4: resolve transport (default stdio per PRD §2.3) ──
-  const transport: ToolRouterTransport =
-    process.env.TOOLROUTER_TRANSPORT === "streamable-http" ? "streamable-http" : "stdio";
-
-  // ── Gate 5: K.4 wrapper readiness (stdio only) ──
-  // The wrapper config points OpenClaw at our wrapper script. Before
-  // writing that config, confirm two preconditions:
-  //   a) vm.gateway_token is set (the wrapper authenticates to InstaClaw
-  //      with it)
-  //   b) the wrapper .mjs is on disk (stepFiles deploys it — runs in
-  //      the same reconcileVM cycle, but on first-ever-reconcile we
-  //      can't assume ordering)
-  // If either is missing, defer to the next cycle. The fleet converges
-  // within ~3 reconciler ticks of any new VM coming online.
-  let wrapperConfig: { wrapperPath: string; gatewayToken: string; instaclawApiUrl?: string } | null = null;
-  if (transport === "stdio") {
-    if (!vm.gateway_token) {
-      // Reconcile-fleet SELECT includes gateway_token; should never be
-      // null on an assigned + healthy VM. Log loudly if it is.
-      result.warnings.push("toolrouter: vm.gateway_token missing (wrapper requires it)");
-      return;
-    }
-    // Audit finding (2026-06-01): bare `test -f` doesn't catch a
-    // corrupted wrapper (0 bytes, truncated write, syntax error in
-    // a partial deploy). Combine three signals:
-    //   1. File exists (`test -f`)
-    //   2. File has non-zero size (`test -s`)
-    //   3. File contains the version sentinel (`grep -q TOOLROUTER_WRAPPER_V1`)
-    // Any failure → defer. The wrapper deploys atomically via SFTP
-    // putFile so all three should land together; the combined check
-    // means a half-written file blocks the MCP wire-up instead of
-    // OpenClaw spawning a broken script.
-    const wrapperProbe = await ssh.execCommand(
-      `test -s "${TOOLROUTER_WRAPPER_PATH}" && ` +
-      `grep -q TOOLROUTER_WRAPPER_V1 "${TOOLROUTER_WRAPPER_PATH}" && ` +
-      `echo ok || echo missing`,
-    );
-    if (!wrapperProbe.stdout.includes("ok")) {
-      // Wrapper not deployed, empty, or corrupted. stepFiles will
-      // write it on this or the next reconcile cycle. Defer cleanly.
-      result.warnings.push(
-        "toolrouter: wrapper .mjs missing/empty/sentinel-absent — deferring MCP wire",
-      );
-      return;
-    }
-    wrapperConfig = {
-      wrapperPath: TOOLROUTER_WRAPPER_PATH,
-      gatewayToken: vm.gateway_token,
-      instaclawApiUrl: process.env.INSTACLAW_API_URL || "https://instaclaw.io",
-    };
-  }
-
-  // ── Probe disk for current MCP shape ──
-  // K.4 transition: stdio's discriminating field is now .command === "node"
-  // (the wrapper) instead of "toolrouter" (the raw v1 shape). VMs at the v1
-  // shape will fail the probe → reconciler writes the new config → natural
-  // migration on the next reconcile tick.
-  // For streamable-http: discriminator is .transport === "streamable-http"
-  // (unchanged — the wrapper makes no sense for HTTP transport).
-  const discriminator = transport === "stdio" ? ".command" : ".transport";
-  const expectedDiscriminatorValue = transport === "stdio" ? "node" : "streamable-http";
-  let diskOk = false;
+  // ── Gate 4: World ID verification lookup ──
+  // The load-bearing gate. Per Cooper 2026-06-02: pure
+  // instaclaw_users.world_id_verified=true check, no escape hatches.
+  let userVerified: boolean | null = null;
   try {
-    const probe = await ssh.execCommand(
-      `jq -r '.mcp.servers.toolrouter${discriminator} // ""' "$HOME/.openclaw/openclaw.json" 2>/dev/null`,
-    );
-    diskOk = (probe.stdout || "").trim() === expectedDiscriminatorValue;
+    const supabase = getSupabase();
+    const { data: user, error } = await supabase
+      .from("instaclaw_users")
+      .select("world_id_verified")
+      .eq("id", vm.assigned_to)
+      .maybeSingle();
+    if (error) {
+      // Transient DB failure — defer. We MUST NOT strip a verified
+      // user's tools because Supabase hiccupped for one cron tick.
+      result.warnings.push(
+        `toolrouter: world_id lookup failed: ${error.message.slice(0, 140)}`,
+      );
+      return;
+    }
+    if (!user) {
+      // Orphan VM (assigned_to references a deleted user). Treat as
+      // unverified — ensure-not-wired. Log forensics for the operator.
+      userVerified = false;
+      logger.warn(
+        "stepToolRouter: orphan VM (assigned_to references deleted user)",
+        {
+          vmId: vm.id,
+          assignedToOrphan: vm.assigned_to,
+        },
+      );
+    } else {
+      userVerified = user.world_id_verified === true;
+    }
   } catch (e: unknown) {
-    recordHealWarning(
-      result,
-      `toolrouter: disk probe failed: ${String((e as Error)?.message ?? e).slice(0, 150)}`,
+    result.warnings.push(
+      `toolrouter: world_id lookup threw: ${String((e as Error)?.message ?? e).slice(0, 140)}`,
     );
     return;
   }
 
-  if (diskOk) {
-    result.alreadyCorrect.push("toolrouter: mcp.servers.toolrouter on disk");
+  // ── Branch: unverified user (or orphan) → ensure NOT wired ──
+  // Silent removal per the 2026-06-02 deverification UX decision:
+  // the agent's SOUL.md routing block handles the "user asks for Exa"
+  // case contextually; no proactive Telegram notification.
+  if (!userVerified) {
+    const r = await unwireToolRouterMcp(ssh, { dryRun });
+    if (r.status === "already-correct") {
+      result.alreadyCorrect.push(
+        "toolrouter: not wired (user not WorldID-verified)",
+      );
+    } else if (r.status === "wired") {
+      const prefix = dryRun ? "[dry-run] " : "";
+      result.fixed.push(
+        `${prefix}toolrouter: unset (user not WorldID-verified; ${r.reason})`,
+      );
+      logger.info("[reconcile] toolrouter: unset on unverified user", {
+        vmId: vm.id,
+        userId: vm.assigned_to,
+        dryRun,
+      });
+    } else if (r.status === "failed") {
+      result.warnings.push(
+        `toolrouter: unwire failed (will retry next tick): ${r.reason}`,
+      );
+    }
     return;
   }
 
-  if (dryRun) {
-    result.fixed.push(`[dry-run] toolrouter: would write mcp.servers.toolrouter (transport=${transport})`);
-    return;
-  }
-
-  // ── Write via `openclaw mcp set` (atomic merge, hot-reload-trigger) ──
-  // Tempfile + stdin pattern mirrors stepIndexProvision (avoid argv-quoting
-  // issues with the JSON body). Tempfile path uses vm.id to avoid the
-  // Date.now() race seen in the 2026-05-01 strip-thinking incident.
-  const mcpJson = JSON.stringify(buildToolRouterMcpConfig(apiKey, transport, apiUrl, wrapperConfig));
-  const tmpPath = `/tmp/toolrouter-mcp-${vm.id}.json`;
-
-  const upload = await ssh.execCommand(`cat > ${tmpPath} && chmod 600 ${tmpPath}`, {
-    stdin: mcpJson,
-  });
-  if (upload.code !== 0) {
-    recordHealWarning(
-      result,
-      `toolrouter: upload mcp.json failed (exit=${upload.code}): ${(upload.stderr || "").slice(0, 150)}`,
-    );
-    return;
-  }
-
-  const setCmd = await ssh.execCommand(
-    `${NVM_PREAMBLE} && openclaw mcp set toolrouter "$(cat ${tmpPath})" 2>&1; SET_RC=$?; rm -f ${tmpPath}; exit $SET_RC`,
-  );
-  if (setCmd.code !== 0) {
-    recordHealWarning(
-      result,
-      `toolrouter: openclaw mcp set failed (exit=${setCmd.code}): ${(setCmd.stdout || "").slice(-200)}`,
-    );
-    return;
-  }
-
-  // ── Verify-after-set (Rule 10): re-read on-disk discriminator ──
-  const verify = await ssh.execCommand(
-    `jq -r '.mcp.servers.toolrouter${discriminator} // "MISSING"' "$HOME/.openclaw/openclaw.json"`,
-  );
-  const verifyValue = (verify.stdout || "").trim();
-  if (verifyValue !== expectedDiscriminatorValue) {
-    recordHealWarning(
-      result,
-      `toolrouter: verify-after-set failed (disk=${verifyValue.slice(0, 50)})`,
-    );
-    return;
-  }
-
-  result.fixed.push(`toolrouter: wired mcp.servers.toolrouter (transport=${transport})`);
-  logger.info("[reconcile] toolrouter: wired", {
+  // ── Branch: verified user → wire (or confirm already-correct) ──
+  const r = await wireToolRouterMcp(ssh, {
+    dryRun,
     vmId: vm.id,
-    transport,
-    apiKeyPrefix: apiKey.slice(0, 7),
+    gatewayToken: vm.gateway_token ?? null,
+    instaclawApiUrl: process.env.INSTACLAW_API_URL || "https://instaclaw.io",
   });
+
+  if (r.status === "already-correct") {
+    result.alreadyCorrect.push(
+      `toolrouter: mcp.servers.toolrouter on disk (${r.reason})`,
+    );
+  } else if (r.status === "wired") {
+    const prefix = dryRun ? "[dry-run] " : "";
+    result.fixed.push(
+      `${prefix}toolrouter: wired mcp.servers.toolrouter (${r.reason})`,
+    );
+    logger.info("[reconcile] toolrouter: wired", {
+      vmId: vm.id,
+      userId: vm.assigned_to,
+      transport: r.transport,
+      dryRun,
+    });
+  } else if (r.status === "deferred") {
+    // Wrapper not on disk yet, or env not set. stepFiles deploys the
+    // wrapper later in the same reconcileVM call; on first-ever
+    // reconcile we may need one more tick to converge.
+    result.warnings.push(`toolrouter: deferred (${r.reason})`);
+  } else if (r.status === "skipped") {
+    // Helper's internal gate fired. Should not happen since we already
+    // gated TOOLROUTER_ENABLED above, but defensive.
+    result.warnings.push(`toolrouter: skipped by helper (${r.reason})`);
+  } else if (r.status === "failed") {
+    result.warnings.push(
+      `toolrouter: wire failed (will retry next tick): ${r.reason}`,
+    );
+  }
 }
 
 async function stepConfigSettings(
@@ -10779,6 +10796,464 @@ out({
     default:
       result.warnings.push(
         `base-defi-routing: unexpected status=${parsed.status} (output: ${lastLine.slice(0, 200)})`,
+      );
+      return;
+  }
+}
+
+/**
+ * stepDeployToolRouterRouting — insert the ToolRouter routing block
+ * (TOOLROUTER_ROUTING_V1_AGENTS_BLOCK) into ~/.openclaw/workspace/AGENTS.md.
+ *
+ * Why this step exists separately from the V2 SOUL.md migration:
+ * stepMigrateSoulV2 is gated by RECONCILE_SOUL_MIGRATION_ENABLED env
+ * var (default off — only on for a canary cohort). Most of the fleet is
+ * still on V1 AGENTS.md without the toolrouter routing knowledge. This
+ * step deploys the marker-bounded block to BOTH V1 and V2 AGENTS.md
+ * (the anchor "## Routing — keyword → action" exists in both shapes),
+ * so verified users get the routing knowledge regardless of their
+ * migration state.
+ *
+ * Universal — no WorldID gate. The block teaches the agent how to
+ * answer "use Exa" requests from unverified users too ("premium tools
+ * require World ID — verify at instaclaw.io/dashboard"). Critical for
+ * the unverified-user UX.
+ *
+ * Mirrors stepDeployBaseDefiRouting exactly: INSERT / REPLACE / NO-OP
+ * via marker probe + backup-then-atomic-write-then-verify (Rule 22 +
+ * Rule 10). Failure posture: errors (not warnings) on verify-after-
+ * write so the file-drift pushFailed gate catches a half-write; all
+ * other failures are warnings (Rule 39 — non-critical routing copy).
+ */
+async function stepDeployToolRouterRouting(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  if (dryRun) {
+    const probe = await ssh.execCommand(
+      `if [ ! -f ~/.openclaw/workspace/AGENTS.md ]; then echo "MISSING"; ` +
+        `elif grep -q "${TOOLROUTER_ROUTING_V1_BEGIN_MARKER}" ~/.openclaw/workspace/AGENTS.md; then echo "MARKER_PRESENT"; ` +
+        `else echo "MARKER_ABSENT"; fi`,
+    );
+    const state = (probe.stdout || "").trim();
+    if (state === "MISSING") {
+      result.warnings.push("[dry-run] toolrouter-routing: AGENTS.md missing");
+    } else if (state === "MARKER_ABSENT") {
+      result.fixed.push(
+        `[dry-run] toolrouter-routing: would INSERT block before "${TOOLROUTER_ROUTING_V1_INSERT_BEFORE_HEADER}"`,
+      );
+    } else {
+      result.fixed.push(
+        `[dry-run] toolrouter-routing: would compare on-disk block to canonical (${TOOLROUTER_ROUTING_V1_AGENTS_BLOCK.length}b) and REPLACE on drift, no-op on match`,
+      );
+    }
+    return;
+  }
+
+  const cfg = JSON.stringify({
+    agents_path: "~/.openclaw/workspace/AGENTS.md",
+    backup_path: `~/.openclaw/backups/v1-toolrouter-routing-${Date.now()}/AGENTS.md`,
+    block: TOOLROUTER_ROUTING_V1_AGENTS_BLOCK,
+    begin_marker: TOOLROUTER_ROUTING_V1_BEGIN_MARKER,
+    end_marker: TOOLROUTER_ROUTING_V1_END_MARKER,
+    insert_before_header: TOOLROUTER_ROUTING_V1_INSERT_BEFORE_HEADER,
+  });
+
+  const PATCH_PY = `
+import json, os, sys
+
+cfg = json.loads(sys.stdin.read())
+path = os.path.expanduser(cfg["agents_path"])
+canonical_block = cfg["block"]
+begin_marker = cfg["begin_marker"]
+end_marker = cfg["end_marker"]
+backup_path = os.path.expanduser(cfg["backup_path"])
+
+def out(d):
+    print(json.dumps(d))
+    sys.exit(0)
+
+def backup_then_atomic_write(content_to_save, new_content):
+    os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+    with open(backup_path, "w") as f:
+        f.write(content_to_save)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(new_content)
+    os.replace(tmp, path)
+
+def verify_block_landed():
+    with open(path) as f:
+        final = f.read()
+    b = final.find(begin_marker)
+    e = final.find(end_marker)
+    if b < 0 or e < 0:
+        return None, "markers absent after write"
+    end_inc = e + len(end_marker)
+    block_on_disk = final[b:end_inc]
+    if block_on_disk != canonical_block:
+        return None, "post-write block bytes mismatch"
+    return final, None
+
+if not os.path.exists(path):
+    out({"status": "missing"})
+
+with open(path) as f:
+    content = f.read()
+
+begin_idx = content.find(begin_marker)
+end_idx = content.find(end_marker)
+
+if begin_idx < 0 and end_idx < 0:
+    header = cfg["insert_before_header"]
+    lines = content.split("\\n")
+    anchor = -1
+    for i, line in enumerate(lines):
+        if line.strip() == header.strip():
+            anchor = i
+            break
+    if anchor >= 0:
+        new_content = "\\n".join(lines[:anchor]) + "\\n" + canonical_block + "\\n\\n---\\n\\n" + "\\n".join(lines[anchor:])
+        inserted_at = "before-header"
+    else:
+        new_content = content.rstrip() + "\\n\\n---\\n\\n" + canonical_block + "\\n"
+        inserted_at = "appended-eof"
+
+    backup_then_atomic_write(content, new_content)
+    final, err = verify_block_landed()
+    if err is not None:
+        out({"status": "verify-failed", "phase": "insert", "inserted_at": inserted_at, "reason": err})
+
+    out({
+        "status": "inserted",
+        "inserted_at": inserted_at,
+        "size_before": len(content),
+        "size_after": len(final),
+        "block_len": len(canonical_block),
+    })
+
+if begin_idx < 0 or end_idx < 0:
+    out({
+        "status": "malformed",
+        "begin_present": begin_idx >= 0,
+        "end_present": end_idx >= 0,
+    })
+
+end_idx_inclusive = end_idx + len(end_marker)
+on_disk_block = content[begin_idx:end_idx_inclusive]
+
+if on_disk_block == canonical_block:
+    out({"status": "already-correct", "block_len": len(canonical_block)})
+
+new_content = content[:begin_idx] + canonical_block + content[end_idx_inclusive:]
+backup_then_atomic_write(content, new_content)
+
+final, err = verify_block_landed()
+if err is not None:
+    out({"status": "verify-failed", "phase": "replace", "reason": err})
+
+out({
+    "status": "replaced",
+    "old_block_len": len(on_disk_block),
+    "new_block_len": len(canonical_block),
+    "size_before": len(content),
+    "size_after": len(final),
+})
+`;
+
+  const scriptB64 = Buffer.from(PATCH_PY, "utf-8").toString("base64");
+  const cfgB64 = Buffer.from(cfg, "utf-8").toString("base64");
+  const cmd = `echo '${cfgB64}' | base64 -d | python3 <(echo '${scriptB64}' | base64 -d)`;
+
+  const r = await ssh.execCommand(cmd, { execOptions: { timeout: 30_000 } });
+  if (r.code !== 0) {
+    result.warnings.push(
+      `toolrouter-routing python failed rc=${r.code}: ${(r.stderr || r.stdout).slice(0, 200)}`,
+    );
+    return;
+  }
+
+  const lines = (r.stdout || "").split("\n").map((l: string) => l.trim()).filter(Boolean);
+  const lastLine = lines[lines.length - 1] ?? "";
+  type Parsed = {
+    status?: string;
+    inserted_at?: string;
+    phase?: string;
+    reason?: string;
+    block_len?: number;
+    size_before?: number;
+    size_after?: number;
+    old_block_len?: number;
+    new_block_len?: number;
+  };
+  let parsed: Parsed = {};
+  try {
+    parsed = JSON.parse(lastLine);
+  } catch {
+    result.warnings.push(
+      `toolrouter-routing: could not parse python output: ${lastLine.slice(0, 200)}`,
+    );
+    return;
+  }
+
+  switch (parsed.status) {
+    case "missing":
+      result.warnings.push(
+        "toolrouter-routing: AGENTS.md missing (pre-bootstrap); will retry next cycle",
+      );
+      return;
+    case "malformed":
+      result.warnings.push(
+        `toolrouter-routing: AGENTS.md has malformed markers (begin=${parsed.status}); manual review needed`,
+      );
+      return;
+    case "inserted":
+      result.fixed.push(
+        `toolrouter-routing: INSERTED block (${parsed.inserted_at}, ${parsed.block_len}b)`,
+      );
+      return;
+    case "replaced":
+      result.fixed.push(
+        `toolrouter-routing: REPLACED block (old=${parsed.old_block_len}b, new=${parsed.new_block_len}b)`,
+      );
+      return;
+    case "already-correct":
+      result.alreadyCorrect.push(
+        `toolrouter-routing: marker block already correct (${parsed.block_len}b)`,
+      );
+      return;
+    case "verify-failed":
+      result.errors.push(
+        `toolrouter-routing: verify-after-write FAILED (phase=${parsed.phase}, reason=${parsed.reason ?? "unspecified"})`,
+      );
+      return;
+    default:
+      result.warnings.push(
+        `toolrouter-routing: unexpected status=${parsed.status} (output: ${lastLine.slice(0, 200)})`,
+      );
+      return;
+  }
+}
+
+/**
+ * stepDeployToolRouterBilling — insert the ToolRouter billing transparency
+ * + upsell block (TOOLROUTER_BILLING_V1_AGENTS_BLOCK) into AGENTS.md.
+ *
+ * Same pattern + posture as stepDeployToolRouterRouting (universal, no
+ * gate). Teaches the agent the five locked message templates (M1-M5),
+ * the two-step decision tree, and the post-choice routing rules.
+ * Marker-bounded so future edits via this step are idempotent.
+ */
+async function stepDeployToolRouterBilling(
+  ssh: SSHConnection,
+  result: ReconcileResult,
+  dryRun: boolean,
+): Promise<void> {
+  if (dryRun) {
+    const probe = await ssh.execCommand(
+      `if [ ! -f ~/.openclaw/workspace/AGENTS.md ]; then echo "MISSING"; ` +
+        `elif grep -q "${TOOLROUTER_BILLING_V1_BEGIN_MARKER}" ~/.openclaw/workspace/AGENTS.md; then echo "MARKER_PRESENT"; ` +
+        `else echo "MARKER_ABSENT"; fi`,
+    );
+    const state = (probe.stdout || "").trim();
+    if (state === "MISSING") {
+      result.warnings.push("[dry-run] toolrouter-billing: AGENTS.md missing");
+    } else if (state === "MARKER_ABSENT") {
+      result.fixed.push(
+        `[dry-run] toolrouter-billing: would INSERT block before "${TOOLROUTER_BILLING_V1_INSERT_BEFORE_HEADER}"`,
+      );
+    } else {
+      result.fixed.push(
+        `[dry-run] toolrouter-billing: would compare on-disk block to canonical (${TOOLROUTER_BILLING_V1_AGENTS_BLOCK.length}b) and REPLACE on drift, no-op on match`,
+      );
+    }
+    return;
+  }
+
+  const cfg = JSON.stringify({
+    agents_path: "~/.openclaw/workspace/AGENTS.md",
+    backup_path: `~/.openclaw/backups/v1-toolrouter-billing-${Date.now()}/AGENTS.md`,
+    block: TOOLROUTER_BILLING_V1_AGENTS_BLOCK,
+    begin_marker: TOOLROUTER_BILLING_V1_BEGIN_MARKER,
+    end_marker: TOOLROUTER_BILLING_V1_END_MARKER,
+    insert_before_header: TOOLROUTER_BILLING_V1_INSERT_BEFORE_HEADER,
+  });
+
+  // Same Python script as stepDeployToolRouterRouting / stepDeployBaseDefiRouting
+  // — INSERT / REPLACE / NO-OP via marker probe with backup-then-atomic-write-
+  // then-verify (Rule 22 + Rule 10).
+  const PATCH_PY = `
+import json, os, sys
+
+cfg = json.loads(sys.stdin.read())
+path = os.path.expanduser(cfg["agents_path"])
+canonical_block = cfg["block"]
+begin_marker = cfg["begin_marker"]
+end_marker = cfg["end_marker"]
+backup_path = os.path.expanduser(cfg["backup_path"])
+
+def out(d):
+    print(json.dumps(d))
+    sys.exit(0)
+
+def backup_then_atomic_write(content_to_save, new_content):
+    os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+    with open(backup_path, "w") as f:
+        f.write(content_to_save)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(new_content)
+    os.replace(tmp, path)
+
+def verify_block_landed():
+    with open(path) as f:
+        final = f.read()
+    b = final.find(begin_marker)
+    e = final.find(end_marker)
+    if b < 0 or e < 0:
+        return None, "markers absent after write"
+    end_inc = e + len(end_marker)
+    block_on_disk = final[b:end_inc]
+    if block_on_disk != canonical_block:
+        return None, "post-write block bytes mismatch"
+    return final, None
+
+if not os.path.exists(path):
+    out({"status": "missing"})
+
+with open(path) as f:
+    content = f.read()
+
+begin_idx = content.find(begin_marker)
+end_idx = content.find(end_marker)
+
+if begin_idx < 0 and end_idx < 0:
+    header = cfg["insert_before_header"]
+    lines = content.split("\\n")
+    anchor = -1
+    for i, line in enumerate(lines):
+        if line.strip() == header.strip():
+            anchor = i
+            break
+    if anchor >= 0:
+        new_content = "\\n".join(lines[:anchor]) + "\\n" + canonical_block + "\\n\\n---\\n\\n" + "\\n".join(lines[anchor:])
+        inserted_at = "before-header"
+    else:
+        new_content = content.rstrip() + "\\n\\n---\\n\\n" + canonical_block + "\\n"
+        inserted_at = "appended-eof"
+
+    backup_then_atomic_write(content, new_content)
+    final, err = verify_block_landed()
+    if err is not None:
+        out({"status": "verify-failed", "phase": "insert", "inserted_at": inserted_at, "reason": err})
+
+    out({
+        "status": "inserted",
+        "inserted_at": inserted_at,
+        "size_before": len(content),
+        "size_after": len(final),
+        "block_len": len(canonical_block),
+    })
+
+if begin_idx < 0 or end_idx < 0:
+    out({
+        "status": "malformed",
+        "begin_present": begin_idx >= 0,
+        "end_present": end_idx >= 0,
+    })
+
+end_idx_inclusive = end_idx + len(end_marker)
+on_disk_block = content[begin_idx:end_idx_inclusive]
+
+if on_disk_block == canonical_block:
+    out({"status": "already-correct", "block_len": len(canonical_block)})
+
+new_content = content[:begin_idx] + canonical_block + content[end_idx_inclusive:]
+backup_then_atomic_write(content, new_content)
+
+final, err = verify_block_landed()
+if err is not None:
+    out({"status": "verify-failed", "phase": "replace", "reason": err})
+
+out({
+    "status": "replaced",
+    "old_block_len": len(on_disk_block),
+    "new_block_len": len(canonical_block),
+    "size_before": len(content),
+    "size_after": len(final),
+})
+`;
+
+  const scriptB64 = Buffer.from(PATCH_PY, "utf-8").toString("base64");
+  const cfgB64 = Buffer.from(cfg, "utf-8").toString("base64");
+  const cmd = `echo '${cfgB64}' | base64 -d | python3 <(echo '${scriptB64}' | base64 -d)`;
+
+  const r = await ssh.execCommand(cmd, { execOptions: { timeout: 30_000 } });
+  if (r.code !== 0) {
+    result.warnings.push(
+      `toolrouter-billing python failed rc=${r.code}: ${(r.stderr || r.stdout).slice(0, 200)}`,
+    );
+    return;
+  }
+
+  const lines = (r.stdout || "").split("\n").map((l: string) => l.trim()).filter(Boolean);
+  const lastLine = lines[lines.length - 1] ?? "";
+  type Parsed = {
+    status?: string;
+    inserted_at?: string;
+    phase?: string;
+    reason?: string;
+    block_len?: number;
+    size_before?: number;
+    size_after?: number;
+    old_block_len?: number;
+    new_block_len?: number;
+  };
+  let parsed: Parsed = {};
+  try {
+    parsed = JSON.parse(lastLine);
+  } catch {
+    result.warnings.push(
+      `toolrouter-billing: could not parse python output: ${lastLine.slice(0, 200)}`,
+    );
+    return;
+  }
+
+  switch (parsed.status) {
+    case "missing":
+      result.warnings.push(
+        "toolrouter-billing: AGENTS.md missing (pre-bootstrap); will retry next cycle",
+      );
+      return;
+    case "malformed":
+      result.warnings.push(
+        `toolrouter-billing: AGENTS.md has malformed markers; manual review needed`,
+      );
+      return;
+    case "inserted":
+      result.fixed.push(
+        `toolrouter-billing: INSERTED block (${parsed.inserted_at}, ${parsed.block_len}b)`,
+      );
+      return;
+    case "replaced":
+      result.fixed.push(
+        `toolrouter-billing: REPLACED block (old=${parsed.old_block_len}b, new=${parsed.new_block_len}b)`,
+      );
+      return;
+    case "already-correct":
+      result.alreadyCorrect.push(
+        `toolrouter-billing: marker block already correct (${parsed.block_len}b)`,
+      );
+      return;
+    case "verify-failed":
+      result.errors.push(
+        `toolrouter-billing: verify-after-write FAILED (phase=${parsed.phase}, reason=${parsed.reason ?? "unspecified"})`,
+      );
+      return;
+    default:
+      result.warnings.push(
+        `toolrouter-billing: unexpected status=${parsed.status} (output: ${lastLine.slice(0, 200)})`,
       );
       return;
   }
