@@ -2784,11 +2784,14 @@ html.lenis body {
       rgba(31, 173, 62, 0.40) 0%,
       rgba(31, 173, 62, 0.24) 55%,
       rgba(31, 173, 62, 0.15) 100%);
+  /* Edge re-proportioned for 19px: thin soft dark top; white bottom edge with
+     small offset + larger blur so it feathers (no hard band); soft lift;
+     hairline 0.5px glow-ring (was 1.5px spread — too thick at this scale). */
   box-shadow:
-    rgba(0, 0, 0, 0.05) 0px 1px 1px 0px inset,
-    rgba(255, 255, 255, 0.55) 0px -1px 1px 0px inset,
-    rgba(0, 0, 0, 0.10) 0px 1.5px 2px -1px,
-    rgba(255, 255, 255, 0.30) 0px 0px 1px 1.5px inset;
+    rgba(0, 0, 0, 0.05) 0px 0.5px 1px 0px inset,
+    rgba(255, 255, 255, 0.42) 0px -0.5px 1.5px 0px inset,
+    rgba(0, 0, 0, 0.09) 0px 1px 2px -1px,
+    rgba(255, 255, 255, 0.22) 0px 0px 0.5px 0.5px inset;
 }
 /* Blue family — MCP / Coming Soon. */
 .skill-pill.is-blue {
@@ -2802,11 +2805,14 @@ html.lenis body {
       rgba(34, 158, 217, 0.40) 0%,
       rgba(34, 158, 217, 0.24) 55%,
       rgba(34, 158, 217, 0.15) 100%);
+  /* Edge re-proportioned for 19px: thin soft dark top; white bottom edge with
+     small offset + larger blur so it feathers (no hard band); soft lift;
+     hairline 0.5px glow-ring (was 1.5px spread — too thick at this scale). */
   box-shadow:
-    rgba(0, 0, 0, 0.05) 0px 1px 1px 0px inset,
-    rgba(255, 255, 255, 0.55) 0px -1px 1px 0px inset,
-    rgba(0, 0, 0, 0.10) 0px 1.5px 2px -1px,
-    rgba(255, 255, 255, 0.30) 0px 0px 1px 1.5px inset;
+    rgba(0, 0, 0, 0.05) 0px 0.5px 1px 0px inset,
+    rgba(255, 255, 255, 0.42) 0px -0.5px 1.5px 0px inset,
+    rgba(0, 0, 0, 0.09) 0px 1px 2px -1px,
+    rgba(255, 255, 255, 0.22) 0px 0px 0.5px 0.5px inset;
 }
 /* Neutral — Locked. Same glass, near-clear (matches the monochrome
    channels secondary pill). */
@@ -2822,8 +2828,8 @@ html.lenis body {
       rgba(0, 0, 0, 0.04) 55%,
       rgba(0, 0, 0, 0.02) 100%);
   box-shadow:
-    rgba(0, 0, 0, 0.04) 0px 1px 1px 0px inset,
-    rgba(255, 255, 255, 0.5) 0px -1px 1px 0px inset,
-    rgba(0, 0, 0, 0.10) 0px 1.5px 2px -1px,
-    rgba(255, 255, 255, 0.25) 0px 0px 1px 1.5px inset;
+    rgba(0, 0, 0, 0.04) 0px 0.5px 1px 0px inset,
+    rgba(255, 255, 255, 0.38) 0px -0.5px 1.5px 0px inset,
+    rgba(0, 0, 0, 0.09) 0px 1px 2px -1px,
+    rgba(255, 255, 255, 0.2) 0px 0px 0.5px 0.5px inset;
 }
