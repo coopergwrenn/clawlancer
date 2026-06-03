@@ -213,7 +213,7 @@ export function PremiumHeroCard() {
           className="text-[2rem] sm:text-[2.4rem] font-normal tracking-[-0.6px] leading-[1.08]"
           style={{ fontFamily: "var(--font-serif)", color: "var(--foreground)" }}
         >
-          Your agent has six premium tools.
+          Your agent gets six new premium tools.
         </h2>
 
         {/* ── Subhead — instant-unlock framing ── */}
