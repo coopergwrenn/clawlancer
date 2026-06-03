@@ -2736,18 +2736,27 @@ html.lenis body {
   }
 }
 
-/* ─── /skills status pills — liquid-glass badges ─────────────────────────
- * Upgrades the /skills card status indicators (Always On, MCP, Connected,
- * Coming Soon, Active, Locked) from flat filled chips to the channels
- * iMessage/Telegram glass treatment, scaled to badge size. Faithful
- * scale-down of .liquid-glass-pill: a colored ::before radial substrate is
- * the soft green/blue background-blur glow the glass surface refracts; the
- * surface is a transparent diagonal sheen + backdrop-blur + the same 4-layer
- * shadow stack; ::after is the conic rim. Green substrate matches is-imessage
- * (rgba(31,173,62)); blue matches is-telegram (rgba(34,158,217)).
+/* ─── /skills status pills — soft glass badges ───────────────────────────
+ * Matches the channels SECONDARY-PILL recipe (.channel-card-secondary-pill,
+ * the real badge-scale glass element) — NOT the full-size card. At 19px the
+ * card's heavy bits do not survive a 1:1 scale-down: a black conic ::after
+ * rim compresses into a dirty dark outline, and an inset:-3px colored
+ * ::before bleeds outside the pill as a hard-edged ghosted blob — the exact
+ * halo-outside-the-corners the channel cards deliberately removed (see the
+ * .channel-card-root::before comment: "inset: 0 (was -8px) ... the earlier
+ * bleed produced visible green/blue halos extending outside the corners").
+ *
+ * So no ::before, no ::after, no external bleed. Just translucent glass +
+ * backdrop-blur + a light box-shadow stack (white inset highlights + a soft
+ * drop shadow), with the COLOR carried INSIDE the body as a faint
+ * translucent tint (color sits behind the blur, inside the shape = "soft
+ * colored light behind clean glass") plus one gently-blurred, low-alpha
+ * colored drop-shadow for a borderless dimensional lift. The edge is a
+ * light white inner highlight + a faint COLORED (never black) hairline.
+ * Green matches is-imessage (31,173,62); blue is-telegram (34,158,217);
+ * neutral stays quiet. Labels/colors per variant are unchanged.
  * ──────────────────────────────────────────────────────────────────────── */
 .skill-pill {
-  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -2760,88 +2769,39 @@ html.lenis body {
   line-height: 1;
   white-space: nowrap;
   flex-shrink: 0;
-  isolation: isolate;
-  z-index: 0;
-  background-color: rgba(0, 0, 0, 0);
-  background-image: linear-gradient(-75deg,
-    rgba(255, 255, 255, 0.06),
-    rgba(255, 255, 255, 0.24),
-    rgba(255, 255, 255, 0.06));
   -webkit-backdrop-filter: blur(3px);
           backdrop-filter: blur(3px);
-  box-shadow:
-    rgba(0, 0, 0, 0.04) 0px 1px 1px 0px inset,
-    rgba(255, 255, 255, 0.5) 0px -1px 1px 0px inset,
-    rgba(0, 0, 0, 0.10) 0px 1.5px 2px -1px,
-    rgba(255, 255, 255, 0.2) 0px 0px 1px 1.5px inset;
-}
-/* Soft colored glow substrate — the halo the glass refracts (behind, z -1). */
-.skill-pill::before {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 9999px;
-  z-index: -1;
-  pointer-events: none;
-}
-/* Conic rim — glass edge highlight (same recipe as .liquid-glass-pill::after). */
-.skill-pill::after {
-  content: '';
-  position: absolute;
-  inset: -0.5px 0 0 -0.5px;
-  width: calc(100% + 1px);
-  height: calc(100% + 1px);
-  padding: 1px;
-  background-image:
-    conic-gradient(from -75deg at 50% 50%,
-      rgba(0, 0, 0, 0.4),
-      rgba(0, 0, 0, 0) 5%,
-      rgba(0, 0, 0, 0) 40%,
-      rgba(0, 0, 0, 0.4) 50%,
-      rgba(0, 0, 0, 0) 60%,
-      rgba(0, 0, 0, 0) 95%,
-      rgba(0, 0, 0, 0.4)),
-    linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5));
-  -webkit-mask:
-    linear-gradient(#000, #000) content-box,
-    linear-gradient(#000, #000);
-  -webkit-mask-composite: xor;
-          mask-composite: exclude;
-  border-radius: inherit;
-  z-index: 1;
-  pointer-events: none;
-}
-.skill-pill > * {
-  position: relative;
-  z-index: 2;
 }
 /* Green family — Active / Always On / Connected. */
 .skill-pill.is-green {
   color: rgb(21, 128, 61);
-}
-.skill-pill.is-green::before {
-  background: radial-gradient(ellipse at 30% 50%,
-    rgba(31, 173, 62, 0.5) 0%,
-    rgba(31, 173, 62, 0.2) 45%,
-    transparent 78%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0)),
+    rgba(31, 173, 62, 0.15);
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.65),
+    inset 0 0 0 0.5px rgba(31, 173, 62, 0.16),
+    0 1px 5px -1px rgba(31, 173, 62, 0.38);
 }
 /* Blue family — MCP / Coming Soon. */
 .skill-pill.is-blue {
   color: rgb(29, 110, 199);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0)),
+    rgba(34, 158, 217, 0.15);
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.65),
+    inset 0 0 0 0.5px rgba(34, 158, 217, 0.16),
+    0 1px 5px -1px rgba(34, 158, 217, 0.38);
 }
-.skill-pill.is-blue::before {
-  background: radial-gradient(ellipse at 30% 50%,
-    rgba(34, 158, 217, 0.5) 0%,
-    rgba(34, 158, 217, 0.2) 45%,
-    transparent 78%);
-}
-/* Neutral — Locked. Quiet substrate, no colored glow. */
+/* Neutral — Locked. Quiet glass, no colored lift. */
 .skill-pill.is-neutral {
   color: var(--muted);
-}
-.skill-pill.is-neutral::before {
-  background: radial-gradient(ellipse at 50% 60%,
-    rgba(0, 0, 0, 0.08) 0%,
-    rgba(0, 0, 0, 0.03) 50%,
-    transparent 80%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0)),
+    rgba(0, 0, 0, 0.05);
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.55),
+    inset 0 0 0 0.5px rgba(0, 0, 0, 0.07),
+    0 1px 4px -1px rgba(0, 0, 0, 0.12);
 }
