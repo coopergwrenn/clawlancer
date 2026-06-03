@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-03
 
-Window: `d4bf6dde81353719c7f4a9c1f7ba0345d7bab5e7` → `HEAD` (HEAD = `2cf17be2`)
+Window: `2cf17be216deefe68351e64229618bdc64019da1` → `HEAD` (HEAD = `427979b3`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 2cf17be216deefe68351e64229618bdc64019da1 -->
+<!-- LAST_GENERATED_SHA: 427979b3810e4ae97e9142e42402525ef74fa797 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `2cf17be2` 2026-06-03 — feat(frontier): gbrain purchase log — per-buy diary (W7b, completes W7) [3 files] _(ai-assisted)_
-- `0ad41aad` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `427979b3` 2026-06-03 — feat(frontier): W11 canary proof harness — re-runnable earned-budget gate matrix [1 files] _(ai-assisted)_
+- `072f1757` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `2cf17be2` 2026-06-03 — feat(frontier): gbrain purchase log — per-buy diary (W7b, completes W7) [3 files] _(ai-assisted)_
+- `427979b3` 2026-06-03 — feat(frontier): W11 canary proof harness — re-runnable earned-budget gate matrix [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `0ad41aad` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `072f1757` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `2cf17be2` 2026-06-03 — feat(frontier): gbrain purchase log — per-buy diary (W7b, completes W7)
+- `427979b3` 2026-06-03 — feat(frontier): W11 canary proof harness — re-runnable earned-budget gate matrix
 
 ## Appendix — every commit (chronological)
 
-- `0ad41aad` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
-- `2cf17be2` 2026-06-03 — feat(frontier): gbrain purchase log — per-buy diary (W7b, completes W7) [3 files] _(ai-assisted)_
+- `072f1757` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `427979b3` 2026-06-03 — feat(frontier): W11 canary proof harness — re-runnable earned-budget gate matrix [1 files] _(ai-assisted)_
