@@ -32,13 +32,19 @@ import {
   effectiveAllowedCategories,
   ALL_CATEGORIES,
   DEFAULT_ALLOWED_CATEGORIES_BY_TIER,
+  DEFAULT_BANDS_BY_TIER,
   type FrontierTier,
   type PolicyOverrides,
   type SpendCategory,
 } from "@/lib/frontier-policy";
 import { readPolicyOverrides } from "@/lib/frontier-overrides-db";
+import { loadVmStanding } from "@/lib/frontier-standing-db";
+import { autonomousHeadroom } from "@/lib/frontier-headroom";
+import { readUsdcBalanceUsd } from "@/lib/usdc-balance";
+import { isFrontierSpendEnabled } from "@/lib/frontier-spend-optin";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30; // GET does an on-chain wallet-balance read (Rule 11)
 
 const TIERS: readonly FrontierTier[] = ["starter", "pro", "power"];
 const MAX_OVERRIDE = 10_000_000; // sane absolute cap; the real ceiling is the tier clamp
@@ -66,20 +72,34 @@ const FIELD_MAP: ReadonlyArray<[keyof PolicyOverrides, string]> = [
 // ONE canonical reader shared with the authorize gate). The former local
 // readOverrides()/num() were removed to avoid a second, drift-prone reader.
 
-/** session → assigned VM (id, tier). */
+/** session → assigned VM. The session user IS the owner (assigned_to). Returns
+ *  the fields GET needs for the live autonomy snapshot; PUT uses only vmId/tier. */
 async function resolveUserVm(): Promise<
-  { vmId: string; tier: FrontierTier } | { error: string; status: number }
+  | {
+      vmId: string;
+      tier: FrontierTier;
+      ownerId: string;
+      bankrAddress: string | null;
+      spendEnabled: boolean;
+    }
+  | { error: string; status: number }
 > {
   const session = await auth();
   if (!session?.user?.id) return { error: "Unauthorized", status: 401 };
   const supabase = getSupabase();
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, tier")
+    .select("*") // Rule 19 — safety-adjacent read; pull the fields the snapshot needs
     .eq("assigned_to", session.user.id)
     .single();
   if (!vm) return { error: "No VM assigned", status: 404 };
-  return { vmId: vm.id as string, tier: normalizeTier(vm.tier) };
+  return {
+    vmId: vm.id as string,
+    tier: normalizeTier(vm.tier),
+    ownerId: session.user.id,
+    bankrAddress: (vm.bankr_evm_address as string | null) ?? null,
+    spendEnabled: isFrontierSpendEnabled(vm),
+  };
 }
 
 export async function GET() {
@@ -95,12 +115,44 @@ export async function GET() {
   );
   const isStaker = false; // staking not live
   const bands = effectiveBands(r.tier, isStaker, bandOverrides);
+  const tierDefaultBands = DEFAULT_BANDS_BY_TIER[r.tier];
   const tierDefaultCategories = DEFAULT_ALLOWED_CATEGORIES_BY_TIER[r.tier];
+
+  // ── Live autonomy snapshot (GAP-1): the HONEST "what can this agent spend on
+  // its own right now?" — the binding minimum of earned-budget / daily-band /
+  // wallet, gated by opt-in + known-balance. Computed from the SAME standing
+  // pipeline + the SAME effective bands the gate enforces (loadVmStanding mirrors
+  // authorize; autonomousHeadroom is gate-consistency-tested). One on-chain
+  // balance read + the standing read; tolerant of failures (null balance ⇒ the
+  // honest "can't auto-spend blind" state, exactly like the gate).
+  const nowMs = Date.now();
+  let autonomy: ReturnType<typeof autonomousHeadroom> | null = null;
+  let autonomyError = false;
+  try {
+    // Independent reads — overlap the standing pipeline with the on-chain balance.
+    const [{ standing, spentTodayUsd }, walletBalanceUsd] = await Promise.all([
+      loadVmStanding(supabase, { vmId: r.vmId, ownerId: r.ownerId, tier: r.tier, nowMs }),
+      readUsdcBalanceUsd(r.bankrAddress),
+    ]);
+    autonomy = autonomousHeadroom({
+      spendEnabled: r.spendEnabled,
+      standing,
+      bands,
+      spentTodayUsd,
+      walletBalanceUsd,
+    });
+  } catch (e) {
+    // Never fail the whole policy read because the snapshot couldn't compute —
+    // the bands/categories controls must still render. Surface a flag instead.
+    console.error("[/api/agent-economy/policy] autonomy snapshot failed:", e);
+    autonomyError = true;
+  }
 
   return NextResponse.json({
     tier: r.tier,
     is_staker: isStaker,
     bands, // EFFECTIVE (post tier × staker × clamped overrides) — what the agent enforces
+    tier_default_bands: tierDefaultBands, // the tier ceiling — the tighten-only slider MAX
     overrides: bandOverrides ?? null, // raw stored band intent (may differ from bands after clamp)
     overrides_persisted: persisted,
     // Category allowlist (W3). all_categories = the full taxonomy for the UI to
@@ -111,6 +163,9 @@ export async function GET() {
     tier_default_categories: tierDefaultCategories,
     allowed_categories: effectiveAllowedCategories(r.tier, allowedCategoriesOverride),
     allowed_categories_override: allowedCategoriesOverride ?? null,
+    // Live autonomy snapshot (GAP-1). null + autonomy_error if it couldn't compute.
+    autonomy,
+    autonomy_error: autonomyError,
   });
 }
 
