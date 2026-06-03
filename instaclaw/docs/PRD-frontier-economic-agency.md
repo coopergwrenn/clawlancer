@@ -159,6 +159,21 @@ Dependency note: Phase 1 is mostly independent pure-logic + backend (no fleet ri
 
 **Status (2026-06-03):** Phase 0 = done. **Phase 1 = code-complete and canary-proven** (W1–W8, W11 all built; W11 harness passes 6/6 live; full suite 422 passing; see §6 + §2 registry C2–C10, C21–C26). Phase 1 has cleared the canary gate; it awaits **Cooper greenlight + the §5 policy decisions** to begin **W12 (fleet rollout, the first Phase-2 step) — W12 is NOT done.** The new spend skill is canary-only until W12's manifest version bump carries it fleet-wide. Phases 3–4 and the §9 card rail remain future/not-started.
 
+#### W12 — DEFERRED BY CHOICE (not blocked); greenlight checklist for when it's time
+
+Phase 1 (built + canary-proven) is a complete, stable resting point. W12 — the fleet rollout of the spend skill — is deliberately **not now**, and there is **no clock on it.** Turning on real autonomous spend across the ~50 paying-customer fleet is a "calm moment, watched carefully" action that happens on Cooper's timeline, never rushed at the end of a session. It is correctly a back-of-mind item — *deferred, not blocked, not forgotten.*
+
+**Why it waits:** W12 is the **irreversible, fleet-mutating step (Rule 64)** — it turns on real-money autonomous spend on real customer VMs. It should follow the §5 policy decisions that govern what agents actually *do* once spend is live: **Q1 funding model, Q2 starting budget / growth curve, Q3 `ask_first` UX, Q4 category taxonomy.** Rolling out before those are decided would mean real agents spending real money under unconfirmed policy.
+
+**Preconditions to resolve before greenlighting (run this checklist):**
+1. **§5 policy decisions made** — Q1 (funding model), Q2 (starting budget / growth numbers + the "good decision" definition), Q3 (`ask_first` UX — reuse the Telegram 👍/👎 flow vs dashboard), Q4 (category taxonomy + per-tier allowlist).
+2. **Cooper greenlight (Rule 64)** — manifest version bumps require explicit approval; this is a fleet-mutating publish.
+3. **Canary-first on vm-1019** — per Rule 64, validate the manifest bump on vm-1019 before the fleet. (The spend *logic* is already canary-proven on vm-1075; vm-1019 is the manifest/config canary.)
+4. **Kill switch (C21) confirmed armed as the rollback lever** — `lib/frontier-kill-switch.ts` `isFrontierSpendKilled`, backed by the `instaclaw_admin_settings.frontier_spend_kill_switch` flag. Confirm it halts all autonomous spend fleet-wide instantly (no deploy) before relying on it as the stop-the-bleeding lever.
+5. **Current fleet inconsistency understood** — today the canary (vm-1075) has the new spend skill; fleet VMs have it **absent or stale** (`frontier-spend.mjs` ships only via `stepSkills` on a cv-gated reconcile). The version bump is precisely what makes the fleet consistent — that consistency is the *point* of the rollout, not a separate fix.
+
+**The bump IS the rollout (one action, not two):** `VM_MANIFEST.version 128 → 129` re-enters all cv-current VMs into the reconcile candidate set; `stepSkills` then carries the `extraSkillFiles` (`frontier-spend.mjs` + `frontier-spend-core.mjs` — the write-once/dispute/rolodex versions) to every VM, alongside the W8 SOUL directive. There is no separate "deploy the skill" step — **the manifest version bump is the rollout mechanism.**
+
 ---
 
 ## §5 — OPEN QUESTIONS (need Cooper / external)
@@ -173,6 +188,8 @@ Dependency note: Phase 1 is mostly independent pure-logic + backend (no fleet ri
 8. **Earn-side legal/compliance.** Agents selling services for money — the World-ID human accountability is our story; confirm posture before W15.
 9. **gbrain economic-memory durability.** Rule 35 P1: version bumps wipe brain.pglite. Economic memory (rolodex) must survive — depends on the upstream `snapshot_brain` tooling. Until then, mirror critical rolodex stats to the fleet graph (W10) so memory is recoverable.
 10. **Reputation: on-chain vs off-chain** — resolved in §7 (Step 2 research).
+
+> **W12 gating:** Q1–Q4 above are the policy decisions that gate the **W12 fleet rollout** (deferred by choice). Resolve them before greenlighting — see the W12 deferral note + greenlight checklist in §4.
 
 ---
 
