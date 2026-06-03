@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { WorldIDBanner } from "@/components/dashboard/world-id-banner";
+import { EconomyNudgeBanner } from "@/components/dashboard/economy-nudge-banner";
 // AgentbookHatBanner moved to (dashboard)/layout.tsx so it renders as a
 // site-wide notification strip above the page heading on every dashboard
 // route. See commit message for the design rationale.
@@ -670,6 +671,9 @@ export default function DashboardPage() {
       <div data-tour="dash-verify">
         <WorldIDBanner />
       </div>
+
+      {/* Agent economy / autonomous-spend discovery nudge */}
+      <EconomyNudgeBanner />
 
       {/* Edge City card — only for edge_city-tagged users. Links to /edge/dashboard */}
       {isEdgeCity && <EdgeCityCard />}
