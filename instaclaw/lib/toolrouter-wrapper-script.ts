@@ -26,22 +26,34 @@
  *   - Content-Length vs NDJSON framing → auto-detect per session,
  *     mirrors toolrouter binary's dispatcher
  *
- * Passthrough invariant: bytes get push()'d to the destination BEFORE
- * any observation logic runs. Observation is wrapped in try/catch.
- * Passthrough must never throw, never block, never be conditional on
- * parse success.
+ * Direction asymmetry (Cooper, transparent-retry session):
+ *   - STDIN (gateway → child): pure passthrough. Bytes are push()'d to the
+ *     child BEFORE any observation. We never suppress gateway bytes; we only
+ *     ADD our own writes (transparent retry + self-warm) directly to
+ *     child.stdin. Observation is try/catch'd and never blocks passthrough.
+ *   - STDOUT (child → gateway): intercept-router. Parsed frame-by-frame so a
+ *     cold first-call tool_error can be suppressed + transparently retried,
+ *     and the self-warm response can be suppressed. DEFAULT ACTION IS ALWAYS
+ *     FORWARD, byte-exact; suppression is the rare, confident exception. Any
+ *     parser fault degrades to dumb raw passthrough (so a bug can never break
+ *     tool calls — worst case is the pre-existing bounce), and a safety timer
+ *     guarantees the gateway always gets a response (a re-sent id can't hang).
  *
  * Sentinels for Rule 23 deployment guard:
  *   - TOOLROUTER_WRAPPER_V1 (version tag)
  *   - toolrouter-wrapper started (startup log line)
  *   - record-usage POST (the action that defines the wrapper)
+ *   - FIRSTCALL_DIAG_V1 (first-call failure forensics)
+ *   - TRANSPARENT_RETRY_V1 (cold first-call tool_error retry)
+ *   - SELF_WARM_V1 (post-initialize AgentKit warm-up)
  */
 
 export const TOOLROUTER_WRAPPER_MJS = `#!/usr/bin/env node
 // toolrouter-wrapper.mjs — K.4 stdio wrapper. Sentinel: TOOLROUTER_WRAPPER_V1.
 //
-// Sits between OpenClaw and the real \`toolrouter\` binary. Pure stdio
-// passthrough + observation. The agent cannot bypass this wrapper because
+// Sits between OpenClaw and the real \`toolrouter\` binary. Stdin is pure
+// passthrough; stdout is intercept-routed (transparent retry + self-warm,
+// forward-by-default). The agent cannot bypass this wrapper because
 // OpenClaw spawns it directly via mcp.servers.toolrouter.command and the
 // agent has no shell access to the VM.
 //
@@ -295,28 +307,34 @@ function reportUsage(data) {
     .finally(() => clearTimeout(timer));
 }
 
-// ── MCP framing observer (NDJSON OR Content-Length, auto-detect) ──
+// ── MCP framing helpers (NDJSON OR Content-Length, auto-detect) ──
 // Mirrors the toolrouter binary's dispatcher logic exactly (dist/server.js
-// lines 1224-1280). Whatever framing OpenClaw uses, we parse the same way.
-//
-// CRITICAL: every Transform pushes the chunk through to the destination
-// BEFORE attempting any parse. Observation never blocks passthrough.
+// lines 1224-1280). Hoisted to module scope: shared by the stdin observer
+// (passthrough) and the stdout router (intercept).
+function startsWithFrameHeader(b) {
+  const prefix = b.subarray(0, Math.min(b.length, 32)).toString("utf8");
+  return /^Content-Length:/i.test(prefix);
+}
+function frameHeaderEnd(b) {
+  const crlf = b.indexOf("\\r\\n\\r\\n");
+  const lf = b.indexOf("\\n\\n");
+  if (crlf === -1 && lf === -1) return null;
+  if (crlf !== -1 && (lf === -1 || crlf < lf)) return { index: crlf, length: 4 };
+  return { index: lf, length: 2 };
+}
 
-function makeObserver(onMessage, label) {
+// ── MCP framing observer (passthrough + observe) ──
+// Used for the STDIN direction only (gateway → child). The stdout direction
+// uses the intercept-router below. Whatever framing OpenClaw uses, we parse
+// the same way and report it via onMode so injected requests (retry / warmup)
+// mirror it exactly.
+//
+// CRITICAL: the Transform pushes the chunk through to the child BEFORE any
+// parse. Observation never blocks passthrough; we never suppress gateway bytes.
+
+function makeObserver(onMessage, label, onMode) {
   let buf = Buffer.alloc(0);
   let mode = null; // "frame" | "line" | null
-
-  function startsWithFrameHeader(b) {
-    const prefix = b.subarray(0, Math.min(b.length, 32)).toString("utf8");
-    return /^Content-Length:/i.test(prefix);
-  }
-  function frameHeaderEnd(b) {
-    const crlf = b.indexOf("\\r\\n\\r\\n");
-    const lf = b.indexOf("\\n\\n");
-    if (crlf === -1 && lf === -1) return null;
-    if (crlf !== -1 && (lf === -1 || crlf < lf)) return { index: crlf, length: 4 };
-    return { index: lf, length: 2 };
-  }
 
   function tryObserve(jsonText) {
     try {
@@ -350,6 +368,7 @@ function makeObserver(onMessage, label) {
         }
         buf = buf.subarray(bodyEnd);
         mode = "frame";
+        if (onMode) try { onMode(mode); } catch { /* never break passthrough */ }
         continue;
       }
       // NDJSON path
@@ -361,6 +380,7 @@ function makeObserver(onMessage, label) {
       }
       buf = buf.subarray(nl + 1);
       mode = "line";
+      if (onMode) try { onMode(mode); } catch { /* never break passthrough */ }
     }
   }
 
@@ -386,11 +406,65 @@ function makeObserver(onMessage, label) {
   });
 }
 
-// ── Message handlers ──
+// ── Message handlers + transparent-retry / self-warm router ──
+//
+// TRANSPARENT_RETRY_V1 + SELF_WARM_V1 (Rule 23 sentinels).
+//
+// The STDIN direction stays a pure passthrough (we never suppress
+// gateway→child bytes; we only ADD our own writes — retry + warmup — directly
+// to child.stdin). The STDOUT direction is no longer a blind passthrough: it
+// is parsed frame-by-frame so we can (a) suppress + transparently retry a cold
+// first-call tool_error, and (b) suppress the self-warm response the gateway
+// never asked for. DEFAULT ACTION IS ALWAYS FORWARD, byte-exact — suppression
+// is the rare, confident exception. Any parser fault flushes the buffer raw
+// and degrades to dumb passthrough for the rest of the spawn, so a bug here
+// can never break tool calls (worst case is the pre-existing first-call
+// bounce). A safety timer guarantees the gateway always receives a response,
+// so a re-sent JSON-RPC id can never leave it hanging.
+
+const RETRY_DELAY_MS = 1000;     // re-send the cold first call after 1s
+const RETRY_SAFETY_MS = 4000;    // if the retry never answers, forward the held error
+const RETRY_DISABLED = process.env.TOOLROUTER_WRAPPER_DISABLE_RETRY === "1";
+const WARMUP_DISABLED = process.env.TOOLROUTER_WRAPPER_DISABLE_WARMUP === "1";
+
+let initializeReqId = null;    // gateway's initialize request id → fire warmup on its response
+let clientFramingMode = null;  // "frame" | "line" — mirror it for injected requests
+let warmupFired = false;
+let warmupSeq = 0;
+const warmupIds = new Set();   // ids of our self-warm calls — their responses are suppressed
+
+function frameClientRequest(obj) {
+  const json = JSON.stringify(obj);
+  if (clientFramingMode === "line") return Buffer.from(json + "\\n", "utf8");
+  // Default: Content-Length (LSP/MCP standard); also the safe default if the
+  // mode is somehow unknown. The toolrouter binary accepts both framings.
+  return Buffer.from("Content-Length: " + Buffer.byteLength(json, "utf8") + "\\r\\n\\r\\n" + json, "utf8");
+}
+
+function isToolError(msg) {
+  const r = msg && msg.result;
+  return !!(r && r.isError === true && !r.structuredContent);
+}
+
+// Forensics-only diag JSONL with a reason tag. Never posts to record-usage
+// (Cooper: only the FINAL outcome is reported). Fully guarded.
+function captureDiag(req, msg, latency, reason) {
+  try {
+    const diag = buildDiag(req, msg, latency);
+    diag.reason = reason;
+    if (req && req.retrySentAt) diag.retry_latency_ms = Date.now() - req.retrySentAt;
+    writeDiag(diag);
+  } catch { /* never throw */ }
+}
 
 function onClientMessage(msg) {
-  // Client (OpenClaw) → Server (toolrouter). We care about tools/call.
+  // Client (OpenClaw) → Server (toolrouter).
   if (!msg || typeof msg !== "object") return;
+  // Capture the initialize id so we can self-warm once its response returns.
+  if (msg.method === "initialize" && msg.id !== undefined && msg.id !== null) {
+    initializeReqId = msg.id;
+    return;
+  }
   if (msg.method !== "tools/call") return;
   if (msg.id === undefined || msg.id === null) return; // notifications can't correlate
   const name = msg.params && msg.params.name;
@@ -403,34 +477,17 @@ function onClientMessage(msg) {
     args: typeof args === "object" && args !== null ? args : null,
     startedAt: Date.now(),
     seq: callSeq,
+    retried: false,
+    settled: false,
   });
 }
 
-function onServerMessage(msg) {
-  // Server (toolrouter) → Client (OpenClaw). Response or error envelope.
-  if (!msg || typeof msg !== "object") return;
-  if (msg.id === undefined || msg.id === null) return;
-
-  const req = pending.get(msg.id);
-  if (!req) return; // not a tracked tools/call (could be initialize, tools/list, etc.)
-  pending.delete(msg.id);
-
+// ── record-usage POST for the FINAL outcome (exactly once per call) ──
+function reportFinal(req, msg) {
   const latency = Date.now() - req.startedAt;
-  const result = msg.result;
+  const result = msg && msg.result;
   const sc = result && result.structuredContent;
-
   if (!sc) {
-    // No structuredContent — an error response from the binary (or a tool
-    // that doesn't surface metadata). FIRSTCALL_DIAG_V1: this is the failure
-    // pattern we're root-causing. Build + persist the rich diag (sync local
-    // file = crash-proof) and attach it to the POST. All guarded; the
-    // response has ALREADY been forwarded by the Transform's push() above, so
-    // none of this can delay or mask the call.
-    let diag = null;
-    try {
-      diag = buildDiag(req, msg, latency);
-      writeDiag(diag);
-    } catch { /* observation must never throw */ }
     reportUsage({
       endpoint_id: req.name,
       trace_id: null,
@@ -443,14 +500,10 @@ function onServerMessage(msg) {
       args: req.args,
       weight_claimed: null,
       ...liteFields(req),
-      ...(diag ? { diag } : {}),
     });
     return;
   }
-
-  // Success. Snapshot the prior-success count (value BEFORE this success) so
-  // the lite fields read consistently, then increment so a later failure
-  // knows exactly how many calls succeeded before it (cold-start proof).
+  // Success. Snapshot prior-success count BEFORE incrementing (cold-start proof).
   const priorBefore = priorSuccessCount;
   priorSuccessCount += 1;
   reportUsage({
@@ -470,12 +523,242 @@ function onServerMessage(msg) {
   });
 }
 
-// ── Wire up the bidirectional pipe with observation ──
-const stdinObs = makeObserver(onClientMessage, "client");
-const stdoutObs = makeObserver(onServerMessage, "server");
+// Mark a call answered. Keep the entry briefly so a late/duplicate response
+// for the same id is suppressed (see routeOut). The sweep evicts settled rows.
+function settle(req) {
+  req.settled = true;
+  req.settledAt = Date.now();
+}
+
+// Self-warm: after the MCP initialize handshake, fire one throwaway exa_search
+// so the child's lazy AgentKit session warms in the background. Fire and
+// forget — a real call arriving before warmup completes is caught by the
+// transparent retry. maxUsd "0.01" caps the warmup cost (it runs free on the
+// AgentKit allowance, or bounces harmlessly if that's exhausted; either way it
+// exercises the cold path). The warmup RESPONSE is suppressed (gateway never
+// asked for it).
+function fireWarmupOnce() {
+  if (warmupFired || WARMUP_DISABLED) return;
+  warmupFired = true;
+  warmupSeq += 1;
+  const wid = "wrapperwarmup-" + warmupSeq; // string id — no collision with gateway numeric ids
+  warmupIds.add(wid);
+  try {
+    child.stdin.write(frameClientRequest({
+      jsonrpc: "2.0",
+      id: wid,
+      method: "tools/call",
+      params: { name: "exa_search", arguments: { query: "warmup", maxUsd: "0.01" } },
+    }));
+    log("info", "self-warm fired", { id: wid, spawn_age_ms: Date.now() - WRAPPER_SPAWN_TS });
+  } catch (e) {
+    warmupIds.delete(wid);
+    log("warn", "self-warm write failed: " + String((e && e.message) || e).slice(0, 120));
+  }
+  // Defensive: drop the suppress-id after 30s so a never-answered warmup can't
+  // leave a stale entry (or suppress a real response on an impossible clash).
+  const t = setTimeout(() => { warmupIds.delete(wid); }, 30000);
+  if (t && typeof t.unref === "function") t.unref();
+}
+
+// Re-send the cold first call. SAME JSON-RPC id (the gateway is awaiting it).
+// Direct write to child.stdin — bypasses the stdin observer, so callSeq /
+// pending are NOT touched (no double-count). The child re-processes the id;
+// if it ignores the duplicate, the safety timer (finalizeHeld) covers us.
+function sendRetry(req, id) {
+  req.retrySentAt = Date.now();
+  try {
+    child.stdin.write(frameClientRequest({
+      jsonrpc: "2.0",
+      id,
+      method: "tools/call",
+      params: { name: req.name, arguments: req.args || {} },
+    }));
+  } catch (e) {
+    log("warn", "retry stdin write failed: " + String((e && e.message) || e).slice(0, 120));
+    finalizeHeld(id); // can't retry → release the held error so the gateway isn't stranded
+  }
+}
+
+// Safety net: the retry never answered. Forward the held original error so the
+// gateway always gets a response (degrades to the pre-existing bounce, never a
+// hang). Reports the original error outcome once.
+function finalizeHeld(id) {
+  const req = pending.get(id);
+  if (!req || req.settled || !req.heldError) return;
+  try { clearTimeout(req.retryTimer); } catch {}
+  try { clearTimeout(req.safetyTimer); } catch {}
+  writeOut(req.heldError);
+  captureDiag(req, req.heldErrorMsg || null, Date.now() - req.startedAt, "retry_no_response");
+  try { reportFinal(req, req.heldErrorMsg || { result: { isError: true } }); } catch {}
+  settle(req);
+}
+
+// ── stdout router (replaces the blind child.stdout → process.stdout pipe) ──
+let outBuf = Buffer.alloc(0);
+let outMode = null;       // "frame" | "line"
+let outDegraded = false;  // safety valve: dumb raw passthrough after a parser fault
+
+function writeOut(bytes) {
+  try {
+    process.stdout.write(bytes);
+  } catch (e) {
+    if (e && e.code === "EPIPE") process.exit(0);
+  }
+}
+
+function degrade(reason) {
+  // Flush the buffer, release any in-flight held errors (so no id is left
+  // hanging), then revert to raw passthrough for the rest of the spawn.
+  log("warn", "stdout router degrading to raw passthrough: " + reason);
+  try {
+    for (const [, req] of pending) {
+      if (req && req.retried && !req.settled && req.heldError) {
+        try { clearTimeout(req.retryTimer); } catch {}
+        try { clearTimeout(req.safetyTimer); } catch {}
+        writeOut(req.heldError);
+        settle(req);
+      }
+    }
+  } catch { /* best effort */ }
+  if (outBuf.length) { writeOut(outBuf); outBuf = Buffer.alloc(0); }
+  outDegraded = true;
+}
+
+function routeOut(frameBytes, body) {
+  let msg = null;
+  try { msg = JSON.parse(body); } catch { /* non-JSON — forward as-is */ }
+
+  // DEFAULT: forward. Suppression below is the rare, confident exception.
+  if (!msg || typeof msg !== "object" || msg.id === undefined || msg.id === null) {
+    writeOut(frameBytes);
+    return;
+  }
+
+  // (1) Self-warm response → suppress (gateway never asked for it).
+  if (warmupIds.has(msg.id)) {
+    warmupIds.delete(msg.id);
+    try {
+      const r = msg.result;
+      log("info", "self-warm response", { ok: !!(r && r.structuredContent), spawn_age_ms: Date.now() - WRAPPER_SPAWN_TS });
+    } catch {}
+    return; // suppress
+  }
+
+  // (2) initialize response → forward, then fire the self-warm once.
+  if (initializeReqId !== null && msg.id === initializeReqId) {
+    writeOut(frameBytes);
+    try { fireWarmupOnce(); } catch (e) { log("warn", "warmup fire failed: " + String((e && e.message) || e).slice(0, 120)); }
+    return;
+  }
+
+  const req = pending.get(msg.id);
+  if (!req) {
+    // Not a tracked tools/call (tools/list, ping, etc.) → forward.
+    writeOut(frameBytes);
+    return;
+  }
+  if (req.settled) {
+    // Already answered (late/duplicate, e.g. a retry that landed just after
+    // the safety timer fired). Suppress — the gateway already got one response.
+    return;
+  }
+
+  // (3) Cold first-call tool_error → suppress + transparent retry.
+  if (!RETRY_DISABLED && req.seq === 1 && !req.retried && isToolError(msg)) {
+    req.retried = true;
+    req.heldError = frameBytes;   // frameBytes is already a copy (see drainOut)
+    req.heldErrorMsg = msg;
+    captureDiag(req, msg, Date.now() - req.startedAt, "first_call_error_retrying");
+    req.retryTimer = setTimeout(() => {
+      try { sendRetry(req, msg.id); } catch (e) { log("warn", "retry failed: " + String((e && e.message) || e).slice(0, 120)); }
+    }, RETRY_DELAY_MS);
+    req.safetyTimer = setTimeout(() => {
+      try { finalizeHeld(msg.id); } catch {}
+    }, RETRY_DELAY_MS + RETRY_SAFETY_MS);
+    return; // suppress the original error
+  }
+
+  // (4) Retry response → settle.
+  if (req.retried) {
+    try { clearTimeout(req.retryTimer); } catch {}
+    try { clearTimeout(req.safetyTimer); } catch {}
+    if (isToolError(msg)) {
+      // Retry also failed → forward the ORIGINAL error (Cooper's instruction).
+      writeOut(req.heldError);
+      captureDiag(req, msg, Date.now() - req.startedAt, "retried_still_failed");
+      try { reportFinal(req, req.heldErrorMsg || msg); } catch {}
+    } else {
+      // Retry succeeded → forward the retry's success. User never saw the bounce.
+      writeOut(frameBytes);
+      captureDiag(req, msg, Date.now() - req.startedAt, "retried_succeeded");
+      try { reportFinal(req, msg); } catch {}
+    }
+    settle(req);
+    return;
+  }
+
+  // (5) Normal response (success, or non-first-call / non-eligible error).
+  writeOut(frameBytes);
+  if (!(msg.result && msg.result.structuredContent)) {
+    captureDiag(req, msg, Date.now() - req.startedAt, "final_error");
+  }
+  try { reportFinal(req, msg); } catch {}
+  settle(req);
+}
+
+function drainOut() {
+  while (outBuf.length) {
+    if (outMode === "frame" || (outMode === null && startsWithFrameHeader(outBuf))) {
+      const he = frameHeaderEnd(outBuf);
+      if (!he) return; // need more bytes
+      const header = outBuf.subarray(0, he.index).toString("utf8");
+      const match = header.match(/^Content-Length:\\s*(\\d+)\\s*$/im);
+      if (!match) { degrade("malformed frame header"); return; }
+      const len = Number(match[1]);
+      const bodyStart = he.index + he.length;
+      const bodyEnd = bodyStart + len;
+      if (outBuf.length < bodyEnd) return; // need more bytes
+      const frameBytes = Buffer.from(outBuf.subarray(0, bodyEnd)); // exact full frame (copy)
+      outBuf = outBuf.subarray(bodyEnd);
+      outMode = "frame";
+      if (len > MAX_OBSERVATION_BYTES) {
+        writeOut(frameBytes); // too big to parse — forward untouched
+      } else {
+        routeOut(frameBytes, frameBytes.subarray(bodyStart, bodyEnd).toString("utf8"));
+      }
+      continue;
+    }
+    // NDJSON
+    const nl = outBuf.indexOf("\\n");
+    if (nl === -1) return; // need more
+    const lineBytes = Buffer.from(outBuf.subarray(0, nl + 1)); // include the \\n (copy)
+    const raw = outBuf.subarray(0, nl).toString("utf8").replace(/\\r$/, "").trim();
+    outBuf = outBuf.subarray(nl + 1);
+    outMode = "line";
+    if (!raw || nl > MAX_OBSERVATION_BYTES) { writeOut(lineBytes); continue; } // blank/too-big → forward
+    routeOut(lineBytes, raw);
+  }
+}
+
+function onChildData(chunk) {
+  const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+  if (outDegraded) { writeOut(b); return; }
+  try {
+    outBuf = outBuf.length ? Buffer.concat([outBuf, b]) : b;
+    if (outBuf.length > MAX_OBSERVATION_BYTES * 8) { degrade("runaway buffer"); return; }
+    drainOut();
+  } catch (e) {
+    degrade("router exception: " + String((e && e.message) || e).slice(0, 120));
+  }
+}
+
+// ── Wire up: stdin stays passthrough+observe; stdout is the intercept-router ──
+const stdinObs = makeObserver(onClientMessage, "client", (m) => { clientFramingMode = m; });
 
 process.stdin.pipe(stdinObs).pipe(child.stdin);
-child.stdout.pipe(stdoutObs).pipe(process.stdout);
+child.stdout.on("data", onChildData);
+child.stdout.on("end", () => { try { process.stdout.end(); } catch { /* swallow */ } });
 
 // Belt-and-suspenders: explicit handlers for end / EPIPE.
 process.stdin.on("end", () => {
@@ -488,6 +771,14 @@ child.stdin.on("error", (err) => {
   // Child closed its stdin (rare). Don't crash the wrapper.
   log("warn", "child.stdin error: " + String(err?.message || err).slice(0, 120));
 });
+
+// Evict settled correlation entries (kept briefly to suppress late duplicates).
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, entry] of pending) {
+    if (entry.settled && entry.settledAt && entry.settledAt < now - 60000) pending.delete(id);
+  }
+}, PENDING_SWEEP_MS).unref();
 
 log("info", "toolrouter-wrapper started", { childPid: child.pid, binary: TOOLROUTER_BINARY });
 `;

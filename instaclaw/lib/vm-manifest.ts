@@ -2296,6 +2296,15 @@ export const VM_MANIFEST = {
         // first-call bounce. Sentinel guards against a stale-cache deploy
         // dropping the instrumentation (Rule 23).
         "FIRSTCALL_DIAG_V1",
+        // 2026-06-02: the fix for that bounce. TRANSPARENT_RETRY_V1 — on a cold
+        // first-call tool_error (call_seq 1), the wrapper suppresses the error
+        // and re-sends the request once after 1s; the user never sees the ~10s
+        // LLM retry. SELF_WARM_V1 — after the MCP initialize handshake the
+        // wrapper fires one throwaway exa_search so the child's lazy AgentKit
+        // session warms in the background. Sentinels guard against a stale
+        // deploy silently dropping either fix (Rule 23).
+        "TRANSPARENT_RETRY_V1",
+        "SELF_WARM_V1",
       ],
     },
     {
