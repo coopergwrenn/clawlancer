@@ -84,6 +84,7 @@ import { creditStanding, type CreditStanding } from "@/lib/frontier-standing";
 import { toLedgerRow, reserveAwareSpentTodayUsd, HOLD_TTL_MS, SPEND_WINDOW_MS, type FrontierTxnDbRow } from "@/lib/frontier-ledger-db";
 import { decideAuthorization } from "@/lib/frontier-authz";
 import { isFrontierSpendKilled } from "@/lib/frontier-kill-switch";
+import { isFrontierSpendEnabled } from "@/lib/frontier-spend-optin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30; // DB reads + one insert, no LLM (Rule 11 short tier)
@@ -327,6 +328,18 @@ export async function POST(req: NextRequest) {
   if (await isFrontierSpendKilled(supabase)) {
     return NextResponse.json(
       { authorized: false, mode: null, outcome: "deny", reason: "spend_kill_switch" },
+      { status: 200 },
+    );
+  }
+
+  // ── User opt-in gate (default OFF, FAIL-CLOSED): autonomous spend is a user-owned
+  // setting — an agent may spend its human's money ONLY if the owner explicitly enabled
+  // it for this agent (`instaclaw_vms.frontier_spend_enabled`). Absent / null / false /
+  // unreadable ⇒ deny. Checked before the pipeline (no standing/budget logic runs until
+  // the user has opted in). This is the §8.7 "mandate"; see lib/frontier-spend-optin.ts. ──
+  if (!isFrontierSpendEnabled(vm)) {
+    return NextResponse.json(
+      { authorized: false, mode: null, outcome: "deny", reason: "spend_not_enabled" },
       { status: 200 },
     );
   }
