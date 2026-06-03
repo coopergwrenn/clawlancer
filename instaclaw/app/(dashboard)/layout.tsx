@@ -31,6 +31,9 @@ import { motion } from "motion/react";
 import OnboardingWizard from "@/components/onboarding-wizard/OnboardingWizard";
 import { AgentbookHatBanner } from "@/components/dashboard/agentbook-hat-banner";
 import { ChannelNudgeBanner } from "@/components/dashboard/channel-nudge-banner";
+import { useNavMode } from "@/components/dashboard/use-nav-mode";
+import { SidebarShell } from "@/components/dashboard/sidebar-shell";
+import { DashboardGateOverlay } from "@/components/dashboard/dashboard-gate-overlay";
 
 // Primary items — the daily-use operational core, always visible. Kept to FIVE
 // so the eye lands on what users actually reach for every session, not a wall
@@ -90,6 +93,12 @@ export default function DashboardLayout({
   const [heartbeatHealth, setHeartbeatHealth] = useState<"healthy" | "unhealthy" | "paused" | null>(null);
   const [gateChecked, setGateChecked] = useState(false);
   const [gated, setGated] = useState(false);
+  // Phase 1 sidebar restructure — flag-gated. `navMode` resolves to "topnav"
+  // for every un-opted-in user (env unset, no localStorage, no ?nav= param),
+  // so the flag-off render below is byte-identical to origin/main. `drawerOpen`
+  // drives the mobile off-canvas drawer (sidebar mode only).
+  const navMode = useNavMode();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Only redirect to onboarding if we have a confirmed session (user.id is set
   // by the session callback) AND onboardingComplete is explicitly false.
@@ -372,6 +381,43 @@ export default function DashboardLayout({
   // Gate not yet checked — don't flash content
   if (process.env.NEXT_PUBLIC_ENABLE_DASHBOARD_GATE === "true" && !gateChecked) {
     return null;
+  }
+
+  // ── Sidebar render path (Phase 1, flag-gated) ───────────────────────────
+  // When navMode === "sidebar", render the new left-sidebar workspace chrome.
+  // This is an ADDITIVE early-return: every hook, redirect gate, and the
+  // auth/null-render guards above run identically in both modes (they precede
+  // this branch). The top-nav `return` below is left BYTE-IDENTICAL to
+  // origin/main, so flipping the flag off (env unset / ?nav=topnav / clear
+  // localStorage) is a provable, instant rollback. The wizard is invoked
+  // exactly as the top-nav path for now; the navMode-aware tour lands in the
+  // Phase 1 tour milestone.
+  if (navMode === "sidebar") {
+    return (
+      <div className="min-h-screen" data-theme="dashboard">
+        <SidebarShell
+          pathname={pathname}
+          session={session}
+          heartbeatHealth={heartbeatHealth}
+          drawerOpen={drawerOpen}
+          setDrawerOpen={setDrawerOpen}
+        >
+          {children}
+        </SidebarShell>
+
+        {gated && (
+          <DashboardGateOverlay
+            onUpgrade={() => router.push("/upgrade")}
+            onManageBilling={() => router.push("/billing")}
+          />
+        )}
+
+        <OnboardingWizard
+          setMoreOpen={setMoreOpen}
+          tourControllingMore={tourControllingMore}
+        />
+      </div>
+    );
   }
 
   // Effective feature items — The Floor for everyone, + Edge City for edge
