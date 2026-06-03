@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-03
 
-Window: `427979b3810e4ae97e9142e42402525ef74fa797` → `HEAD` (HEAD = `ddfebf20`)
+Window: `ddfebf20d4f69c615d612fca6da251b17c1d0dcb` → `HEAD` (HEAD = `fb3aa26d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: ddfebf20d4f69c615d612fca6da251b17c1d0dcb -->
+<!-- LAST_GENERATED_SHA: fb3aa26dab476888955593a8a853a337a0a00483 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `ddfebf20` 2026-06-03 — feat(frontier): spend-side dispute / recourse (W27) [3 files] _(ai-assisted)_
-- `c1e2c2e3` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `fb3aa26d` 2026-06-03 — chore(frontier): relocate x402 debug scripts to scripts/debug/ (P3-3) [4 files] _(ai-assisted)_
+- `4454fb6f` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `ddfebf20` 2026-06-03 — feat(frontier): spend-side dispute / recourse (W27) [3 files] _(ai-assisted)_
+- `fb3aa26d` 2026-06-03 — chore(frontier): relocate x402 debug scripts to scripts/debug/ (P3-3) [4 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `c1e2c2e3` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `4454fb6f` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `ddfebf20` 2026-06-03 — feat(frontier): spend-side dispute / recourse (W27)
+- `fb3aa26d` 2026-06-03 — chore(frontier): relocate x402 debug scripts to scripts/debug/ (P3-3)
 
 ## Appendix — every commit (chronological)
 
-- `c1e2c2e3` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
-- `ddfebf20` 2026-06-03 — feat(frontier): spend-side dispute / recourse (W27) [3 files] _(ai-assisted)_
+- `4454fb6f` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `fb3aa26d` 2026-06-03 — chore(frontier): relocate x402 debug scripts to scripts/debug/ (P3-3) [4 files] _(ai-assisted)_
