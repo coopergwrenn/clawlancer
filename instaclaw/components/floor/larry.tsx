@@ -267,42 +267,52 @@ function Cheliped({ side }: { side: number }) {
   const clawGeo = side < 0 ? CLAW_GEO_LEFT : CLAW_GEO_RIGHT;
   return (
     <group>
-      {/* ── FOREARM — the missing limb. A real, LONG arm segment reaching OUT,
-          FORWARD and slightly UP from the body's front corner. It's long enough
-          (and the claw pushed far enough past its tip) that a stretch of bare arm
-          shows between the carapace and the claw — a crab holding its claw up off
-          an arm, not a claw fused flat to the flank. Pitch (-x) lifts it, yaw
-          (side*y) fans it outward; the box spans local +Z from the shoulder, its
-          near end overlapping the carapace so it reads CONNECTED. ── */}
-      <group rotation={[-0.55, side * 0.55, 0]}>
+      {/* ── MERUS (upper arm) — a SHORT, stubby segment angling OUT and a touch
+          forward/up from the body's front corner to the elbow. A real crab cheliped
+          is two short bones with a bend at the carpus, NOT one long straight reach.
+          The box spans local +Z; its near end overlaps the carapace so the shoulder
+          reads CONNECTED. ── */}
+      <group rotation={[-0.1, side * 0.8, 0]}>
         <RoundedBox
-          args={[0.15, 0.15, 0.5]}
+          args={[0.15, 0.15, 0.22]}
           radius={0.06}
           smoothness={4}
           castShadow
-          position={[0, 0, 0.25]}
+          position={[0, 0, 0.11]}
         >
           <ShellMaterial color={CRAB_ORANGE} roughness={0.42} emissiveIntensity={0.1} />
         </RoundedBox>
-        {/* wrist knuckle — a small ball where the arm meets the claw so the joint
-            reads as a joint, not a butt-weld. */}
-        <mesh castShadow position={[0, 0, 0.5]}>
-          <sphereGeometry args={[0.09, 20, 16]} />
-          <ShellMaterial color={CRAB_ORANGE} roughness={0.42} emissiveIntensity={0.1} />
-        </mesh>
-      </group>
 
-      {/* ── the CLAW — one drawn-and-extruded asymmetric profile (GEOMETRY
-          UNCHANGED). Pushed OUT, UP and FORWARD to sit at the arm's tip (clear of
-          the body so the forearm shows behind it) and presented to the hero camera:
-          rolled only GENTLY up-and-out (rotation.z, was a big ~49° downward roll
-          that made it sweep to the floor) and tilted FORWARD toward the elevated
-          camera (rotation.x) so it juts toward the viewer — claw reaching toward
-          you off an arm, not a flat sticker on the flank. ── */}
-      <group position={[side * 0.3, 0.34, 0.48]} rotation={[0.3, side * -0.15, side * 0.3]}>
-        <mesh geometry={clawGeo} castShadow receiveShadow>
-          <ShellMaterial color={CLAW_TONE} roughness={0.36} emissiveIntensity={0.12} />
-        </mesh>
+        {/* ── CARPUS = the ELBOW. The knuckle ball sits at the merus tip; everything
+            past this group FOLDS down + forward + in (rotation.x folds the lower arm
+            down, side*yaw brings it toward center) so the claw drops LOW and IN FRONT
+            of the body — the real crab resting silhouette — instead of jutting out
+            into empty space on a straight stick. ── */}
+        <group position={[0, 0, 0.22]} rotation={[0.62, side * -0.45, 0]}>
+          <mesh castShadow>
+            <sphereGeometry args={[0.1, 20, 16]} />
+            <ShellMaterial color={CRAB_ORANGE} roughness={0.42} emissiveIntensity={0.1} />
+          </mesh>
+          {/* lower arm (carpus → claw) — short segment carrying the claw down/forward */}
+          <RoundedBox
+            args={[0.13, 0.13, 0.18]}
+            radius={0.05}
+            smoothness={4}
+            castShadow
+            position={[0, 0, 0.09]}
+          >
+            <ShellMaterial color={CRAB_ORANGE} roughness={0.42} emissiveIntensity={0.1} />
+          </RoundedBox>
+
+          {/* ── CLAW (propodus + dactyl) — one drawn-and-extruded asymmetric profile,
+              GEOMETRY UNCHANGED. Mounted at the lower-arm tip so it follows the fold;
+              presents its pincer face down-and-forward toward the hero camera. ── */}
+          <group position={[0, 0, 0.18]} rotation={[-0.9, side * -0.25, side * 0.3]}>
+            <mesh geometry={clawGeo} castShadow receiveShadow>
+              <ShellMaterial color={CLAW_TONE} roughness={0.36} emissiveIntensity={0.12} />
+            </mesh>
+          </group>
+        </group>
       </group>
     </group>
   );
@@ -680,10 +690,10 @@ export function Larry() {
         {/* ── Front claws — held UP and forward (the iconic crab pose) so they
             read as pincers from the hero camera; tap while "typing", raise on
             celebrate. rotation.x is the animated tap axis; y/z set the pose. ── */}
-        <group ref={leftClaw} position={[-0.27, 0.05, 0.24]} rotation={[0, 0, 0]}>
+        <group ref={leftClaw} position={[-0.3, 0.06, 0.26]} rotation={[0, 0, 0]}>
           <Cheliped side={-1} />
         </group>
-        <group ref={rightClaw} position={[0.27, 0.05, 0.24]} rotation={[0, 0, 0]}>
+        <group ref={rightClaw} position={[0.3, 0.06, 0.26]} rotation={[0, 0, 0]}>
           <Cheliped side={1} />
         </group>
 
