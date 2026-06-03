@@ -18,6 +18,7 @@ import type { NextRequest } from "next/server";
 import { validate, extractGatewayToken, classifyExistingHold } from "../app/api/agent-economy/authorize/route";
 import { validateSettleBody, classifySettleOutcome } from "../app/api/agent-economy/settle/route";
 import { isFrontierSpendKilled } from "../lib/frontier-kill-switch";
+import { isFrontierSpendEnabled } from "../lib/frontier-spend-optin";
 
 let passed = 0;
 let failed = 0;
@@ -243,6 +244,21 @@ check("outcome: pending+disputed → proceed", classifySettleOutcome("pending", 
 check("outcome: disputed+disputed → idempotent", classifySettleOutcome("disputed", "disputed") === "idempotent");
 check("outcome: settled+disputed → contradictory", classifySettleOutcome("settled", "disputed") === "contradictory");
 check("outcome: disputed+settled → contradictory", classifySettleOutcome("disputed", "settled") === "contradictory");
+
+// ───────────────────────────── spend opt-in (default OFF, fail-closed) ─────────────────────────────
+// The §8.7 mandate: an agent may spend ONLY if the owner explicitly enabled it.
+// Default-OFF: a fresh agent (no flag) → NOT enabled → authorize denies (spend_not_enabled).
+check("optin: explicit true → enabled", isFrontierSpendEnabled({ frontier_spend_enabled: true }) === true);
+check("optin: explicit false → NOT enabled", isFrontierSpendEnabled({ frontier_spend_enabled: false }) === false);
+check("optin: DEFAULT-OFF — fresh agent, no flag → NOT enabled", isFrontierSpendEnabled({}) === false);
+check("optin: fail-closed — null vm → NOT enabled", isFrontierSpendEnabled(null) === false);
+check("optin: fail-closed — undefined vm → NOT enabled", isFrontierSpendEnabled(undefined) === false);
+check("optin: fail-closed — null flag (absent column) → NOT enabled", isFrontierSpendEnabled({ frontier_spend_enabled: null }) === false);
+// Truthy-but-not-true must NOT enable (strict === true; no coercion path that could open the gate).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+check("optin: fail-closed — truthy-not-true (1) → NOT enabled", isFrontierSpendEnabled({ frontier_spend_enabled: 1 as any }) === false);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+check("optin: fail-closed — string 'true' → NOT enabled", isFrontierSpendEnabled({ frontier_spend_enabled: "true" as any }) === false);
 
 
 // ───────────────────────────── kill switch (emergency stop) ─────────────────────────────
