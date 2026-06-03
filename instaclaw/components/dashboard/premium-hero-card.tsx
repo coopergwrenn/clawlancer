@@ -221,8 +221,9 @@ export function PremiumHeroCard() {
           className="text-[15px] mt-2.5 max-w-2xl leading-relaxed"
           style={{ color: "var(--muted)" }}
         >
-          Exa, Manus, Browserbase, Parallel, AgentMail, and StableTravel are
-          live in your agent&apos;s toolkit the second you verify your World ID.
+          Exa, Manus, Browserbase, Parallel, AgentMail, and StableTravel
+          &mdash; wired into your agent the second you verify your World ID. No
+          keys, no setup.
         </p>
 
         {/* ── Tool grid — equal-height glass tiles, every example shown ── */}
