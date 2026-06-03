@@ -1,29 +1,29 @@
 # Changelog — generated 2026-06-03
 
-Window: `1648cbab404ecf4debaf56bdab6eb213fa8d0e49` → `HEAD` (HEAD = `15dceda5`)
+Window: `15dceda5694fd3506270f177bb2fe5bd6295fc41` → `HEAD` (HEAD = `fd9ddf42`)
 Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 15dceda5694fd3506270f177bb2fe5bd6295fc41 -->
+<!-- LAST_GENERATED_SHA: fd9ddf4286bd3cc7c878b023fb3fbaeecb5fc2af -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 1
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
-- Merge commits: 1
+- **Docs / PRD only:** 2
+- AI-assisted commits (co-authored): 2
+- Merge commits: 0
 
 ## What changed for users
 
-- `4309303e` 2026-06-03 — feat(dashboard): add "The Floor →" glass pill to the Dashboard heading [1 files] _(ai-assisted)_
+- `2182dbdf` 2026-06-03 — fix(skills): Premium Tools card uses the real SkillOrb (World mark), matching sibling grid cards [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `15dceda5` 2026-06-03 — Merge origin/main into feat/dashboard-floor-button [0 files] _(merge)_
-- `08c858d4` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `f57a105f` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `fd9ddf42` 2026-06-03 — docs(frontier): §9 — the Card Rail phase (consolidated, FUTURE/not-started) [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -31,30 +31,32 @@ Total commits: 3
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `15dceda5` 2026-06-03 — Merge origin/main into feat/dashboard-floor-button [0 files] _(merge)_
+_(none)_
 
 ### Feature (user-facing) (1)
 
-- `4309303e` 2026-06-03 — feat(dashboard): add "The Floor →" glass pill to the Dashboard heading [1 files] _(ai-assisted)_
+- `2182dbdf` 2026-06-03 — fix(skills): Premium Tools card uses the real SkillOrb (World mark), matching sibling grid cards [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `08c858d4` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `f57a105f` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `fd9ddf42` 2026-06-03 — docs(frontier): §9 — the Card Rail phase (consolidated, FUTURE/not-started) [1 files] _(ai-assisted)_
 
-## AI-assisted commits (1)
+## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `4309303e` 2026-06-03 — feat(dashboard): add "The Floor →" glass pill to the Dashboard heading
+- `2182dbdf` 2026-06-03 — fix(skills): Premium Tools card uses the real SkillOrb (World mark), matching sibling grid cards
+- `fd9ddf42` 2026-06-03 — docs(frontier): §9 — the Card Rail phase (consolidated, FUTURE/not-started)
 
 ## Appendix — every commit (chronological)
 
-- `08c858d4` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
-- `4309303e` 2026-06-03 — feat(dashboard): add "The Floor →" glass pill to the Dashboard heading [1 files] _(ai-assisted)_
-- `15dceda5` 2026-06-03 — Merge origin/main into feat/dashboard-floor-button [0 files] _(merge)_
+- `f57a105f` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `2182dbdf` 2026-06-03 — fix(skills): Premium Tools card uses the real SkillOrb (World mark), matching sibling grid cards [1 files] _(ai-assisted)_
+- `fd9ddf42` 2026-06-03 — docs(frontier): §9 — the Card Rail phase (consolidated, FUTURE/not-started) [1 files] _(ai-assisted)_
