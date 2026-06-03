@@ -277,3 +277,38 @@ export const DEFAULT_ALLOWED_CATEGORIES_BY_TIER: Record<FrontierTier, readonly S
   power: ["data", "search", "inference", "compute", "media", "agent", "other"],
   // "market" intentionally excluded from all defaults — opt-in only.
 };
+
+/**
+ * Resolve the EFFECTIVE autonomous-spend category allowlist for a VM, given the
+ * tier default and an optional per-VM override (dashboard-set).
+ *
+ * TIGHTEN-ONLY, by the same safety philosophy as clampOverrides for the bands:
+ * the override may only REMOVE categories from the tier default, never add one.
+ * The effective set is therefore `tierDefault ∩ override`. Consequences:
+ *   - override null/undefined        → the tier default, unchanged.
+ *   - override present               → intersection; any category the user listed
+ *                                       that isn't in their tier default is dropped
+ *                                       (an agent can never autonomously buy a
+ *                                       category above its tier — incl. "market",
+ *                                       which is in NO tier default, so it can never
+ *                                       be enabled via this path).
+ *   - empty intersection             → allowed: the user turned everything off, so
+ *                                       every categorized spend bounces to ask_first
+ *                                       (uncategorized spends already do — authz 2b).
+ *
+ * Widening (especially opting INTO "market"/trading) is a deliberate risk decision,
+ * NOT a free dashboard toggle — it would need a separate, explicitly-gated feature.
+ * Keeping this tighten-only means the dashboard category control can never make an
+ * agent able to autonomously spend on a riskier category than its tier permits.
+ *
+ * Pure + deterministic. Tests: scripts/_test-frontier-policy.ts.
+ */
+export function effectiveAllowedCategories(
+  tier: FrontierTier,
+  override: readonly SpendCategory[] | null | undefined,
+): readonly SpendCategory[] {
+  const tierDefault = DEFAULT_ALLOWED_CATEGORIES_BY_TIER[tier];
+  if (!override) return tierDefault;
+  const requested = new Set(override);
+  return tierDefault.filter((c) => requested.has(c));
+}

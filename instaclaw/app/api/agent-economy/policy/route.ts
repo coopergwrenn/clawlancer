@@ -27,7 +27,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import { effectiveBands, type FrontierTier, type PolicyOverrides } from "@/lib/frontier-policy";
+import {
+  effectiveBands,
+  effectiveAllowedCategories,
+  ALL_CATEGORIES,
+  DEFAULT_ALLOWED_CATEGORIES_BY_TIER,
+  type FrontierTier,
+  type PolicyOverrides,
+  type SpendCategory,
+} from "@/lib/frontier-policy";
+import { readPolicyOverrides } from "@/lib/frontier-overrides-db";
 
 export const dynamic = "force-dynamic";
 
@@ -53,39 +62,9 @@ const FIELD_MAP: ReadonlyArray<[keyof PolicyOverrides, string]> = [
   ["minWalletBalance", "min_wallet_balance"],
 ];
 
-function num(v: number | string | null | undefined): number | undefined {
-  if (v === null || v === undefined) return undefined;
-  const n = typeof v === "string" ? parseFloat(v) : v;
-  return Number.isFinite(n) ? (n as number) : undefined;
-}
-
-/** Read the stored overrides row → camelCase PolicyOverrides (or null). Returns
- *  null if the table doesn't exist yet (pre-migration) so GET keeps working. */
-async function readOverrides(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
-  vmId: string,
-): Promise<{ overrides: PolicyOverrides | null; persisted: boolean }> {
-  const { data, error } = await supabase
-    .from("frontier_policy_overrides")
-    .select("just_do_it_per_tx, just_do_it_per_day, never_per_tx, never_per_day, min_wallet_balance")
-    .eq("vm_id", vmId)
-    .maybeSingle();
-  if (error) {
-    // Table missing (migration not applied) → behave as no overrides, quietly.
-    if (!TABLE_MISSING_CODES.has(error.code)) {
-      console.error("[/api/agent-economy/policy] overrides read failed:", error);
-    }
-    return { overrides: null, persisted: false };
-  }
-  if (!data) return { overrides: null, persisted: false };
-  const ov: PolicyOverrides = {};
-  for (const [camel, snake] of FIELD_MAP) {
-    const v = num((data as Record<string, unknown>)[snake] as number | string | null);
-    if (v !== undefined) ov[camel] = v;
-  }
-  return { overrides: Object.keys(ov).length > 0 ? ov : null, persisted: true };
-}
+// Note: reads now go through lib/frontier-overrides-db.readPolicyOverrides (the
+// ONE canonical reader shared with the authorize gate). The former local
+// readOverrides()/num() were removed to avoid a second, drift-prone reader.
 
 /** session → assigned VM (id, tier). */
 async function resolveUserVm(): Promise<
@@ -108,16 +87,30 @@ export async function GET() {
   if ("error" in r) return NextResponse.json({ error: r.error }, { status: r.status });
 
   const supabase = getSupabase();
-  const { overrides, persisted } = await readOverrides(supabase, r.vmId);
+  // Canonical reader (lib/frontier-overrides-db) — the SAME read the authorize
+  // gate uses, so the dashboard shows exactly what the agent enforces.
+  const { bandOverrides, allowedCategoriesOverride, persisted } = await readPolicyOverrides(
+    supabase,
+    r.vmId,
+  );
   const isStaker = false; // staking not live
-  const bands = effectiveBands(r.tier, isStaker, overrides);
+  const bands = effectiveBands(r.tier, isStaker, bandOverrides);
+  const tierDefaultCategories = DEFAULT_ALLOWED_CATEGORIES_BY_TIER[r.tier];
 
   return NextResponse.json({
     tier: r.tier,
     is_staker: isStaker,
     bands, // EFFECTIVE (post tier × staker × clamped overrides) — what the agent enforces
-    overrides: overrides ?? null, // the raw stored intent (may differ from bands after clamp)
+    overrides: bandOverrides ?? null, // raw stored band intent (may differ from bands after clamp)
     overrides_persisted: persisted,
+    // Category allowlist (W3). all_categories = the full taxonomy for the UI to
+    // render checkboxes; tier_default = what's allowed with no override;
+    // allowed_categories = EFFECTIVE (tighten-only intersection) — what the gate
+    // enforces; allowed_categories_override = the raw stored intent (null = none).
+    all_categories: ALL_CATEGORIES,
+    tier_default_categories: tierDefaultCategories,
+    allowed_categories: effectiveAllowedCategories(r.tier, allowedCategoriesOverride),
+    allowed_categories_override: allowedCategoriesOverride ?? null,
   });
 }
 
@@ -139,7 +132,7 @@ export async function PUT(req: NextRequest) {
   // Validate each band: present → finite, >= 0, <= MAX_OVERRIDE; absent/null →
   // cleared (revert to tier default). Replace-semantics: {} resets everything.
   const rawOverrides: PolicyOverrides = {};
-  const row: Record<string, number | null> = {};
+  const row: Record<string, number | string[] | null> = {};
   for (const [camel, snake] of FIELD_MAP) {
     const raw = b[camel];
     if (raw === undefined || raw === null) {
@@ -156,10 +149,51 @@ export async function PUT(req: NextRequest) {
     rawOverrides[camel] = raw;
   }
 
+  // Validate the category allowlist override (W3). `allowed_categories`:
+  //   absent / null         → clear (revert to the tier default)
+  //   array of SpendCategory → store (must be a subset of ALL_CATEGORIES; the
+  //                            gate further intersects with the tier default —
+  //                            tighten-only, so a value above the tier is inert).
+  // `allowed_categories: []` is valid and DISTINCT from null: it means "turn every
+  // category off" (the agent then asks before any categorized spend).
+  let categoryOverride: SpendCategory[] | null = null;
+  const rawCats = b["allowed_categories"];
+  if (rawCats !== undefined && rawCats !== null) {
+    if (!Array.isArray(rawCats)) {
+      return NextResponse.json(
+        { error: "allowed_categories must be an array of category strings (or null to clear)" },
+        { status: 400 },
+      );
+    }
+    const invalid = rawCats.filter((c) => !ALL_CATEGORIES.includes(c as SpendCategory));
+    if (invalid.length > 0) {
+      return NextResponse.json(
+        { error: `allowed_categories has unknown categories: ${invalid.join(", ")}. Valid: ${ALL_CATEGORIES.join(", ")}` },
+        { status: 400 },
+      );
+    }
+    // De-dupe, preserve taxonomy order.
+    categoryOverride = ALL_CATEGORIES.filter((c) => rawCats.includes(c));
+  }
+  row["allowed_categories"] = categoryOverride; // null clears
+
   const supabase = getSupabase();
-  const { error: upErr } = await supabase
+  // PGRST204 = "column not found in schema cache" → the allowed_categories
+  // column isn't applied yet (pre-migration). Retry the upsert without it so the
+  // band overrides still persist; flag categories as not-yet-stored to the UI.
+  const CATEGORY_COLUMN_MISSING = "PGRST204";
+  let categoryPersisted = true;
+  let { error: upErr } = await supabase
     .from("frontier_policy_overrides")
     .upsert({ vm_id: r.vmId, ...row }, { onConflict: "vm_id" });
+
+  if (upErr && upErr.code === CATEGORY_COLUMN_MISSING && "allowed_categories" in row) {
+    const { allowed_categories: _drop, ...bandsOnly } = row;
+    categoryPersisted = false;
+    ({ error: upErr } = await supabase
+      .from("frontier_policy_overrides")
+      .upsert({ vm_id: r.vmId, ...bandsOnly }, { onConflict: "vm_id" }));
+  }
 
   if (upErr) {
     if (TABLE_MISSING_CODES.has(upErr.code)) {
@@ -172,8 +206,8 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "failed to save policy" }, { status: 500 });
   }
 
-  // Return the EFFECTIVE bands so the dashboard shows what'll actually be
-  // enforced (raw intent clamped to tighten-only).
+  // Return the EFFECTIVE bands + categories so the dashboard shows what'll
+  // actually be enforced (raw intent clamped/intersected to tighten-only).
   const isStaker = false;
   const effective = effectiveBands(r.tier, isStaker, rawOverrides);
   return NextResponse.json({
@@ -183,5 +217,10 @@ export async function PUT(req: NextRequest) {
     bands: effective,
     overrides: Object.keys(rawOverrides).length > 0 ? rawOverrides : null,
     overrides_persisted: true,
+    all_categories: ALL_CATEGORIES,
+    tier_default_categories: DEFAULT_ALLOWED_CATEGORIES_BY_TIER[r.tier],
+    allowed_categories: effectiveAllowedCategories(r.tier, categoryOverride),
+    allowed_categories_override: categoryOverride,
+    allowed_categories_persisted: categoryPersisted,
   });
 }

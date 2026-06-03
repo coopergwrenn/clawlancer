@@ -75,10 +75,11 @@ import {
   evaluateSpend,
   mapTagsToCategory,
   ALL_CATEGORIES,
-  DEFAULT_ALLOWED_CATEGORIES_BY_TIER,
+  effectiveAllowedCategories,
   type FrontierTier,
   type SpendCategory,
 } from "@/lib/frontier-policy";
+import { readPolicyOverrides } from "@/lib/frontier-overrides-db";
 import { deriveTrackRecord } from "@/lib/frontier-ledger";
 import { creditStanding, type CreditStanding } from "@/lib/frontier-standing";
 import { toLedgerRow, reserveAwareSpentTodayUsd, HOLD_TTL_MS, SPEND_WINDOW_MS, type FrontierTxnDbRow } from "@/lib/frontier-ledger-db";
@@ -406,7 +407,16 @@ export async function POST(req: NextRequest) {
   const reserveAwareSpent = reserveAwareSpentTodayUsd(dbRows, { nowMs });
 
   const privacyModeOn = !!(vm.privacy_mode_until && Date.parse(vm.privacy_mode_until as string) > nowMs);
-  const allowedCategories = DEFAULT_ALLOWED_CATEGORIES_BY_TIER[tier];
+
+  // Per-VM policy overrides (the human's permission boundary, dashboard-set via
+  // /api/agent-economy/policy). Read through the ONE canonical reader so the gate
+  // enforces exactly what the dashboard shows/stores — no drift. Tolerant of the
+  // table/category-column being absent (pre-migration → no override → tier defaults).
+  // Band overrides are tighten-only (clampOverrides inside evaluateSpend); the
+  // category override is tighten-only (effectiveAllowedCategories). Both can only
+  // make an agent SAFER than its tier, never more aggressive.
+  const { bandOverrides, allowedCategoriesOverride } = await readPolicyOverrides(supabase, vm.id);
+  const allowedCategories = effectiveAllowedCategories(tier, allowedCategoriesOverride);
 
   const evaluation = evaluateSpend(tier, {
     amountUsd: v.amount_usd,
@@ -416,7 +426,7 @@ export async function POST(req: NextRequest) {
     counterpartyVerified: v.counterparty_verified,
     isStaker: false,
     requireVerifiedCounterparty: v.require_verified_counterparty,
-    overrides: null,
+    overrides: bandOverrides,
     category: v.category ?? undefined, // known-banned → policy deny; unknown → handled by categoryKnown below
     allowedCategories,
   });

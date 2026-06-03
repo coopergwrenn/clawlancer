@@ -16,6 +16,7 @@ import {
   Hand,
   Trophy,
 } from "lucide-react";
+import { EconomyPolicyControls } from "@/components/dashboard/economy-policy-controls";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -439,6 +440,9 @@ export default function EconomyPage() {
         )}
       </div>
 
+      {/* ── Spending controls (real, wired to /api/agent-economy/policy) ── */}
+      <EconomyPolicyControls />
+
       {/* ── What's coming (honest scaffold — no fake data, no dead controls) ── */}
       <div>
         <h2 className="text-sm font-medium mb-3 flex items-center gap-2" style={{ color: "var(--muted)" }}>
@@ -447,8 +451,6 @@ export default function EconomyPage() {
         </h2>
         <div className="rounded-2xl divide-y" style={{ border: "1px solid var(--border)", borderColor: "var(--border)" }}>
           {[
-            { title: "Daily budget & limits", body: "A spending ceiling that scales with earned trust. We're finalizing the starting numbers." },
-            { title: "Spending categories", body: "Choose what your agent may pay for — data, tools, other agents — and what it can't." },
             { title: "Earning a living", body: "Your agent offers its own services and gets paid by other agents." },
             { title: "Staking", body: "Back your agent with $INSTACLAW to raise its limits and signal trust." },
           ].map((row, i) => (
