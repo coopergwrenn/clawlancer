@@ -41,6 +41,12 @@ const sb = createClient(url, key);
 
 const ONCHAIN_RAILS = ["x402", "compute", "base_mcp"];
 const STUCK_MS = 30 * 60 * 1000;
+// A spend hold's reserve TTL is 15m and an x402 sign+settle round-trip is seconds,
+// so a spend still 'pending' after 60m is an orphan — the tool died between
+// authorize and settle. Doesn't move money (the reserve ages out of the budget
+// window), but a rising count is the canary that the pay→settle leg is breaking.
+const STUCK_HOLD_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const SCAN_CAP = 5000;
 
 /** exact head count with an optional query builder. -1 on error (surfaced). */
@@ -80,6 +86,38 @@ const hr = (title: string) => console.log(`\n── ${title} ──`);
   row("verification coverage", `${verified}/${verifiable} (${pct(verified, verifiable)})`);
   const disputed = await cnt("frontier_transactions", (q) => q.eq("status", "disputed"));
   if (disputed > 0) row("⚠ disputed (forgery/replay/timeout)", disputed);
+
+  // ── Spend health (rollout watch) ──
+  // The signals an operator watches as the spend capability rolls to the fleet:
+  // are spends completing, how broadly is it in use, and is anything stuck pending
+  // (the canary for a broken pay→settle leg). Spend-only, 24h window.
+  hr("Spend health (rollout watch)");
+  const dayAgo = new Date(Date.now() - DAY_MS).toISOString();
+  const spSettled = await cnt("frontier_transactions", (q) =>
+    q.eq("direction", "spend").gte("created_at", dayAgo).eq("status", "settled"));
+  const spFailed = await cnt("frontier_transactions", (q) =>
+    q.eq("direction", "spend").gte("created_at", dayAgo).eq("status", "failed"));
+  const spPending = await cnt("frontier_transactions", (q) =>
+    q.eq("direction", "spend").gte("created_at", dayAgo).eq("status", "pending"));
+  const spTerminal = spSettled + spFailed;
+  row("spends 24h (settled/failed/pending)", `${spSettled}/${spFailed}/${spPending}`);
+  row("spend success rate 24h", `${spSettled}/${spTerminal} (${pct(spSettled, spTerminal)})`);
+  // Distinct active spenders (24h) — how broadly the capability is in use.
+  const { data: spVmRows } = await sb
+    .from("frontier_transactions")
+    .select("vm_id")
+    .eq("direction", "spend")
+    .gte("created_at", dayAgo)
+    .limit(SCAN_CAP);
+  row("active spender VMs 24h", new Set((spVmRows ?? []).map((r: { vm_id: string }) => r.vm_id)).size);
+  // Stuck spend holds — orphaned reserves (tool died between authorize and settle).
+  const stuckHoldCutoff = new Date(Date.now() - STUCK_HOLD_MS).toISOString();
+  const stuckHolds = await cnt("frontier_transactions", (q) =>
+    q.eq("direction", "spend").eq("status", "pending").lt("created_at", stuckHoldCutoff));
+  if (stuckHolds > 0) {
+    row("⚠ stuck spend holds > 60m (orphaned)", stuckHolds);
+    unhealthy = true;
+  }
 
   // ── Offerings ──
   hr("Offerings");
