@@ -7,6 +7,11 @@ export interface TourStep {
   preAction?: "open-more";
   keepMoreOpen?: boolean;
   large?: boolean;
+  // Sidebar mode only: this step targets a left-rail nav item. On mobile the
+  // rail lives behind the hamburger, so SpotlightTour opens the drawer before
+  // positioning; on desktop the rail is always visible (no-op). Page-content
+  // steps leave this unset so the drawer stays closed and the page is visible.
+  sidebarNav?: boolean;
 }
 
 const tourSteps: TourStep[] = [
@@ -210,3 +215,62 @@ const tourSteps: TourStep[] = [
 ];
 
 export default tourSteps;
+
+/**
+ * Adapt a single step for sidebar mode. Only the four nav-chrome steps differ
+ * from top-nav; every page-content step passes through unchanged (its
+ * data-tour selector lives on the page body, which the restructure never
+ * touches). Keeping the array the SAME LENGTH (replace nav-more, don't remove)
+ * means a saved tourStep index stays meaningful if the flag flips mid-tour.
+ */
+function adaptStepForSidebar(step: TourStep): TourStep {
+  switch (step.selector) {
+    case '[data-tour="nav-dashboard"]':
+      // Dashboard is demoted to "Overview" (Account & Plan). Reframe: this is
+      // the control panel, but the home base is Command Center.
+      return {
+        ...step,
+        title: "Your Overview",
+        description:
+          "You're on your Overview — the control panel for your agent: health, usage, and plan all live here. But your home base is the Command Center, just up in the sidebar. We'll head there next.",
+        sidebarNav: true,
+      };
+    case '[data-tour="nav-command-center"]':
+      // Now the explicit home of the workspace.
+      return {
+        ...step,
+        title: "Command Center — your home",
+        description:
+          "This is your Command Center, the heart of your workspace. Give your agent any task, have a conversation, and find everything it creates — all in one place. It's where you'll spend your time.",
+        sidebarNav: true,
+      };
+    case '[data-tour="nav-history"]':
+      // Resurrected: in the top-nav this step silently auto-skipped (History
+      // only existed inside the closed "···" menu). In the sidebar it's a
+      // visible rail item, so the step finally lands on something real.
+      return { ...step, sidebarNav: true };
+    case '[data-tour="nav-more"]':
+      // No "···" menu in the sidebar — everything is visible. Replace the
+      // open-the-menu step with one that frames the Account & Plan section.
+      return {
+        selector: '[data-tour="nav-manage-section"]',
+        title: "Account & Plan",
+        description:
+          "Your account lives down here — Overview, Credits, Billing, Settings, and API Keys. No digging through a menu; it's all one click away in the sidebar.",
+        position: "right",
+        sidebarNav: true,
+      };
+    default:
+      return step;
+  }
+}
+
+/**
+ * Return the tour for the active nav chrome. `topnav` is the canonical array
+ * verbatim (zero behaviour change when the sidebar flag is off); `sidebar`
+ * maps each step through the adapter above.
+ */
+export function buildTourSteps(navMode: "topnav" | "sidebar"): TourStep[] {
+  if (navMode === "sidebar") return tourSteps.map(adaptStepForSidebar);
+  return tourSteps;
+}

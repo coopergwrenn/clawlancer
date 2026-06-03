@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import tourSteps from "./tour-steps";
+import { buildTourSteps } from "./tour-steps";
 
 interface SpotlightTourProps {
   startStep: number;
@@ -12,6 +12,11 @@ interface SpotlightTourProps {
   onClose: () => void;
   setMoreOpen: (open: boolean) => void;
   navigateTo: (path: string) => void;
+  // Phase 1 sidebar restructure. "topnav" (default) is byte-identical to the
+  // pre-restructure behaviour. "sidebar" builds the sidebar-adapted step array
+  // and uses setDrawerOpen instead of setMoreOpen for nav-item steps on mobile.
+  navMode?: "topnav" | "sidebar";
+  setDrawerOpen?: (open: boolean) => void;
 }
 
 interface Rect {
@@ -24,8 +29,25 @@ interface Rect {
 const PADDING = 8;
 const TOOLTIP_GAP = 12;
 
+// Prefer an on-screen instance when a selector matches multiple elements. In
+// sidebar mode the same data-tour key exists on BOTH the desktop rail (which
+// is display:none on mobile) AND the open drawer; a plain querySelector would
+// return the first (hidden) one and the spotlight would target an invisible
+// box. Picking the element with a non-zero bounding box targets the visible
+// instance. In top-nav mode there's only ever one match, so this is a no-op.
+function findVisibleElement(selector: string): Element | null {
+  const els = Array.from(document.querySelectorAll(selector));
+  if (els.length === 0) return null;
+  return (
+    els.find((e) => {
+      const r = e.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    }) ?? els[0]
+  );
+}
+
 function getElementRect(selector: string): Rect | null {
-  const el = document.querySelector(selector);
+  const el = findVisibleElement(selector);
   if (!el) return null;
   const r = el.getBoundingClientRect();
   return {
@@ -128,7 +150,10 @@ export default function SpotlightTour({
   onClose,
   setMoreOpen,
   navigateTo,
+  navMode = "topnav",
+  setDrawerOpen,
 }: SpotlightTourProps) {
+  const tourSteps = useMemo(() => buildTourSteps(navMode), [navMode]);
   const [currentStep, setCurrentStep] = useState(startStep);
   const [targetRect, setTargetRect] = useState<Rect | null>(null);
   const [tooltipInfo, setTooltipInfo] = useState<{
@@ -166,15 +191,28 @@ export default function SpotlightTour({
         navigateTo(step.navigateTo);
       }
 
-      // Open More dropdown if needed
-      if (step.preAction === "open-more" || step.keepMoreOpen) {
+      // Reveal the chrome this step needs.
+      const narrow =
+        typeof window !== "undefined" && window.innerWidth < 1024;
+      const drawerOpening = navMode === "sidebar" && !!step.sidebarNav && narrow;
+      if (navMode === "sidebar") {
+        // Sidebar nav-item steps need the rail visible; on mobile that's the
+        // off-canvas drawer. Page-content steps close it so the page shows.
+        setDrawerOpen?.(drawerOpening);
+      } else if (step.preAction === "open-more" || step.keepMoreOpen) {
         setMoreOpen(true);
       } else {
         setMoreOpen(false);
       }
 
-      // Wait for DOM to settle after navigation/dropdown
-      const initialDelay = step.navigateTo ? 400 : step.preAction === "open-more" ? 200 : 50;
+      // Wait for DOM to settle after navigation / chrome reveal.
+      const initialDelay = step.navigateTo
+        ? 400
+        : step.preAction === "open-more"
+          ? 200
+          : drawerOpening
+            ? 320
+            : 50;
 
       if (retryRef.current) clearTimeout(retryRef.current);
 
@@ -184,7 +222,7 @@ export default function SpotlightTour({
 
       const tryPosition = () => {
         attempts++;
-        const el = document.querySelector(step.selector);
+        const el = findVisibleElement(step.selector);
 
         if (!el && attempts < maxAttempts) {
           // Element not in DOM yet, retry in 200ms
@@ -250,13 +288,14 @@ export default function SpotlightTour({
   const goNext = useCallback(() => {
     if (isLast) {
       setMoreOpen(false);
+      setDrawerOpen?.(false);
       onComplete();
     } else {
       const next = currentStep + 1;
       setCurrentStep(next);
       onStepChange(next);
     }
-  }, [currentStep, isLast, onComplete, onStepChange, setMoreOpen]);
+  }, [currentStep, isLast, onComplete, onStepChange, setMoreOpen, setDrawerOpen]);
 
   const goPrev = useCallback(() => {
     if (currentStep > 0) {
@@ -268,8 +307,9 @@ export default function SpotlightTour({
 
   const handleClose = useCallback(() => {
     setMoreOpen(false);
+    setDrawerOpen?.(false);
     onClose();
-  }, [setMoreOpen, onClose]);
+  }, [setMoreOpen, setDrawerOpen, onClose]);
 
   // Keyboard navigation
   useEffect(() => {

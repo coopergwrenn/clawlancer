@@ -107,11 +107,17 @@ const initialState: WizardState = {
 interface OnboardingWizardProps {
   setMoreOpen: (open: boolean) => void;
   tourControllingMore: React.MutableRefObject<boolean>;
+  // Phase 1 sidebar restructure — threaded through to SpotlightTour. Defaults
+  // keep the top-nav tour byte-identical when the sidebar flag is off.
+  navMode?: "topnav" | "sidebar";
+  setDrawerOpen?: (open: boolean) => void;
 }
 
 export default function OnboardingWizard({
   setMoreOpen,
   tourControllingMore,
+  navMode = "topnav",
+  setDrawerOpen,
 }: OnboardingWizardProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const router = useRouter();
@@ -295,6 +301,8 @@ export default function OnboardingWizard({
           }}
           setMoreOpen={setMoreOpen}
           navigateTo={handleNavigate}
+          navMode={navMode}
+          setDrawerOpen={setDrawerOpen}
         />
       )}
 

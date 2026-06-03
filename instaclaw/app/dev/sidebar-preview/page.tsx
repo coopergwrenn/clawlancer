@@ -17,12 +17,17 @@ import { useEffect, useState } from "react";
 import { SessionProvider } from "next-auth/react";
 import type { Session } from "next-auth";
 import { SidebarShell } from "@/components/dashboard/sidebar-shell";
+import SpotlightTour from "@/components/onboarding-wizard/SpotlightTour";
 
 export default function SidebarPreview() {
   const [path, setPath] = useState("/tasks");
   const [edge, setEdge] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [hb, setHb] = useState<"healthy" | "unhealthy" | "paused" | null>(null);
+  // ?tour=N mounts SpotlightTour (sidebar mode) at step index N so the
+  // nav-item steps (History resurrection, Account-section) can be screenshotted
+  // landing on real elements without standing up the full wizard + auth.
+  const [tourStep, setTourStep] = useState<number | null>(null);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
@@ -32,6 +37,11 @@ export default function SidebarPreview() {
     if (p.get("drawer") === "1") setDrawerOpen(true);
     const h = p.get("hb");
     if (h === "unhealthy" || h === "paused" || h === "healthy") setHb(h);
+    const t = p.get("tour");
+    if (t !== null) {
+      const n = parseInt(t, 10);
+      setTourStep(Number.isFinite(n) ? n : 0);
+    }
   }, []);
 
   if (process.env.NODE_ENV === "production") {
@@ -84,6 +94,18 @@ export default function SidebarPreview() {
             </div>
           </div>
         </SidebarShell>
+        {tourStep !== null && (
+          <SpotlightTour
+            startStep={tourStep}
+            navMode="sidebar"
+            onStepChange={(s) => setTourStep(s)}
+            onComplete={() => {}}
+            onClose={() => setTourStep(null)}
+            setMoreOpen={() => {}}
+            setDrawerOpen={setDrawerOpen}
+            navigateTo={() => {}}
+          />
+        )}
       </div>
     </SessionProvider>
   );

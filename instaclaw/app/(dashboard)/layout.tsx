@@ -415,6 +415,8 @@ export default function DashboardLayout({
         <OnboardingWizard
           setMoreOpen={setMoreOpen}
           tourControllingMore={tourControllingMore}
+          navMode="sidebar"
+          setDrawerOpen={setDrawerOpen}
         />
       </div>
     );
