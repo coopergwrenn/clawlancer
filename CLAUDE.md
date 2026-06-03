@@ -4150,6 +4150,39 @@ If any answer is no, the PR is incomplete.
 - **Rule 64** (manifest bumps require Cooper approval; test on vm-1019): governs promotion to `fleet` + fleet-wide apply.
 - **OpenClaw Upgrade Playbook** (below): the broader timeout/watchdog/canary discipline this runbook plugs into.
 
+### Rule 72 — Tracking docs are updated in the SAME work that ships the change, never after
+
+PRD / roadmap / progress-doc maintenance is **part of every task, not an afterthought.** Whenever you ship, build, change, or complete anything that a tracking doc records — a PRD, a phase map, a component registry, a roadmap, a status table — you MUST update that doc **in the same unit of work**: check off completed items, flip status markers (`TO BUILD` → built / canary-proven / live), add newly-built components that aren't listed yet, and correct anything the work changed (paths, names, dependencies, the plan). The tracking doc is a **living source of truth that must always match the committed code** — never a static design doc written once and left to rot.
+
+#### The incident this codifies (2026-06-03)
+
+The Frontier PRD (`docs/PRD-frontier-economic-agency.md`) had drifted a **full phase** out of date. The §2 component registry still marked C2–C10 (`frontier-standing`, `frontier-rolodex`, category allowlist, `authorize`, `settle`, the spend skill, gbrain economic memory, the SOUL directive) as `TO BUILD` when **all of them were built and canary-proven**; and an entire session of hardening — the DB-backed spend kill switch, write-once capture (latency_ms + pay_error), dispute/W27, the atomic reserve RPC, the spend-health alerting cron, the W11 canary proof harness — **wasn't reflected anywhere.** The cause was mundane: nobody checked items off as they shipped. **A progress doc that understates what's built is worse than no doc** — future-you or another terminal reads it, believes the work is unbuilt, and either redoes it or makes a decision on a false map.
+
+#### Mandatory pattern
+
+1. **Update the tracking doc in the same commit (or same PR) as the change it records.** Shipping a component and updating its registry/roadmap status are one task, not two.
+2. **Match the doc's existing status vocabulary** — don't invent new markers; flip `TO BUILD` → whatever the doc already uses for done (`DONE`, `PROVEN`, `BUILT`, `canary-proven`, `live`).
+3. **Add what's new.** If you built something the doc doesn't list, add the row/entry — "every piece named" only holds if you name new pieces as you build them.
+4. **Before parking ANY task, verify the relevant tracking doc reflects what you just did.** This is a close-out checklist item, not optional.
+5. **If you notice a tracking doc has drifted from reality, flag it and reconcile it** — even drift you didn't cause. Cross-check each status flip against the actual committed code (confirm the file/route/marker exists on the canonical branch); **never flip a marker on memory.** A reconciliation that introduces a NEW wrong claim is worse than the original drift.
+
+#### Banned patterns
+
+- Shipping a feature and leaving its PRD/roadmap status as `TO BUILD` / unchecked.
+- "I'll update the doc later." Later is when the drift compounds and someone acts on the false map.
+- The inverse failure — marking something done that isn't (e.g., flipping a gated fleet-rollout step to done when it's still awaiting approval). Accuracy cuts both ways: never overstate AND never understate.
+- Trusting a tracking doc's status markers as ground truth without cross-checking the code when the stakes are real — a "done" marker is a claim, not proof (same discipline as Rule 23's lying-DB pattern).
+
+#### Detection rule
+
+Any PR that adds or changes a tracked component but doesn't touch the tracking doc is suspect — the reviewer asks "does the PRD/roadmap still say this is unbuilt?" Before any orientation or planning pass, diff the tracking doc's status markers against the committed code; any mismatch is a Rule 72 violation to reconcile on the spot.
+
+#### Related rules
+
+- **Rule 23** (lying-DB): a DB row claiming `config_version=N` that's false is the same failure class as a PRD claiming `TO BUILD` for something that's built — the record lies about reality and causes redone or wrong work.
+- **Rule 27** (coverage queries): build the visibility before you need it; same spirit — keep the source of truth current, not reconstructed under pressure.
+- **Rule 56** (a migration file is a *promise* about prod reality): docs and files must faithfully describe the real state, not an aspiration.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.

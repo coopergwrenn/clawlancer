@@ -85,15 +85,15 @@ The **facilitator proxy** (shipped) is the earn-side settlement relay — VMs ne
 | # | Component | Location | State |
 |---|---|---|---|
 | C1 | Policy bands engine (`evaluateSpend`, tiers, tighten-only overrides) | `lib/frontier-policy.ts` | **DONE** (Phase 1A) |
-| C2 | **Credit-standing engine** — one truth, two projections: internal **earned budget** (autonomy governor) + external **on-chain score** (public trust). Merges the old budget + FICO engines (taste fix §8) | `lib/frontier-standing.ts` | TO BUILD (W1, which subsumes W18) |
-| C3 | Supplier rolodex + Thompson-sampling selection | `lib/frontier-rolodex.ts` | TO BUILD (W2) |
-| C4 | Category allowlist (policy dimension) | `lib/frontier-policy.ts` ext | TO BUILD (W3) |
-| C5 | Spend authorize gate (real-time) | `app/api/agent-economy/spend/authorize` | TO BUILD (W4) |
-| C6 | Spend settle / outcome | `app/api/agent-economy/spend/settle` | TO BUILD (W5) |
+| C2 | **Credit-standing engine** — one truth, two projections: internal **earned budget** (autonomy governor) + external **on-chain score** (public trust). Merges the old budget + FICO engines (taste fix §8) | `lib/frontier-standing.ts` | **BUILT — canary-proven** (W1; subsumes W18) |
+| C3 | Supplier rolodex + Thompson-sampling selection | `lib/frontier-rolodex.ts` | **BUILT — canary-proven** (W2; wired into the spend skill, `--capability` selection live-verified) |
+| C4 | Category allowlist (policy dimension) | `lib/frontier-policy.ts` ext | **BUILT** (W3) |
+| C5 | Spend authorize gate (real-time) | `app/api/agent-economy/authorize` | **BUILT — canary-proven** (W4; W11 gate matrix 6/6 live) |
+| C6 | Spend settle / outcome | `app/api/agent-economy/settle` | **BUILT — canary-proven** (W5; incl. W27 dispute outcome) |
 | C7 | Transaction ledger | `frontier_transactions` table | **DONE** (Phase 1A) |
-| C8 | Spend skill — "hire a specialist" | VM skill (`frontier-hire`) | TO BUILD (W6) |
-| C9 | gbrain economic memory (supplier index + purchase log) | gbrain MCP + helpers | TO BUILD (W7) |
-| C10 | Rule 28 directive | SOUL.md section | TO BUILD (W8) |
+| C8 | Spend skill — "hire a specialist" | VM skill — `frontier-spend.mjs` (+ `frontier-spend-core.mjs`); built as `frontier-spend` (PRD originally specced `frontier-hire`) | **BUILT — canary-proven** (W6; real on-chain spend `0x530cab7e`) |
+| C9 | gbrain economic memory (supplier index + purchase log) | gbrain MCP + helpers (`frontier-spend-core.mjs`) | **BUILT** (W7; supplier index + W7b purchase log) |
+| C10 | Rule 28 directive | SOUL.md section (`workspace-templates-v2.ts`) | **BUILT** (W8) |
 | C11 | Bankr signer integration (`/wallet/sign` EIP-3009) | VM skill | **PROVEN** (canary; productionize in W6) |
 | C12 | Bazaar discovery (search/MCP) | CDP discovery API | **PROVEN** (canary; productionize in W6) |
 | C13 | Facilitator proxy (earn-side relay) | `app/api/x402/facilitator/[op]` | **DONE** (`b03b5c2f`) |
@@ -104,6 +104,12 @@ The **facilitator proxy** (shipped) is the earn-side settlement relay — VMs ne
 | C18 | Dashboard — policy/budget controls | frontend + `/policy` PUT (exists) | TO BUILD (W14) |
 | C19 | Standing canary (test agent) | linode 98505957 | **DONE** (`da6b8424`) |
 | C20 | On-chain reputation layer | see **§7** | TO RESEARCH/BUILD |
+| C21 | Spend kill switch — instant fleet-wide halt of autonomous spend, no deploy (DB flag in `instaclaw_admin_settings`, fail-open) | `lib/frontier-kill-switch.ts` (`isFrontierSpendKilled`) + `authorize` route | **BUILT — live-verified** (flip→deny→release on canary) |
+| C22 | Write-once capture — supplier delivery latency + failure reason, persisted at settle (feeds W10 p50_latency + spend-health drill-down) | `frontier-spend.mjs` + `settle` route (`latency_ms`, `pay_error`) | **BUILT — live-verified** |
+| C23 | Atomic reserve RPC — TOCTOU fix; per-VM advisory lock re-sums committed spend under lock before reserving (P1-4) | `frontier_reserve_spend()` (`supabase/migrations/`) | **BUILT — applied in prod** |
+| C24 | Spend-health alerting cron — fleet-aggregate failure-spike + stuck-hold detection, 6h-deduped (P2-6) | `app/api/cron/frontier-spend-health` | **BUILT — live-verified (`?dryRun`)** |
+| C25 | Canary proof harness — re-runnable earned-budget gate matrix incl. hard-ceiling-binds-over-human invariant (W11) | `scripts/_canary-frontier-proof.ts` | **BUILT — 6/6 live** |
+| C26 | Standing-truncation flag — flags approximate standing when the ledger scan caps (P2-8) | `authorize` route (`standing_truncated`) | **BUILT** |
 
 ---
 
@@ -144,12 +150,14 @@ Numbered, concrete, with dependencies. Every item is testable (Rule 31: each shi
 | Phase | Contents | Why this order | Gates |
 |---|---|---|---|
 | **Phase 0 — Rail proof** | Bankr signing, facilitator proxy, mainnet settlement, autonomous Bazaar acquisition, canary | Prove money moves before building product on it | **DONE** (§6) |
-| **Phase 1 — Spend agency** | W1, W2, W3, W4, W5, W6, W7, W8, W11 | Earned-budget spend skill is the keystone invention + immediate "agent stops saying I can't"; safest place to prove judgment; foundation both sides share | canary proof (W11) + Cooper greenlight |
+| **Phase 1 — Spend agency** ✅ BUILT + CANARY-PROVEN | W1, W2, W3, W4, W5, W6, W7, W8, W11 | Earned-budget spend skill is the keystone invention + immediate "agent stops saying I can't"; safest place to prove judgment; foundation both sides share | **canary proof (W11) ✓ DONE — 6/6 live**; now gated on Cooper greenlight + §5 policy decisions to begin W12 (fleet rollout) |
 | **Phase 2 — Fleet + feed** | W9, W12, W13, W14 | Roll spend to the fleet (Rule 64) + ship the viral dashboard feed; W10 graph starts accruing real data | Phase 1 green; Rule 64 approval |
 | **Phase 3 — Reputation (the credit bureau)** | W10 (fleet graph) + §7: **3a** off-chain score + dashboard profile (W18, W26, W23) → **3b** on-chain registry/oracle + EAS/ERC-8004 (W19, W20, W25) → **3c** $INSTACLAW staking + burn (W21, W22, W24) | The moat + the talked-about product. 3a is the safe dashboard win (visible "agent credit score," zero contract risk); 3b makes it a composable public good; 3c adds the staking economy (highest external risk last). W10/W18 accrue data from Phase 2 onward | research §7 done; Cooper greenlight; 3c gated on $INSTACLAW token + audits |
 | **Phase 4 — Earn side** | W15, W16, W17 | The differentiator (agent earns a living); inherits the identity + reputation from Phases 1–3 (sellers are trustworthy *because* they carry a sybil-resistant score) | Phases 1–3 patterns proven |
 
 Dependency note: Phase 1 is mostly independent pure-logic + backend (no fleet risk). Phase 2 is the first fleet-mutating step (Rule 64). Phase 3's graph (W10) should begin accruing data the moment Phase 2 ships (settle outcomes), even if scoring hardens later. Phase 4 is gated on the identity/reputation being real so sellers are trustworthy.
+
+**Status (2026-06-03):** Phase 0 = done. **Phase 1 = code-complete and canary-proven** (W1–W8, W11 all built; W11 harness passes 6/6 live; full suite 422 passing; see §6 + §2 registry C2–C10, C21–C26). Phase 1 has cleared the canary gate; it awaits **Cooper greenlight + the §5 policy decisions** to begin **W12 (fleet rollout, the first Phase-2 step) — W12 is NOT done.** The new spend skill is canary-only until W12's manifest version bump carries it fleet-wide. Phases 3–4 and the §9 card rail remain future/not-started.
 
 ---
 
@@ -183,6 +191,19 @@ Dependency note: Phase 1 is mostly independent pure-logic + backend (no fleet ri
 - `lib/frontier-policy.ts` — `evaluateSpend` bands engine — C1 (`74e0100a`, refined).
 - Routes: `/policy` GET+PUT (`f9aaf6a5`), `/offerings` (`a81a1463`), `/transaction`, `/state`, `/refund`, `/reputation/queue`.
 - `frontier_policy_overrides`, `frontier_erc8004_identities`, lifetime-rollup cron (`41d8d971`), refund-reconcile (`0a1eb163`), `_coverage-frontier.ts` (`6137b61d`).
+
+**Phase 1 — BUILT + CANARY-PROVEN (this session, 2026-06-03):** the keystone spend agency is code-complete and proven on the canary (vm-1075); **W11 harness passes 6/6 live**, including the hard-ceiling-binds-over-human-approval invariant. NOT yet rolled to the fleet — W12 (fleet rollout) is gated on Cooper greenlight + the §5 policy decisions (see §4).
+- **W1 credit-standing engine** (`lib/frontier-standing.ts`) — earned budget + FICO-for-agents score, wash-trade integrity (same-human exclusion via `isSameHuman`, counterparty diversity, rep-weighting), good-decision definition. — C2.
+- **W2 supplier rolodex** (`lib/frontier-rolodex.ts`) — Thompson sampling; wired into the spend skill via `--capability` (selection + cold-start live-verified). — C3.
+- **W3 category allowlist** (`lib/frontier-policy.ts`) — taxonomy + per-tier defaults + tag→category mapping. — C4.
+- **W4 authorize gate** (`app/api/agent-economy/authorize`) — real World-ID read, server-side wallet-balance read, atomic reserve (C23), kill-switch check (C21). — C5.
+- **W5 settle** (`app/api/agent-economy/settle`) — CAS single-winner, immutable amount, idempotent terminal-state handling; **W27 dispute outcome** (`disputed` → supplier→avoid); write-once capture (C22). — C6.
+- **W6 spend skill** (`frontier-spend.mjs` + `frontier-spend-core.mjs`) — probe→authorize→Bankr-sign→pay→settle→remember; rolodex-wired; real on-chain spend proven (`0x530cab7e`). — C8.
+- **W7 gbrain economic memory** — supplier index + **W7b purchase log** (per-buy diary). — C9.
+- **W8 Rule-28 SOUL directive** (`workspace-templates-v2.ts`) — earned-budget empowerment text. — C10.
+- **W11 canary proof harness** (`scripts/_canary-frontier-proof.ts`) — C25.
+- **Hardening (this session):** spend kill switch (C21), write-once latency+failure capture (C22), atomic reserve RPC / P1-4 (C23), spend-health alerting cron / P2-6 (C24), standing-truncation flag / P2-8 (C26). Full test suite: 422 passing.
+- **Known fleet state:** the new `frontier-spend.mjs` (write-once + dispute + rolodex) is **canary-only**; it deploys via `stepSkills` (cv-gated `extraSkillFiles`), so it reaches the fleet only on a manifest version bump — i.e., **W12 carries it fleet-wide** (it is NOT there yet).
 
 ---
 
