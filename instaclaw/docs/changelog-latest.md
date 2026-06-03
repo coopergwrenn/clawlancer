@@ -1,18 +1,18 @@
 # Changelog — generated 2026-06-03
 
-Window: `e000d8419502c405416a8a189bbdcf1a94a7b3d0` → `HEAD` (HEAD = `20ff1bc1`)
+Window: `20ff1bc12ad80db7d4780ec084bb982b29048be8` → `HEAD` (HEAD = `3b03db1e`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 20ff1bc12ad80db7d4780ec084bb982b29048be8 -->
+<!-- LAST_GENERATED_SHA: 3b03db1eccb6138ff1d2f74d4b889d7dc4f0a151 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `20ff1bc1` 2026-06-03 — docs(frontier): Rule 72 (keep tracking docs current) + reconcile PRD to reality + promote reserve-RPC migration [2 files] _(ai-assisted)_
-- `3292f672` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `2e4dc2a2` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `3b03db1e` 2026-06-03 — docs(frontier): Rule 72 + PRD reconciliation (the docs the prior commit's message claimed) [2 files] _(ai-assisted)_
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `20ff1bc1` 2026-06-03 — docs(frontier): Rule 72 (keep tracking docs current) + reconcile PRD to reality + promote reserve-RPC migration [2 files] _(ai-assisted)_
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -43,17 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `3292f672` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `2e4dc2a2` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `3b03db1e` 2026-06-03 — docs(frontier): Rule 72 + PRD reconciliation (the docs the prior commit's message claimed) [2 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `20ff1bc1` 2026-06-03 — docs(frontier): Rule 72 (keep tracking docs current) + reconcile PRD to reality + promote reserve-RPC migration
+- `3b03db1e` 2026-06-03 — docs(frontier): Rule 72 + PRD reconciliation (the docs the prior commit's message claimed)
 
 ## Appendix — every commit (chronological)
 
-- `3292f672` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
-- `20ff1bc1` 2026-06-03 — docs(frontier): Rule 72 (keep tracking docs current) + reconcile PRD to reality + promote reserve-RPC migration [2 files] _(ai-assisted)_
+- `2e4dc2a2` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `3b03db1e` 2026-06-03 — docs(frontier): Rule 72 + PRD reconciliation (the docs the prior commit's message claimed) [2 files] _(ai-assisted)_
