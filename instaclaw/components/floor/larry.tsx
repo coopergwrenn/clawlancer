@@ -306,8 +306,12 @@ function Cheliped({ side }: { side: number }) {
 
           {/* ── CLAW (propodus + dactyl) — one drawn-and-extruded asymmetric profile,
               GEOMETRY UNCHANGED. Mounted at the lower-arm tip so it follows the fold;
-              presents its pincer face down-and-forward toward the hero camera. ── */}
-          <group position={[0, 0, 0.18]} rotation={[-0.9, side * -0.25, side * 0.3]}>
+              presents its pincer face down-and-forward toward the hero camera. The
+              `+ Math.PI` on the yaw turns the claw 180° about its vertical axis so the
+              pincer MOUTH opens INWARD (toward the other claw / the body, grab-ready)
+              instead of outward — applied inside the outer pitch so it flips the mouth
+              direction without disturbing the down/forward rest or the up-tilt. ── */}
+          <group position={[0, 0, 0.18]} rotation={[-0.9, side * -0.25 + Math.PI, side * 0.3]}>
             <mesh geometry={clawGeo} castShadow receiveShadow>
               <ShellMaterial color={CLAW_TONE} roughness={0.36} emissiveIntensity={0.12} />
             </mesh>
