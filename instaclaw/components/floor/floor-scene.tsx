@@ -100,15 +100,15 @@ function DeskLamp() {
   const light = useRef<THREE.PointLight>(null);
   useFrame((_, delta) => {
     const d = useFloorStore.getState().director;
-    let target = 1.1; // resting glow — a cozy warm pool on the desk even at idle
+    let target = 0.55; // resting glow — a cozy warm pool on the desk even at idle
     if (d.behavior === "working") {
-      target = d.intensity === 3 ? 2.4 : d.intensity === 2 ? 1.7 : 1.2;
+      target = d.intensity === 3 ? 1.3 : d.intensity === 2 ? 1.0 : 0.72;
     } else if (d.behavior === "incoming") {
-      target = 1.4; // perks up with him
+      target = 0.95; // perks up with him
     } else if (d.behavior === "celebrating") {
-      target = 1.9;
+      target = 1.3;
     } else if (d.behavior === "asleep" || d.behavior === "offline") {
-      target = 0.12;
+      target = 0.1;
     }
     if (light.current) {
       light.current.intensity = THREE.MathUtils.damp(
@@ -154,7 +154,7 @@ export function FloorScene() {
         {/* warm key card (front-right) */}
         <Lightformer
           form="rect"
-          intensity={1.1}
+          intensity={0.8}
           color="#ffd6a0"
           position={[3, 3, 2.5]}
           scale={[5, 5, 1]}
@@ -180,19 +180,20 @@ export function FloorScene() {
         />
       </Environment>
 
-      {/* Ambient — very low; just keeps shadows warm rather than crushed. Kept
-          minimal so the warm key + desk-lamp pool define the mood (cozy needs
-          contrast, not flat fill). */}
-      <ambientLight intensity={0.06} color="#ffe2bc" />
+      {/* Ambient — low-but-inviting; keeps shadows warm and the woods/green
+          reading rich rather than crushed. (Cozy needs contrast, but a study
+          should still GLOW warm, not go to a dark cave.) */}
+      <ambientLight intensity={0.09} color="#ffe2bc" />
 
-      {/* Hemisphere — gentle warm-sky / warm-wood bounce. */}
-      <hemisphereLight args={["#ffdcae", "#3a2616", 0.14]} />
+      {/* Hemisphere — warm-sky / warm-wood bounce, lifted so the sage wall and
+          wood surfaces read as lit materials, not murk. */}
+      <hemisphereLight args={["#ffe6c4", "#42301c", 0.14]} />
 
       {/* KEY — warm, upper-front-right, the shadow-caster. The main pool of warm
           light; everything else falls toward warm shadow (cozy, not flat). */}
       <directionalLight
-        position={[3.4, 5.2, 2.6]}
-        intensity={2.6}
+        position={[3.7, 3.3, 2.9]}
+        intensity={1.7}
         color="#ffca8a"
         castShadow
         shadow-mapSize-width={2048}
@@ -209,12 +210,21 @@ export function FloorScene() {
 
       {/* COOL FILL — from the window side, no shadow; tints the shadow side cool
           so the warm/cool contrast reads cozy. The window's daylight, physical. */}
-      <directionalLight position={[-3.2, 2.6, -2]} intensity={0.4} color="#9fc2ff" />
+      <directionalLight position={[-3.2, 2.6, -2]} intensity={0.55} color="#9fc2ff" />
 
       {/* RIM / BACK — cool, behind + above Larry toward camera; lights his top
           edge so he peels off the dark backdrop (with the shell's Fresnel rim,
           this is the "pop"). */}
       <directionalLight position={[-1.4, 2.6, -3.6]} intensity={0.85} color="#cfe2ff" />
+
+      {/* WALL WASH — a soft warm fill sitting in front of the back wall so the
+          sage feature wall + framed art read as a lit, designed surface (not a
+          dark band). No shadow, gentle falloff → a warm gradient up the wall. */}
+      {/* Wall grazes — tight to the wall + high, so they warm the walnut panels
+          without blasting the desk top behind Larry. The dark wall WANTS to stay
+          moody, so these are gentle. */}
+      <pointLight position={[-0.2, 2.15, -1.34]} color="#ffe6c4" intensity={0.7} distance={3.2} decay={1.7} />
+      <pointLight position={[2.1, 2.0, -1.34]} color="#ffe0bd" intensity={0.55} distance={2.8} decay={1.8} />
 
       <DeskLamp />
 
@@ -257,13 +267,13 @@ export function FloorScene() {
           cozy, focused framing the scene was missing. */}
       <EffectComposer multisampling={4}>
         <Bloom
-          intensity={0.7}
-          luminanceThreshold={0.82}
-          luminanceSmoothing={0.22}
+          intensity={0.55}
+          luminanceThreshold={1.0}
+          luminanceSmoothing={0.2}
           mipmapBlur
         />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-        <Vignette eskil={false} offset={0.28} darkness={0.85} />
+        <Vignette eskil={false} offset={0.26} darkness={0.72} />
       </EffectComposer>
     </>
   );
