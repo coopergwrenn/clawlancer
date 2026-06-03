@@ -60,7 +60,18 @@ const CLAW_TONE = "#d2742e"; // pincer jaws — lighter than the leg tone so the
 // ── Stage positions (world units; ~1 unit ≈ one floor tile) ─────────────────
 const HOME_POS = new THREE.Vector3(1.15, 0, 0.85); // resting spot, front-right
 const DESK_POS = new THREE.Vector3(0, 0, 0.12); // working spot, in front of the desk
-const GROUND_Y = 0.3; // body-center height when grounded (legs reach the floor)
+// Body-center height at the idle bob's RESTING CENTER. Tuned so the LOWEST point
+// of the idle bob (trough) lands Larry's feet on the floor plane (y≈0.012) — the
+// feet kiss the ground at the bottom of each breath and lift between, never below.
+// (The legs reach ~0.347 below body-center; floor 0.012 + 0.347 = 0.359 is the
+// body height where feet touch, + the 0.028 idle bob amplitude = ~0.387.)
+const GROUND_Y = 0.391;
+// Hard floor: body-center height at which the lowest foot exactly meets the floor
+// plane (0.012 + ~0.347 leg reach). The final body y is clamped to never drop
+// below this, so no bob/crouch (incl. the celebrate wind-up) can punch the feet
+// through the ground. Only engages at the idle trough + the deep celebrate crouch;
+// the smooth idle bob lives above it.
+const MIN_BODY_Y = 0.363;
 const LEG_BASE_Y = -0.05; // resting y of each walking-leg attach group
 
 // ── Timing / amplitudes ─────────────────────────────────────────────────────
@@ -511,7 +522,10 @@ export function Larry() {
       body.current.scale.set(1 - stretch * 0.2, 1 + stretch * 0.38, 1 - stretch * 0.2);
     }
     y += Math.max(0, stretch) * 0.08; // micro-hop on the spring up
-    g.position.y = y;
+    // Hard floor clamp (Rule: feet never below the ground). Lets the smooth idle
+    // bob kiss the floor at its trough and keeps the deep celebrate crouch planted,
+    // without flattening the bob (it only catches what would clip).
+    g.position.y = Math.max(y, MIN_BODY_Y);
 
     // ── 4. Roll: scuttle WADDLE (secondary action) or stumble wobble ────────
     let rollTarget = stepWave * 0.09 * m; // side-to-side waddle while walking
