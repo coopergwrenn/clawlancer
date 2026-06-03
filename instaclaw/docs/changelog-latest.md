@@ -1,15 +1,15 @@
 # Changelog — generated 2026-06-03
 
-Window: `c74983f1a1642b784a951f05edefa2a2f92455d7` → `HEAD` (HEAD = `88eecfb5`)
+Window: `88eecfb536f5d9c150f0a54f2c4f76b74f1aab5d` → `HEAD` (HEAD = `51270115`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 88eecfb536f5d9c150f0a54f2c4f76b74f1aab5d -->
+<!-- LAST_GENERATED_SHA: 512701155cd70bca8f14ff8c3e7a186982d4560c -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `88eecfb5` 2026-06-02 — feat(frontier): spend-rollout health section in _coverage-frontier (Rule 27) [1 files] _(ai-assisted)_
-- `ce071cab` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `51270115` 2026-06-02 — fix(toolrouter): transparent first-call retry + self-warm (TRANSPARENT_RETRY_V1, SELF_WARM_V1) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `21916fb2` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `51270115` 2026-06-02 — fix(toolrouter): transparent first-call retry + self-warm (TRANSPARENT_RETRY_V1, SELF_WARM_V1) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `88eecfb5` 2026-06-02 — feat(frontier): spend-rollout health section in _coverage-frontier (Rule 27) [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `ce071cab` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
+- `21916fb2` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `51270115` 2026-06-02 — [reconciler, infrastructure] — fix(toolrouter): transparent first-call retry + self-warm (TRANSPARENT_RETRY_V1, SELF_WARM_V1)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `88eecfb5` 2026-06-02 — feat(frontier): spend-rollout health section in _coverage-frontier (Rule 27)
+- `51270115` 2026-06-02 — fix(toolrouter): transparent first-call retry + self-warm (TRANSPARENT_RETRY_V1, SELF_WARM_V1)
 
 ## Appendix — every commit (chronological)
 
-- `ce071cab` 2026-06-02 — chore(changelog): auto-update [skip ci] [2 files]
-- `88eecfb5` 2026-06-02 — feat(frontier): spend-rollout health section in _coverage-frontier (Rule 27) [1 files] _(ai-assisted)_
+- `21916fb2` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `51270115` 2026-06-02 — fix(toolrouter): transparent first-call retry + self-warm (TRANSPARENT_RETRY_V1, SELF_WARM_V1) [3 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
