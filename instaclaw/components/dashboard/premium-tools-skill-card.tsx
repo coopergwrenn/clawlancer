@@ -34,7 +34,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Sparkles,
   Search,
   Telescope,
   Globe,
@@ -45,8 +44,28 @@ import {
   CheckCircle2,
   ArrowRight,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { WorldLogo } from "@/components/icons/world-logo";
+import { SkillOrb } from "@/components/skill-orb";
+
+// World-premium orb color. This orb's 3D pop comes from a BRIGHT center in the
+// radial gradient — a dark/obsidian color can't produce that (tested: obsidian
+// read flat/dull next to the vivid siblings and missed the "comparable visual
+// weight" bar), so a saturated hue is required to match their dimensionality.
+// Iris-indigo reads premium + World-tech, and among the actual grid neighbors
+// (ecommerce sky-blue #4A90D9, clawlancer amber #E5A13B, virtuals/solana violet
+// #7C3AED) it's distinct — bluer than the violets, more saturated than the
+// sky-blue. (The only same-family value in the broader skill map is
+// email-outreach #6366F1, which does not appear alongside Premium Tools.)
+// The glossy sphere render is the real SkillOrb — identical to siblings by
+// construction; only the color + glyph differ.
+const WORLD_ORB_COLOR = "#5D5FEF";
+// WorldLogo is an ({className, style}) => <svg fill="currentColor"> — it honors
+// className (sizing) + style (color=white from SkillOrb) and harmlessly ignores
+// the strokeWidth SkillOrb passes. The cast bridges it to SkillOrb's
+// icon: LucideIcon prop WITHOUT modifying the shared SkillOrb component.
+const WorldOrbIcon = WorldLogo as unknown as LucideIcon;
 
 interface WorldIDStatus {
   verified: boolean;
@@ -214,21 +233,11 @@ export function PremiumToolsSkillCard() {
         aria-label="Premium Tools — see all six"
       >
         <div className="flex items-start gap-3.5">
-          {/* Icon */}
-          <div
-            className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center mt-0.5"
-            style={{
-              background: verified
-                ? "linear-gradient(135deg, rgba(34,197,94,0.18), rgba(22,163,74,0.12))"
-                : "rgba(0,0,0,0.04)",
-              border: verified ? "1px solid rgba(34,197,94,0.2)" : "1px solid var(--border)",
-            }}
-          >
-            <Sparkles
-              className="w-[18px] h-[18px]"
-              style={{ color: verified ? "rgb(22,163,74)" : "var(--foreground)" }}
-            />
-          </div>
+          {/* Icon — the World mark in the real SkillOrb glossy sphere, so it
+              renders identically to the other grid cards (E-Commerce, etc.).
+              Constant World color across states; the Active/Locked badge
+              already carries the state, and sibling orbs don't state-tint. */}
+          <SkillOrb size="sm" color={WORLD_ORB_COLOR} icon={WorldOrbIcon} className="mt-0.5" />
 
           {/* Content */}
           <div className="flex-1 min-w-0">
