@@ -2736,32 +2736,31 @@ html.lenis body {
   }
 }
 
-/* ─── /skills status pills — soft glass badges ───────────────────────────
- * Matches the channels SECONDARY-PILL recipe (.channel-card-secondary-pill,
- * the real badge-scale glass element) — NOT the full-size card. At 19px the
- * card's heavy bits do not survive a 1:1 scale-down: a black conic ::after
- * rim compresses into a dirty dark outline, and an inset:-3px colored
- * ::before bleeds outside the pill as a hard-edged ghosted blob — the exact
- * halo-outside-the-corners the channel cards deliberately removed (see the
- * .channel-card-root::before comment: "inset: 0 (was -8px) ... the earlier
- * bleed produced visible green/blue halos extending outside the corners").
- *
- * So no ::before, no ::after, no external bleed. Just translucent glass +
- * backdrop-blur + a light box-shadow stack (white inset highlights + a soft
- * drop shadow), with the COLOR carried INSIDE the body as a faint
- * translucent tint (color sits behind the blur, inside the shape = "soft
- * colored light behind clean glass") plus one gently-blurred, low-alpha
- * colored drop-shadow for a borderless dimensional lift. The edge is a
- * light white inner highlight + a faint COLORED (never black) hairline.
- * Green matches is-imessage (31,173,62); blue is-telegram (34,158,217);
- * neutral stays quiet. Labels/colors per variant are unchanged.
+/* ─── /skills status pills — channels glass MATERIAL ─────────────────────
+ * Same material as .channel-card-secondary-pill (the real channels glass
+ * pill) — a TRANSLUCENT SURFACE, not a colored fill. The prior versions
+ * went flat because they used an opaque-ish tint as the background and
+ * dropped the glass cues. The glassy dimensionality is produced by, in order:
+ *   1. transparent background-color (nothing solid),
+ *   2. the channels -75deg diagonal WHITE SHEEN sweep (lit-surface highlight),
+ *   3. backdrop-filter: blur (frosts whatever is behind),
+ *   4. the channels 4-layer box-shadow — faint dark top inset, WHITE BOTTOM
+ *      highlight inset, soft neutral drop, WHITE INNER-GLOW RING inset —
+ *      those white insets read as glass thickness catching light.
+ * Color is a RADIAL gradient layer UNDER the sheen (a light source inside
+ * the glass at top-left, matching the cards' is-imessage "ellipse at 28%"),
+ * so color comes THROUGH the glass rather than sitting on top as a tint with
+ * a halo around it. No external colored glow (that read as sticker+halo).
+ * green=is-imessage(31,173,62), blue=is-telegram(34,158,217), neutral quiet.
+ * Labels/colors per variant unchanged.
  * ──────────────────────────────────────────────────────────────────────── */
 .skill-pill {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 3px;
   height: 19px;
-  padding: 0 8px;
+  padding: 0 9px;
   border-radius: 9999px;
   font-size: 10px;
   font-weight: 600;
@@ -2769,39 +2768,62 @@ html.lenis body {
   line-height: 1;
   white-space: nowrap;
   flex-shrink: 0;
+  background-color: rgba(0, 0, 0, 0);
   -webkit-backdrop-filter: blur(3px);
           backdrop-filter: blur(3px);
 }
 /* Green family — Active / Always On / Connected. */
 .skill-pill.is-green {
-  color: rgb(21, 128, 61);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0)),
-    rgba(31, 173, 62, 0.15);
+  color: rgb(20, 120, 57);
+  background-image:
+    linear-gradient(-75deg,
+      rgba(255, 255, 255, 0.10),
+      rgba(255, 255, 255, 0.32),
+      rgba(255, 255, 255, 0.10)),
+    radial-gradient(125% 150% at 26% 26%,
+      rgba(31, 173, 62, 0.40) 0%,
+      rgba(31, 173, 62, 0.24) 55%,
+      rgba(31, 173, 62, 0.15) 100%);
   box-shadow:
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.65),
-    inset 0 0 0 0.5px rgba(31, 173, 62, 0.16),
-    0 1px 5px -1px rgba(31, 173, 62, 0.38);
+    rgba(0, 0, 0, 0.05) 0px 1px 1px 0px inset,
+    rgba(255, 255, 255, 0.55) 0px -1px 1px 0px inset,
+    rgba(0, 0, 0, 0.10) 0px 1.5px 2px -1px,
+    rgba(255, 255, 255, 0.30) 0px 0px 1px 1.5px inset;
 }
 /* Blue family — MCP / Coming Soon. */
 .skill-pill.is-blue {
-  color: rgb(29, 110, 199);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0)),
-    rgba(34, 158, 217, 0.15);
+  color: rgb(28, 105, 190);
+  background-image:
+    linear-gradient(-75deg,
+      rgba(255, 255, 255, 0.10),
+      rgba(255, 255, 255, 0.32),
+      rgba(255, 255, 255, 0.10)),
+    radial-gradient(125% 150% at 26% 26%,
+      rgba(34, 158, 217, 0.40) 0%,
+      rgba(34, 158, 217, 0.24) 55%,
+      rgba(34, 158, 217, 0.15) 100%);
   box-shadow:
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.65),
-    inset 0 0 0 0.5px rgba(34, 158, 217, 0.16),
-    0 1px 5px -1px rgba(34, 158, 217, 0.38);
+    rgba(0, 0, 0, 0.05) 0px 1px 1px 0px inset,
+    rgba(255, 255, 255, 0.55) 0px -1px 1px 0px inset,
+    rgba(0, 0, 0, 0.10) 0px 1.5px 2px -1px,
+    rgba(255, 255, 255, 0.30) 0px 0px 1px 1.5px inset;
 }
-/* Neutral — Locked. Quiet glass, no colored lift. */
+/* Neutral — Locked. Same glass, near-clear (matches the monochrome
+   channels secondary pill). */
 .skill-pill.is-neutral {
   color: var(--muted);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0)),
-    rgba(0, 0, 0, 0.05);
+  background-image:
+    linear-gradient(-75deg,
+      rgba(255, 255, 255, 0.10),
+      rgba(255, 255, 255, 0.30),
+      rgba(255, 255, 255, 0.10)),
+    radial-gradient(125% 150% at 26% 26%,
+      rgba(0, 0, 0, 0.07) 0%,
+      rgba(0, 0, 0, 0.04) 55%,
+      rgba(0, 0, 0, 0.02) 100%);
   box-shadow:
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.55),
-    inset 0 0 0 0.5px rgba(0, 0, 0, 0.07),
-    0 1px 4px -1px rgba(0, 0, 0, 0.12);
+    rgba(0, 0, 0, 0.04) 0px 1px 1px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -1px 1px 0px inset,
+    rgba(0, 0, 0, 0.10) 0px 1.5px 2px -1px,
+    rgba(255, 255, 255, 0.25) 0px 0px 1px 1.5px inset;
 }
