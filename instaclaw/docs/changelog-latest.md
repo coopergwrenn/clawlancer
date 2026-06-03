@@ -1,16 +1,16 @@
 # Changelog — generated 2026-06-03
 
-Window: `33d5b1a06cd438dd2ab14fecfd59a39d9d326a59` → `HEAD` (HEAD = `b0853ac8`)
+Window: `b0853ac8a82b7ea76a7eb270de07d353d50d1049` → `HEAD` (HEAD = `d598e856`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: b0853ac8a82b7ea76a7eb270de07d353d50d1049 -->
+<!-- LAST_GENERATED_SHA: d598e8564a4595f3bc5330b36864d9cb5bdd0311 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
-- **Feature (user-facing):** 0
+- **Infrastructure:** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,12 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-_None in this window._
+- `d598e856` 2026-06-03 — fix(floor): flip Larry's pincers to open INWARD toward each other [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `b0853ac8` 2026-06-03 — fix(skills): soft borderless glass pills — drop dark conic rim + external bleed [1 files] _(ai-assisted)_
-- `68f48416` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `148bd6c9` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,13 +30,13 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
-
-- `b0853ac8` 2026-06-03 — fix(skills): soft borderless glass pills — drop dark conic rim + external bleed [1 files] _(ai-assisted)_
-
-### Feature (user-facing) (0)
+### Infrastructure (0)
 
 _(none)_
+
+### Feature (user-facing) (1)
+
+- `d598e856` 2026-06-03 — fix(floor): flip Larry's pincers to open INWARD toward each other [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `68f48416` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `148bd6c9` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `b0853ac8` 2026-06-03 — fix(skills): soft borderless glass pills — drop dark conic rim + external bleed
+- `d598e856` 2026-06-03 — fix(floor): flip Larry's pincers to open INWARD toward each other
 
 ## Appendix — every commit (chronological)
 
-- `68f48416` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
-- `b0853ac8` 2026-06-03 — fix(skills): soft borderless glass pills — drop dark conic rim + external bleed [1 files] _(ai-assisted)_
+- `148bd6c9` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `d598e856` 2026-06-03 — fix(floor): flip Larry's pincers to open INWARD toward each other [1 files] _(ai-assisted)_
