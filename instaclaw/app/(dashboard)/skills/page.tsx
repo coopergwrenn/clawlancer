@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { SkillIcon, hasSkillIcon, getRichDescription } from "@/lib/skill-icons";
 import { SkillOrb } from "@/components/skill-orb";
 import { resolveSkillOrb, CATEGORY_COLORS } from "@/lib/skill-orb-mapping";
+import { PremiumToolsShowcase } from "@/components/dashboard/premium-tools-showcase";
 
 // ── Types ────────────────────────────────────────────
 
@@ -368,6 +369,9 @@ export default function SkillsPage() {
           Manage your agent&apos;s capabilities and connected services.
         </p>
       </div>
+
+      {/* Premium tools — World ID unlock funnel (conversion hero) */}
+      <PremiumToolsShowcase />
 
       {/* Tab switcher */}
       <div
