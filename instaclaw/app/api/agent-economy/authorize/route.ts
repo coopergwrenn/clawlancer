@@ -333,6 +333,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "failed to read ledger" }, { status: 500 });
   }
   const dbRows = (rawRows ?? []) as FrontierTxnDbRow[];
+  // P2-8: standing is computed over the most-recent RECENT_SCAN_LIMIT rows. If the
+  // VM has more than that in the window, older history is excluded and the standing
+  // is approximate (slightly understated). Flag it so the agent/operator knows —
+  // parity with /state's `lifetime.truncated`. Exact at Phase-1 volume; matters only
+  // for very heavy agents (>500 frontier txns), a Phase-2 windowed-aggregation fix.
+  const standingTruncated = dbRows.length >= RECENT_SCAN_LIMIT;
 
   // ── Same-human resolution (§7.3.1 #1): which counterparty VMs share our owner ──
   const counterpartyVmIds = Array.from(
@@ -407,6 +413,7 @@ export async function POST(req: NextRequest) {
     earned_daily_budget_usd: decision.earnedDailyBudgetUsd,
     remaining_earned_after_usd: decision.remainingEarnedAfterUsd,
     policy_bands: evaluation.effectiveBands,
+    standing_truncated: standingTruncated,
   };
 
   // ── Not authorized: a valid business answer (ask the human / hard no). No hold. ──
