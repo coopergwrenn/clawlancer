@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-03
 
-Window: `20ff1bc12ad80db7d4780ec084bb982b29048be8` → `HEAD` (HEAD = `3b03db1e`)
+Window: `3b03db1eccb6138ff1d2f74d4b889d7dc4f0a151` → `HEAD` (HEAD = `b2ed56be`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 3b03db1eccb6138ff1d2f74d4b889d7dc4f0a151 -->
+<!-- LAST_GENERATED_SHA: b2ed56be310c1b8bf6a7bafeb3df536da14a7e19 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `2e4dc2a2` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
-- `3b03db1e` 2026-06-03 — docs(frontier): Rule 72 + PRD reconciliation (the docs the prior commit's message claimed) [2 files] _(ai-assisted)_
+- `6c07537b` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `b2ed56be` 2026-06-03 — docs(frontier): capture W12 deferral decision + greenlight checklist (Rule 72) [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -45,16 +45,16 @@ _(none)_
 
 ### Docs / PRD only (2)
 
-- `2e4dc2a2` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
-- `3b03db1e` 2026-06-03 — docs(frontier): Rule 72 + PRD reconciliation (the docs the prior commit's message claimed) [2 files] _(ai-assisted)_
+- `6c07537b` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `b2ed56be` 2026-06-03 — docs(frontier): capture W12 deferral decision + greenlight checklist (Rule 72) [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `3b03db1e` 2026-06-03 — docs(frontier): Rule 72 + PRD reconciliation (the docs the prior commit's message claimed)
+- `b2ed56be` 2026-06-03 — docs(frontier): capture W12 deferral decision + greenlight checklist (Rule 72)
 
 ## Appendix — every commit (chronological)
 
-- `2e4dc2a2` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
-- `3b03db1e` 2026-06-03 — docs(frontier): Rule 72 + PRD reconciliation (the docs the prior commit's message claimed) [2 files] _(ai-assisted)_
+- `6c07537b` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `b2ed56be` 2026-06-03 — docs(frontier): capture W12 deferral decision + greenlight checklist (Rule 72) [1 files] _(ai-assisted)_
