@@ -1,18 +1,18 @@
 # Changelog — generated 2026-06-03
 
-Window: `e3d4e0a39e9675147f903ebef1a6951d7d63f201` → `HEAD` (HEAD = `de39e9b2`)
+Window: `de39e9b2e0978bbca0cf81c62ac23a867507e1de` → `HEAD` (HEAD = `54be207d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: de39e9b2e0978bbca0cf81c62ac23a867507e1de -->
+<!-- LAST_GENERATED_SHA: 54be207d9b91ef81c5835e71981c6e6207aec037 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `de39e9b2` 2026-06-03 — fix(skills): re-proportion pill edge insets for 19px (kill bottom banding) [1 files] _(ai-assisted)_
-- `579b87eb` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `fc3158bf` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `54be207d` 2026-06-03 — docs(frontier): §5.1 self-audit + Q5–Q10 decisions + phase-plan + gap-hunt (no prod change) [2 files] _(ai-assisted)_
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `de39e9b2` 2026-06-03 — fix(skills): re-proportion pill edge insets for 19px (kill bottom banding) [1 files] _(ai-assisted)_
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -43,17 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `579b87eb` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `fc3158bf` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `54be207d` 2026-06-03 — docs(frontier): §5.1 self-audit + Q5–Q10 decisions + phase-plan + gap-hunt (no prod change) [2 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `de39e9b2` 2026-06-03 — fix(skills): re-proportion pill edge insets for 19px (kill bottom banding)
+- `54be207d` 2026-06-03 — docs(frontier): §5.1 self-audit + Q5–Q10 decisions + phase-plan + gap-hunt (no prod change)
 
 ## Appendix — every commit (chronological)
 
-- `579b87eb` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
-- `de39e9b2` 2026-06-03 — fix(skills): re-proportion pill edge insets for 19px (kill bottom banding) [1 files] _(ai-assisted)_
+- `fc3158bf` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `54be207d` 2026-06-03 — docs(frontier): §5.1 self-audit + Q5–Q10 decisions + phase-plan + gap-hunt (no prod change) [2 files] _(ai-assisted)_
