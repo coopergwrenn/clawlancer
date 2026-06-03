@@ -157,3 +157,16 @@ Workaround applied in Component 3: send Anthropic-format (top-level `system`). T
 - Component 8 (Layer 3 per-candidate deliberation, Wednesday): 🚨 **blocks the central moat** if routing remains unstable. Must fix before Layer 3 ships, OR have a deterministic Sonnet path the deliberation lib can rely on.
 
 **Action item:** assign before Wed 9am.
+
+---
+
+## 2026-06-03 — Frontier policy-controls: deferred test coverage + observability (from §5.1 self-audit)
+
+Shipped: per-VM spend-policy enforcement (gate now honors band + category overrides via `lib/frontier-overrides-db.ts`), the tighten-only category override + dashboard control, migration `20260603220000_frontier_policy_allowed_categories` applied to prod. Self-audit found no bugs; these are the documented follow-ups (PRD §5.1 GAP-3 / GAP-4):
+
+- **GAP-4 (test coverage, Rule 31 spirit) — not blocking, do before the next Frontier feature touches this code.**
+  - `lib/frontier-overrides-db.ts:readPolicyOverrides` has no automated test: the snake→camel band parse, the `Array.isArray` category guard, the table-missing (`PGRST205`/`42P01`) and column-absent paths are verified-by-inspection only. Add a fake-`supabase` unit test feeding it various row shapes (no row, null cols, `[]` cats, `["data"]`, garbage strings, table-missing error).
+  - `/api/agent-economy/policy` PUT category validation (non-array → 400, unknown-category → 400, `PGRST204` column-missing retry → bands persist + `allowed_categories_persisted:false`) has no route-level test.
+  - The authorize-route → gate wiring (route actually feeds the stored override into `evaluateSpend`) is integration-untested. Pure logic is covered (`_test-frontier-categories.ts` 14/14).
+
+- **GAP-3 (observability) — defer until W12 produces real authorize volume.** Nothing records the gate-decision distribution (how often agents hit `just_do_it` vs `ask_first` vs `deny`, and the deny-reason breakdown — `category_not_allowed`, `exceeds_earned_budget`, `would_drain_wallet`, etc.). This is the data needed to TUNE the bands (§5 Q2/Q3) after rollout. Cheapest path: a lightweight `frontier_authz_events` rollup or a counter incremented in the authorize route, surfaced on `/economy` + an admin view. Pointless before there's autonomous-spend traffic (gated behind opt-in + W12), so this is a post-W12 ops item, not a pre-W12 one.
