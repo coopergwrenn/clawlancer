@@ -34,6 +34,8 @@
  *     --wallet-balance-usd <n>  your spendable USDC (else read from chain; else ask-first)
  *     --human-approved       the human acked this spend (pushes past the earned-budget gate)
  *     --result-used true|false  did the result turn out useful? (default: delivered & non-empty)
+ *     --dispute              you paid but the delivery was bad/garbage (W27): records a
+ *                            dispute + drops the supplier to "avoid" so it's never auto-picked again
  *     --dry-run              preview the plan + supplier trust; never reserves, signs, or pays
  *     --json                 machine-readable output
  *
@@ -64,7 +66,7 @@ function parseArgs(argv) {
     const t = argv[i];
     if (!t.startsWith("--")) continue;
     const key = t.slice(2);
-    const flagOnly = ["human-approved", "dry-run", "json", "debug"];
+    const flagOnly = ["human-approved", "dry-run", "json", "debug", "dispute"];
     if (flagOnly.includes(key)) { a[key] = true; continue; }
     a[key] = argv[++i];
   }
@@ -394,13 +396,24 @@ async function main() {
   }
 
   // result_used: the agent's judgment; default to "delivered & non-empty" unless told otherwise.
-  const resultUsed = args["result-used"] !== undefined ? args["result-used"] === "true" : (paid && !!resultBody && resultBody.trim().length > 0);
+  // W27 — the agent can flag a bad delivery (x402 settles-then-serves: you paid, then
+  // got garbage). --dispute only applies to a spend that actually PAID; it tanks the
+  // supplier to "avoid" so the rolodex never auto-picks it again. A disputed result is
+  // never "used".
+  const disputed = !!args.dispute && paid;
+  const settleResult = !paid ? "failed" : disputed ? "disputed" : "success"; // settle-endpoint vocab
+  const recordOutcome = !paid ? "failed" : disputed ? "disputed" : "settled"; // supplier/purchase vocab
+  const resultUsed = disputed
+    ? false
+    : args["result-used"] !== undefined
+      ? args["result-used"] === "true"
+      : (paid && !!resultBody && resultBody.trim().length > 0);
 
   // 4 ── SETTLE: flip the hold, record the outcome (teaches the next decision) ──
   await settle(gatewayToken, {
     hold_id: holdId,
     request_id: requestId,
-    result: paid ? "success" : "failed",
+    result: settleResult,
     tx_hash: txHash ?? undefined,
     result_used: resultUsed,
     response_summary: why.slice(0, 1000),
@@ -409,14 +422,14 @@ async function main() {
   // 5(write) ── REMEMBER: compound the supplier record ──
   const merged = mergeSupplierRecord(prevRec, {
     supplierId, endpoint: url, category,
-    outcome: paid ? "settled" : "failed", amountUsd, resultUsed, atMs: Date.now(),
+    outcome: recordOutcome, amountUsd, resultUsed, atMs: Date.now(),
     note: `${why}${txHash ? ` (tx ${txHash.slice(0, 12)}…)` : ""}${payErr ? ` [${payErr}]` : ""}`,
   });
   await writeSupplier(gbrainBearer, slug, merged);
   // W7(b) — also log this individual purchase to the agent's local diary.
   await writePurchase(gbrainBearer, {
     requestId, supplierId, endpoint: url, category,
-    amountUsd, outcome: paid ? "settled" : "failed", resultUsed,
+    amountUsd, outcome: recordOutcome, resultUsed,
     txHash: txHash ?? null, atMs: Date.now(), why: why.slice(0, 200),
   });
 

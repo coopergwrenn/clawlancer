@@ -46,7 +46,7 @@
  *   {
  *     "hold_id":    <uuid>,        // the transaction id from /authorize (preferred), OR
  *     "request_id": <string>,      // the same idempotency key used at /authorize
- *     "result":     "success"|"failed",   // required
+ *     "result":     "success"|"failed"|"disputed",  // required ("disputed" = paid but bad delivery; W27)
  *     "tx_hash":    <string>,      // optional — on-chain hash (claim, verified later)
  *     "result_used":<bool>,        // optional — was the result useful? (success only; §7.3.2)
  *     "response_summary": <string>,// optional — short note
@@ -89,7 +89,7 @@ function isUUID(s: unknown): s is string {
 const round6 = (x: number) => Math.round(x * 1e6) / 1e6;
 
 export interface CleanSettle {
-  success: boolean;
+  result: "success" | "failed" | "disputed";
   holdId: string | null;
   requestId: string | null;
   txHash: string | null;
@@ -108,11 +108,13 @@ export function validateSettleBody(raw: unknown): CleanSettle | { error: string 
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { error: "body must be a JSON object" };
   const b = raw as Record<string, unknown>;
 
-  // result — required.
-  if (b.result !== "success" && b.result !== "failed") {
-    return { error: 'result must be "success" or "failed"' };
+  // result — required. "disputed" (W27) = paid but the delivery was bad: money DID
+  // move (x402 settles-then-serves) but the agent flags garbage → status 'disputed',
+  // which tanks the supplier posterior to "avoid" (stronger than a not-used "waste").
+  if (b.result !== "success" && b.result !== "failed" && b.result !== "disputed") {
+    return { error: 'result must be "success", "failed", or "disputed"' };
   }
-  const success = b.result === "success";
+  const result = b.result as "success" | "failed" | "disputed";
 
   // Hold identity — hold_id preferred, else request_id; at least one.
   let holdId: string | null = null;
@@ -146,8 +148,8 @@ export function validateSettleBody(raw: unknown): CleanSettle | { error: string 
     const s = b.response_summary.trim().slice(0, MAX_SUMMARY);
     summary = s === "" ? null : s;
   }
-  // result_used only carries meaning on success (a failed spend delivered nothing).
-  const resultUsed = success && b.result_used === true;
+  // result_used only carries meaning on success (a failed/disputed spend delivered nothing usable).
+  const resultUsed = result === "success" && b.result_used === true;
 
   let protocolFee: number | null = null;
   if (b.protocol_fee_usd !== undefined && b.protocol_fee_usd !== null) {
@@ -157,7 +159,7 @@ export function validateSettleBody(raw: unknown): CleanSettle | { error: string 
     protocolFee = round6(b.protocol_fee_usd);
   }
 
-  return { success, holdId, requestId, txHash, summary, resultUsed, protocolFee };
+  return { result, holdId, requestId, txHash, summary, resultUsed, protocolFee };
 }
 
 /**
@@ -168,7 +170,7 @@ export function validateSettleBody(raw: unknown): CleanSettle | { error: string 
  */
 export function classifySettleOutcome(
   currentStatus: string,
-  intendedStatus: "settled" | "failed",
+  intendedStatus: "settled" | "failed" | "disputed",
 ): "proceed" | "idempotent" | "contradictory" {
   if (currentStatus === "pending") return "proceed";
   if (currentStatus === intendedStatus) return "idempotent";
@@ -191,7 +193,10 @@ export async function POST(req: NextRequest) {
   }
   const v = validateSettleBody(bodyJson);
   if ("error" in v) return NextResponse.json({ error: v.error }, { status: 400 });
-  const { success, holdId, requestId, txHash, summary, resultUsed, protocolFee } = v;
+  const { result, holdId, requestId, txHash, summary, resultUsed, protocolFee } = v;
+  // "success" and "disputed" both PAID (money moved; x402 settles-then-serves) → set
+  // settled_at. "failed" = the pay leg never completed → no money, no settled_at.
+  const paid = result !== "failed";
 
   const supabase = getSupabase();
 
@@ -212,7 +217,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "hold does not belong to this VM" }, { status: 403 });
   }
 
-  const intendedStatus: "settled" | "failed" = success ? "settled" : "failed";
+  const intendedStatus: "settled" | "failed" | "disputed" =
+    result === "success" ? "settled" : result === "disputed" ? "disputed" : "failed";
 
   // Already terminal — disambiguate idempotent vs contradictory.
   const preOutcome = classifySettleOutcome(hold.status as string, intendedStatus);
@@ -239,7 +245,7 @@ export async function POST(req: NextRequest) {
   };
   const update: Record<string, unknown> = {
     status: intendedStatus,
-    settled_at: success ? new Date().toISOString() : null,
+    settled_at: paid ? new Date().toISOString() : null,
     metadata: mergedMeta,
   };
   if (txHash !== null) update.tx_hash = txHash;

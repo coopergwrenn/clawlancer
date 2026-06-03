@@ -180,7 +180,7 @@ check(
   const v = validateSettleBody({ result: "success", hold_id: HOLD });
   check("settle: success ok", !isErr(v));
   if (!isErr(v)) {
-    check("settle: success flag true", v.success === true);
+    check("settle: result is success", v.result === "success");
     check("settle: result_used defaults false", v.resultUsed === false);
     check("settle: holdId set", v.holdId === HOLD);
   }
@@ -192,8 +192,15 @@ check(
 {
   // result_used only carries meaning on success — failed must clamp it to false.
   const v = validateSettleBody({ result: "failed", hold_id: HOLD, result_used: true });
-  check("settle: result_used clamped false on failed", !isErr(v) && v.resultUsed === false && v.success === false);
+  check("settle: result_used clamped false on failed", !isErr(v) && v.resultUsed === false && v.result === "failed");
 }
+{
+  // W27 — disputed: accepted, paid-but-bad. result_used clamps to false even if asked true.
+  const v = validateSettleBody({ result: "disputed", hold_id: HOLD, result_used: true });
+  check("settle: disputed accepted", !isErr(v) && v.result === "disputed");
+  check("settle: disputed clamps result_used false", !isErr(v) && v.resultUsed === false);
+}
+check("settle: unknown result (maybe) still errors", isErr(validateSettleBody({ result: "maybe", hold_id: HOLD })));
 {
   const v = validateSettleBody({ result: "success", request_id: "req-9" });
   check("settle: request_id path", !isErr(v) && v.requestId === "req-9" && v.holdId === null);
@@ -215,6 +222,11 @@ check("outcome: failed+failed → idempotent", classifySettleOutcome("failed", "
 check("outcome: settled+failed → contradictory", classifySettleOutcome("settled", "failed") === "contradictory");
 check("outcome: failed+settled → contradictory", classifySettleOutcome("failed", "settled") === "contradictory");
 check("outcome: refunded+settled → contradictory", classifySettleOutcome("refunded", "settled") === "contradictory");
+// W27 — disputed terminal
+check("outcome: pending+disputed → proceed", classifySettleOutcome("pending", "disputed") === "proceed");
+check("outcome: disputed+disputed → idempotent", classifySettleOutcome("disputed", "disputed") === "idempotent");
+check("outcome: settled+disputed → contradictory", classifySettleOutcome("settled", "disputed") === "contradictory");
+check("outcome: disputed+settled → contradictory", classifySettleOutcome("disputed", "settled") === "contradictory");
 
 console.log(`frontier-routes: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
