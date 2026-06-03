@@ -483,9 +483,33 @@ export default function DashboardPage() {
   return (
     <div className="space-y-10">
       <div>
-        <h1 className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]" style={{ fontFamily: "var(--font-serif)" }}>
-          Dashboard
-        </h1>
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]" style={{ fontFamily: "var(--font-serif)" }}>
+            Dashboard
+          </h1>
+          {/* The Floor — quick entry onto The Floor from home. Now that The
+              Floor lives in the nav overflow menu, this featured glass pill is
+              the dashboard's jump-off point. Replicates the Command Center
+              title-row button verbatim — same 3-element root/surface/shadow
+              liquid-glass architecture (.liquid-glass-nav-btn), same frosting,
+              hover, and arrow. Desktop-only via the wrapper so the "Dashboard"
+              heading itself stays visible on mobile; mobile reaches The Floor
+              through the nav menu. */}
+          <div className="hidden sm:block shrink-0">
+            <span className="liquid-glass-nav-btn-root">
+              <Link href="/floor" className="liquid-glass-nav-btn group">
+                The Floor
+                <span
+                  aria-hidden="true"
+                  className="ml-1.5 transition-transform group-hover:translate-x-0.5"
+                >
+                  &rarr;
+                </span>
+              </Link>
+              <div aria-hidden="true" className="liquid-glass-nav-btn-shadow"></div>
+            </span>
+          </div>
+        </div>
         <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
           Manage your OpenClaw instance.
         </p>
