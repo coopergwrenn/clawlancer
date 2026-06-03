@@ -2735,3 +2735,113 @@ html.lenis body {
     background-position: 0 0;
   }
 }
+
+/* ─── /skills status pills — liquid-glass badges ─────────────────────────
+ * Upgrades the /skills card status indicators (Always On, MCP, Connected,
+ * Coming Soon, Active, Locked) from flat filled chips to the channels
+ * iMessage/Telegram glass treatment, scaled to badge size. Faithful
+ * scale-down of .liquid-glass-pill: a colored ::before radial substrate is
+ * the soft green/blue background-blur glow the glass surface refracts; the
+ * surface is a transparent diagonal sheen + backdrop-blur + the same 4-layer
+ * shadow stack; ::after is the conic rim. Green substrate matches is-imessage
+ * (rgba(31,173,62)); blue matches is-telegram (rgba(34,158,217)).
+ * ──────────────────────────────────────────────────────────────────────── */
+.skill-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 19px;
+  padding: 0 8px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+  isolation: isolate;
+  z-index: 0;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: linear-gradient(-75deg,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.24),
+    rgba(255, 255, 255, 0.06));
+  -webkit-backdrop-filter: blur(3px);
+          backdrop-filter: blur(3px);
+  box-shadow:
+    rgba(0, 0, 0, 0.04) 0px 1px 1px 0px inset,
+    rgba(255, 255, 255, 0.5) 0px -1px 1px 0px inset,
+    rgba(0, 0, 0, 0.10) 0px 1.5px 2px -1px,
+    rgba(255, 255, 255, 0.2) 0px 0px 1px 1.5px inset;
+}
+/* Soft colored glow substrate — the halo the glass refracts (behind, z -1). */
+.skill-pill::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  z-index: -1;
+  pointer-events: none;
+}
+/* Conic rim — glass edge highlight (same recipe as .liquid-glass-pill::after). */
+.skill-pill::after {
+  content: '';
+  position: absolute;
+  inset: -0.5px 0 0 -0.5px;
+  width: calc(100% + 1px);
+  height: calc(100% + 1px);
+  padding: 1px;
+  background-image:
+    conic-gradient(from -75deg at 50% 50%,
+      rgba(0, 0, 0, 0.4),
+      rgba(0, 0, 0, 0) 5%,
+      rgba(0, 0, 0, 0) 40%,
+      rgba(0, 0, 0, 0.4) 50%,
+      rgba(0, 0, 0, 0) 60%,
+      rgba(0, 0, 0, 0) 95%,
+      rgba(0, 0, 0, 0.4)),
+    linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+}
+.skill-pill > * {
+  position: relative;
+  z-index: 2;
+}
+/* Green family — Active / Always On / Connected. */
+.skill-pill.is-green {
+  color: rgb(21, 128, 61);
+}
+.skill-pill.is-green::before {
+  background: radial-gradient(ellipse at 30% 50%,
+    rgba(31, 173, 62, 0.5) 0%,
+    rgba(31, 173, 62, 0.2) 45%,
+    transparent 78%);
+}
+/* Blue family — MCP / Coming Soon. */
+.skill-pill.is-blue {
+  color: rgb(29, 110, 199);
+}
+.skill-pill.is-blue::before {
+  background: radial-gradient(ellipse at 30% 50%,
+    rgba(34, 158, 217, 0.5) 0%,
+    rgba(34, 158, 217, 0.2) 45%,
+    transparent 78%);
+}
+/* Neutral — Locked. Quiet substrate, no colored glow. */
+.skill-pill.is-neutral {
+  color: var(--muted);
+}
+.skill-pill.is-neutral::before {
+  background: radial-gradient(ellipse at 50% 60%,
+    rgba(0, 0, 0, 0.08) 0%,
+    rgba(0, 0, 0, 0.03) 50%,
+    transparent 80%);
+}

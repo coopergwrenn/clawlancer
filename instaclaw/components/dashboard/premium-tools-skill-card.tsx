@@ -244,22 +244,12 @@ export function PremiumToolsSkillCard() {
             <div className="flex items-center gap-2 mb-0.5">
               <h3 className="text-sm font-medium truncate">Premium Tools</h3>
               {verified ? (
-                <span
-                  className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
-                  style={{
-                    background: "linear-gradient(135deg, rgba(34,197,94,0.25), rgba(22,163,74,0.18))",
-                    color: "rgb(34,197,94)",
-                    boxShadow: "0 0 0 1px rgba(34,197,94,0.25), inset 0 1px 0 rgba(255,255,255,0.15)",
-                  }}
-                >
+                <span className="skill-pill is-green gap-1 shrink-0">
                   <CheckCircle2 className="w-2.5 h-2.5" />
                   Active
                 </span>
               ) : (
-                <span
-                  className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
-                  style={{ background: "rgba(0,0,0,0.04)", color: "var(--muted)", border: "1px solid var(--border)" }}
-                >
+                <span className="skill-pill is-neutral gap-1 shrink-0">
                   <Lock className="w-2.5 h-2.5" />
                   Locked
                 </span>

@@ -903,30 +903,10 @@ function SkillCard({
           <div className="flex items-center gap-2 mb-0.5">
             <h3 className="text-sm font-medium truncate">{skill.name}</h3>
             {isBuiltIn && (
-              <span
-                className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
-                style={{
-                  background:
-                    "linear-gradient(135deg, rgba(34,197,94,0.25), rgba(22,163,74,0.18))",
-                  color: "rgb(34,197,94)",
-                  boxShadow:
-                    "0 0 0 1px rgba(34,197,94,0.25), inset 0 1px 0 rgba(255,255,255,0.15)",
-                }}
-              >
-                Always On
-              </span>
+              <span className="skill-pill is-green shrink-0">Always On</span>
             )}
             {skill.itemType === "mcp_server" && (
-              <span
-                className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
-                style={{
-                  background: "rgba(59,130,246,0.1)",
-                  color: "rgb(59,130,246)",
-                  boxShadow: "0 0 0 1px rgba(59,130,246,0.2)",
-                }}
-              >
-                MCP
-              </span>
+              <span className="skill-pill is-blue shrink-0">MCP</span>
             )}
           </div>
           <p
@@ -973,7 +953,7 @@ function SkillCard({
                 ? "linear-gradient(135deg, #22c55e, #16a34a)"
                 : "rgba(0,0,0,0.06)",
               boxShadow: skill.enabled
-                ? "0 0 0 1px rgba(34,197,94,0.2), 0 2px 8px rgba(22,163,74,0.3), inset 0 1px 1px rgba(255,255,255,0.2)"
+                ? "0 0 0 1px rgba(34,197,94,0.3), 0 0 12px 2px rgba(31,173,62,0.45), 0 2px 8px rgba(22,163,74,0.3), inset 0 1px 1px rgba(255,255,255,0.25)"
                 : "0 0 0 1px rgba(0,0,0,0.06), inset 0 2px 4px rgba(0,0,0,0.08)",
               backdropFilter: "blur(8px)",
               WebkitBackdropFilter: "blur(8px)",
@@ -1057,32 +1037,10 @@ function IntegrationCard({
           <div className="flex items-center gap-2 mb-0.5">
             <h3 className="text-sm font-medium truncate">{skill.name}</h3>
             {isConnected && (
-              <span
-                className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
-                style={{
-                  background:
-                    "linear-gradient(135deg, rgba(34,197,94,0.25), rgba(22,163,74,0.18))",
-                  color: "rgb(34,197,94)",
-                  boxShadow:
-                    "0 0 0 1px rgba(34,197,94,0.25), inset 0 1px 0 rgba(255,255,255,0.15)",
-                }}
-              >
-                Connected
-              </span>
+              <span className="skill-pill is-green shrink-0">Connected</span>
             )}
             {isComingSoon && (
-              <span
-                className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
-                style={{
-                  background:
-                    "linear-gradient(135deg, rgba(59,130,246,0.15), rgba(37,99,235,0.1))",
-                  color: "rgb(59,130,246)",
-                  boxShadow:
-                    "0 0 0 1px rgba(59,130,246,0.2), inset 0 1px 0 rgba(255,255,255,0.1)",
-                }}
-              >
-                Coming Soon
-              </span>
+              <span className="skill-pill is-blue shrink-0">Coming Soon</span>
             )}
           </div>
           <p
