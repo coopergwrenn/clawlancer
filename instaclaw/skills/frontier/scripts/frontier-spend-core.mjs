@@ -285,6 +285,52 @@ export function parseSupplierRecord(content) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+// W7(b) — the purchase log (gbrain page per buy)
+//
+// The supplier INDEX (above) is the aggregate "should I trust X" memory, read at
+// discover-time. The purchase LOG is the granular diary — one page per buy —
+// written at settle-time so the agent can answer its human locally ("what have I
+// bought, what did it cost, was it worth it") without a round-trip to the ledger.
+// Slugged by request_id so a re-settle overwrites in place (idempotent, no dup).
+// ════════════════════════════════════════════════════════════════════
+
+/** Stable, fs/url-safe gbrain slug for a single purchase, keyed by its request_id. */
+export function purchaseSlug(requestId) {
+  const body = String(requestId)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 90);
+  return `frontier-purchase-${body || "unknown"}`;
+}
+
+/** Serialize one purchase to gbrain page content: a human line + a machine JSON block. */
+export function serializePurchaseRecord(p) {
+  const verb = p.outcome === "settled" ? "Paid" : "Tried to pay";
+  const usefulNote = p.outcome === "settled" ? (p.resultUsed ? " — result used" : " — result NOT used") : "";
+  const human =
+    `${verb} $${p.amountUsd} to ${p.supplierId} for ${p.category ?? "a service"}${usefulNote}. ` +
+    `${p.outcome === "settled" ? "Settled" : "Failed"}.` +
+    (p.txHash ? ` tx ${String(p.txHash).slice(0, 12)}…` : "") +
+    (p.why ? ` Why: ${String(p.why).slice(0, 200)}` : "");
+  return `${human}\n\n\`\`\`json\n${JSON.stringify(p)}\n\`\`\`\n`;
+}
+
+/** Recover a purchase record from gbrain page content (the JSON block). null if absent/corrupt. */
+export function parsePurchaseRecord(content) {
+  if (!content) return null;
+  const m = content.match(/```json\s*([\s\S]*?)```/);
+  if (!m) return null;
+  try {
+    const o = JSON.parse(m[1].trim());
+    if (o && typeof o === "object" && typeof o.requestId === "string") return o;
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
+// ════════════════════════════════════════════════════════════════════
 // W7b — Thompson-sampling supplier selection (budgeted multi-armed bandit)
 //
 // Verbatim port of lib/frontier-rolodex.ts (kept in sync; cross-checked by the

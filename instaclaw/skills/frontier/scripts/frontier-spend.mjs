@@ -49,6 +49,7 @@ import {
   inferCategory, tagsFromResource, newRequestId, supplierSlug, mergeSupplierRecord,
   supplierTrust, serializeSupplierRecord, parseSupplierRecord, renderHiredSpecialist,
   usdcToUsd, USDC_BASE_ADDRESS, CATEGORY_NAMES, selectSupplier, buildSupplierCandidates,
+  purchaseSlug, serializePurchaseRecord,
 } from "./frontier-spend-core.mjs";
 
 const API_BASE = process.env.INSTACLAW_API_BASE || "https://instaclaw.io";
@@ -158,6 +159,14 @@ async function writeSupplier(bearer, slug, rec) {
   // record (category, stats, endpoint) stays in the JSON block serializeSupplierRecord writes.
   const frontmatter = `---\ntype: frontier_supplier\ntags:\n  - frontier-supplier\n---\n`;
   await gbrainCall(bearer, "put_page", { slug, content: frontmatter + serializeSupplierRecord(rec) });
+}
+
+// W7(b) — the per-purchase diary entry (one gbrain page per buy, keyed by request_id).
+// Best-effort like writeSupplier: gbrainCall swallows failures so the rolodex/log
+// degrade gracefully and never fail the spend.
+async function writePurchase(bearer, p) {
+  const frontmatter = `---\ntype: frontier_purchase\ntags:\n  - frontier-purchase\n---\n`;
+  await gbrainCall(bearer, "put_page", { slug: purchaseSlug(p.requestId), content: frontmatter + serializePurchaseRecord(p) });
 }
 
 // Enumerate the agent's supplier rolodex for `--capability`. Best-effort: gbrain is
@@ -404,6 +413,12 @@ async function main() {
     note: `${why}${txHash ? ` (tx ${txHash.slice(0, 12)}…)` : ""}${payErr ? ` [${payErr}]` : ""}`,
   });
   await writeSupplier(gbrainBearer, slug, merged);
+  // W7(b) — also log this individual purchase to the agent's local diary.
+  await writePurchase(gbrainBearer, {
+    requestId, supplierId, endpoint: url, category,
+    amountUsd, outcome: paid ? "settled" : "failed", resultUsed,
+    txHash: txHash ?? null, atMs: Date.now(), why: why.slice(0, 200),
+  });
 
   if (paid) {
     return out({ ok: true, paid: true, mode, hold_id: holdId, tx_hash: txHash, amount_usd: amountUsd, supplier: supplierId, supplier_trust: supplierTrust(merged), result_used: resultUsed,

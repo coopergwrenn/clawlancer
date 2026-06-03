@@ -11,6 +11,7 @@ import {
   supplierTrust, serializeSupplierRecord, parseSupplierRecord, renderHiredSpecialist,
   USDC_BASE_ADDRESS, BASE_CHAIN_ID,
   selectSupplier as selectSupplierMjs, buildSupplierCandidates, sampleBeta as sampleBetaMjs,
+  purchaseSlug, serializePurchaseRecord, parsePurchaseRecord,
 } from "../skills/frontier/scripts/frontier-spend-core.mjs";
 // Parity oracle: the .mjs bandit is a hand port of the .ts. Same seed must yield identical output.
 import { selectSupplier as selectSupplierTs, sampleBeta as sampleBetaTs } from "../lib/frontier-rolodex";
@@ -300,6 +301,35 @@ function rec(o: Record<string, unknown>) {
   const { candidates } = buildSupplierCandidates([rec({ category: "search", endpoint: "https://s" })], "data");
   check("build: cold-start → no candidates", candidates.length === 0);
 }
+
+// ════════════════════════════════════════════════════════════════════
+// W7(b) — purchase-log records
+// ════════════════════════════════════════════════════════════════════
+check("purchaseSlug: stable + safe", purchaseSlug("spend-123-abc") === "frontier-purchase-spend-123-abc");
+check("purchaseSlug: sanitizes", purchaseSlug("Spend/99_X!") === "frontier-purchase-spend-99-x");
+check("purchaseSlug: empty → unknown", purchaseSlug("") === "frontier-purchase-unknown");
+{
+  const p = {
+    requestId: "spend-1780-aa", supplierId: "url:example.com/x", endpoint: "https://example.com/x",
+    category: "data", amountUsd: 0.01, outcome: "settled", resultUsed: true,
+    txHash: "0xabc123def456", atMs: 1780000000000, why: "a price feed I needed",
+  };
+  const content = serializePurchaseRecord(p);
+  check("purchase: serialize has json fence", content.includes("```json"));
+  check("purchase: human line readable", content.startsWith("Paid $0.01 to url:example.com/x for data — result used."));
+  const back = parsePurchaseRecord(content);
+  check("purchase: round-trips", !!back && back.requestId === "spend-1780-aa" && back.outcome === "settled" && back.resultUsed === true);
+}
+{
+  const failed = serializePurchaseRecord({
+    requestId: "spend-2-bb", supplierId: "url:bad", endpoint: "https://bad", category: "search",
+    amountUsd: 0.05, outcome: "failed", resultUsed: false, txHash: null, atMs: 1, why: "x",
+  });
+  check("purchase: failed phrasing", failed.startsWith("Tried to pay $0.05 to url:bad for search. Failed."));
+  check("purchase: failed round-trips", parsePurchaseRecord(failed)?.outcome === "failed");
+}
+check("purchase: parse garbage → null", parsePurchaseRecord("no json here") === null);
+check("purchase: parse non-purchase json → null", parsePurchaseRecord("```json\n{\"foo\":1}\n```") === null);
 
 console.log(`\nfrontier-spend-core: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
