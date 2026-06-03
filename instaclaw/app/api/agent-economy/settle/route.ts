@@ -50,7 +50,9 @@
  *     "tx_hash":    <string>,      // optional — on-chain hash (claim, verified later)
  *     "result_used":<bool>,        // optional — was the result useful? (success only; §7.3.2)
  *     "response_summary": <string>,// optional — short note
- *     "protocol_fee_usd": <number >= 0>  // optional — final fee, <= the hold amount
+ *     "protocol_fee_usd": <number >= 0>, // optional — final fee, <= the hold amount
+ *     "latency_ms":   <number >= 0>,     // optional — supplier delivery time (write-once; W10/ranking)
+ *     "pay_error":    <string>           // optional — failure reason (write-once; spend-health drill-down)
  *   }
  *
  * Responses:
@@ -70,6 +72,8 @@ export const maxDuration = 30; // DB read + one compare-and-set, no LLM (Rule 11
 const MAX_REQUEST_ID = 200;
 const MAX_TX_HASH = 80; // 0x + 64 hex = 66; headroom for non-EVM ids
 const MAX_SUMMARY = 1000;
+const MAX_PAY_ERROR = 200;
+const MAX_LATENCY_MS = 24 * 60 * 60 * 1000; // 24h sanity ceiling — anything larger is a bad client value
 
 function extractGatewayToken(req: NextRequest): string | null {
   const authHeader = req.headers.get("authorization");
@@ -96,6 +100,8 @@ export interface CleanSettle {
   summary: string | null;
   resultUsed: boolean;
   protocolFee: number | null;
+  latencyMs: number | null; // write-once supplier-delivery time (W10 p50_latency / W2 ranking)
+  payError: string | null; // write-once failure reason (spend-health drill-down)
 }
 
 /**
@@ -159,7 +165,20 @@ export function validateSettleBody(raw: unknown): CleanSettle | { error: string 
     protocolFee = round6(b.protocol_fee_usd);
   }
 
-  return { result, holdId, requestId, txHash, summary, resultUsed, protocolFee };
+  // Write-once supplier-quality signals (optional). Validated leniently — a bad value
+  // is dropped (null), never a 400, because losing the settle over a metadata field
+  // would be worse than losing the field.
+  let latencyMs: number | null = null;
+  if (typeof b.latency_ms === "number" && Number.isFinite(b.latency_ms) && b.latency_ms >= 0 && b.latency_ms <= MAX_LATENCY_MS) {
+    latencyMs = Math.round(b.latency_ms);
+  }
+  let payError: string | null = null;
+  if (typeof b.pay_error === "string") {
+    const e = b.pay_error.trim().slice(0, MAX_PAY_ERROR);
+    payError = e === "" ? null : e;
+  }
+
+  return { result, holdId, requestId, txHash, summary, resultUsed, protocolFee, latencyMs, payError };
 }
 
 /**
@@ -193,7 +212,7 @@ export async function POST(req: NextRequest) {
   }
   const v = validateSettleBody(bodyJson);
   if ("error" in v) return NextResponse.json({ error: v.error }, { status: 400 });
-  const { result, holdId, requestId, txHash, summary, resultUsed, protocolFee } = v;
+  const { result, holdId, requestId, txHash, summary, resultUsed, protocolFee, latencyMs, payError } = v;
   // "success" and "disputed" both PAID (money moved; x402 settles-then-serves) → set
   // settled_at. "failed" = the pay leg never completed → no money, no settled_at.
   const paid = result !== "failed";
@@ -242,6 +261,9 @@ export async function POST(req: NextRequest) {
     ...(hold.metadata && typeof hold.metadata === "object" ? (hold.metadata as Record<string, unknown>) : {}),
     result_used: resultUsed,
     settled_via: "settle_endpoint",
+    // Write-once supplier-quality signals (only when supplied) — W10 / spend-health read these.
+    ...(latencyMs !== null ? { latency_ms: latencyMs } : {}),
+    ...(payError !== null ? { pay_error: payError } : {}),
   };
   const update: Record<string, unknown> = {
     status: intendedStatus,

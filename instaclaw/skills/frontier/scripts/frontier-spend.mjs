@@ -366,7 +366,12 @@ async function main() {
   if (!json) console.log(renderHiredSpecialist({ amountUsd, supplierLabel, what: why, outcome: mode, earnedDailyBudgetUsd: d.earned_daily_budget_usd, spentTodayUsd: d.spent_today_usd, trust }));
 
   // 3 ── PAY: sign EIP-3009 via Bankr, send X-PAYMENT, get the result ──
+  // latencyMs = supplier delivery time (payment sent → response received). Write-once:
+  // it feeds W10's p50_latency + W2's cost/latency secondary ranking, and it's gone the
+  // instant the process exits if we don't persist it. payStart is hoisted so the catch
+  // (timeout/unreachable) can still record how long we waited before the failure.
   let paid = false, txHash = null, resultBody = null, payErr = null, payErrBody = null, xPaymentDebug = null;
+  let latencyMs = null, payStart = null;
   try {
     if (!bankrKey || !wallet) throw new Error("bankr_not_configured");
     const authorizationMsg = buildAuthorization({
@@ -380,7 +385,9 @@ async function main() {
 
     // x402 v2 resource servers read the payment from PAYMENT-SIGNATURE (extractPayment in @x402/core);
     // X-PAYMENT is the v1 name. Send BOTH for v1+v2 compatibility (matching the canonical @x402 client).
+    payStart = Date.now();
     const payRes = await fetch(url, { method, body: reqBody, headers: { "PAYMENT-SIGNATURE": xPayment, "X-PAYMENT": xPayment, ...(reqBody ? { "Content-Type": "application/json" } : {}) }, signal: AbortSignal.timeout(60000) });
+    latencyMs = Date.now() - payStart; // supplier time-to-response
     if (payRes.ok) {
       paid = true;
       resultBody = await payRes.text();
@@ -393,6 +400,7 @@ async function main() {
     }
   } catch (e) {
     payErr = String(e?.message ?? e);
+    if (payStart !== null && latencyMs === null) latencyMs = Date.now() - payStart; // time waited before the failure
   }
 
   // result_used: the agent's judgment; default to "delivered & non-empty" unless told otherwise.
@@ -417,6 +425,8 @@ async function main() {
     tx_hash: txHash ?? undefined,
     result_used: resultUsed,
     response_summary: why.slice(0, 1000),
+    latency_ms: latencyMs ?? undefined, // write-once supplier-quality signal (W10 p50_latency / W2 ranking)
+    pay_error: payErr ?? undefined, // write-once: WHY a failed/disputed spend failed (spend-health drill-down)
   });
 
   // 5(write) ── REMEMBER: compound the supplier record ──

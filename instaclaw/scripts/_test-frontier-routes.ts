@@ -17,6 +17,7 @@
 import type { NextRequest } from "next/server";
 import { validate, extractGatewayToken, classifyExistingHold } from "../app/api/agent-economy/authorize/route";
 import { validateSettleBody, classifySettleOutcome } from "../app/api/agent-economy/settle/route";
+import { isFrontierSpendKilled } from "../lib/frontier-kill-switch";
 
 let passed = 0;
 let failed = 0;
@@ -213,6 +214,21 @@ check("settle: unknown result (maybe) still errors", isErr(validateSettleBody({ 
   const v = validateSettleBody({ result: "success", hold_id: HOLD, protocol_fee_usd: 0.0000019 });
   check("settle: protocol_fee rounded", !isErr(v) && v.protocolFee === 0.000002);
 }
+{
+  // Write-once capture: latency_ms + pay_error parsed leniently (bad value → null, never 400).
+  const v = validateSettleBody({ result: "success", hold_id: HOLD, latency_ms: 842.7 });
+  check("settle: latency_ms rounded + kept", !isErr(v) && v.latencyMs === 843);
+  const neg = validateSettleBody({ result: "failed", hold_id: HOLD, latency_ms: -5 });
+  check("settle: negative latency dropped (null, not 400)", !isErr(neg) && neg.latencyMs === null);
+  const huge = validateSettleBody({ result: "failed", hold_id: HOLD, latency_ms: 99 * 60 * 60 * 1000 });
+  check("settle: absurd latency dropped (null)", !isErr(huge) && huge.latencyMs === null);
+  const err = validateSettleBody({ result: "failed", hold_id: HOLD, pay_error: "  pay_http_502  " });
+  check("settle: pay_error trimmed + kept", !isErr(err) && err.payError === "pay_http_502");
+  const empty = validateSettleBody({ result: "failed", hold_id: HOLD, pay_error: "   " });
+  check("settle: empty pay_error → null", !isErr(empty) && empty.payError === null);
+  const none = validateSettleBody({ result: "success", hold_id: HOLD });
+  check("settle: absent latency/pay_error → null", !isErr(none) && none.latencyMs === null && none.payError === null);
+}
 
 // ───────────────────────────── settle: classifySettleOutcome ─────────────────────────────
 check("outcome: pending+settled → proceed", classifySettleOutcome("pending", "settled") === "proceed");
@@ -228,5 +244,24 @@ check("outcome: disputed+disputed → idempotent", classifySettleOutcome("disput
 check("outcome: settled+disputed → contradictory", classifySettleOutcome("settled", "disputed") === "contradictory");
 check("outcome: disputed+settled → contradictory", classifySettleOutcome("disputed", "settled") === "contradictory");
 
-console.log(`frontier-routes: ${passed} passed, ${failed} failed`);
-process.exit(failed === 0 ? 0 : 1);
+
+// ───────────────────────────── kill switch (emergency stop) ─────────────────────────────
+// Mock the supabase chain isFrontierSpendKilled walks: from().select().eq().maybeSingle().
+function mockSb(result: { data?: unknown; error?: unknown }, throws = false): never {
+  const chain: Record<string, unknown> = {};
+  chain.select = () => chain;
+  chain.eq = () => chain;
+  chain.maybeSingle = async () => { if (throws) throw new Error("db down"); return result; };
+  return { from: () => chain } as never;
+}
+// Async (kill-switch reads are async) → IIFE, since this harness compiles to CJS (no TLA).
+(async () => {
+  check("kill: bool_value true → KILLED", (await isFrontierSpendKilled(mockSb({ data: { bool_value: true } }))) === true);
+  check("kill: bool_value false → not killed", (await isFrontierSpendKilled(mockSb({ data: { bool_value: false } }))) === false);
+  check("kill: absent row → not killed (safe default)", (await isFrontierSpendKilled(mockSb({ data: null }))) === false);
+  check("kill: read error → fail-OPEN (not killed)", (await isFrontierSpendKilled(mockSb({ data: null, error: { message: "x" } }))) === false);
+  check("kill: exception → fail-OPEN (not killed)", (await isFrontierSpendKilled(mockSb({}, true))) === false);
+
+  console.log(`frontier-routes: ${passed} passed, ${failed} failed`);
+  process.exit(failed === 0 ? 0 : 1);
+})();
