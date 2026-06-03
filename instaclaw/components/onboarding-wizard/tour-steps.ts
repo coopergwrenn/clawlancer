@@ -231,8 +231,11 @@ function adaptStepForSidebar(step: TourStep): TourStep {
       return {
         ...step,
         title: "Your Overview",
+        // No "next" promise — 9 dashboard-detail steps run before the Command
+        // Center step, so the parenthetical sets the mental model without
+        // implying it's the immediate next stop.
         description:
-          "You're on your Overview — the control panel for your agent: health, usage, and plan all live here. But your home base is the Command Center, just up in the sidebar. We'll head there next.",
+          "You're on your Overview — the control panel for your agent: its health, your usage, and your plan all live here. (Your everyday home is the Command Center — we'll get there.) Let's start with the essentials.",
         sidebarNav: true,
       };
     case '[data-tour="nav-command-center"]':
@@ -255,8 +258,10 @@ function adaptStepForSidebar(step: TourStep): TourStep {
       return {
         selector: '[data-tour="nav-manage-section"]',
         title: "Account & Plan",
+        // Viewport-agnostic ("here" reads right on both the desktop rail and
+        // the mobile drawer; no "down here"/"in the sidebar" assumptions).
         description:
-          "Your account lives down here — Overview, Credits, Billing, Settings, and API Keys. No digging through a menu; it's all one click away in the sidebar.",
+          "Your account lives here — Overview, Credits, Billing, Settings, and API Keys. No buried menus; it's all one click away.",
         position: "right",
         sidebarNav: true,
       };
