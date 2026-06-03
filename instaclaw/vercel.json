@@ -216,6 +216,10 @@
     {
       "path": "/api/cron/frontier-refund-reconcile",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/frontier-spend-health",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
