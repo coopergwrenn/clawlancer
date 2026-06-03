@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { SkillIcon, hasSkillIcon, getRichDescription } from "@/lib/skill-icons";
 import { SkillOrb } from "@/components/skill-orb";
 import { resolveSkillOrb, CATEGORY_COLORS } from "@/lib/skill-orb-mapping";
-import { PremiumToolsShowcase } from "@/components/dashboard/premium-tools-showcase";
+import { PremiumToolsSkillCard } from "@/components/dashboard/premium-tools-skill-card";
 
 // ── Types ────────────────────────────────────────────
 
@@ -370,9 +370,6 @@ export default function SkillsPage() {
         </p>
       </div>
 
-      {/* Premium tools — World ID unlock funnel (conversion hero) */}
-      <PremiumToolsShowcase />
-
       {/* Tab switcher */}
       <div
         className="flex gap-1 p-1 rounded-xl"
@@ -478,6 +475,9 @@ export default function SkillsPage() {
       {/* ── My Skills tab ── */}
       {!loading && activeTab === "skills" && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Premium tools — a skill entry, first in the grid on the default
+              view (prominent by being first, not by being a banner). */}
+          {activeCategory === "all" && <PremiumToolsSkillCard />}
           <AnimatePresence mode="popLayout">
             {filteredSkills.map((skill, i) => (
               <motion.div
