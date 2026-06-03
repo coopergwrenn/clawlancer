@@ -4,26 +4,30 @@
  * Premium Hero Card — SCREENSHOT-ONLY, editable in isolation.
  *
  * The recovered original /skills full-width hero (verified/armed state),
- * extracted from the deleted `premium-tools-showcase.tsx` (git: 1648cbab^)
- * and upscaled to launch-grade for the World ToolRouter announcement image.
+ * upscaled to launch-grade for the World ToolRouter announcement image and
+ * held to InstaClaw's REAL glass material + tokens (not a lookalike):
+ *
+ *   - Card surface: the real dashboard `.glass` class (−75° white sheen +
+ *     4-layer box-shadow, border:none). The green identity is layered INSIDE
+ *     via wash + tiles + chips + pill — matching the live /skills surface,
+ *     which is also borderless `.glass` with green accents on top.
+ *   - Icon chips, tiles, and the Human-Verified pill all use the canonical
+ *     skill-pill glass recipe (`globals.css` `.skill-pill.is-green`):
+ *     transparent bg + backdrop-blur + (−75° sheen ⊕ radial color-under-glass)
+ *     + the 4-layer highlight/shadow stack — proportioned per element size.
+ *   - Real green tokens: rgb(31,173,62) glass-fill, rgb(20,120,57) on-glass
+ *     text/icon, var(--success) #16a34a for standalone marks/links. Real
+ *     --foreground / --muted / --font-serif throughout.
  *
  * NOT mounted on /skills. The live skills page, its compact Premium Tools
- * tile, and the modal are unchanged. This is a standalone canvas: restyle
- * it here, screenshot it from /premium-hero-preview, ship the image.
+ * tile, and the modal are unchanged. Restyle here, screenshot from
+ * /premium-hero-preview, ship the image.
  *
- * Differences from the recovered original (deliberate, per Cooper):
- *   - verified state only (state machine / fetch / locked branches removed).
- *   - all six "in action" examples are PERMANENT (was hover-only), each a
- *     real user request → finished result, separated from the description
- *     by a hairline divider. Tiles are forced to equal height.
- *   - StableTravel copy fixed (no booking endpoint ships yet); subhead
- *     reframed to the instant-unlock angle.
- *   - hierarchy, ambient wash, chips, spacing, depth upscaled to top
- *     standard for a hero screenshot at 1040px.
- *
- * Logos: each tool can carry a real brand `logo` (asset under
- * /public/hero-logos). Tools without a sourced logo fall back to the
- * lucide `Icon`. See the LOGO STATUS comment on the TOOLS array.
+ * JOB 1: all six "in action" examples are PERMANENT (was hover-only), each a
+ * real user request → finished result, separated from the description by a
+ * hairline green divider; tiles forced equal-height via grid-auto-rows:1fr.
+ * Copy fixes intact (StableTravel "booking coming soon"; instant-unlock
+ * subhead). Logos intentionally NOT used — uniform lucide icons on real glass.
  */
 
 import Link from "next/link";
@@ -40,23 +44,71 @@ import {
 } from "lucide-react";
 import { WorldLogo } from "@/components/icons/world-logo";
 
+// ── Real glass material, lifted from globals.css `.skill-pill.is-green` ──
+// The −75° white sheen layer (top, common to every glass element here).
+const SHEEN =
+  "linear-gradient(-75deg, rgba(255,255,255,0.10), rgba(255,255,255,0.32), rgba(255,255,255,0.10))";
+const SHEEN_SOFT =
+  "linear-gradient(-75deg, rgba(255,255,255,0.06), rgba(255,255,255,0.18), rgba(255,255,255,0.06))";
+
+// Icon chip: pill-strength green radial under the sheen; box-shadow scaled
+// from the 19px skill-pill recipe up to the 44px chip (≈2×: dark-top inset,
+// white bottom-edge inset, soft lift, white inner glow-ring).
+const CHIP_STYLE: React.CSSProperties = {
+  backgroundColor: "rgba(0,0,0,0)",
+  backdropFilter: "blur(3px)",
+  WebkitBackdropFilter: "blur(3px)",
+  backgroundImage:
+    SHEEN +
+    ", radial-gradient(125% 150% at 26% 22%, rgba(31,173,62,0.40) 0%, rgba(31,173,62,0.24) 55%, rgba(31,173,62,0.15) 100%)",
+  boxShadow:
+    "rgba(0,0,0,0.06) 0px 1px 1.5px 0px inset, " +
+    "rgba(255,255,255,0.55) 0px -1px 2px 0px inset, " +
+    "rgba(0,0,0,0.10) 0px 2px 5px -2px, " +
+    "rgba(255,255,255,0.30) 0px 0px 1px 1.5px inset",
+};
+
+// Tile: the same glass family at large scale — soft sheen + a FAINT green key
+// (dialed far down from pill strength so six of them read as glass, not green
+// blocks), card-proportioned 4-layer shadow.
+const TILE_STYLE: React.CSSProperties = {
+  backgroundColor: "rgba(0,0,0,0)",
+  backdropFilter: "blur(2px)",
+  WebkitBackdropFilter: "blur(2px)",
+  backgroundImage:
+    SHEEN_SOFT +
+    ", radial-gradient(120% 130% at 24% 12%, rgba(31,173,62,0.12) 0%, rgba(31,173,62,0.06) 58%, rgba(31,173,62,0.02) 100%)",
+  boxShadow:
+    "rgba(0,0,0,0.04) 0px 1px 1.5px 0px inset, " +
+    "rgba(255,255,255,0.42) 0px -1.5px 2px 0px inset, " +
+    "rgba(0,0,0,0.10) 0px 5px 16px -10px, " +
+    "rgba(255,255,255,0.18) 0px 0px 1.5px 2px inset",
+};
+
+// Human-Verified pill: the skill-pill.is-green recipe verbatim (19px proportions).
+const VERIFIED_PILL_STYLE: React.CSSProperties = {
+  color: "rgb(20,120,57)",
+  backgroundColor: "rgba(0,0,0,0)",
+  backdropFilter: "blur(3px)",
+  WebkitBackdropFilter: "blur(3px)",
+  backgroundImage:
+    SHEEN +
+    ", radial-gradient(125% 150% at 26% 26%, rgba(31,173,62,0.40) 0%, rgba(31,173,62,0.24) 55%, rgba(31,173,62,0.15) 100%)",
+  boxShadow:
+    "rgba(0,0,0,0.05) 0px 0.5px 1px 0px inset, " +
+    "rgba(255,255,255,0.42) 0px -0.5px 1.5px 0px inset, " +
+    "rgba(0,0,0,0.09) 0px 1px 2px -1px, " +
+    "rgba(255,255,255,0.22) 0px 0px 0.5px 0.5px inset",
+};
+
 type Tool = {
   id: string;
   name: string;
   Icon: typeof Search;
-  /** What it does — the primary line. */
   line: string;
-  /** A concrete example in action: a real user request → the finished result. */
   example: { ask: string; result: string };
-  /** Optional real brand logo (asset under /public/hero-logos). Falls back to Icon. */
-  logo?: string;
 };
 
-// ── LOGO STATUS ──────────────────────────────────────────────────────────
-// `logo` is wired only where a clean, official, crisp asset was sourced.
-// Tools without `logo` render the lucide fallback Icon on the same chip.
-// (Phase A ships lucide for all six; logos are layered in Phase B once the
-// real assets are verified crisp.)
 const TOOLS: Tool[] = [
   {
     id: "exa",
@@ -124,19 +176,14 @@ export function PremiumHeroCard() {
   return (
     <motion.div
       initial={false}
-      className="glass rounded-[20px] p-8 sm:p-10 relative overflow-hidden"
-      style={{
-        border: "1px solid rgba(34,197,94,0.32)",
-        boxShadow:
-          "0 1px 0 rgba(255,255,255,0.55) inset, 0 18px 50px -28px rgba(22,101,52,0.45), 0 2px 8px -4px rgba(0,0,0,0.08)",
-      }}
+      className="glass rounded-[22px] p-8 sm:p-10 relative overflow-hidden"
     >
-      {/* Ambient green wash — two soft corners, verified/armed */}
+      {/* Green ambient wash — tasteful, two soft corners. Real fill green. */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse at 22% 8%, rgba(34,197,94,0.12) 0%, transparent 52%), radial-gradient(ellipse at 88% 96%, rgba(34,197,94,0.07) 0%, transparent 55%)",
+            "radial-gradient(ellipse at 20% 4%, rgba(31,173,62,0.10) 0%, transparent 50%), radial-gradient(ellipse at 90% 98%, rgba(31,173,62,0.06) 0%, transparent 55%)",
         }}
       />
 
@@ -147,21 +194,16 @@ export function PremiumHeroCard() {
             className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.14em] uppercase"
             style={{ color: "var(--muted)" }}
           >
-            <WorldLogo className="w-3.5 h-3.5" style={{ color: "#16a34a" }} />
+            <WorldLogo className="w-3.5 h-3.5" style={{ color: "var(--success)" }} />
             Premium · World ID
           </span>
 
+          {/* Human Verified — exact skill-pill.is-green material */}
           <span
-            className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-full shrink-0"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(34,197,94,0.24), rgba(22,163,74,0.16))",
-              color: "rgb(21,128,61)",
-              boxShadow:
-                "0 0 0 1px rgba(34,197,94,0.28), inset 0 1px 0 rgba(255,255,255,0.45)",
-            }}
+            className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-[5px] rounded-full shrink-0 tracking-[-0.1px]"
+            style={VERIFIED_PILL_STYLE}
           >
-            <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "rgb(34,197,94)" }} />
+            <CheckCircle2 className="w-3.5 h-3.5" />
             Human Verified
           </span>
         </div>
@@ -169,7 +211,7 @@ export function PremiumHeroCard() {
         {/* ── Headline ── */}
         <h2
           className="text-[2rem] sm:text-[2.4rem] font-normal tracking-[-0.6px] leading-[1.08]"
-          style={{ fontFamily: "var(--font-serif)" }}
+          style={{ fontFamily: "var(--font-serif)", color: "var(--foreground)" }}
         >
           Your agent has six premium tools.
         </h2>
@@ -183,7 +225,7 @@ export function PremiumHeroCard() {
           live in your agent&apos;s toolkit the second you verify your World ID.
         </p>
 
-        {/* ── Tool grid — equal-height tiles, every example shown ── */}
+        {/* ── Tool grid — equal-height glass tiles, every example shown ── */}
         <div
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-7"
           style={{ gridAutoRows: "1fr" }}
@@ -192,63 +234,37 @@ export function PremiumHeroCard() {
             <div
               key={tool.id}
               className="relative rounded-2xl p-[18px] flex flex-col"
-              style={{
-                background: "rgba(34,197,94,0.055)",
-                border: "1px solid rgba(34,197,94,0.2)",
-                backdropFilter: "blur(8px)",
-                WebkitBackdropFilter: "blur(8px)",
-                boxShadow:
-                  "0 1px 0 rgba(255,255,255,0.4) inset, 0 6px 18px -14px rgba(22,101,52,0.5)",
-              }}
+              style={TILE_STYLE}
             >
               {/* Corner check (owned) */}
               <CheckCircle2
                 className="absolute top-3.5 right-3.5 w-4 h-4"
-                style={{ color: "rgb(34,197,94)" }}
+                style={{ color: "rgb(31,173,62)" }}
               />
 
-              {/* Header: chip + name */}
+              {/* Header: glass chip + name */}
               <div className="flex items-center gap-3">
                 <div
-                  className="shrink-0 w-11 h-11 rounded-xl flex items-center justify-center overflow-hidden"
-                  style={
-                    tool.logo
-                      ? {
-                          background: "#ffffff",
-                          border: "1px solid rgba(0,0,0,0.08)",
-                          boxShadow:
-                            "0 1px 2px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9)",
-                        }
-                      : {
-                          background:
-                            "linear-gradient(135deg, rgba(34,197,94,0.2), rgba(22,163,74,0.12))",
-                          border: "1px solid rgba(34,197,94,0.22)",
-                          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.5)",
-                        }
-                  }
+                  className="shrink-0 w-11 h-11 rounded-[13px] flex items-center justify-center"
+                  style={CHIP_STYLE}
                 >
-                  {tool.logo ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={tool.logo}
-                      alt={`${tool.name} logo`}
-                      className="w-7 h-7 object-contain"
-                    />
-                  ) : (
-                    <tool.Icon
-                      className="w-[21px] h-[21px]"
-                      style={{ color: "rgb(22,163,74)" }}
-                    />
-                  )}
+                  <tool.Icon
+                    className="w-[21px] h-[21px]"
+                    strokeWidth={2}
+                    style={{ color: "rgb(20,120,57)" }}
+                  />
                 </div>
-                <h3 className="text-[15px] font-semibold tracking-[-0.2px] pr-5">
+                <h3
+                  className="text-[15px] font-semibold tracking-[-0.2px] pr-5"
+                  style={{ color: "var(--foreground)" }}
+                >
                   {tool.name}
                 </h3>
               </div>
 
               {/* What it does */}
               <p
-                className="text-[13px] leading-relaxed mt-3"
+                className="text-[13px] leading-relaxed mt-3.5"
                 style={{ color: "var(--foreground)", opacity: 0.82 }}
               >
                 {tool.line}
@@ -257,13 +273,10 @@ export function PremiumHeroCard() {
               {/* Divider + example in action (permanent) */}
               <div
                 className="mt-3 pt-3"
-                style={{ borderTop: "1px solid rgba(34,197,94,0.16)" }}
+                style={{ borderTop: "1px solid rgba(31,173,62,0.16)" }}
               >
                 <p className="text-[12px] leading-relaxed">
-                  <span
-                    className="font-medium"
-                    style={{ color: "rgb(21,128,61)" }}
-                  >
+                  <span className="font-medium" style={{ color: "rgb(20,120,57)" }}>
                     &ldquo;{tool.example.ask}&rdquo;
                   </span>
                   <span style={{ color: "var(--muted)" }}>
@@ -281,7 +294,7 @@ export function PremiumHeroCard() {
           <Link
             href="/dashboard"
             className="inline-flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-70"
-            style={{ color: "rgb(22,163,74)" }}
+            style={{ color: "var(--success)" }}
           >
             Track your monthly allocation on your dashboard
             <ArrowRight className="w-3.5 h-3.5" />
