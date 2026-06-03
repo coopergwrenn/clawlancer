@@ -124,9 +124,9 @@ export function CausticFloor() {
         blending={THREE.AdditiveBlending}
         uniforms={{
           uTime: { value: 0 },
-          uColor: { value: new THREE.Color("#9ad6ff") },
-          uIntensity: { value: 0.6 },
-          uScale: { value: 3.2 },
+          uColor: { value: new THREE.Color("#d4eae1") },
+          uIntensity: { value: 0.12 },
+          uScale: { value: 1.9 },
           uPoolCenter: { value: POOL_CENTER },
           uPoolRadius: { value: POOL_RADIUS },
         }}
