@@ -31,24 +31,29 @@ import OnboardingWizard from "@/components/onboarding-wizard/OnboardingWizard";
 import { AgentbookHatBanner } from "@/components/dashboard/agentbook-hat-banner";
 import { ChannelNudgeBanner } from "@/components/dashboard/channel-nudge-banner";
 
-// Primary items always visible on mobile
+// Primary items — the daily-use operational core, always visible. Kept to FIVE
+// so the eye lands on what users actually reach for every session, not a wall
+// of tabs. Order: home → interact → monitor → configure → engage. Skills sits
+// ahead of Earn (it's the target of the ToolRouter-announcement traffic). The
+// Floor + Edge City moved into the "···" overflow — features users explore, not
+// daily workflow. Routes are UNCHANGED, so all deep links keep working.
 const primaryNav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tourKey: "nav-dashboard" },
   { href: "/tasks", label: "Command Center", icon: MessageSquare, tourKey: "nav-command-center" },
   { href: "/heartbeat", label: "Heartbeat", icon: Heart, tourKey: "nav-heartbeat" },
-  // Manage (Command Center) → monitor (Heartbeat) → WATCH (The Floor): the
-  // agent-interaction cluster, in that logical order. The Floor is the launch
-  // feature, prominent in primaryNav. Waves nods to Larry's tidepool + the
-  // "sea floor" double meaning of the name.
-  { href: "/floor", label: "The Floor", icon: Waves, tourKey: "nav-floor" },
-  { href: "/earn", label: "Earn", icon: TrendingUp, tourKey: "nav-earn" },
   { href: "/skills", label: "Skills", icon: Puzzle, tourKey: "nav-skills" },
+  { href: "/earn", label: "Earn", icon: TrendingUp, tourKey: "nav-earn" },
 ];
 
-// Partner-conditional nav items — appended to primaryNav when the user's
-// session has the matching partner tag. session.user.partner is populated
-// by the NextAuth session callback from instaclaw_users.partner; nav items
-// render without a fetch (no flash).
+// Feature items — surfaced at the TOP of the "···" menu (cool-but-not-daily:
+// watch/share/delight). The Floor is universal. Edge City is appended only for
+// edge_city attendees (partner-niche + time-boxed); session.user.partner is
+// populated by the NextAuth session callback from instaclaw_users.partner, so
+// it renders without a fetch (no flash).
+const featuresNav = [
+  // Waves nods to Larry's tidepool + the "sea floor" double meaning of the name.
+  { href: "/floor", label: "The Floor", icon: Waves, tourKey: "nav-floor" },
+];
 const edgeCityNavItem = {
   href: "/edge/dashboard",
   label: "Edge City",
@@ -56,7 +61,7 @@ const edgeCityNavItem = {
   tourKey: "nav-edge-city",
 };
 
-// Overflow items shown in the "more" menu on mobile, visible on lg+
+// Utility / account items — the lower section of the "···" menu.
 const overflowNav = [
   { href: "/history", label: "History", icon: History, tourKey: "nav-history" },
   { href: "/files", label: "Files", icon: FolderOpen, tourKey: "nav-files" },
@@ -367,8 +372,18 @@ export default function DashboardLayout({
     return null;
   }
 
-  // Check if current page is an overflow item (to highlight "more" button)
-  const isOverflowActive = overflowNav.some((item) => pathname === item.href);
+  // Effective feature items — The Floor for everyone, + Edge City for edge
+  // attendees. These render at the top of the "···" menu.
+  const features =
+    session?.user?.partner === "edge_city"
+      ? [...featuresNav, edgeCityNavItem]
+      : featuresNav;
+
+  // Highlight the "···" button when the current page lives in the overflow menu
+  // (features OR utility), so the active state follows demoted routes.
+  const isOverflowActive = [...features, ...overflowNav].some(
+    (item) => pathname === item.href,
+  );
 
   return (
     <div className="min-h-screen" data-theme="dashboard">
@@ -384,14 +399,12 @@ export default function DashboardLayout({
           </Link>
 
           <div className="flex items-center gap-1">
-            {/* Primary items — always visible, with sliding glass pill */}
-            {/* Partner-gated extras: Edge City attendees get an extra nav
-                item linking to /edge/dashboard. session.user.partner is
-                populated by the NextAuth session callback — see lib/auth.ts. */}
-            {(session?.user?.partner === "edge_city"
-              ? [...primaryNav, edgeCityNavItem]
-              : primaryNav
-            ).map((item) => {
+            {/* Primary items — always visible, with sliding glass pill.
+                These five reflect what a user reaches for every session.
+                Lower-frequency surfaces (The Floor, Edge City for edge
+                attendees, utility, account) live in the "···" overflow
+                menu below. */}
+            {primaryNav.map((item) => {
               const isActive = pathname === item.href;
               return (
                 <Link
@@ -430,7 +443,11 @@ export default function DashboardLayout({
               <button
                 data-tour="nav-more"
                 onClick={() => setMoreOpen((v) => !v)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-snappy transition-colors"
+                aria-label="More options"
+                aria-haspopup="menu"
+                aria-expanded={moreOpen}
+                title="More"
+                className="flex items-center justify-center w-9 h-9 rounded-full text-sm transition-snappy transition-colors"
                 style={{
                   color: isOverflowActive || moreOpen ? "var(--foreground)" : "var(--muted)",
                   background: isOverflowActive || moreOpen ? "rgba(0,0,0,0.07)" : "rgba(0,0,0,0.03)",
@@ -452,7 +469,6 @@ export default function DashboardLayout({
                     />
                   )}
                 </span>
-                <span className="hidden sm:inline">More</span>
               </button>
 
               {moreOpen && (
@@ -466,6 +482,26 @@ export default function DashboardLayout({
                     zIndex: tourControllingMore.current ? 9999 : 50,
                   }}
                 >
+                  {/* Features — lower-frequency product surfaces. Edge City
+                      only appears for edge_city attendees. Routes unchanged;
+                      these items simply moved out of the always-visible row. */}
+                  {features.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      data-tour={item.tourKey}
+                      className="flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors"
+                      style={{
+                        color: pathname === item.href ? "var(--foreground)" : "var(--muted)",
+                        background: pathname === item.href ? "rgba(0,0,0,0.04)" : "transparent",
+                      }}
+                    >
+                      <item.icon className="w-4 h-4" />
+                      {item.label}
+                    </Link>
+                  ))}
+                  <div style={{ borderTop: "1px solid var(--border)", margin: "4px 0" }} />
+                  {/* Utility + account */}
                   {overflowNav.map((item) => (
                     <Link
                       key={item.href}
