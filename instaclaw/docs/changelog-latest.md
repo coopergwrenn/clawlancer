@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-03
 
-Window: `2cf17be216deefe68351e64229618bdc64019da1` → `HEAD` (HEAD = `427979b3`)
+Window: `19d5e887c0a21cdb603715cba1bbc5574b174765` → `HEAD` (HEAD = `b1b2d604`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 427979b3810e4ae97e9142e42402525ef74fa797 -->
+<!-- LAST_GENERATED_SHA: b1b2d604a5b2f56f8ff3248757024ee5fe02ab1b -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `427979b3` 2026-06-03 — feat(frontier): W11 canary proof harness — re-runnable earned-budget gate matrix [1 files] _(ai-assisted)_
-- `072f1757` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `b1b2d604` 2026-06-03 — feat(frontier): Phase-2 derisk — write-once supplier signals + spend kill switch [5 files] _(ai-assisted)_
+- `7c5054f6` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `427979b3` 2026-06-03 — feat(frontier): W11 canary proof harness — re-runnable earned-budget gate matrix [1 files] _(ai-assisted)_
+- `b1b2d604` 2026-06-03 — feat(frontier): Phase-2 derisk — write-once supplier signals + spend kill switch [5 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `072f1757` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `7c5054f6` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `427979b3` 2026-06-03 — feat(frontier): W11 canary proof harness — re-runnable earned-budget gate matrix
+- `b1b2d604` 2026-06-03 — feat(frontier): Phase-2 derisk — write-once supplier signals + spend kill switch
 
 ## Appendix — every commit (chronological)
 
-- `072f1757` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
-- `427979b3` 2026-06-03 — feat(frontier): W11 canary proof harness — re-runnable earned-budget gate matrix [1 files] _(ai-assisted)_
+- `7c5054f6` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `b1b2d604` 2026-06-03 — feat(frontier): Phase-2 derisk — write-once supplier signals + spend kill switch [5 files] _(ai-assisted)_

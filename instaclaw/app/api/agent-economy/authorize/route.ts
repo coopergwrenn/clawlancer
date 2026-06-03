@@ -83,6 +83,7 @@ import { deriveTrackRecord } from "@/lib/frontier-ledger";
 import { creditStanding, type CreditStanding } from "@/lib/frontier-standing";
 import { toLedgerRow, reserveAwareSpentTodayUsd, HOLD_TTL_MS, SPEND_WINDOW_MS, type FrontierTxnDbRow } from "@/lib/frontier-ledger-db";
 import { decideAuthorization } from "@/lib/frontier-authz";
+import { isFrontierSpendKilled } from "@/lib/frontier-kill-switch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30; // DB reads + one insert, no LLM (Rule 11 short tier)
@@ -319,6 +320,17 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = getSupabase();
+
+  // ── Emergency stop (no deploy, instant, fleet-wide): if the spend kill switch is
+  // engaged, deny EVERY spend — overrides human_approved (it's an emergency stop, not a
+  // policy band). Checked before the pipeline so it also short-circuits cheaply. ──
+  if (await isFrontierSpendKilled(supabase)) {
+    return NextResponse.json(
+      { authorized: false, mode: null, outcome: "deny", reason: "spend_kill_switch" },
+      { status: 200 },
+    );
+  }
+
   const nowMs = Date.now();
 
   // ── Read this VM's recent ledger (standing + reserve) ──
