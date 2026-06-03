@@ -43,6 +43,7 @@ import {
   Lock,
   CheckCircle2,
   ArrowRight,
+  ChevronDown,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -226,7 +227,7 @@ export function PremiumToolsSkillCard() {
             : "0 0 0 0px rgba(34,197,94,0)",
         }}
         transition={celebrating ? { duration: 1.5 } : { duration: 0.25 }}
-        className="glass rounded-xl p-5 h-[120px] relative overflow-hidden text-left w-full cursor-pointer block"
+        className="group glass rounded-xl p-5 h-[120px] relative overflow-hidden text-left w-full cursor-pointer block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(220,103,67,0.5)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f8f7f4]"
         style={{
           border: verified ? "1px solid rgba(34,197,94,0.3)" : "1px solid var(--border)",
         }}
@@ -263,9 +264,35 @@ export function PremiumToolsSkillCard() {
           </div>
         </div>
 
-        {/* Expand affordance — mirrors the Solana "Wallet ▼" trigger placement */}
-        <span className="absolute bottom-2 right-3 text-[10px]" style={{ color: "var(--accent)" }}>
-          {verified ? "View ▾" : "See all six ▾"}
+        {/* Expand affordance — a coral glass pill that reads as a tappable
+            button. Same liquid-glass recipe as the Active/Locked skill-pills
+            (-75deg white sheen over a radial color-under-glass + layered
+            highlight/shadow), in the brand coral, dialed back so it stays calm.
+            The hairline coral ring (outer box-shadow layer) gives it a pressable
+            surface edge. States are driven by the card (the real <button>):
+            group-hover lifts + brightens, group-active presses; the card carries
+            the focus-visible ring. Opens the same six-tool modal — behavior
+            unchanged. */}
+        <span
+          className="absolute bottom-2.5 right-2.5 inline-flex items-center gap-1 h-[23px] pl-2.5 pr-2 rounded-full text-[11px] font-semibold leading-none whitespace-nowrap select-none transition-all duration-150 ease-out group-hover:-translate-y-px group-hover:brightness-[1.06] group-active:translate-y-0 group-active:scale-[0.97]"
+          style={{
+            color: "rgb(178, 66, 40)",
+            backgroundColor: "rgba(0,0,0,0)",
+            backdropFilter: "blur(3px)",
+            WebkitBackdropFilter: "blur(3px)",
+            backgroundImage:
+              "linear-gradient(-75deg, rgba(255,255,255,0.10), rgba(255,255,255,0.34), rgba(255,255,255,0.10)), " +
+              "radial-gradient(125% 150% at 26% 26%, rgba(220,103,67,0.34) 0%, rgba(220,103,67,0.20) 55%, rgba(220,103,67,0.12) 100%)",
+            boxShadow:
+              "rgba(0,0,0,0.05) 0px 0.5px 1px 0px inset, " +
+              "rgba(255,255,255,0.45) 0px -0.5px 1.5px 0px inset, " +
+              "rgba(0,0,0,0.10) 0px 1px 2.5px -1px, " +
+              "rgba(255,255,255,0.25) 0px 0px 0.5px 0.5px inset, " +
+              "rgba(220,103,67,0.22) 0px 0px 0px 0.75px",
+          }}
+        >
+          {verified ? "View tools" : "See all six"}
+          <ChevronDown className="w-[13px] h-[13px]" strokeWidth={2.5} aria-hidden />
         </span>
       </motion.button>
 
