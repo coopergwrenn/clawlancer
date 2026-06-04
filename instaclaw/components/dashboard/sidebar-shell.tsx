@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   MessageSquare,
   Waves,
@@ -28,21 +28,27 @@ import {
   Mail,
   LogOut,
   ChevronDown,
+  Menu,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import type { Session } from "next-auth";
 import { AgentbookHatBanner } from "@/components/dashboard/agentbook-hat-banner";
 import { ChannelNudgeBanner } from "@/components/dashboard/channel-nudge-banner";
 import { SessionsSection } from "@/components/dashboard/sessions-section";
+import { useIsDesktop } from "@/components/dashboard/use-is-desktop";
 
 /**
- * SidebarShell — the Phase 1 left-sidebar workspace chrome. DESKTOP-ONLY.
+ * SidebarShell — the left-sidebar workspace chrome. Renders on BOTH viewports
+ * when the sidebar flag is on (layout gates `navMode === "sidebar"`).
  *
- * Only ever mounted at lg+ (the layout gates `navMode === "sidebar" &&
- * isDesktop`). Below lg the dashboard renders the existing top-nav verbatim, so
- * this component is a pure desktop rail — no mobile drawer, no hamburger. The
- * deliberate mobile pass comes later; the prior drawer implementation is in git
- * history (commit c27266aa) if we want it back.
+ * The shell owns the viewport split internally via `useIsDesktop`:
+ *   - Desktop (lg+): the fixed 240px <aside> rail (<SidebarNav>).
+ *   - Mobile (<lg): a slim top bar (logo + hamburger + status-strip slot) + an
+ *     off-canvas drawer (<SidebarNav>, scrim z-40 / panel z-[45], below the
+ *     z-9998 gate overlay). Rail and drawer share ONE <SidebarNav> source of
+ *     truth; only one mounts per viewport (conditional render, not CSS-hide) so
+ *     there's a single data-tour copy for the onboarding tour to target.
  *
  * Flag-off never mounts this (the layout's top-nav return handles every
  * viewport). All four redirect gates + the heartbeat poll + the gate overlay +
@@ -361,13 +367,228 @@ function CollapsibleSection({
   );
 }
 
-/* ─── The shell (pure desktop rail) ─────────────────────────────────────── */
+/* ─── Shared nav body — rendered in the desktop rail AND the mobile drawer ───
+   ONE source of truth so "every inventory item reachable" holds structurally on
+   both viewports (not hand-maintained). Only one of {rail, drawer} mounts per
+   viewport (conditional on isDesktop), so there's a single copy of each
+   data-tour element for the tour to target. */
+
+function SidebarNav({
+  pathname,
+  activeChatId,
+  activeTaskId,
+  heartbeatHealth,
+  pillId,
+  collapsed,
+  toggle,
+  isEdge,
+  email,
+}: {
+  pathname: string;
+  activeChatId: string | null;
+  activeTaskId: string | null;
+  heartbeatHealth: "healthy" | "unhealthy" | "paused" | null;
+  pillId: string;
+  collapsed: CollapseMap;
+  toggle: (key: string) => void;
+  isEdge: boolean;
+  email: string;
+}) {
+  return (
+    <>
+      {/* Brand — PHASE 2 gravity shift: logo → Command Center (home), per D1. */}
+      <Link
+        href="/tasks"
+        className="flex items-center gap-1 h-14 px-3 shrink-0 text-xl tracking-[-0.5px] transition-opacity hover:opacity-70"
+        style={{ fontFamily: "var(--font-serif)" }}
+      >
+        <Image
+          src="/logo.png"
+          alt="InstaClaw"
+          width={40}
+          height={40}
+          unoptimized
+          style={{ imageRendering: "pixelated" }}
+        />
+        <span>Instaclaw</span>
+      </Link>
+
+      {/* Command Center — permanent home anchor. Pinned ABOVE the scroll
+          region (shrink-0) so it holds its full natural height in every
+          collapse + viewport-height combination and never scrolls away. */}
+      <div className="shrink-0 px-2 pt-1">
+        <NavRow
+          item={HOME}
+          active={pathname === "/tasks" && !activeChatId && !activeTaskId}
+          heartbeatHealth={heartbeatHealth}
+          pillId={pillId}
+        />
+        <div className="mx-3 my-2 h-px" style={{ background: "var(--border)" }} />
+      </div>
+
+      {/* Scrollable section list — takes the remaining height and scrolls when
+          the expanded sections overflow. `min-h-0` is load-bearing. */}
+      <nav className="flex-1 min-h-0 overflow-y-auto px-2 pb-2">
+        {/* Sessions — live index of Command Center chats + tasks. */}
+        <SessionsSection
+          collapsed={collapsed["sessions"] ?? false}
+          onToggle={() => toggle("sessions")}
+          activeChatId={activeChatId}
+          activeTaskId={activeTaskId}
+        />
+        {/* Collapsible sections */}
+        {SECTIONS.map((section) => (
+          <CollapsibleSection
+            key={section.key}
+            section={section}
+            pathname={pathname}
+            heartbeatHealth={heartbeatHealth}
+            pillId={pillId}
+            collapsed={collapsed[section.key] ?? false}
+            onToggle={() => toggle(section.key)}
+          />
+        ))}
+      </nav>
+
+      {/* Pinned bottom — never inside a collapsible section */}
+      <div
+        className="shrink-0 px-2 pt-2 pb-2 flex flex-col gap-2"
+        style={{ borderTop: "1px solid var(--border)" }}
+      >
+        {isEdge && (
+          <NavRow
+            item={{ href: "/edge/dashboard", label: "Edge City", icon: MapPin, tourKey: "nav-edge-city" }}
+            active={pathname === "/edge/dashboard"}
+            heartbeatHealth={heartbeatHealth}
+            pillId={pillId}
+          />
+        )}
+
+        {/* Invite & earn — referral banner (ZO "Share … earn" equivalent) */}
+        <Link
+          href="/ambassador"
+          data-tour="nav-ambassador"
+          className="group relative flex items-center gap-2.5 px-3 h-9 rounded-lg text-sm transition-snappy outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40 overflow-hidden"
+          style={{
+            color: pathname === "/ambassador" ? "var(--foreground)" : CORAL_TEXT,
+            // Real coral-tinted glass — coral light UNDER the −75° white sheen
+            // (mirrors .skill-pill.is-green/is-blue: white sheen ⊕ brand radial
+            // + 4-layer shadow stack), not a flat coral rect. The coral identity
+            // now reads as our glass material; CORAL_TEXT keeps the label legible.
+            backgroundImage:
+              "linear-gradient(-75deg, rgba(255,255,255,0.10), rgba(255,255,255,0.34), rgba(255,255,255,0.10)), " +
+              "radial-gradient(125% 150% at 26% 26%, rgba(220,103,67,0.34) 0%, rgba(220,103,67,0.20) 55%, rgba(220,103,67,0.12) 100%)",
+            backdropFilter: "blur(3px)",
+            WebkitBackdropFilter: "blur(3px)",
+            boxShadow:
+              "rgba(0,0,0,0.05) 0px 0.5px 1px 0px inset, " +
+              "rgba(255,255,255,0.42) 0px -0.5px 1.5px 0px inset, " +
+              "rgba(0,0,0,0.09) 0px 1px 2px -1px, " +
+              "rgba(255,255,255,0.30) 0px 0px 0.5px 1px inset",
+            fontWeight: 500,
+          }}
+        >
+          <span
+            className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ background: "rgba(220,103,67,0.06)" }}
+          />
+          <Award className="w-[18px] h-[18px] relative z-10 shrink-0" strokeWidth={2} />
+          <span className="relative z-10 truncate">Invite &amp; earn</span>
+        </Link>
+
+        {/* Account — two lines so identity + actions both breathe at 240px. */}
+        <div
+          className="rounded-lg px-2.5 py-2"
+          style={{
+            // Clean neutral glass — the canonical material (−75° white sheen ⊕
+            // faint white light-under-glass + 4-layer glow-ring/shadow stack)
+            // tuned subtle for utility chrome.
+            backgroundImage:
+              "linear-gradient(-75deg, rgba(255,255,255,0.22), rgba(255,255,255,0.46), rgba(255,255,255,0.22)), " +
+              "radial-gradient(120% 160% at 28% 20%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.10) 55%, rgba(255,255,255,0) 100%)",
+            backdropFilter: "blur(3px)",
+            WebkitBackdropFilter: "blur(3px)",
+            boxShadow:
+              "rgba(0,0,0,0.04) 0px 1px 1.5px 0px inset, " +
+              "rgba(255,255,255,0.50) 0px -1px 1.5px 0px inset, " +
+              "rgba(0,0,0,0.07) 0px 1px 3px -1px, " +
+              "rgba(255,255,255,0.35) 0px 0px 0.5px 1px inset",
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <span
+              className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[11px] font-semibold uppercase"
+              style={{
+                background:
+                  "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.85), rgba(200,85,52,0.95))",
+                color: "#fff",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.25)",
+              }}
+            >
+              {email ? email[0] : "?"}
+            </span>
+            <span
+              className="flex-1 min-w-0 truncate text-xs"
+              style={{ color: "var(--foreground)", fontWeight: 500 }}
+              title={email}
+            >
+              {email || "Signed in"}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 mt-2">
+            <button
+              type="button"
+              title="Take the tour again"
+              aria-label="Take the tour again"
+              onClick={async () => {
+                await fetch("/api/onboarding/restart-wizard", { method: "PATCH" });
+                window.dispatchEvent(new Event("instaclaw:restart-wizard"));
+              }}
+              className="w-7 h-7 flex items-center justify-center rounded-md cursor-pointer transition-all hover:bg-black/[0.06] active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40"
+              style={{ color: "var(--muted)" }}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+            </button>
+            <a
+              href="mailto:help@instaclaw.io"
+              title="Support"
+              aria-label="Support"
+              className="w-7 h-7 flex items-center justify-center rounded-md cursor-pointer transition-all hover:bg-black/[0.06] active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40"
+              style={{ color: "var(--muted)" }}
+            >
+              <Mail className="w-3.5 h-3.5" />
+            </a>
+            <div className="flex-1" />
+            <button
+              type="button"
+              title="Sign out"
+              aria-label="Sign out"
+              onClick={() => signOut({ callbackUrl: "/" })}
+              className="flex items-center gap-1.5 h-7 px-2 rounded-md cursor-pointer transition-all hover:bg-black/[0.06] active:scale-95 text-xs outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40"
+              style={{ color: "var(--muted)" }}
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ─── The shell (desktop rail + mobile off-canvas drawer) ────────────────── */
 
 type SidebarShellProps = {
   children: React.ReactNode;
   pathname: string;
   session: Session | null;
   heartbeatHealth: "healthy" | "unhealthy" | "paused" | null;
+  /** Off-canvas drawer open state — lifted to the dashboard layout so the
+   *  onboarding tour can open it on mobile nav-item steps (mirrors setMoreOpen).
+   *  Optional so the dev preview harness can mount the shell without it. */
+  drawerOpen?: boolean;
+  setDrawerOpen?: (open: boolean) => void;
 };
 
 /**
@@ -388,11 +609,23 @@ function SidebarShellInner({
   pathname,
   session,
   heartbeatHealth,
+  drawerOpen: drawerOpenProp,
+  setDrawerOpen: setDrawerOpenProp,
 }: SidebarShellProps) {
   const { collapsed, toggle } = useCollapseState();
+  const isDesktop = useIsDesktop();
   const isEdge = session?.user?.partner === "edge_city";
   const email = session?.user?.email ?? "";
   const pillId = "sidebar-active-pill";
+
+  // Mobile off-canvas drawer open state. Controlled by the dashboard layout
+  // (lifted, so the onboarding tour can open it on mobile nav-item steps —
+  // mirrors setMoreOpen) when the props are provided; falls back to internal
+  // state for the dev preview harness, which mounts the shell directly.
+  const [internalDrawerOpen, setInternalDrawerOpen] = useState(false);
+  const drawerOpen = drawerOpenProp ?? internalDrawerOpen;
+  const setDrawerOpen = setDrawerOpenProp ?? setInternalDrawerOpen;
+  const touchStartX = useRef<number | null>(null);
 
   // Active session from the deep-link URL params (?c=<conversation> / ?t=<task>).
   // Drives the Sessions row highlight AND the Command Center predicate below, so
@@ -411,203 +644,54 @@ function SidebarShellInner({
   // computed (flexbox), never guessed — the seam-6 requirement.
   const isCommandCenter = pathname === "/tasks";
 
+  // If the viewport grows to desktop while the drawer is open, close it — the
+  // rail takes over and a left-open drawer must not linger off-screen.
+  useEffect(() => {
+    if (isDesktop && drawerOpen) setDrawerOpen(false);
+  }, [isDesktop, drawerOpen, setDrawerOpen]);
+
+  // Lock body scroll + close-on-Escape while the mobile drawer is open.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [drawerOpen, setDrawerOpen]);
+
   return (
     <div
       className={isCommandCenter ? "h-dvh overflow-hidden flex" : "min-h-screen flex"}
       style={{ background: "var(--background)" }}
     >
-      <aside
-        className="flex w-60 shrink-0 sticky top-0 h-screen flex-col"
-        style={{ background: SIDEBAR_BG, borderRight: "1px solid var(--border)" }}
-      >
-        {/* Brand — PHASE 2 gravity shift: logo → Command Center (home), per D1. */}
-        <Link
-          href="/tasks"
-          className="flex items-center gap-1 h-14 px-3 shrink-0 text-xl tracking-[-0.5px] transition-opacity hover:opacity-70"
-          style={{ fontFamily: "var(--font-serif)" }}
+      {/* Desktop rail (lg+). Conditionally RENDERED (not CSS-hidden) so that at
+          <lg the mobile drawer's copy is the only <SidebarNav> in the DOM — one
+          set of data-tour elements for the tour to target, no display:none
+          duplicate stealing querySelector. */}
+      {isDesktop && (
+        <aside
+          className="flex w-60 shrink-0 sticky top-0 h-screen flex-col"
+          style={{ background: SIDEBAR_BG, borderRight: "1px solid var(--border)" }}
         >
-          <Image
-            src="/logo.png"
-            alt="InstaClaw"
-            width={40}
-            height={40}
-            unoptimized
-            style={{ imageRendering: "pixelated" }}
-          />
-          <span>Instaclaw</span>
-        </Link>
-
-        {/* Command Center — permanent home anchor. Pinned ABOVE the scroll
-            region (shrink-0) so it holds its full natural height in every
-            collapse + viewport-height combination and never scrolls away. It
-            used to live inside the scroll <nav>, where an overflowing expanded
-            column stole its height (flexbox compressed the most-shrinkable row).
-            Pinning it out of the flex-grow scroll child fixes that structurally. */}
-        <div className="shrink-0 px-2 pt-1">
-          <NavRow
-            item={HOME}
-            active={pathname === "/tasks" && !activeChatId && !activeTaskId}
-            heartbeatHealth={heartbeatHealth}
-            pillId={pillId}
-          />
-          <div className="mx-3 my-2 h-px" style={{ background: "var(--border)" }} />
-        </div>
-
-        {/* Scrollable section list — takes the remaining height and scrolls when
-            the expanded sections overflow. `min-h-0` is load-bearing: a flex
-            child's default `min-height:auto` refuses to shrink below its content,
-            so without it overflow-y never engages and the squeeze cascades to the
-            rows above instead of scrolling here. */}
-        <nav className="flex-1 min-h-0 overflow-y-auto px-2 pb-2">
-          {/* Sessions — live index of Command Center chats + tasks, above the
-              static clusters so a thread is one click away without leaving the
-              rail. Desktop-only (this whole shell is). */}
-          <SessionsSection
-            collapsed={collapsed["sessions"] ?? false}
-            onToggle={() => toggle("sessions")}
+          <SidebarNav
+            pathname={pathname}
             activeChatId={activeChatId}
             activeTaskId={activeTaskId}
+            heartbeatHealth={heartbeatHealth}
+            pillId={pillId}
+            collapsed={collapsed}
+            toggle={toggle}
+            isEdge={isEdge}
+            email={email}
           />
-          {/* Collapsible sections */}
-          {SECTIONS.map((section) => (
-            <CollapsibleSection
-              key={section.key}
-              section={section}
-              pathname={pathname}
-              heartbeatHealth={heartbeatHealth}
-              pillId={pillId}
-              collapsed={collapsed[section.key] ?? false}
-              onToggle={() => toggle(section.key)}
-            />
-          ))}
-        </nav>
-
-        {/* Pinned bottom — never inside a collapsible section */}
-        <div
-          className="shrink-0 px-2 pt-2 pb-2 flex flex-col gap-2"
-          style={{ borderTop: "1px solid var(--border)" }}
-        >
-          {isEdge && (
-            <NavRow
-              item={{ href: "/edge/dashboard", label: "Edge City", icon: MapPin, tourKey: "nav-edge-city" }}
-              active={pathname === "/edge/dashboard"}
-              heartbeatHealth={heartbeatHealth}
-              pillId={pillId}
-            />
-          )}
-
-          {/* Invite & earn — referral banner (ZO "Share … earn" equivalent) */}
-          <Link
-            href="/ambassador"
-            data-tour="nav-ambassador"
-            className="group relative flex items-center gap-2.5 px-3 h-9 rounded-lg text-sm transition-snappy outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40 overflow-hidden"
-            style={{
-              color: pathname === "/ambassador" ? "var(--foreground)" : CORAL_TEXT,
-              // Real coral-tinted glass — coral light UNDER the −75° white sheen
-              // (mirrors .skill-pill.is-green/is-blue: white sheen ⊕ brand radial
-              // + 4-layer shadow stack), not a flat coral rect. The coral identity
-              // now reads as our glass material; CORAL_TEXT keeps the label legible.
-              backgroundImage:
-                "linear-gradient(-75deg, rgba(255,255,255,0.10), rgba(255,255,255,0.34), rgba(255,255,255,0.10)), " +
-                "radial-gradient(125% 150% at 26% 26%, rgba(220,103,67,0.34) 0%, rgba(220,103,67,0.20) 55%, rgba(220,103,67,0.12) 100%)",
-              backdropFilter: "blur(3px)",
-              WebkitBackdropFilter: "blur(3px)",
-              boxShadow:
-                "rgba(0,0,0,0.05) 0px 0.5px 1px 0px inset, " +
-                "rgba(255,255,255,0.42) 0px -0.5px 1.5px 0px inset, " +
-                "rgba(0,0,0,0.09) 0px 1px 2px -1px, " +
-                "rgba(255,255,255,0.30) 0px 0px 0.5px 1px inset",
-              fontWeight: 500,
-            }}
-          >
-            <span
-              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ background: "rgba(220,103,67,0.06)" }}
-            />
-            <Award className="w-[18px] h-[18px] relative z-10 shrink-0" strokeWidth={2} />
-            <span className="relative z-10 truncate">Invite &amp; earn</span>
-          </Link>
-
-          {/* Account — two lines so identity + actions both breathe at 240px. */}
-          <div
-            className="rounded-lg px-2.5 py-2"
-            style={{
-              // Clean neutral glass — the canonical material (−75° white sheen ⊕
-              // faint white light-under-glass + 4-layer glow-ring/shadow stack)
-              // tuned subtle for utility chrome. A real considered surface, not
-              // the prior near-invisible flat fill; avatar/email/actions stay
-              // perfectly legible on the white-keyed glass.
-              backgroundImage:
-                "linear-gradient(-75deg, rgba(255,255,255,0.22), rgba(255,255,255,0.46), rgba(255,255,255,0.22)), " +
-                "radial-gradient(120% 160% at 28% 20%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.10) 55%, rgba(255,255,255,0) 100%)",
-              backdropFilter: "blur(3px)",
-              WebkitBackdropFilter: "blur(3px)",
-              boxShadow:
-                "rgba(0,0,0,0.04) 0px 1px 1.5px 0px inset, " +
-                "rgba(255,255,255,0.50) 0px -1px 1.5px 0px inset, " +
-                "rgba(0,0,0,0.07) 0px 1px 3px -1px, " +
-                "rgba(255,255,255,0.35) 0px 0px 0.5px 1px inset",
-            }}
-          >
-            <div className="flex items-center gap-2">
-              <span
-                className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[11px] font-semibold uppercase"
-                style={{
-                  background:
-                    "radial-gradient(circle at 35% 30%, rgba(220,103,67,0.85), rgba(200,85,52,0.95))",
-                  color: "#fff",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.25)",
-                }}
-              >
-                {email ? email[0] : "?"}
-              </span>
-              <span
-                className="flex-1 min-w-0 truncate text-xs"
-                style={{ color: "var(--foreground)", fontWeight: 500 }}
-                title={email}
-              >
-                {email || "Signed in"}
-              </span>
-            </div>
-            <div className="flex items-center gap-1 mt-2">
-              <button
-                type="button"
-                title="Take the tour again"
-                aria-label="Take the tour again"
-                onClick={async () => {
-                  await fetch("/api/onboarding/restart-wizard", { method: "PATCH" });
-                  window.dispatchEvent(new Event("instaclaw:restart-wizard"));
-                }}
-                className="w-7 h-7 flex items-center justify-center rounded-md cursor-pointer transition-all hover:bg-black/[0.06] active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40"
-                style={{ color: "var(--muted)" }}
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-              </button>
-              <a
-                href="mailto:help@instaclaw.io"
-                title="Support"
-                aria-label="Support"
-                className="w-7 h-7 flex items-center justify-center rounded-md cursor-pointer transition-all hover:bg-black/[0.06] active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40"
-                style={{ color: "var(--muted)" }}
-              >
-                <Mail className="w-3.5 h-3.5" />
-              </a>
-              <div className="flex-1" />
-              <button
-                type="button"
-                title="Sign out"
-                aria-label="Sign out"
-                onClick={() => signOut({ callbackUrl: "/" })}
-                className="flex items-center gap-1.5 h-7 px-2 rounded-md cursor-pointer transition-all hover:bg-black/[0.06] active:scale-95 text-xs outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40"
-                style={{ color: "var(--muted)" }}
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                Sign out
-              </button>
-            </div>
-          </div>
-        </div>
-      </aside>
+        </aside>
+      )}
 
       {/* Content column — a flex column so Command Center fills the remaining
           height (chat input pinned to the bottom) while every other route is a
@@ -615,6 +699,37 @@ function SidebarShellInner({
           wrapper so they keep their natural height and <main> fills exactly the
           space below them. Mirrors the top-nav path (layout.tsx). */}
       <div className={`flex-1 min-w-0 flex flex-col${isCommandCenter ? " min-h-0" : ""}`}>
+        {/* Mobile slim top bar (<lg) — the rail is hidden on mobile, so this is
+            the nav entry point. It's the FIRST shrink-0 child of the flex
+            column, so /tasks' <main> fills exactly the height left below it
+            (seam 6 — the chat input stays reachable, height computed not
+            guessed). Right side reserves a slot for the Unit C status strip. */}
+        {!isDesktop && (
+          <header
+            className="shrink-0 flex items-center gap-1 h-14 px-3 border-b"
+            style={{ background: SIDEBAR_BG, borderColor: "var(--border)" }}
+          >
+            <button
+              type="button"
+              aria-label="Open navigation"
+              onClick={() => setDrawerOpen(true)}
+              className="w-9 h-9 -ml-1 flex items-center justify-center rounded-lg cursor-pointer transition-all hover:bg-black/[0.06] active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40"
+              style={{ color: "var(--foreground)" }}
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <Link
+              href="/tasks"
+              className="flex items-center gap-1 text-lg tracking-[-0.5px] transition-opacity hover:opacity-70"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              <Image src="/logo.png" alt="InstaClaw" width={32} height={32} unoptimized style={{ imageRendering: "pixelated" }} />
+              <span>Instaclaw</span>
+            </Link>
+            {/* Unit C status strip mounts here (right-aligned). */}
+            <div className="ml-auto flex items-center" data-status-strip-slot />
+          </header>
+        )}
         <div className="shrink-0">
           <AgentbookHatBanner />
           <ChannelNudgeBanner />
@@ -629,6 +744,77 @@ function SidebarShellInner({
           {children}
         </main>
       </div>
+
+      {/* Mobile off-canvas drawer (<lg). Scrim z-40 + panel z-[45] — both well
+          below the dashboard gate overlay (z-9998), so a gated user always gets
+          the gate, never a drawer openable underneath it. Renders only when
+          !isDesktop, so the desktop rail's <SidebarNav> is the only data-tour
+          copy in the DOM on desktop, and the drawer's is the only one on mobile. */}
+      {!isDesktop && (
+        <AnimatePresence>
+          {drawerOpen && (
+            <>
+              <motion.div
+                key="drawer-scrim"
+                className="fixed inset-0 z-40 lg:hidden"
+                style={{ background: "rgba(0,0,0,0.45)" }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                onClick={() => setDrawerOpen(false)}
+                aria-hidden="true"
+              />
+              <motion.aside
+                key="drawer-panel"
+                className="fixed left-0 top-0 bottom-0 z-[45] w-[82%] max-w-[300px] flex flex-col lg:hidden"
+                style={{ background: SIDEBAR_BG, borderRight: "1px solid var(--border)" }}
+                initial={{ x: "-100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "-100%" }}
+                transition={{ type: "spring", stiffness: 520, damping: 44 }}
+                onTouchStart={(e) => {
+                  touchStartX.current = e.touches[0]?.clientX ?? null;
+                }}
+                onTouchEnd={(e) => {
+                  const start = touchStartX.current;
+                  touchStartX.current = null;
+                  const end = e.changedTouches[0]?.clientX ?? start ?? 0;
+                  if (start !== null && end - start < -50) setDrawerOpen(false);
+                }}
+                onClick={(e) => {
+                  // Close when a navigation link is tapped (delegation). Pin /
+                  // collapse / account controls are <button>s that stopPropagation
+                  // (or aren't links), so they don't close the drawer; only a
+                  // navigation <a href> bubbles to here → close.
+                  if ((e.target as HTMLElement).closest("a[href]")) setDrawerOpen(false);
+                }}
+              >
+                <button
+                  type="button"
+                  aria-label="Close navigation"
+                  onClick={() => setDrawerOpen(false)}
+                  className="absolute right-2 top-3 z-10 w-8 h-8 flex items-center justify-center rounded-lg cursor-pointer transition-all hover:bg-black/[0.06] active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40"
+                  style={{ color: "var(--muted)" }}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+                <SidebarNav
+                  pathname={pathname}
+                  activeChatId={activeChatId}
+                  activeTaskId={activeTaskId}
+                  heartbeatHealth={heartbeatHealth}
+                  pillId={pillId}
+                  collapsed={collapsed}
+                  toggle={toggle}
+                  isEdge={isEdge}
+                  email={email}
+                />
+              </motion.aside>
+            </>
+          )}
+        </AnimatePresence>
+      )}
     </div>
   );
 }

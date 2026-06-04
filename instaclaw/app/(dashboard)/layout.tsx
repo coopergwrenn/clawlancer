@@ -32,7 +32,6 @@ import OnboardingWizard from "@/components/onboarding-wizard/OnboardingWizard";
 import { AgentbookHatBanner } from "@/components/dashboard/agentbook-hat-banner";
 import { ChannelNudgeBanner } from "@/components/dashboard/channel-nudge-banner";
 import { useNavMode } from "@/components/dashboard/use-nav-mode";
-import { useIsDesktop } from "@/components/dashboard/use-is-desktop";
 import { SidebarShell } from "@/components/dashboard/sidebar-shell";
 import { DashboardGateOverlay } from "@/components/dashboard/dashboard-gate-overlay";
 
@@ -91,17 +90,20 @@ export default function DashboardLayout({
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   const tourControllingMore = useRef(false);
+  // B2 mobile drawer — lifted here so the onboarding tour can open it on mobile
+  // sidebar nav-item steps (mirrors moreOpen/tourControllingMore). Passed to
+  // SidebarShell (renders the drawer) + the sidebar-branch OnboardingWizard.
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [heartbeatHealth, setHeartbeatHealth] = useState<"healthy" | "unhealthy" | "paused" | null>(null);
   const [gateChecked, setGateChecked] = useState(false);
   const [gated, setGated] = useState(false);
-  // Phase 1 sidebar restructure — flag-gated + DESKTOP-ONLY. `navMode` resolves
-  // to "topnav" for every un-opted-in user (env unset, no localStorage, no
-  // ?nav= param), so the flag-off render below is byte-identical to origin/main.
-  // `isDesktop` (matchMedia lg+) scopes the sidebar to desktop — below lg the
-  // top-nav renders for ALL users, unchanged. SSR-default false → mobile flag-on
-  // shows the top-nav from frame 0 (zero flash); flag-off never reads it.
+  // Sidebar restructure — flag-gated. `navMode` resolves to "topnav" for every
+  // un-opted-in user (env unset, no localStorage, no ?nav= param), so the
+  // flag-off render below is byte-identical to origin/main on BOTH viewports.
+  // Post-B2 the sidebar renders on mobile too (off-canvas drawer); the shell
+  // owns the rail-vs-drawer viewport split internally (its own useIsDesktop), so
+  // the layout no longer needs isDesktop here.
   const navMode = useNavMode();
-  const isDesktop = useIsDesktop();
 
   // Only redirect to onboarding if we have a confirmed session (user.id is set
   // by the session callback) AND onboardingComplete is explicitly false.
@@ -396,13 +398,15 @@ export default function DashboardLayout({
   // never even reads isDesktop. The wizard here gets navMode="sidebar" because
   // it only runs on desktop; mobile + flag-off get the top-nav return's wizard
   // (default "topnav") — so the tour always follows the rendered chrome.
-  if (navMode === "sidebar" && isDesktop) {
+  if (navMode === "sidebar") {
     return (
       <div className="min-h-screen" data-theme="dashboard">
         <SidebarShell
           pathname={pathname}
           session={session}
           heartbeatHealth={heartbeatHealth}
+          drawerOpen={drawerOpen}
+          setDrawerOpen={setDrawerOpen}
         >
           {children}
         </SidebarShell>
@@ -418,6 +422,7 @@ export default function DashboardLayout({
           setMoreOpen={setMoreOpen}
           tourControllingMore={tourControllingMore}
           navMode="sidebar"
+          setDrawerOpen={setDrawerOpen}
         />
       </div>
     );

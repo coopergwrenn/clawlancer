@@ -110,12 +110,16 @@ interface OnboardingWizardProps {
   // Phase 1 sidebar restructure — threaded through to SpotlightTour. Default
   // keeps the top-nav tour byte-identical when the sidebar flag is off.
   navMode?: "topnav" | "sidebar";
+  // B2 (mobile drawer) — threaded to SpotlightTour so sidebar nav-item steps
+  // open the off-canvas drawer on mobile. Optional; topnav never uses it.
+  setDrawerOpen?: (open: boolean) => void;
 }
 
 export default function OnboardingWizard({
   setMoreOpen,
   tourControllingMore,
   navMode = "topnav",
+  setDrawerOpen,
 }: OnboardingWizardProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const router = useRouter();
@@ -298,6 +302,7 @@ export default function OnboardingWizard({
             completeWizard();
           }}
           setMoreOpen={setMoreOpen}
+          setDrawerOpen={setDrawerOpen}
           navigateTo={handleNavigate}
           navMode={navMode}
         />
