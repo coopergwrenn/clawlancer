@@ -3,15 +3,30 @@
 /**
  * usePins — the pin store for the sidebar Sessions index.
  *
- * ONE interface, two backends. Stage 1 is localStorage (per-device, ships now,
- * zero backend). Stage 2 swaps ONLY the internals of this hook to a server table
- * (`/api/sessions/pins` GET/POST/DELETE) with localStorage as an offline cache —
- * the consuming component depends solely on the `PinStore` interface below, so
- * the swap is a drop-in with no UI change.
+ * Stage 2 (server-backed): pins live in the `instaclaw_session_pins` table and
+ * follow the user across devices, with localStorage retained as an OFFLINE
+ * CACHE (instant first paint, no unpinned-flash). The `PinStore` interface
+ * below is UNCHANGED from Stage 1 — only the internals of `usePins` swapped from
+ * localStorage-as-source-of-truth to /api/sessions/pins-as-source-of-truth. The
+ * consuming component (sessions-section.tsx) depends solely on this interface,
+ * so the swap is a drop-in with no UI change.
  *
- * A PinKey is opaque + namespaced (`chat:<id>` / `task:<id>`): localStorage
- * stores the joined strings; a future server stores (session_type, session_id)
- * rows; both map to the identical `PinKey[]`.
+ * Freshness model:
+ *   1. mount      — hydrate from localStorage cache FIRST (instant, ready=true,
+ *                   no flash of "unpinned"), THEN GET /api/sessions/pins and
+ *                   reconcile to server truth (cross-device pins appear/vanish).
+ *   2. toggle     — optimistic: update state + cache immediately, then fire
+ *                   POST (pin) / DELETE (unpin) best-effort. On write failure,
+ *                   re-GET to reconcile back to server truth (undoes a rejected
+ *                   optimistic change). On success, the optimistic state already
+ *                   matches the server — no extra fetch.
+ *   3. cross-tab  — the native `storage` event keeps the cache mirror in sync
+ *                   across tabs in the same browser.
+ *
+ * A PinKey is opaque + namespaced (`chat:<id>` / `task:<id>`): the cache stores
+ * the joined strings; the server stores (session_type, session_id) rows; the
+ * GET endpoint returns the joined strings verbatim. All three map to the
+ * identical `PinKey[]`.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -26,35 +41,41 @@ export interface PinStore {
   ready: boolean; // hydrated yet — gates a flash of "unpinned" on first paint
 }
 
-const STORAGE_KEY = "instaclaw_pinned_sessions";
+const STORAGE_KEY = "instaclaw_pinned_sessions"; // now an offline cache, not the source of truth
+const PINS_ENDPOINT = "/api/sessions/pins";
 
 /** Build a PinKey from a session row's type + id. */
 export function pinKey(type: SessionType, id: string): PinKey {
   return `${type}:${id}`;
 }
 
-/** Parse + sanitize the stored value — drop anything that isn't a valid PinKey. */
-function readStorage(): PinKey[] {
+/** Validate + dedupe an array of candidate pin keys (from cache OR server). */
+function sanitizePins(raw: unknown): PinKey[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: PinKey[] = [];
+  for (const v of raw) {
+    if (typeof v === "string" && /^(chat|task):.+/.test(v) && !seen.has(v)) {
+      seen.add(v);
+      out.push(v as PinKey);
+    }
+  }
+  return out;
+}
+
+/** Read the localStorage offline cache. */
+function readCache(): PinKey[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    const seen = new Set<string>();
-    const out: PinKey[] = [];
-    for (const v of parsed) {
-      if (typeof v === "string" && /^(chat|task):.+/.test(v) && !seen.has(v)) {
-        seen.add(v);
-        out.push(v as PinKey);
-      }
-    }
-    return out;
+    return sanitizePins(JSON.parse(raw));
   } catch {
     return [];
   }
 }
 
-function writeStorage(pins: PinKey[]): void {
+/** Write the localStorage offline cache (best-effort). */
+function writeCache(pins: PinKey[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(pins));
   } catch {
@@ -65,23 +86,50 @@ function writeStorage(pins: PinKey[]): void {
 export function usePins(): PinStore {
   const [pins, setPins] = useState<PinKey[]>([]);
   const [ready, setReady] = useState(false);
-  // Latest pins, readable inside the cross-tab listener without re-subscribing.
+  // Latest pins, readable inside callbacks/listeners without re-subscribing.
   const pinsRef = useRef<PinKey[]>([]);
   pinsRef.current = pins;
+  // Coalesce concurrent reconcile GETs into one in-flight + one trailing.
+  const reconcileInFlight = useRef(false);
+  const reconcileQueued = useRef(false);
 
-  // Hydrate from localStorage on mount.
-  useEffect(() => {
-    setPins(readStorage());
-    setReady(true);
+  // Reconcile to server truth (source of truth). Updates state + cache. Keeps
+  // the last-good list on any transient failure — never blanks pins.
+  const reconcile = useCallback(async () => {
+    if (reconcileInFlight.current) {
+      reconcileQueued.current = true;
+      return;
+    }
+    reconcileInFlight.current = true;
+    try {
+      const res = await fetch(PINS_ENDPOINT);
+      if (!res.ok) return; // transient (incl. 401 pre-auth) — keep cache-hydrated pins
+      const serverPins = sanitizePins((await res.json())?.pins);
+      setPins(serverPins);
+      writeCache(serverPins);
+    } catch {
+      // offline / network blip — keep the cache-hydrated pins
+    } finally {
+      reconcileInFlight.current = false;
+      if (reconcileQueued.current) {
+        reconcileQueued.current = false;
+        void reconcile();
+      }
+    }
   }, []);
 
-  // Cross-tab sync: the native `storage` event fires in OTHER tabs when this key
-  // changes. (It does NOT fire in the writing tab — but there's a single sidebar
-  // per tab, so same-tab multi-instance sync isn't needed. Stage 2 can add a
-  // broadcast if a second surface ever consumes pins.)
+  // Mount: hydrate cache FIRST (instant, no unpinned-flash), then reconcile.
+  useEffect(() => {
+    setPins(readCache());
+    setReady(true);
+    void reconcile();
+  }, [reconcile]);
+
+  // Cross-tab sync: the native `storage` event fires in OTHER tabs when the
+  // cache key changes. Keeps the in-memory mirror coherent across tabs.
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) setPins(readStorage());
+      if (e.key === STORAGE_KEY) setPins(readCache());
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -89,15 +137,37 @@ export function usePins(): PinStore {
 
   const isPinned = useCallback((key: PinKey) => pinsRef.current.includes(key), []);
 
-  const togglePin = useCallback((key: PinKey) => {
-    setPins((prev) => {
-      const next = prev.includes(key)
-        ? prev.filter((k) => k !== key)
-        : [...prev, key];
-      writeStorage(next); // optimistic + persisted in one step
-      return next;
-    });
-  }, []);
+  const togglePin = useCallback(
+    (key: PinKey) => {
+      const currentlyPinned = pinsRef.current.includes(key);
+      // Optimistic: update state + cache immediately for instant UI.
+      // Prepend on add to mirror the server's created_at-desc order (display
+      // order is recency-sorted downstream regardless, so this is purely for
+      // internal array stability across the next reconcile).
+      setPins((prev) => {
+        const next = currentlyPinned
+          ? prev.filter((k) => k !== key)
+          : [key, ...prev.filter((k) => k !== key)];
+        writeCache(next);
+        return next;
+      });
+      // Fire the server write best-effort. On failure, reconcile back to truth.
+      const write = currentlyPinned
+        ? fetch(`${PINS_ENDPOINT}?key=${encodeURIComponent(key)}`, { method: "DELETE" })
+        : fetch(PINS_ENDPOINT, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ key }),
+          });
+      write.then(
+        (res) => {
+          if (!res.ok) void reconcile();
+        },
+        () => void reconcile(),
+      );
+    },
+    [reconcile],
+  );
 
   return { pins, isPinned, togglePin, ready };
 }
