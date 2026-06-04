@@ -2,7 +2,9 @@
 
 **Date:** 2026-06-04
 **Branch:** `feat/sidebar-restructure-phase1` (sidebar worktree)
-**Status:** Proposed — awaiting green-light before any code
+**Status:** ✅ SHIPPED — both stages live on `main`, flag-off/dark (no user-visible change until `NEXT_PUBLIC_SIDEBAR_NAV` flips).
+  - **Stage 1** (live rail index + deep-link open) — shipped `d1f5770a` (2026-06-04).
+  - **Stage 2** (durable server-backed pins) — shipped `ab96486c` (2026-06-04): `instaclaw_session_pins` table (applied to prod, migration `20260604120000_session_pins.sql`), `/api/sessions/pins` GET/POST/DELETE, `use-pins.ts` swapped to server + localStorage cache. Verified headless against the real endpoint + real table (pin→POST, reload→server-survive, DB rows, unpin→DELETE, 7-click fast-toggle settles clean). `PinStore` interface + `sessions-section.tsx` unchanged (the seam held).
 **Author:** sidebar terminal (Claude)
 
 > A live, persistent index of the user's Command Center **sessions** (Chat threads + Tasks) in the
@@ -345,7 +347,7 @@ function usePins(): PinStore;
 
 ## 5. Scope split & staging
 
-### Stage 1 — the whole usable feature (NO new backend)
+### Stage 1 — the whole usable feature (NO new backend) — ✅ SHIPPED `d1f5770a`
 
 Pure UI on existing endpoints + the deep-link wiring:
 - `SessionsSection` (dynamic collapsible, real glass, iOS spring) above Workspace, inside `SidebarShell`.
@@ -362,7 +364,7 @@ Pure UI on existing endpoints + the deep-link wiring:
 
 **Backend touched in Stage 1: none.** Uses `tasks/list`, `chat/conversations`, and the existing single-item GETs.
 
-### Stage 2 — server pin sync (the ONLY new backend)
+### Stage 2 — server pin sync (the ONLY new backend) — ✅ SHIPPED `ab96486c`
 
 - **Migration** `instaclaw_session_pins (user_id uuid, session_type text, session_id uuid, created_at timestamptz,
   unique(user_id, session_type, session_id))` — RLS enabled **in the file** (Rule 60); `pending_migrations/` →

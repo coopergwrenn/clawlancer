@@ -1,8 +1,14 @@
 # Dashboard Sidebar Restructure — Planning Doc
 
-**Status:** PLANNING ONLY. No code written, no branches, no commits. This is the
-review artifact. We refine it together, then scope the build.
-**Date:** 2026-06-03
+**Status:** 🚧 IN PROGRESS — Phase 1 SHIPPED (live on `main`, dark behind `NEXT_PUBLIC_SIDEBAR_NAV`); Phase 2 partially shipped; Phase 3 (flag flip) pending Cooper.
+
+**Build status (as of 2026-06-04, verified against live code on `main`):**
+- **Phase 1 — sidebar shell behind flag — ✅ SHIPPED, dark.** Shell (`318185db`), desktop-only + collapsible clusters + navMode gating in `layout.tsx` (`705a9673`), navMode-aware tour `buildTourSteps()` (`168b3003`, copy `99ea1682`), glass material (`e83a5099`). The full **D3 IA** is built in the shell (Command Center anchor → `/tasks`, WORKSPACE + ACCOUNT clusters, Overview rename [D2], Credits, Edge City + Invite pinned). Gates/banners/overlay live in `layout.tsx`, applied before the nav branch.
+- **Sessions index (sub-PRD) — ✅ SHIPPED, dark.** Stage 1 rail + deep-link (`d1f5770a`), Stage 2 durable server-backed pins (`ab96486c`).
+- **Phase 2 — shift center of gravity — 🟡 PARTIAL.** DONE: Live View (`/live`) + Files (`/files`) promoted to visible slots (D4) — built inside the Phase 1 shell. REMAINING (genuinely unbuilt): logo → `/tasks` (`sidebar-shell.tsx` logo still → `/dashboard`); the 3 re-entry CTAs (D1, public pages — still → `/dashboard`); the optional status strip.
+- **Phase 3 — flip flag default-on + delete old nav — ⬜ PENDING.** The flag flip is **Cooper's call** (env var). Desktop-only by construction (`navMode === "sidebar" && isDesktop`), so the flip affects desktop only; mobile keeps the top-nav (D5 off-canvas drawer not yet built — not blocking the desktop flip). Old-nav deletion is a separate PR ~1 week after the flip soaks.
+
+**Date:** 2026-06-03 (plan) · build status updated 2026-06-04
 **Author:** CC terminal (onboarding/dashboard)
 **Reference inspiration:** ZO Computer (`coop.zo.computer`) — persistent left
 sidebar: Home / Chats / Files / Automations / Plugins / Computer / Terminal /
@@ -372,8 +378,8 @@ Not touched: onboarding-completion redirects (§1.5), `/api/*`, the gate logic
 **Build the sidebar as a NEW shell alongside the old top-nav, behind a flag, and
 flip only when proven.**
 
-- **Phase 0 — this doc.** Plan + approval. (no code)
-- **Phase 1 — sidebar shell behind a flag, zero routing change.**
+- **Phase 0 — this doc.** Plan + approval. (no code) — ✅ DONE.
+- **Phase 1 — sidebar shell behind a flag, zero routing change. — ✅ SHIPPED, dark.**
   `layout.tsx` conditionally renders `<SidebarShell>` vs the current top-nav on
   a flag (`NEXT_PUBLIC_SIDEBAR_NAV`, or a session/cookie/`?nav=sidebar` preview
   toggle). All 4 gates + banners + overlay move into the shell **verbatim**.
@@ -381,11 +387,14 @@ flip only when proven.**
   over**, ship the sidebar-aware tour variant in the same phase. Cooper eyeballs
   at a preview URL / with the flag on; production users see the old nav.
   *Net effect: pure visual reskin, no behavior change.*
-- **Phase 2 — shift the center of gravity.** Logo + sidebar "Home" → `/tasks`;
+  *Shipped `318185db` (shell) + `705a9673` (desktop-only + gating) + `168b3003` (tour) + Sessions `d1f5770a`/`ab96486c`. The shell was built with the full D3 IA, so D4's Live View + Files promotion landed here too.*
+- **Phase 2 — shift the center of gravity. — 🟡 PARTIAL.** Logo + sidebar "Home" → `/tasks`;
   promote `/live` + `/files` to visible slots; (optional) status strip.
   Onboarding redirects (§1.5) **untouched.** Re-verify §2.1 branch table.
-- **Phase 3 — flip the flag default-on.** Keep old top-nav behind the flag for
+  *Status: Live View + Files promotion ✅ DONE (in the Phase 1 shell). The Command Center anchor already → `/tasks`. REMAINING: logo repoint → `/tasks` (`sidebar-shell.tsx` logo still → `/dashboard`); the 3 re-entry CTAs (D1); the optional status strip (not built).*
+- **Phase 3 — flip the flag default-on. — ⬜ PENDING (Cooper's call).** Keep old top-nav behind the flag for
   ~1 week as instant rollback. Then a separate PR deletes the old nav.
+  *Desktop-only by construction; mobile keeps the top-nav (D5 drawer not yet built — not blocking the desktop flip).*
 
 This gives Cooper an eyeball gate before any user sees a change, and an
 env-var/flag rollback at every step.
@@ -674,7 +683,7 @@ destination. Nothing is deleted, orphaned, or excluded.**
 
 The 7 prior open questions, each researched and committed. Reasoning visible.
 
-### D1 — Re-entry CTAs: **repoint to `/tasks` + relabel "Open InstaClaw."**
+### D1 — Re-entry CTAs: **repoint to `/tasks` + relabel "Open InstaClaw."** — ⬜ REMAINING (Phase 2; public pages, flag-independent). Verified 2026-06-04 still unbuilt: `site-header.tsx:61` → `/dashboard` ("Dashboard"), `hero.tsx:274` → `/dashboard`, `hero.tsx:377` authed → `/dashboard`.
 Three authed re-entry points target `/dashboard` today: `site-header.tsx:61`
 (label "Dashboard"), `hero.tsx:274`, `hero.tsx:377`. The whole thesis is Command
 Center = home; landing returning users on the instance-management screen instead
@@ -688,7 +697,7 @@ independent of the nav flag (these are public pages; `/tasks` already works in
 both navs). `/go/[code]` stays `/dashboard` (it's a deep-link-redemption path
 where landing on the instance screen is fine, and it's lower-traffic). Low risk.
 
-### D2 — Dashboard label: **rename to "Overview" (route stays `/dashboard`).**
+### D2 — Dashboard label: **rename to "Overview" (route stays `/dashboard`).** — ✅ SHIPPED (in shell: `sidebar-shell.tsx` ACCOUNT cluster, label "Overview" → `/dashboard`).
 The page is agent health + usage + plan + model switch + World-ID verify +
 Virtuals toggle + reset. Labeling it "Dashboard" while Command Center is actually
 home creates a "why isn't the Dashboard my home?" mismatch. "Overview" is the
@@ -699,7 +708,7 @@ risks confusion with Command Center. **Decision:** sidebar label = **"Overview."
 onboarding-first invariant, and middleware). Only the nav label + the tour
 step-1 copy change to match.
 
-### D3 — Sidebar grouping: **two zones, Workspace (two clusters) + Account & Plan, pinned bottom.** (Authoritative; supersedes §2.2.)
+### D3 — Sidebar grouping: **two zones, Workspace (two clusters) + Account & Plan, pinned bottom.** (Authoritative; supersedes §2.2.) — ✅ SHIPPED (the full IA below is built in `sidebar-shell.tsx`; Sessions index added above WORKSPACE per the sub-PRD).
 Grouped by user intent (interact-with-agent vs produce-work vs account), home at
 top, hidden routes surfaced, money paired.
 
@@ -735,7 +744,7 @@ rhythm without heavy headers (ZO/Linear pattern). Order within each cluster is
 by frequency/prominence (The Floor stays high — it's the launch feature). Tunable
 later, but this is the committed v1.
 
-### D4 — Promote `/live` + `/files`: **yes, both.**
+### D4 — Promote `/live` + `/files`: **yes, both.** — ✅ SHIPPED (in shell: "Live View" → `/live` in the live-agent cluster, "Files" → `/files` in work-&-output). Note: landed inside the Phase 1 shell even though the PRD slots it under Phase 2.
 `/live` (watch the agent's screen — ZO's "Computer") is reachable **only** via the
 desktop-thumbnail on `/dashboard` today — a buried, differentiating delight
 feature. `/files` (file manager — ZO top-levels it) is stuck in the overflow
@@ -745,7 +754,7 @@ dropdown. Both already exist, are auth-protected, and work. Surfacing them is
 (work-&-output cluster). "Live View" over "Computer" (self-explanatory; "Computer"
 risks "whose computer?").
 
-### D5 — Mobile: **off-canvas drawer for v1; bottom-tab hybrid as a documented fast-follow.**
+### D5 — Mobile: **off-canvas drawer for v1; bottom-tab hybrid as a documented fast-follow.** — ⬜ NOT BUILT. The shell is desktop-only (`navMode === "sidebar" && isDesktop`); mobile keeps the top-nav. NOT blocking the desktop flag flip — but required before the sidebar reaches mobile. Genuinely-unbuilt, future scope.
 Sidebar-first workspace tools (Linear, Notion, Height, Vercel) overwhelmingly
 degrade to an off-canvas hamburger drawer; it preserves **all** items in one
 place and is the lowest-risk path for a "don't break anything" launch. Bottom
@@ -758,7 +767,7 @@ collapsible to a ~64px icon rail (persisted in localStorage) — *optional polis
 Command Center · The Floor · Heartbeat · a "Menu" button (opens the drawer). Spec'd
 now, not built in v1.
 
-### D6 — Credits vs Billing: **keep Credits as its own dedicated item; build a bidirectional flywheel.** *(Cooper-directed.)*
+### D6 — Credits vs Billing: **keep Credits as its own dedicated item; build a bidirectional flywheel.** *(Cooper-directed.)* — 🟡 PARTIAL. Credits sidebar item ✅ in shell (adjacent to Billing). The bidirectional flywheel cross-links (Billing → `/dashboard/credits`, Credits → `/billing`) are ⬜ NOT BUILT (verified 2026-06-04: neither link present). Genuinely-unbuilt, small/additive.
 Per Cooper: there are multiple distinct credit types (video credits, premium-tool
 credits, unit credits, and more) — Credits is genuinely its own surface, not a
 Billing sub-section. **Decision:** Credits = dedicated sidebar item, placed
@@ -771,7 +780,7 @@ balances." Route stays `/dashboard/credits` (deep-link safety); only the nav ite
 multiple credit types may warrant the Credits **page** itself getting richer —
 that's a page-content enhancement to track separately.
 
-### D7 — Tour timing: **ship the navMode-aware tour in Phase 1, same PR as the sidebar shell.**
+### D7 — Tour timing: **ship the navMode-aware tour in Phase 1, same PR as the sidebar shell.** — ✅ SHIPPED (`168b3003`: `buildTourSteps(navMode)` in `tour-steps.ts`, `adaptStepForSidebar`, `SpotlightTour`/`OnboardingWizard` thread `navMode`; copy polish `99ea1682`).
 During the flag period both navs can render, so the tour must be navMode-aware to
 work in both (§4.3). Globally disabling the `nav-more` step would degrade the
 *old* top-nav tour while the flag is still off for most users. **Decision:** ship
