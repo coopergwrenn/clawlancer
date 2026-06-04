@@ -2130,6 +2130,10 @@ export default function CommandCenterPage() {
 
   // Dynamic viewport height for keyboard-aware layout on mobile
   const [chatViewHeight, setChatViewHeight] = useState<number | null>(null);
+  // Page-root element — measured by the mobile keyboard handler to derive its
+  // real distance from the top of the viewport (nav + any banners), instead of
+  // a hard-coded offset that goes stale whenever a banner is added above.
+  const pageRootRef = useRef<HTMLDivElement>(null);
 
   // Personalized quick action chips
   const [personalChips, setPersonalChips] = useState<{ label: string; prefill: string }[] | null>(null);
@@ -2352,12 +2356,17 @@ export default function CommandCenterPage() {
     const vv = window.visualViewport;
     if (!vv) return;
 
-    // nav(56px) + main-padding-top(48px) - negative-margin-top(40px) = 64px
-    const MOBILE_OFFSET = 64;
-
     const update = () => {
       if (window.innerWidth < 640) {
-        setChatViewHeight(vv.height - MOBILE_OFFSET);
+        // Measure the page root's real distance from the top of the viewport
+        // (nav + whatever banners are currently rendered) rather than a
+        // hard-coded offset. The container should fill from there down to the
+        // bottom of the *visible* viewport (above the keyboard). vv.offsetTop
+        // accounts for any iOS visual-viewport shift; vv.height shrinks when
+        // the keyboard opens. This stays correct no matter what renders above.
+        const top = pageRootRef.current?.getBoundingClientRect().top ?? 0;
+        const visibleBottom = vv.offsetTop + vv.height;
+        setChatViewHeight(Math.max(200, visibleBottom - top));
       }
       // Reset any page scroll iOS Safari might have caused
       if (window.scrollY !== 0) window.scrollTo(0, 0);
@@ -3208,7 +3217,14 @@ export default function CommandCenterPage() {
 
   return (
     <div
-      className="flex flex-col h-[calc(100dvh-4rem)] sm:h-[calc(100dvh-5.5rem)] -mt-10 sm:-mt-8 -mb-12 sm:-mb-16"
+      ref={pageRootRef}
+      // h-full fills the viewport-locked flex `<main>` the dashboard layout
+      // hands this route (see app/(dashboard)/layout.tsx isCommandCenter): the
+      // browser computes the available height after nav + banners, so the input
+      // bar always pins to the bottom regardless of what renders above. The
+      // inline `height` override only kicks in on mobile when the soft keyboard
+      // is open (chatViewHeight), where dvh doesn't shrink on iOS Safari.
+      className="flex flex-col h-full pt-4 sm:pt-8"
       style={chatViewHeight != null ? { height: `${chatViewHeight}px` } : undefined}
     >
       {/* Hidden file input */}

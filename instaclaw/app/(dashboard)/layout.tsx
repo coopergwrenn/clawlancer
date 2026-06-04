@@ -387,11 +387,27 @@ export default function DashboardLayout({
     (item) => pathname === item.href,
   );
 
+  // Command Center (/tasks) is the one dashboard route that must be
+  // viewport-locked: its chat input pins to the bottom of the screen and the
+  // task/message area scrolls above it, like a native chat app. Every other
+  // route is a normal document-scroll page (min-h-screen). We give /tasks a
+  // full-height flex column so the page can fill exactly the space left after
+  // the nav + any conditional banners (AgentbookHatBanner / ChannelNudgeBanner)
+  // — the browser computes that remaining height via flexbox, so the input
+  // never falls below the fold no matter what renders above. The page used to
+  // hard-code `h-[calc(100dvh-4rem)]` + negative margins to guess that offset;
+  // adding the banners later silently pushed the input off-screen (the offset
+  // was never updated). See the page-root comment in tasks/page.tsx.
+  const isCommandCenter = pathname === "/tasks";
+
   return (
-    <div className="min-h-screen" data-theme="dashboard">
+    <div
+      className={isCommandCenter ? "h-dvh overflow-hidden flex flex-col" : "min-h-screen"}
+      data-theme="dashboard"
+    >
       {/* Top nav */}
       <nav
-        className="border-b transition-colors"
+        className="border-b transition-colors shrink-0"
         style={{ borderColor: "var(--border)", background: "var(--background)" }}
       >
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -556,24 +572,32 @@ export default function DashboardLayout({
         </div>
       </nav>
 
-      {/* Site-wide AgentBook hat-claim notification strip — sits between
-          nav and main so it appears above the page heading on every
-          dashboard route. Returns null when not eligible (registered,
-          dismissed within 30d, or first visit) so it adds no whitespace
-          when not shown. Visit gating + dismissal persist via
-          localStorage + DB column. */}
-      <AgentbookHatBanner />
+      {/* Site-wide banners — sit between nav and main so they appear above the
+          page heading on every dashboard route. Wrapped in a shrink-0 box so
+          that under the Command Center's flex-column layout they keep their
+          natural height (never compressed) and `<main>` fills exactly the
+          space below them. In the normal min-h-screen layout the wrapper is
+          inert. Each banner returns null when not eligible, so the wrapper
+          adds no whitespace when nothing is shown.
+            - AgentbookHatBanner: hat-claim strip (registered/dismissed/first-visit gated)
+            - ChannelNudgeBanner: web-only-user nudge (14-day dismiss gated) */}
+      <div className="shrink-0">
+        <AgentbookHatBanner />
+        <ChannelNudgeBanner />
+      </div>
 
-      {/* Channel nudge — shows for users whose preferred_channel is 'web'
-          (clicked "skip to your command center" on /channels) and haven't
-          dismissed in the last 14 days. Renders null otherwise. Mirrors
-          AgentbookHatBanner's design language (translucent strip, height
-          animation, outlined CTA pill). Both banners stack cleanly when
-          both fire (rare). */}
-      <ChannelNudgeBanner />
-
-      {/* Content */}
-      <main className="max-w-6xl mx-auto px-4 py-12 sm:py-16">{children}</main>
+      {/* Content. Command Center fills the remaining viewport height as a flex
+          child (so its chat input pins to the bottom); every other route is a
+          normal padded, document-scrolling container. */}
+      <main
+        className={
+          isCommandCenter
+            ? "flex-1 min-h-0 w-full max-w-6xl mx-auto px-4"
+            : "max-w-6xl mx-auto px-4 py-12 sm:py-16"
+        }
+      >
+        {children}
+      </main>
 
       {/* ── Dashboard Gate Overlay (Phase 3) ── */}
       {gated && (
