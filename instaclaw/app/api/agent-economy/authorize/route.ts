@@ -79,9 +79,9 @@ import {
   type SpendCategory,
 } from "@/lib/frontier-policy";
 import { resolveEffectivePolicy } from "@/lib/frontier-overrides-db";
-import { deriveTrackRecord } from "@/lib/frontier-ledger";
-import { creditStanding, type CreditStanding } from "@/lib/frontier-standing";
-import { toLedgerRow, reserveAwareSpentTodayUsd, HOLD_TTL_MS, SPEND_WINDOW_MS, type FrontierTxnDbRow } from "@/lib/frontier-ledger-db";
+import { loadVmStanding, LedgerReadError } from "@/lib/frontier-standing-db";
+import type { CreditStanding } from "@/lib/frontier-standing";
+import { HOLD_TTL_MS, SPEND_WINDOW_MS } from "@/lib/frontier-ledger-db";
 import { decideAuthorization } from "@/lib/frontier-authz";
 import { isFrontierSpendKilled } from "@/lib/frontier-kill-switch";
 import { isFrontierSpendEnabled } from "@/lib/frontier-spend-optin";
@@ -99,7 +99,6 @@ const MAX_ENDPOINT = 500;
 const MAX_AMOUNT = 99_999_999; // numeric(14,6) integer part
 const MAX_TAGS = 20;
 const MAX_TAG_LEN = 60;
-const RECENT_SCAN_LIMIT = 500; // recent rows for standing + reserve (matches /state)
 
 // Base mainnet USDC — for the authoritative server-side wallet-balance read (P1-3).
 const USDC_BASE_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -345,65 +344,35 @@ export async function POST(req: NextRequest) {
   }
 
   const nowMs = Date.now();
+  const tier: FrontierTier = TIERS.includes(vm.tier as FrontierTier) ? (vm.tier as FrontierTier) : "starter";
 
-  // ── Read this VM's recent ledger (standing + reserve) ──
-  const { data: rawRows, error: rowsErr } = await supabase
-    .from("frontier_transactions")
-    .select("direction, status, amount_usdc, created_at, counterparty_vm_id, counterparty_address, verified_on_chain_at, metadata")
-    .eq("vm_id", vmId)
-    .order("created_at", { ascending: false })
-    .limit(RECENT_SCAN_LIMIT);
-  if (rowsErr) {
-    console.error("[/api/agent-economy/authorize] ledger read failed:", rowsErr);
-    return NextResponse.json({ error: "failed to read ledger" }, { status: 500 });
-  }
-  const dbRows = (rawRows ?? []) as FrontierTxnDbRow[];
-  // P2-8: standing is computed over the most-recent RECENT_SCAN_LIMIT rows. If the
-  // VM has more than that in the window, older history is excluded and the standing
-  // is approximate (slightly understated). Flag it so the agent/operator knows —
-  // parity with /state's `lifetime.truncated`. Exact at Phase-1 volume; matters only
-  // for very heavy agents (>500 frontier txns), a Phase-2 windowed-aggregation fix.
-  const standingTruncated = dbRows.length >= RECENT_SCAN_LIMIT;
-
-  // ── Same-human resolution (§7.3.1 #1): which counterparty VMs share our owner ──
-  const counterpartyVmIds = Array.from(
-    new Set(dbRows.map((r) => r.counterparty_vm_id).filter((id): id is string => !!id)),
-  );
-  const sameHumanVms = new Set<string>();
-  if (counterpartyVmIds.length > 0) {
-    const { data: cpVms } = await supabase
-      .from("instaclaw_vms")
-      .select("id, assigned_to")
-      .in("id", counterpartyVmIds);
-    for (const cp of cpVms ?? []) {
-      if (cp.assigned_to && cp.assigned_to === ownerId) sameHumanVms.add(cp.id as string);
+  // ── Standing + reserve via the SHARED reader the dashboard uses (lib/frontier-
+  //    standing-db.loadVmStanding) — one source of truth, no gate↔dashboard drift
+  //    (closes the C29 duplication; the gate no longer keeps its own inline copy).
+  //    Fail CLOSED on a ledger-read error: a transient DB blip must never let an
+  //    earned-budget agent spend as if it were fresh, so surface the 500 (the helper
+  //    throws LedgerReadError; /policy GET degrades the same throw to autonomyError).
+  //    P2-8: `truncated` flags approximate standing when the ledger scan caps (>500),
+  //    parity with /state's `lifetime.truncated`.
+  let standing: CreditStanding;
+  let reserveAwareSpent: number;
+  let standingTruncated: boolean;
+  try {
+    const s = await loadVmStanding(supabase, { vmId, ownerId, tier, nowMs });
+    standing = s.standing;
+    reserveAwareSpent = s.spentTodayUsd;
+    standingTruncated = s.truncated;
+  } catch (e) {
+    if (e instanceof LedgerReadError) {
+      console.error("[/api/agent-economy/authorize] ledger read failed:", e.dbError);
+      return NextResponse.json({ error: "failed to read ledger" }, { status: 500 });
     }
+    throw e;
   }
-  const isSameHuman = (id: string) => sameHumanVms.has(id);
-
-  // ── P1-2: real World-ID gate — read the owner's verification, never hardcode.
-  // Unverified owners are capped at audit/500 by the standing engine (the sybil
-  // root of trust). Missing user row → false (correctly unverified).
-  const { data: ownerRow } = await supabase
-    .from("instaclaw_users")
-    .select("world_id_verified")
-    .eq("id", ownerId)
-    .maybeSingle();
-  const ownerWorldIdVerified = ownerRow?.world_id_verified === true;
 
   // ── P1-3: authoritative server-side wallet balance (never trust a client value).
   // A read failure → null → the policy forces ask_first (never auto-spend blind).
   const walletBalanceUsd = await readUsdcBalanceUsd(vm.bankr_evm_address as string | null);
-
-  // ── Pure pipeline: rows → track record → standing → policy → decision ──
-  const ledgerRows = dbRows.map(toLedgerRow);
-  const trackRecord = {
-    ...deriveTrackRecord(ledgerRows, { nowMs, isSameHuman }),
-    worldIdVerified: ownerWorldIdVerified,
-  };
-  const tier: FrontierTier = TIERS.includes(vm.tier as FrontierTier) ? (vm.tier as FrontierTier) : "starter";
-  const standing = creditStanding(trackRecord, tier, { nowMs, isStaker: false });
-  const reserveAwareSpent = reserveAwareSpentTodayUsd(dbRows, { nowMs });
 
   const privacyModeOn = !!(vm.privacy_mode_until && Date.parse(vm.privacy_mode_until as string) > nowMs);
 

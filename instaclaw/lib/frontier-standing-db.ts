@@ -13,11 +13,13 @@
  *   2. same-human resolution (§7.3.1 #1 — counterparty VMs sharing the owner)
  *   3. owner World-ID verification (the sybil root of trust; unverified ⇒ capped)
  *
- * NOTE (consolidation follow-up, ops-followups): the authorize route still has
- * its own inline copy of this block. They use the same pure functions so the
- * COMPUTATION can't drift; only this fetch could. If you edit the gate's ledger
- * select / isSameHuman / worldId logic, mirror it here (and vice-versa) — or
- * better, refactor the gate to call this helper.
+ * Two callers share this fetch (consolidated 2026-06-04, closing the C29
+ * duplication — the authorize gate no longer keeps an inline copy):
+ *   - the authorize gate — fails CLOSED on a ledger-read error (catches
+ *     LedgerReadError → HTTP 500; never spends as if the agent were fresh).
+ *   - /policy GET — degrades the same throw to an `autonomyError` snapshot.
+ * Changing the ledger select / isSameHuman / worldId logic here changes it for
+ * BOTH; keep both postures in mind.
  */
 import {
   toLedgerRow,
