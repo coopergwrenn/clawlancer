@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-04
 
-Window: `4c47627f7dddd7e72de4c9095e6ae4a1029ef279` → `HEAD` (HEAD = `0ea00b0e`)
+Window: `0ea00b0e3072d769de942e2a28ba3b296901c7f0` → `HEAD` (HEAD = `3e7f73ed`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 0ea00b0e3072d769de942e2a28ba3b296901c7f0 -->
+<!-- LAST_GENERATED_SHA: 3e7f73ed5b1f2c592626b193662f7a5226532d31 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `0ea00b0e` 2026-06-04 — fix(skills): correct View-tools modal copy + fix see-through legibility [1 files] _(ai-assisted)_
+- `3e7f73ed` 2026-06-04 — fix(command-center): pin chat input to viewport bottom — robust to banners [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `4891892e` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `acaa738e` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `0ea00b0e` 2026-06-04 — fix(skills): correct View-tools modal copy + fix see-through legibility [1 files] _(ai-assisted)_
+- `3e7f73ed` 2026-06-04 — fix(command-center): pin chat input to viewport bottom — robust to banners [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `4891892e` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `acaa738e` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `0ea00b0e` 2026-06-04 — fix(skills): correct View-tools modal copy + fix see-through legibility
+- `3e7f73ed` 2026-06-04 — fix(command-center): pin chat input to viewport bottom — robust to banners
 
 ## Appendix — every commit (chronological)
 
-- `4891892e` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `0ea00b0e` 2026-06-04 — fix(skills): correct View-tools modal copy + fix see-through legibility [1 files] _(ai-assisted)_
+- `acaa738e` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `3e7f73ed` 2026-06-04 — fix(command-center): pin chat input to viewport bottom — robust to banners [2 files] _(ai-assisted)_
