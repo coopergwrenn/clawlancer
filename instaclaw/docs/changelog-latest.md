@@ -1,16 +1,16 @@
 # Changelog — generated 2026-06-04
 
-Window: `d1f5770a7c038026fd964d1e5c0e1fc2fef1212c` → `HEAD` (HEAD = `0bc2847d`)
+Window: `0bc2847db7eb98ad054670b1a4ffa3b79d349886` → `HEAD` (HEAD = `86c75f31`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 0bc2847db7eb98ad054670b1a4ffa3b79d349886 -->
+<!-- LAST_GENERATED_SHA: 86c75f3114dd4ef6e18aa45c1de35a70398ee33a -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Infrastructure:** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,11 +18,12 @@ Total commits: 2
 
 ## What changed for users
 
-- `0bc2847d` 2026-06-04 — fix(world-id-card): neutral logo in verified state, green check carries the done signal [1 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `e7584ab9` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `86c75f31` 2026-06-04 — test(frontier): C29 net — loadVmStanding unit test + fail-closed LedgerReadError contract [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `d6c84a01` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -30,13 +31,13 @@ Total commits: 2
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
+
+- `86c75f31` 2026-06-04 — test(frontier): C29 net — loadVmStanding unit test + fail-closed LedgerReadError contract [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+
+### Feature (user-facing) (0)
 
 _(none)_
-
-### Feature (user-facing) (1)
-
-- `0bc2847d` 2026-06-04 — fix(world-id-card): neutral logo in verified state, green check carries the done signal [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `e7584ab9` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `d6c84a01` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `86c75f31` 2026-06-04 — [infrastructure, docs] — test(frontier): C29 net — loadVmStanding unit test + fail-closed LedgerReadError contract
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `0bc2847d` 2026-06-04 — fix(world-id-card): neutral logo in verified state, green check carries the done signal
+- `86c75f31` 2026-06-04 — test(frontier): C29 net — loadVmStanding unit test + fail-closed LedgerReadError contract
 
 ## Appendix — every commit (chronological)
 
-- `e7584ab9` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `0bc2847d` 2026-06-04 — fix(world-id-card): neutral logo in verified state, green check carries the done signal [1 files] _(ai-assisted)_
+- `d6c84a01` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `86c75f31` 2026-06-04 — test(frontier): C29 net — loadVmStanding unit test + fail-closed LedgerReadError contract [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
