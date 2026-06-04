@@ -6,8 +6,10 @@
  *
  * The computation itself is the pure `deriveTrackRecord` + `creditStanding` (same
  * functions the gate calls), so the two paths can only ever differ in their INPUT
- * fetch. This helper keeps that fetch byte-identical to the gate's:
- *   1. recent ledger rows (same select, same RECENT_SCAN_LIMIT)
+ * fetch. This helper keeps that fetch faithful to the gate's, INCLUDING the
+ * fail-CLOSED posture on a ledger-read error (it throws `LedgerReadError` rather
+ * than swallow the error into an empty ledger — see below):
+ *   1. recent ledger rows (same select, same RECENT_SCAN_LIMIT; read error ⇒ throw)
  *   2. same-human resolution (§7.3.1 #1 — counterparty VMs sharing the owner)
  *   3. owner World-ID verification (the sybil root of trust; unverified ⇒ capped)
  *
@@ -41,6 +43,20 @@ export interface VmStanding {
   truncated: boolean;
 }
 
+/**
+ * Thrown when the recent-ledger read fails. Surfaced (not swallowed) so callers
+ * match the gate's fail-CLOSED posture: on a transient DB error we do NOT know the
+ * VM's true standing, so the authorize gate must return 500 (never let an
+ * earned-budget agent spend as if it were fresh). Read-only dashboard callers
+ * (/policy GET) catch it and degrade to an `autonomyError` snapshot.
+ */
+export class LedgerReadError extends Error {
+  constructor(readonly dbError: unknown) {
+    super("frontier ledger read failed");
+    this.name = "LedgerReadError";
+  }
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export async function loadVmStanding(
   supabase: any,
@@ -48,13 +64,18 @@ export async function loadVmStanding(
 ): Promise<VmStanding> {
   const { vmId, ownerId, tier, nowMs } = args;
 
-  // 1. recent ledger (same select + limit as the gate)
-  const { data: rawRows } = await supabase
+  // 1. recent ledger (same select + limit as the gate). A read error is SURFACED,
+  //    not swallowed: a swallowed error → `rawRows ?? []` → fresh-agent standing
+  //    would let the authorize gate spend an earned-budget agent as if brand-new on
+  //    a transient DB blip. Throwing lets the gate fail CLOSED (500) and /policy GET
+  //    degrade to autonomyError. (Matches the gate's prior inline `if (rowsErr) 500`.)
+  const { data: rawRows, error: rowsErr } = await supabase
     .from("frontier_transactions")
     .select(LEDGER_SELECT)
     .eq("vm_id", vmId)
     .order("created_at", { ascending: false })
     .limit(RECENT_SCAN_LIMIT);
+  if (rowsErr) throw new LedgerReadError(rowsErr);
   const dbRows = (rawRows ?? []) as FrontierTxnDbRow[];
 
   // 2. same-human resolution — which counterparty VMs share our owner (self-dealing).
