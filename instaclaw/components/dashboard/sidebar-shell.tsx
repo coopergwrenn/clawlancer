@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { motion } from "motion/react";
 import {
@@ -32,6 +33,7 @@ import {
 import type { Session } from "next-auth";
 import { AgentbookHatBanner } from "@/components/dashboard/agentbook-hat-banner";
 import { ChannelNudgeBanner } from "@/components/dashboard/channel-nudge-banner";
+import { SessionsSection } from "@/components/dashboard/sessions-section";
 
 /**
  * SidebarShell — the Phase 1 left-sidebar workspace chrome. DESKTOP-ONLY.
@@ -361,21 +363,43 @@ function CollapsibleSection({
 
 /* ─── The shell (pure desktop rail) ─────────────────────────────────────── */
 
-export function SidebarShell({
-  children,
-  pathname,
-  session,
-  heartbeatHealth,
-}: {
+type SidebarShellProps = {
   children: React.ReactNode;
   pathname: string;
   session: Session | null;
   heartbeatHealth: "healthy" | "unhealthy" | "paused" | null;
-}) {
+};
+
+/**
+ * Suspense boundary is required because SidebarShellInner reads useSearchParams
+ * (for the active-session highlight + the Command Center pill predicate). Kept
+ * INSIDE this component so the dashboard layout stays untouched.
+ */
+export function SidebarShell(props: SidebarShellProps) {
+  return (
+    <Suspense fallback={null}>
+      <SidebarShellInner {...props} />
+    </Suspense>
+  );
+}
+
+function SidebarShellInner({
+  children,
+  pathname,
+  session,
+  heartbeatHealth,
+}: SidebarShellProps) {
   const { collapsed, toggle } = useCollapseState();
   const isEdge = session?.user?.partner === "edge_city";
   const email = session?.user?.email ?? "";
   const pillId = "sidebar-active-pill";
+
+  // Active session from the deep-link URL params (?c=<conversation> / ?t=<task>).
+  // Drives the Sessions row highlight AND the Command Center predicate below, so
+  // exactly one row owns the shared layoutId pill at a time.
+  const searchParams = useSearchParams();
+  const activeChatId = searchParams.get("c");
+  const activeTaskId = searchParams.get("t");
 
   return (
     <div className="min-h-screen flex" style={{ background: "var(--background)" }}>
@@ -409,7 +433,7 @@ export function SidebarShell({
         <div className="shrink-0 px-2 pt-1">
           <NavRow
             item={HOME}
-            active={pathname === HOME.href}
+            active={pathname === "/tasks" && !activeChatId && !activeTaskId}
             heartbeatHealth={heartbeatHealth}
             pillId={pillId}
           />
@@ -422,6 +446,15 @@ export function SidebarShell({
             so without it overflow-y never engages and the squeeze cascades to the
             rows above instead of scrolling here. */}
         <nav className="flex-1 min-h-0 overflow-y-auto px-2 pb-2">
+          {/* Sessions — live index of Command Center chats + tasks, above the
+              static clusters so a thread is one click away without leaving the
+              rail. Desktop-only (this whole shell is). */}
+          <SessionsSection
+            collapsed={collapsed["sessions"] ?? false}
+            onToggle={() => toggle("sessions")}
+            activeChatId={activeChatId}
+            activeTaskId={activeTaskId}
+          />
           {/* Collapsible sections */}
           {SECTIONS.map((section) => (
             <CollapsibleSection

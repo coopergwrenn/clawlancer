@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
+import { SESSIONS_CHANGED_EVENT } from "@/components/dashboard/use-sessions";
+import { useNavMode } from "@/components/dashboard/use-nav-mode";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronLeft,
@@ -2096,14 +2099,50 @@ function useTaskPolling(
 /* ─── Page ────────────────────────────────────────────────── */
 
 export default function CommandCenterPage() {
-  const [activeTab, setActiveTab] = useState<Tab>("tasks");
+  // Suspense boundary required because CommandCenterInner reads useSearchParams
+  // (deep-link). Wrapper-only; all existing page logic lives unchanged in Inner.
+  return (
+    <Suspense fallback={null}>
+      <CommandCenterInner />
+    </Suspense>
+  );
+}
+
+function CommandCenterInner() {
+  // ─── Deep-link: the URL is the source of truth for which session is active.
+  // ?c=<conversationId> → Chat tab + that conversation; ?t=<taskId> → Tasks tab
+  // + that task expanded. Lazy-init from the URL (no wrong-tab flash); the sync
+  // effect below keeps state in step on later URL changes; in-page selection
+  // writes the URL back. With no params, behavior is byte-identical to before.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  // In-page selection writes the URL ONLY when the sidebar Sessions index is
+  // active (the writes exist to keep that rail's highlight in sync). Flag off
+  // (top-nav) → navMode "topnav" → no writes → the page is byte-identical to
+  // before. The deep-link READS below are inert without ?c/?t (which only the
+  // sidebar generates), so they're byte-identical too.
+  const navMode = useNavMode();
+  const sidebarNav = navMode === "sidebar";
+  // Latest ?c, readable inside loadConversations' (deps-[]) auto-select without a
+  // stale closure — lets the auto-select honor a deep-linked id outside the
+  // fetched window while keeping the no-deep-link path byte-identical.
+  const urlConvRef = useRef<string | null>(null);
+  urlConvRef.current = searchParams.get("c");
+
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const c = searchParams.get("c");
+    const t = searchParams.get("t");
+    if (c) return "chat";
+    if (t) return "tasks";
+    return "tasks";
+  });
   const [filter, setFilter] = useState<FilterOption>("all");
 
   // Task state
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [taskError, setTaskError] = useState<string | null>(null);
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(() => searchParams.get("t"));
   const [pollingIds, setPollingIds] = useState<string[]>([]);
   const [failedCount, setFailedCount] = useState(0);
 
@@ -2121,7 +2160,7 @@ export default function CommandCenterPage() {
 
   // Multi-chat conversation state
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(() => searchParams.get("c"));
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
   const [showConversationList, setShowConversationList] = useState(false);
   const [renamingConvId, setRenamingConvId] = useState<string | null>(null);
@@ -2629,10 +2668,17 @@ export default function CommandCenterPage() {
         const data = await res.json();
         const convs: Conversation[] = data.conversations ?? [];
         setConversations(convs);
-        // Auto-select most recent if nothing active
+        // Auto-select the most recent only when nothing is active. Byte-identical
+        // to the original for the no-deep-link path: keep prev iff it's still in
+        // the fetched list, else newest. The ONLY addition is honoring prev when
+        // it's the deep-linked ?c (RACE 2) — a thread older than the 100-row
+        // window must not be overridden by the newest one. A stale non-deep-link
+        // id still falls back to newest exactly as before.
         if (convs.length > 0) {
           setActiveConversationId((prev) => {
-            if (prev && convs.some((c) => c.id === prev)) return prev;
+            if (prev && (convs.some((c) => c.id === prev) || prev === urlConvRef.current)) {
+              return prev;
+            }
             return convs[0].id;
           });
         }
@@ -2689,6 +2735,72 @@ export default function CommandCenterPage() {
     }
   }, [activeConversationId, loadConversationMessages]);
 
+  // ─── Deep-link sync — keep tab + selection in step with the URL whenever it
+  // changes (e.g. a sidebar Sessions row navigates while the page is already
+  // mounted; the page does not remount on a same-route query change). Guarded
+  // so it only setState on an actual difference — no loop with the in-page
+  // handlers that write the URL (they set state, write the URL, this reads it
+  // back, sees a match, no-ops). With no ?c/?t it leaves everything untouched.
+  useEffect(() => {
+    const c = searchParams.get("c");
+    const t = searchParams.get("t");
+    if (c) {
+      setActiveTab((prev) => (prev === "chat" ? prev : "chat"));
+      setActiveConversationId((prev) => (prev === c ? prev : c));
+    } else if (t) {
+      setActiveTab((prev) => (prev === "tasks" ? prev : "tasks"));
+      // ensure the deep-linked task isn't hidden by a non-"all" filter
+      setFilter((prev) => (prev === "all" ? prev : "all"));
+      setExpandedTaskId((prev) => (prev === t ? prev : t));
+    }
+  }, [searchParams]);
+
+  // ─── Deep-link hydration (RACE 3) — if the URL targets a conversation that
+  // isn't in the loaded 100-row window (a power-user deep-link to an older
+  // thread), fetch it by id so its row + title render. 404 or archived = stale
+  // link → fall back to a fresh chat and strip the param (self-heal). NARROW
+  // trigger: only with ?c set, only after the list finished loading, only when
+  // the id is genuinely absent — so normal use early-returns with zero effect.
+  useEffect(() => {
+    const c = searchParams.get("c");
+    if (!c || isLoadingConversations) return;
+    if (conversations.some((cv) => cv.id === c)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/chat/conversations/${c}`);
+        if (res.status === 404) {
+          if (!cancelled) {
+            setActiveConversationId(null);
+            router.replace("/tasks", { scroll: false });
+          }
+          return;
+        }
+        if (!res.ok) return; // transient — retry on next change
+        const { conversation } = await res.json();
+        if (conversation?.is_archived) {
+          if (!cancelled) {
+            setActiveConversationId(null);
+            router.replace("/tasks", { scroll: false });
+          }
+          return;
+        }
+        if (!cancelled && conversation) {
+          setConversations((prev) =>
+            prev.some((p) => p.id === conversation.id)
+              ? prev
+              : [conversation as Conversation, ...prev],
+          );
+        }
+      } catch {
+        // transient network — leave unresolved; messages still load by id
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, conversations, isLoadingConversations, router]);
+
   // Auto-scroll: tab switch → delayed (wait for AnimatePresence) + safety retry
   useEffect(() => {
     if (activeTab === "chat") {
@@ -2723,8 +2835,9 @@ export default function CommandCenterPage() {
     setChatMessages([]);
     setChatError(null);
     setShowConversationList(false);
+    if (sidebarNav) router.replace("/tasks", { scroll: false }); // clear ?c so the rail drops the highlight
     requestAnimationFrame(() => inputRef.current?.focus());
-  }, []);
+  }, [router, sidebarNav]);
 
   const renameConversation = useCallback(async (convId: string, title: string) => {
     const trimmed = title.trim();
@@ -2734,6 +2847,7 @@ export default function CommandCenterPage() {
       prev.map((c) => (c.id === convId ? { ...c, title: trimmed } : c))
     );
     setRenamingConvId(null);
+    window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT)); // refresh the rail's Sessions index
     try {
       await fetch(`/api/chat/conversations/${convId}`, {
         method: "PATCH",
@@ -2754,6 +2868,7 @@ export default function CommandCenterPage() {
       setChatMessages([]);
       setShowConversationList(true);
     }
+    window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT)); // refresh the rail's Sessions index
     try {
       await fetch(`/api/chat/conversations/${convId}`, {
         method: "DELETE",
@@ -2783,6 +2898,7 @@ export default function CommandCenterPage() {
             const data = await res.json();
             convId = data.conversation.id;
             setActiveConversationId(convId);
+            if (sidebarNav) router.replace(`/tasks?c=${convId}`, { scroll: false }); // new chat → rail highlight
           }
         } catch {
           // Fall through — send endpoint will create one
@@ -2879,6 +2995,7 @@ export default function CommandCenterPage() {
             );
             // Refresh conversation list to pick up auto-title & preview
             loadConversations();
+            window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT)); // refresh the rail's Sessions index
           },
           (err) => {
             setChatError(err);
@@ -2900,7 +3017,7 @@ export default function CommandCenterPage() {
         setIsSending(false);
       }
     },
-    [isSending, activeConversationId, loadConversations, deepResearchEnabled, webSearchEnabled, useMyStyleEnabled, attachedFile]
+    [isSending, activeConversationId, loadConversations, deepResearchEnabled, webSearchEnabled, useMyStyleEnabled, attachedFile, router, sidebarNav]
   );
 
   // ─── Save chat message to library ──────────────────
@@ -3454,6 +3571,7 @@ export default function CommandCenterPage() {
                                   key={conv.id}
                                   onClick={() => {
                                     setActiveConversationId(conv.id);
+                                    if (sidebarNav) router.replace(`/tasks?c=${conv.id}`, { scroll: false }); // rail highlight follows
                                     if (window.innerWidth < 640) setShowConversationList(false);
                                   }}
                                   className={`group/conv relative rounded-lg px-2.5 py-2 cursor-pointer transition-all ${
