@@ -100,8 +100,8 @@ The **facilitator proxy** (shipped) is the earn-side settlement relay — VMs ne
 | C14 | Per-VM proxy secret (replace shared) | reconciler / SECRET_ENV_VAR_SOURCES | TO BUILD (W9) |
 | C15 | Fleet supplier reputation graph (the moat) | new table + aggregation + read API | TO BUILD (W10) |
 | C16 | Earn storefront skill | VM skill + declareDiscoveryExtension | TO BUILD (W15) |
-| C17 | Dashboard — Agent Economy feed (the viral surface) | frontend + `/state` ext | TO BUILD (W13) |
-| C18 | Dashboard — policy/budget controls | frontend + `/policy` PUT (exists) | TO BUILD (W14) |
+| C17 | Dashboard — Agent Economy **annotated feed** (the viral per-purchase stream, W13) | frontend + `/state` `recent[]` | **TO BUILD** — data ready (`/state` returns `recent[]` + `response_summary`), view not rendered; the page shell that will host it shipped (C34) |
+| C18 | Dashboard — policy/budget controls (tighten-only band ceilings + category editor + the GAP-1 earned-autonomy headline) | `components/dashboard/economy-policy-controls.tsx` + `/policy` GET+PUT | **BUILT — live (prod, `4c47627f` + merged)** |
 | C19 | Standing canary (test agent) | linode 98505957 | **DONE** (`da6b8424`) |
 | C20 | On-chain reputation layer | see **§7** | TO RESEARCH/BUILD |
 | C21 | Spend kill switch — instant fleet-wide halt of autonomous spend, no deploy (DB flag in `instaclaw_admin_settings`, fail-open) | `lib/frontier-kill-switch.ts` (`isFrontierSpendKilled`) + `authorize` route | **BUILT — live-verified** (flip→deny→release on canary) |
@@ -110,7 +110,14 @@ The **facilitator proxy** (shipped) is the earn-side settlement relay — VMs ne
 | C24 | Spend-health alerting cron — fleet-aggregate failure-spike + stuck-hold detection, 6h-deduped (P2-6) | `app/api/cron/frontier-spend-health` | **BUILT — live-verified (`?dryRun`)** |
 | C25 | Canary proof harness — re-runnable earned-budget gate matrix incl. hard-ceiling-binds-over-human invariant (W11) | `scripts/_canary-frontier-proof.ts` | **BUILT — 6/6 live** |
 | C26 | Standing-truncation flag — flags approximate standing when the ledger scan caps (P2-8) | `authorize` route (`standing_truncated`) | **BUILT** |
-| C27 | **Autonomous-spend opt-in** — user-owned, default-OFF, fail-closed switch; the §8.7 "mandate". Gate denies `spend_not_enabled` unless the owner explicitly enabled spend for the agent. Prerequisite that makes W12 safe (no agent spends by default) | `instaclaw_vms.frontier_spend_enabled` + `lib/frontier-spend-optin.ts` (`isFrontierSpendEnabled`) + `authorize` route | **BUILT (gate + flag + migration)** — migration in `pending_migrations/` (Rule 56); settings-UI toggle is a follow-up |
+| C27 | **Autonomous-spend opt-in** — user-owned, default-OFF, fail-closed switch; the §8.7 "mandate". Gate denies `spend_not_enabled` unless the owner explicitly enabled spend for the agent. Prerequisite that makes W12 safe (no agent spends by default) | `instaclaw_vms.frontier_spend_enabled` + `lib/frontier-spend-optin.ts` (`isFrontierSpendEnabled`) + `authorize` route + `/spend-settings` route + `/economy` toggle + nudge banner | **BUILT — live (prod), incl. opt-in toggle UI** (migration promoted to `migrations/20260603190000`) |
+| C28 | **Autonomy headroom** — the honest "what can it spend on its own right now" = binding minimum of (earned-remaining, daily-band-remaining, wallet-headroom); surfaces which factor binds; gate-consistency-tested | `lib/frontier-headroom.ts` (`autonomousHeadroom`) | **BUILT — live (prod, `4c47627f`)**; 25/25 in `_test-frontier-headroom` |
+| C29 | **Dashboard standing read** — loads a VM's live credit standing + reserve-aware spentToday for read-only surfaces, mirroring the authorize gate's input pipeline (same pure fns) | `lib/frontier-standing-db.ts` (`loadVmStanding`) | **BUILT — live (prod, `4c47627f`)** *(consolidation debt: `authorize` keeps its own inline copy of the standing pipeline — tracked in ops-followups)* |
+| C30 | **Canonical override reader** — the ONE shared read of `frontier_policy_overrides` (bands + category) used by BOTH the authorize gate and `/policy`; closed the `overrides: null` lie (§5 Q2) | `lib/frontier-overrides-db.ts` (`readPolicyOverrides`) | **BUILT — live (prod)** |
+| C31 | **On-chain wallet-balance read** — viem USDC balance from `bankr_evm_address`; feeds the authorize drain-floor check + the GAP-1 headroom wallet component | `lib/usdc-balance.ts` (`readUsdcBalanceUsd`) | **BUILT — live (prod)** |
+| C32 | **Opt-in read/write API** — dashboard surface backing C27's toggle (`GET {spend_enabled, wallet, balance}` / `PUT {enabled}`) | `app/api/agent-economy/spend-settings/route.ts` | **BUILT — live (prod)** |
+| C33 | **Opt-in discovery nudge** — surfaces the autonomous-spend opt-in on the Economy page | `components/dashboard/economy-nudge-banner.tsx` | **BUILT — live (prod)** |
+| C34 | **`/economy` page shell** — hosts the economy summary (24h/lifetime/net), reputation score, wallet card, the C18 controls + C27 toggle; the surface the annotated feed (C17) will plug into | `app/(dashboard)/economy/page.tsx` | **BUILT — live (prod)** — summary/wallet/controls render; annotated feed (C17) still pending |
 
 ---
 
