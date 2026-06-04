@@ -59,7 +59,7 @@ export function WorldIDBanner() {
           `,
         }}
       >
-        <WorldLogo className="w-5 h-5 shrink-0" style={{ color: "#22c55e" }} />
+        <WorldLogo className="w-5 h-5 shrink-0" style={{ color: "#333334" }} />
         <div className="flex-1">
           <p className="text-sm font-semibold flex items-center gap-1.5" style={{ color: "#333334" }}>
             World ID verified
