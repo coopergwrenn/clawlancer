@@ -13,10 +13,10 @@ interface SpotlightTourProps {
   setMoreOpen: (open: boolean) => void;
   navigateTo: (path: string) => void;
   // Phase 1 sidebar restructure. "topnav" (default) is byte-identical to the
-  // pre-restructure behaviour. "sidebar" builds the sidebar-adapted step array
-  // and uses setDrawerOpen instead of setMoreOpen for nav-item steps on mobile.
+  // pre-restructure behaviour. "sidebar" builds the sidebar-adapted step array.
+  // The sidebar is desktop-only, so its rail is always visible — no drawer to
+  // open; only the top-nav tour ever opens the "···" menu.
   navMode?: "topnav" | "sidebar";
-  setDrawerOpen?: (open: boolean) => void;
 }
 
 interface Rect {
@@ -151,7 +151,6 @@ export default function SpotlightTour({
   setMoreOpen,
   navigateTo,
   navMode = "topnav",
-  setDrawerOpen,
 }: SpotlightTourProps) {
   const tourSteps = useMemo(() => buildTourSteps(navMode), [navMode]);
   const [currentStep, setCurrentStep] = useState(startStep);
@@ -191,18 +190,15 @@ export default function SpotlightTour({
         navigateTo(step.navigateTo);
       }
 
-      // Reveal the chrome this step needs.
-      const narrow =
-        typeof window !== "undefined" && window.innerWidth < 1024;
-      const drawerOpening = navMode === "sidebar" && !!step.sidebarNav && narrow;
-      if (navMode === "sidebar") {
-        // Sidebar nav-item steps need the rail visible; on mobile that's the
-        // off-canvas drawer. Page-content steps close it so the page shows.
-        setDrawerOpen?.(drawerOpening);
-      } else if (step.preAction === "open-more" || step.keepMoreOpen) {
-        setMoreOpen(true);
-      } else {
-        setMoreOpen(false);
+      // Reveal the chrome this step needs. Sidebar mode is desktop-only — the
+      // rail is always visible, so there's no drawer to open; only the top-nav
+      // tour opens the "···" menu.
+      if (navMode === "topnav") {
+        if (step.preAction === "open-more" || step.keepMoreOpen) {
+          setMoreOpen(true);
+        } else {
+          setMoreOpen(false);
+        }
       }
 
       // Wait for DOM to settle after navigation / chrome reveal.
@@ -210,9 +206,7 @@ export default function SpotlightTour({
         ? 400
         : step.preAction === "open-more"
           ? 200
-          : drawerOpening
-            ? 320
-            : 50;
+          : 50;
 
       if (retryRef.current) clearTimeout(retryRef.current);
 
@@ -288,14 +282,13 @@ export default function SpotlightTour({
   const goNext = useCallback(() => {
     if (isLast) {
       setMoreOpen(false);
-      setDrawerOpen?.(false);
       onComplete();
     } else {
       const next = currentStep + 1;
       setCurrentStep(next);
       onStepChange(next);
     }
-  }, [currentStep, isLast, onComplete, onStepChange, setMoreOpen, setDrawerOpen]);
+  }, [currentStep, isLast, onComplete, onStepChange, setMoreOpen]);
 
   const goPrev = useCallback(() => {
     if (currentStep > 0) {
@@ -307,9 +300,8 @@ export default function SpotlightTour({
 
   const handleClose = useCallback(() => {
     setMoreOpen(false);
-    setDrawerOpen?.(false);
     onClose();
-  }, [setMoreOpen, setDrawerOpen, onClose]);
+  }, [setMoreOpen, onClose]);
 
   // Keyboard navigation
   useEffect(() => {

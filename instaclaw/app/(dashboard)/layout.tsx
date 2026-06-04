@@ -32,6 +32,7 @@ import OnboardingWizard from "@/components/onboarding-wizard/OnboardingWizard";
 import { AgentbookHatBanner } from "@/components/dashboard/agentbook-hat-banner";
 import { ChannelNudgeBanner } from "@/components/dashboard/channel-nudge-banner";
 import { useNavMode } from "@/components/dashboard/use-nav-mode";
+import { useIsDesktop } from "@/components/dashboard/use-is-desktop";
 import { SidebarShell } from "@/components/dashboard/sidebar-shell";
 import { DashboardGateOverlay } from "@/components/dashboard/dashboard-gate-overlay";
 
@@ -93,12 +94,14 @@ export default function DashboardLayout({
   const [heartbeatHealth, setHeartbeatHealth] = useState<"healthy" | "unhealthy" | "paused" | null>(null);
   const [gateChecked, setGateChecked] = useState(false);
   const [gated, setGated] = useState(false);
-  // Phase 1 sidebar restructure — flag-gated. `navMode` resolves to "topnav"
-  // for every un-opted-in user (env unset, no localStorage, no ?nav= param),
-  // so the flag-off render below is byte-identical to origin/main. `drawerOpen`
-  // drives the mobile off-canvas drawer (sidebar mode only).
+  // Phase 1 sidebar restructure — flag-gated + DESKTOP-ONLY. `navMode` resolves
+  // to "topnav" for every un-opted-in user (env unset, no localStorage, no
+  // ?nav= param), so the flag-off render below is byte-identical to origin/main.
+  // `isDesktop` (matchMedia lg+) scopes the sidebar to desktop — below lg the
+  // top-nav renders for ALL users, unchanged. SSR-default false → mobile flag-on
+  // shows the top-nav from frame 0 (zero flash); flag-off never reads it.
   const navMode = useNavMode();
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const isDesktop = useIsDesktop();
 
   // Only redirect to onboarding if we have a confirmed session (user.id is set
   // by the session callback) AND onboardingComplete is explicitly false.
@@ -383,24 +386,23 @@ export default function DashboardLayout({
     return null;
   }
 
-  // ── Sidebar render path (Phase 1, flag-gated) ───────────────────────────
-  // When navMode === "sidebar", render the new left-sidebar workspace chrome.
-  // This is an ADDITIVE early-return: every hook, redirect gate, and the
-  // auth/null-render guards above run identically in both modes (they precede
-  // this branch). The top-nav `return` below is left BYTE-IDENTICAL to
-  // origin/main, so flipping the flag off (env unset / ?nav=topnav / clear
-  // localStorage) is a provable, instant rollback. The wizard is invoked
-  // exactly as the top-nav path for now; the navMode-aware tour lands in the
-  // Phase 1 tour milestone.
-  if (navMode === "sidebar") {
+  // ── Sidebar render path (Phase 1, flag-gated + DESKTOP-ONLY) ─────────────
+  // Renders the left-sidebar chrome ONLY when the flag is on AND the viewport
+  // is lg+. Below lg (and whenever the flag is off), this branch is skipped and
+  // execution falls through to the top-nav `return` below — which is the LITERAL
+  // untouched origin/main top-nav, the exact same code path mobile renders
+  // today. So: flag-off = top-nav everywhere (byte-identical); flag-on = sidebar
+  // on desktop, top-nav on mobile. `&&` short-circuits on navMode, so flag-off
+  // never even reads isDesktop. The wizard here gets navMode="sidebar" because
+  // it only runs on desktop; mobile + flag-off get the top-nav return's wizard
+  // (default "topnav") — so the tour always follows the rendered chrome.
+  if (navMode === "sidebar" && isDesktop) {
     return (
       <div className="min-h-screen" data-theme="dashboard">
         <SidebarShell
           pathname={pathname}
           session={session}
           heartbeatHealth={heartbeatHealth}
-          drawerOpen={drawerOpen}
-          setDrawerOpen={setDrawerOpen}
         >
           {children}
         </SidebarShell>
@@ -416,7 +418,6 @@ export default function DashboardLayout({
           setMoreOpen={setMoreOpen}
           tourControllingMore={tourControllingMore}
           navMode="sidebar"
-          setDrawerOpen={setDrawerOpen}
         />
       </div>
     );

@@ -9,8 +9,11 @@
  * Query params:
  *   ?path=/tasks      — set the active route (defaults to /tasks)
  *   ?edge=1           — render the edge_city pinned item
- *   ?drawer=1         — force the mobile drawer open (for mobile screenshots)
  *   ?hb=unhealthy     — heartbeat dot state (healthy | unhealthy | paused)
+ *   ?tour=N           — mount SpotlightTour (sidebar mode) at step index N
+ *
+ * The real layout renders this rail desktop-only (lg+); this harness shows it
+ * at any width for inspection.
  */
 
 import { useEffect, useState } from "react";
@@ -22,7 +25,6 @@ import SpotlightTour from "@/components/onboarding-wizard/SpotlightTour";
 export default function SidebarPreview() {
   const [path, setPath] = useState("/tasks");
   const [edge, setEdge] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [hb, setHb] = useState<"healthy" | "unhealthy" | "paused" | null>(null);
   // ?tour=N mounts SpotlightTour (sidebar mode) at step index N so the
   // nav-item steps (History resurrection, Account-section) can be screenshotted
@@ -34,7 +36,6 @@ export default function SidebarPreview() {
     const p = new URLSearchParams(window.location.search);
     if (p.get("path")) setPath(p.get("path")!);
     if (p.get("edge") === "1") setEdge(true);
-    if (p.get("drawer") === "1") setDrawerOpen(true);
     const h = p.get("hb");
     if (h === "unhealthy" || h === "paused" || h === "healthy") setHb(h);
     const t = p.get("tour");
@@ -68,8 +69,6 @@ export default function SidebarPreview() {
           pathname={path}
           session={mockSession}
           heartbeatHealth={hb}
-          drawerOpen={drawerOpen}
-          setDrawerOpen={setDrawerOpen}
         >
           {/* Placeholder page content so the content column has something to
               frame against — mimics a real dashboard page heading. */}
@@ -102,7 +101,6 @@ export default function SidebarPreview() {
             onComplete={() => {}}
             onClose={() => setTourStep(null)}
             setMoreOpen={() => {}}
-            setDrawerOpen={setDrawerOpen}
             navigateTo={() => {}}
           />
         )}
