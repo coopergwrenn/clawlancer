@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-04
 
-Window: `0bc2847db7eb98ad054670b1a4ffa3b79d349886` → `HEAD` (HEAD = `86c75f31`)
+Window: `86c75f3114dd4ef6e18aa45c1de35a70398ee33a` → `HEAD` (HEAD = `3f7767b2`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 86c75f3114dd4ef6e18aa45c1de35a70398ee33a -->
+<!-- LAST_GENERATED_SHA: 3f7767b2fcc4a3344f9b1f2a8ec91bb799420870 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `86c75f31` 2026-06-04 — test(frontier): C29 net — loadVmStanding unit test + fail-closed LedgerReadError contract [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
-- `d6c84a01` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `3f7767b2` 2026-06-04 — refactor(frontier): C29 — authorize standing read → shared loadVmStanding (fail-closed) [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `6eb46d73` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `86c75f31` 2026-06-04 — test(frontier): C29 net — loadVmStanding unit test + fail-closed LedgerReadError contract [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `3f7767b2` 2026-06-04 — refactor(frontier): C29 — authorize standing read → shared loadVmStanding (fail-closed) [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `d6c84a01` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `6eb46d73` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `86c75f31` 2026-06-04 — [infrastructure, docs] — test(frontier): C29 net — loadVmStanding unit test + fail-closed LedgerReadError contract
+- `3f7767b2` 2026-06-04 — [infrastructure, docs] — refactor(frontier): C29 — authorize standing read → shared loadVmStanding (fail-closed)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `86c75f31` 2026-06-04 — test(frontier): C29 net — loadVmStanding unit test + fail-closed LedgerReadError contract
+- `3f7767b2` 2026-06-04 — refactor(frontier): C29 — authorize standing read → shared loadVmStanding (fail-closed)
 
 ## Appendix — every commit (chronological)
 
-- `d6c84a01` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `86c75f31` 2026-06-04 — test(frontier): C29 net — loadVmStanding unit test + fail-closed LedgerReadError contract [3 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `6eb46d73` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `3f7767b2` 2026-06-04 — refactor(frontier): C29 — authorize standing read → shared loadVmStanding (fail-closed) [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
