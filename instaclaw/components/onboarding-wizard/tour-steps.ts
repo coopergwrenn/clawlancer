@@ -58,7 +58,7 @@ const tourSteps: TourStep[] = [
     selector: '[data-tour="dash-verify"]',
     title: "Verify You're Human",
     description:
-      "This is optional but worth it. Verifying with World ID proves you're a real person, which gives your agent a higher trust score on the marketplace, priority search visibility, and access to premium bounties.",
+      "Optional, but worth it. Verifying with World ID proves a real human is behind your agent, which wires premium tools into it (Exa, Manus, Browserbase, and more), gives it an on-chain identity, and unlocks higher autonomy as it earns standing.",
     navigateTo: "/dashboard",
   },
   {
