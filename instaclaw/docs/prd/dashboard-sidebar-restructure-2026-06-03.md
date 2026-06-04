@@ -5,7 +5,7 @@
 **Build status (as of 2026-06-04, verified against live code on `main`):**
 - **Phase 1 — sidebar shell behind flag — ✅ SHIPPED, dark.** Shell (`318185db`), desktop-only + collapsible clusters + navMode gating in `layout.tsx` (`705a9673`), navMode-aware tour `buildTourSteps()` (`168b3003`, copy `99ea1682`), glass material (`e83a5099`). The full **D3 IA** is built in the shell (Command Center anchor → `/tasks`, WORKSPACE + ACCOUNT clusters, Overview rename [D2], Credits, Edge City + Invite pinned). Gates/banners/overlay live in `layout.tsx`, applied before the nav branch.
 - **Sessions index (sub-PRD) — ✅ SHIPPED, dark.** Stage 1 rail + deep-link (`d1f5770a`), Stage 2 durable server-backed pins (`ab96486c`).
-- **Phase 2 — shift center of gravity — 🟡 PARTIAL.** DONE: Live View (`/live`) + Files (`/files`) promoted to visible slots (D4) — built inside the Phase 1 shell. REMAINING (genuinely unbuilt): logo → `/tasks` (`sidebar-shell.tsx` logo still → `/dashboard`); the 3 re-entry CTAs (D1, public pages — still → `/dashboard`); the optional status strip.
+- **Phase 2 — shift center of gravity — 🟡 PARTIAL (completionist pass in progress 2026-06-04).** DONE: Live View + Files promotion (D4, in shell); re-entry CTAs + logo → `/tasks` (D1, `51ea60d7`); Billing↔Credits flywheel (D6, light). REMAINING in the completionist pass: **D5 mobile off-canvas drawer** (the load-bearing build — makes the sidebar render on mobile so the flag governs both viewports) + the **status strip** (§2.3 health-dot + credits in the shell header / mobile top bar). Desktop icon-rail collapse: DEFERRED polish (not killed). Bottom-tab hybrid: KILLED.
 - **Phase 3 — flip flag default-on + delete old nav — ⬜ PENDING.** The flag flip is **Cooper's call** (env var). Desktop-only by construction (`navMode === "sidebar" && isDesktop`), so the flip affects desktop only; mobile keeps the top-nav (D5 off-canvas drawer not yet built — not blocking the desktop flip). Old-nav deletion is a separate PR ~1 week after the flip soaks.
 
 **Date:** 2026-06-03 (plan) · build status updated 2026-06-04
@@ -683,7 +683,7 @@ destination. Nothing is deleted, orphaned, or excluded.**
 
 The 7 prior open questions, each researched and committed. Reasoning visible.
 
-### D1 — Re-entry CTAs: **repoint to `/tasks` + relabel "Open InstaClaw."** — ⬜ REMAINING (Phase 2; public pages, flag-independent). Verified 2026-06-04 still unbuilt: `site-header.tsx:61` → `/dashboard` ("Dashboard"), `hero.tsx:274` → `/dashboard`, `hero.tsx:377` authed → `/dashboard`.
+### D1 — Re-entry CTAs: **repoint to `/tasks` + relabel "Open InstaClaw."** — ✅ SHIPPED `51ea60d7` (2026-06-04, LIGHT/user-visible — public pages). `site-header.tsx` authed → `/tasks` "Open InstaClaw"; `hero.tsx:274` → `/tasks` "open instaclaw"; `hero.tsx:377` authed → `/tasks`; sidebar logo → `/tasks`. `/go/[code]` + onboarding-completion redirects left frozen → `/dashboard`. Live-verified §2.1 both partners (configured stays on /tasks; unconfigured Edge+non-Edge caught → /channels).
 Three authed re-entry points target `/dashboard` today: `site-header.tsx:61`
 (label "Dashboard"), `hero.tsx:274`, `hero.tsx:377`. The whole thesis is Command
 Center = home; landing returning users on the instance-management screen instead
@@ -767,7 +767,7 @@ collapsible to a ~64px icon rail (persisted in localStorage) — *optional polis
 Command Center · The Floor · Heartbeat · a "Menu" button (opens the drawer). Spec'd
 now, not built in v1.
 
-### D6 — Credits vs Billing: **keep Credits as its own dedicated item; build a bidirectional flywheel.** *(Cooper-directed.)* — 🟡 PARTIAL. Credits sidebar item ✅ in shell (adjacent to Billing). The bidirectional flywheel cross-links (Billing → `/dashboard/credits`, Credits → `/billing`) are ⬜ NOT BUILT (verified 2026-06-04: neither link present). Genuinely-unbuilt, small/additive.
+### D6 — Credits vs Billing: **keep Credits as its own dedicated item; build a bidirectional flywheel.** *(Cooper-directed.)* — ✅ SHIPPED. Credits sidebar item in shell (adjacent to Billing). Flywheel cross-links built (2026-06-04, LIGHT — page content, not flag-gated, per Cooper's call): Billing → `/dashboard/credits` ("Credits & balances →", both active + inactive states); Credits → `/billing` ("Manage subscription & payment →"). Route stays `/dashboard/credits` (deep-link safety).
 Per Cooper: there are multiple distinct credit types (video credits, premium-tool
 credits, unit credits, and more) — Credits is genuinely its own surface, not a
 Billing sub-section. **Decision:** Credits = dedicated sidebar item, placed

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CreditCard, Check } from "lucide-react";
+import Link from "next/link";
+import { CreditCard, Check, ArrowRight } from "lucide-react";
 import { motion } from "motion/react";
 
 const tiers = [
@@ -176,6 +177,15 @@ export default function BillingPage() {
           <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
             Manage your subscription and payment details.
           </p>
+          {/* D6 flywheel — cross-link to Credits & balances */}
+          <Link
+            href="/dashboard/credits"
+            className="inline-flex items-center gap-1.5 text-sm mt-3 transition-opacity hover:opacity-70"
+            style={{ color: "var(--muted)" }}
+          >
+            Credits &amp; balances
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
 
         <div data-tour="page-billing-card" className="glass rounded-xl p-6 space-y-4">
@@ -210,6 +220,15 @@ export default function BillingPage() {
         <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
           Manage your subscription and payment details.
         </p>
+        {/* D6 flywheel — cross-link to Credits & balances */}
+        <Link
+          href="/dashboard/credits"
+          className="inline-flex items-center gap-1.5 text-sm mt-3 transition-opacity hover:opacity-70"
+          style={{ color: "var(--muted)" }}
+        >
+          Credits &amp; balances
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
       </div>
 
       {/* Inactive banner */}

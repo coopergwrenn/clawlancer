@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Zap, Film, AlertCircle, ArrowLeft } from "lucide-react";
+import { Zap, Film, AlertCircle, ArrowLeft, ArrowRight } from "lucide-react";
 
 /* ── Pack definitions ─────────────────────────────────────────────────────── */
 
@@ -131,6 +131,15 @@ export default function CreditsPage() {
         <p className="text-sm mt-1.5" style={{ color: "var(--muted)" }}>
           Manage your message credits and media credits.
         </p>
+        {/* D6 flywheel — cross-link to Billing (subscription & payment) */}
+        <Link
+          href="/billing"
+          className="inline-flex items-center gap-1.5 text-sm mt-3 transition-opacity hover:opacity-70"
+          style={{ color: "var(--muted)" }}
+        >
+          Manage subscription &amp; payment
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
       </div>
 
       {/* ── Two-column grid ── */}
