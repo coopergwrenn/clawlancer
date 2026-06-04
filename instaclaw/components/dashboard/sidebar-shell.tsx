@@ -209,7 +209,7 @@ function NavRow({
       href={item.href}
       data-tour={item.tourKey}
       aria-current={active ? "page" : undefined}
-      className="group relative flex items-center gap-3 px-3 h-9 rounded-lg text-sm transition-snappy transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40"
+      className="group relative flex shrink-0 items-center gap-3 px-3 h-9 rounded-lg text-sm transition-snappy transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40"
       style={{
         color: active ? "var(--foreground)" : "var(--muted)",
         fontWeight: active || item.hero ? 500 : 400,
@@ -383,9 +383,13 @@ export function SidebarShell({
           <span>Instaclaw</span>
         </Link>
 
-        {/* Scrollable nav */}
-        <nav className="flex-1 overflow-y-auto px-2 pt-1 pb-2 flex flex-col">
-          {/* Command Center — permanent home anchor (always visible) */}
+        {/* Command Center — permanent home anchor. Pinned ABOVE the scroll
+            region (shrink-0) so it holds its full natural height in every
+            collapse + viewport-height combination and never scrolls away. It
+            used to live inside the scroll <nav>, where an overflowing expanded
+            column stole its height (flexbox compressed the most-shrinkable row).
+            Pinning it out of the flex-grow scroll child fixes that structurally. */}
+        <div className="shrink-0 px-2 pt-1">
           <NavRow
             item={HOME}
             active={pathname === HOME.href}
@@ -393,7 +397,14 @@ export function SidebarShell({
             pillId={pillId}
           />
           <div className="mx-3 my-2 h-px" style={{ background: "var(--border)" }} />
+        </div>
 
+        {/* Scrollable section list — takes the remaining height and scrolls when
+            the expanded sections overflow. `min-h-0` is load-bearing: a flex
+            child's default `min-height:auto` refuses to shrink below its content,
+            so without it overflow-y never engages and the squeeze cascades to the
+            rows above instead of scrolling here. */}
+        <nav className="flex-1 min-h-0 overflow-y-auto px-2 pb-2">
           {/* Collapsible sections */}
           {SECTIONS.map((section) => (
             <CollapsibleSection
