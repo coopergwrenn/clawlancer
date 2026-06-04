@@ -113,6 +113,10 @@ const SECTIONS: NavSection[] = [
 ];
 
 const CORAL = "#DC6743";
+// Darkened coral for text/icon ON coral-tinted glass — mirrors the .skill-pill
+// is-green trick (text rgb(20,120,57) is darker than its radial fill) so the
+// label stays legible over the translucent coral-under-glass material.
+const CORAL_TEXT = "#A8442A";
 // The rail sits one notch recessed from the cream content (#f8f7f4) so the
 // workspace reads with depth, not a flat plane split by a hairline. #f5f3ee is
 // an existing InstaClaw tone (the landing/onboarding warm cream).
@@ -223,9 +227,22 @@ function NavRow({
           layoutId={pillId}
           className="absolute inset-0 rounded-lg"
           style={{
-            background: "#ffffff",
+            // Real glass (the canonical material: −75° white sheen ⊕ light-under-
+            // glass radial + 4-layer glow-ring/shadow stack, border:none). The
+            // home anchor is keyed faintly coral (the icon is coral) so it reads
+            // as the warm, lifted "selected" surface, not a flat white box. Near-
+            // white sheen keeps dark label/icon perfectly legible on the recessed
+            // cream rail; the glow-ring is the rim (no hard border).
+            backgroundImage:
+              "linear-gradient(-75deg, rgba(255,255,255,0.55), rgba(255,255,255,0.80), rgba(255,255,255,0.55)), " +
+              "radial-gradient(120% 140% at 26% 22%, rgba(220,103,67,0.11) 0%, rgba(220,103,67,0.045) 55%, rgba(255,255,255,0) 100%)",
+            backdropFilter: "blur(3px)",
+            WebkitBackdropFilter: "blur(3px)",
             boxShadow:
-              "0 1px 2px rgba(0,0,0,0.05), 0 2px 6px rgba(0,0,0,0.05), inset 0 0 0 1px rgba(0,0,0,0.035), inset 0 1px 0 rgba(255,255,255,0.8)",
+              "rgba(0,0,0,0.05) 0px 1px 1.5px 0px inset, " +
+              "rgba(255,255,255,0.70) 0px -1px 1.5px 0px inset, " +
+              "rgba(0,0,0,0.10) 0px 2px 5px -1px, " +
+              "rgba(255,255,255,0.55) 0px 0px 0.5px 1px inset",
           }}
           transition={{ type: "spring", stiffness: 420, damping: 36 }}
         />
@@ -439,10 +456,21 @@ export function SidebarShell({
             data-tour="nav-ambassador"
             className="group relative flex items-center gap-2.5 px-3 h-9 rounded-lg text-sm transition-snappy outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40 overflow-hidden"
             style={{
-              color: pathname === "/ambassador" ? "var(--foreground)" : CORAL,
-              background:
-                "linear-gradient(90deg, rgba(220,103,67,0.10), rgba(220,103,67,0.04))",
-              boxShadow: "inset 0 0 0 1px rgba(220,103,67,0.16)",
+              color: pathname === "/ambassador" ? "var(--foreground)" : CORAL_TEXT,
+              // Real coral-tinted glass — coral light UNDER the −75° white sheen
+              // (mirrors .skill-pill.is-green/is-blue: white sheen ⊕ brand radial
+              // + 4-layer shadow stack), not a flat coral rect. The coral identity
+              // now reads as our glass material; CORAL_TEXT keeps the label legible.
+              backgroundImage:
+                "linear-gradient(-75deg, rgba(255,255,255,0.10), rgba(255,255,255,0.34), rgba(255,255,255,0.10)), " +
+                "radial-gradient(125% 150% at 26% 26%, rgba(220,103,67,0.34) 0%, rgba(220,103,67,0.20) 55%, rgba(220,103,67,0.12) 100%)",
+              backdropFilter: "blur(3px)",
+              WebkitBackdropFilter: "blur(3px)",
+              boxShadow:
+                "rgba(0,0,0,0.05) 0px 0.5px 1px 0px inset, " +
+                "rgba(255,255,255,0.42) 0px -0.5px 1.5px 0px inset, " +
+                "rgba(0,0,0,0.09) 0px 1px 2px -1px, " +
+                "rgba(255,255,255,0.30) 0px 0px 0.5px 1px inset",
               fontWeight: 500,
             }}
           >
@@ -457,7 +485,23 @@ export function SidebarShell({
           {/* Account — two lines so identity + actions both breathe at 240px. */}
           <div
             className="rounded-lg px-2.5 py-2"
-            style={{ background: "rgba(0,0,0,0.022)", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.03)" }}
+            style={{
+              // Clean neutral glass — the canonical material (−75° white sheen ⊕
+              // faint white light-under-glass + 4-layer glow-ring/shadow stack)
+              // tuned subtle for utility chrome. A real considered surface, not
+              // the prior near-invisible flat fill; avatar/email/actions stay
+              // perfectly legible on the white-keyed glass.
+              backgroundImage:
+                "linear-gradient(-75deg, rgba(255,255,255,0.22), rgba(255,255,255,0.46), rgba(255,255,255,0.22)), " +
+                "radial-gradient(120% 160% at 28% 20%, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.10) 55%, rgba(255,255,255,0) 100%)",
+              backdropFilter: "blur(3px)",
+              WebkitBackdropFilter: "blur(3px)",
+              boxShadow:
+                "rgba(0,0,0,0.04) 0px 1px 1.5px 0px inset, " +
+                "rgba(255,255,255,0.50) 0px -1px 1.5px 0px inset, " +
+                "rgba(0,0,0,0.07) 0px 1px 3px -1px, " +
+                "rgba(255,255,255,0.35) 0px 0px 0.5px 1px inset",
+            }}
           >
             <div className="flex items-center gap-2">
               <span
