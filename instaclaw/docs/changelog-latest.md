@@ -1,28 +1,29 @@
 # Changelog — generated 2026-06-04
 
-Window: `86a469b4e23917df6fe0f2d01d5baf89cc285b92` → `HEAD` (HEAD = `be295ccf`)
-Total commits: 2
+Window: `be295ccfa17a68447d1799fc245cf9df0bc39480` → `HEAD` (HEAD = `178a0ff5`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: be295ccfa17a68447d1799fc245cf9df0bc39480 -->
+<!-- LAST_GENERATED_SHA: 178a0ff5f82d7a018b6af9cc16421b11386c2b9e -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 2
 - Merge commits: 0
 
 ## What changed for users
 
-- `be295ccf` 2026-06-04 — feat(dashboard): persistent World ID card — verified confirmation state [1 files] _(ai-assisted)_
+- `518010ca` 2026-06-04 — fix(tour): dash-verify step copy — true value prop, kill dead marketplace framing [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `726a32c1` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `178a0ff5` 2026-06-04 — test(frontier): GAP-4 — cover the live policy money-gate; extract 3 testable seams [6 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `652284cd` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -30,13 +31,13 @@ Total commits: 2
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `178a0ff5` 2026-06-04 — test(frontier): GAP-4 — cover the live policy money-gate; extract 3 testable seams [6 files] _(multi: [infrastructure, docs]; ai-assisted)_
 
 ### Feature (user-facing) (1)
 
-- `be295ccf` 2026-06-04 — feat(dashboard): persistent World ID card — verified confirmation state [1 files] _(ai-assisted)_
+- `518010ca` 2026-06-04 — fix(tour): dash-verify step copy — true value prop, kill dead marketplace framing [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +45,23 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `726a32c1` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `652284cd` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (1)
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `178a0ff5` 2026-06-04 — [infrastructure, docs] — test(frontier): GAP-4 — cover the live policy money-gate; extract 3 testable seams
+
+## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `be295ccf` 2026-06-04 — feat(dashboard): persistent World ID card — verified confirmation state
+- `518010ca` 2026-06-04 — fix(tour): dash-verify step copy — true value prop, kill dead marketplace framing
+- `178a0ff5` 2026-06-04 — test(frontier): GAP-4 — cover the live policy money-gate; extract 3 testable seams
 
 ## Appendix — every commit (chronological)
 
-- `726a32c1` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `be295ccf` 2026-06-04 — feat(dashboard): persistent World ID card — verified confirmation state [1 files] _(ai-assisted)_
+- `652284cd` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `518010ca` 2026-06-04 — fix(tour): dash-verify step copy — true value prop, kill dead marketplace framing [1 files] _(ai-assisted)_
+- `178a0ff5` 2026-06-04 — test(frontier): GAP-4 — cover the live policy money-gate; extract 3 testable seams [6 files] _(multi: [infrastructure, docs]; ai-assisted)_
