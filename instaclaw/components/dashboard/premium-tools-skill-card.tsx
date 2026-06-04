@@ -89,19 +89,8 @@ const TOOLS: { id: string; name: string; Icon: typeof Search; line: string }[] =
   { id: "browserbase", name: "Browserbase", Icon: Globe, line: "Drives a real cloud browser, so it can work sites that block bots and act behind logins." },
   { id: "parallel", name: "Parallel", Icon: Layers, line: "Pulls clean, cited data from across the web at scale, the report you would spend an afternoon building." },
   { id: "agentmail", name: "AgentMail", Icon: Mail, line: "Gives your agent its own inbox. It sends and handles email without ever touching yours." },
-  { id: "stabletravel", name: "StableTravel", Icon: Plane, line: "Books real flights and hotels end to end, not just links you finish yourself." },
+  { id: "stabletravel", name: "StableTravel", Icon: Plane, line: "Plans the whole trip: the best flights and hotels, priced and ready. Booking end to end coming soon." },
 ];
-
-function formatSince(iso: string | null): string | null {
-  if (!iso) return null;
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-  } catch {
-    return null;
-  }
-}
 
 export function PremiumToolsSkillCard() {
   const [phase, setPhase] = useState<Phase>("loading");
@@ -206,7 +195,6 @@ export function PremiumToolsSkillCard() {
   }
 
   const verified = phase === "verified";
-  const sinceLabel = formatSince(verifiedAt);
 
   return (
     <>
@@ -313,11 +301,24 @@ export function PremiumToolsSkillCard() {
               initial={{ opacity: 0, scale: 0.96, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 8 }}
-              className="glass rounded-2xl p-6 w-full max-w-md max-h-[85vh] overflow-y-auto relative"
+              className="rounded-2xl p-6 w-full max-w-md max-h-[85vh] overflow-y-auto relative"
               style={{
+                // Near-solid base so the busy skills page can't bleed through the
+                // copy. The `.glass` class was the legibility bug: its
+                // `background: linear-gradient(...) !important` overrode the intended
+                // `var(--card)` and made the text panel see-through. --card #fff at
+                // ~0.97 keeps a hair of glass; the layered inset highlights + glow-ring
+                // keep our premium edge; the deep drop shadow matches the proven
+                // gmail-connect / chatgpt-connect dialogs.
+                background: "rgba(255,255,255,0.97)",
+                backdropFilter: "blur(16px)",
+                WebkitBackdropFilter: "blur(16px)",
                 border: verified ? "1px solid rgba(34,197,94,0.35)" : "1px solid var(--border)",
-                background: "var(--card)",
-                boxShadow: "0 16px 64px rgba(0,0,0,0.2)",
+                boxShadow:
+                  "rgba(0,0,0,0.05) 0px 2px 2px 0px inset, " +
+                  "rgba(255,255,255,0.6) 0px -2px 2px 0px inset, " +
+                  "rgba(255,255,255,0.5) 0px 0px 1.6px 2px inset, " +
+                  "0 24px 64px rgba(0,0,0,0.22)",
               }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -348,11 +349,11 @@ export function PremiumToolsSkillCard() {
                 className="text-xl font-normal tracking-[-0.3px] pr-6"
                 style={{ fontFamily: "var(--font-serif)" }}
               >
-                {verified ? "Your agent has six premium tools." : "One scan. Six premium tools."}
+                {verified ? "Your agent gets six new premium tools." : "One scan. Six premium tools."}
               </h3>
               <p className="text-xs mt-1.5 leading-relaxed" style={{ color: "var(--muted)" }}>
                 {verified ? (
-                  <>Live in your agent&apos;s toolkit{sinceLabel ? <> since {sinceLabel}</> : null}.</>
+                  <>Wired into your agent the second you verify your World ID. No keys, no setup.</>
                 ) : (
                   <>
                     Verify your World ID and all six go live in your agent&apos;s toolkit. Free, and
