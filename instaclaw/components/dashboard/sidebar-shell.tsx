@@ -401,8 +401,21 @@ function SidebarShellInner({
   const activeChatId = searchParams.get("c");
   const activeTaskId = searchParams.get("t");
 
+  // Command Center (/tasks) is viewport-locked: its chat input pins to the
+  // bottom and the task/message list scrolls above it (native chat-app feel).
+  // Mirror the top-nav path's treatment (layout.tsx `isCommandCenter`) so the
+  // shell gives /tasks the same full-height flex column instead of the padded,
+  // document-scrolling wrapper every other route uses. Without this the input
+  // floated mid-page inside the padded <main>. B2's mobile top bar slots into
+  // this flex column as another shrink-0 child, so available height stays
+  // computed (flexbox), never guessed — the seam-6 requirement.
+  const isCommandCenter = pathname === "/tasks";
+
   return (
-    <div className="min-h-screen flex" style={{ background: "var(--background)" }}>
+    <div
+      className={isCommandCenter ? "h-dvh overflow-hidden flex" : "min-h-screen flex"}
+      style={{ background: "var(--background)" }}
+    >
       <aside
         className="flex w-60 shrink-0 sticky top-0 h-screen flex-col"
         style={{ background: SIDEBAR_BG, borderRight: "1px solid var(--border)" }}
@@ -596,11 +609,23 @@ function SidebarShellInner({
         </div>
       </aside>
 
-      {/* Content column */}
-      <div className="flex-1 min-w-0 flex flex-col">
-        <AgentbookHatBanner />
-        <ChannelNudgeBanner />
-        <main className="max-w-6xl mx-auto w-full px-4 py-12 sm:py-16">
+      {/* Content column — a flex column so Command Center fills the remaining
+          height (chat input pinned to the bottom) while every other route is a
+          normal padded, document-scrolling container. Banners sit in a shrink-0
+          wrapper so they keep their natural height and <main> fills exactly the
+          space below them. Mirrors the top-nav path (layout.tsx). */}
+      <div className={`flex-1 min-w-0 flex flex-col${isCommandCenter ? " min-h-0" : ""}`}>
+        <div className="shrink-0">
+          <AgentbookHatBanner />
+          <ChannelNudgeBanner />
+        </div>
+        <main
+          className={
+            isCommandCenter
+              ? "flex-1 min-h-0 w-full max-w-6xl mx-auto px-4"
+              : "max-w-6xl mx-auto w-full px-4 py-12 sm:py-16"
+          }
+        >
           {children}
         </main>
       </div>
