@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-04
 
-Window: `2a62ac0c3cd011336acd19566f481e730892de75` → `HEAD` (HEAD = `fdac2006`)
+Window: `fdac20065295d73a850b42de667f0dcfde54d09b` → `HEAD` (HEAD = `f178d4b9`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: fdac20065295d73a850b42de667f0dcfde54d09b -->
+<!-- LAST_GENERATED_SHA: f178d4b962ed8000030945eda01817d20903147b -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `fdac2006` 2026-06-04 — fix(dashboard): Unit B1 — Command Center full-height in the sidebar shell (flip-blocker) [1 files] _(ai-assisted)_
+- `f178d4b9` 2026-06-04 — feat(dashboard): Unit B2 — D5 mobile off-canvas drawer (flag governs both viewports) [5 files] _(multi: [feature, docs]; ai-assisted)_
 
 ## What changed under the hood
 
-- `d2081df2` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `6f65da9a` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `fdac2006` 2026-06-04 — fix(dashboard): Unit B1 — Command Center full-height in the sidebar shell (flip-blocker) [1 files] _(ai-assisted)_
+- `f178d4b9` 2026-06-04 — feat(dashboard): Unit B2 — D5 mobile off-canvas drawer (flag governs both viewports) [5 files] _(multi: [feature, docs]; ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `d2081df2` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `6f65da9a` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `f178d4b9` 2026-06-04 — [feature, docs] — feat(dashboard): Unit B2 — D5 mobile off-canvas drawer (flag governs both viewports)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `fdac2006` 2026-06-04 — fix(dashboard): Unit B1 — Command Center full-height in the sidebar shell (flip-blocker)
+- `f178d4b9` 2026-06-04 — feat(dashboard): Unit B2 — D5 mobile off-canvas drawer (flag governs both viewports)
 
 ## Appendix — every commit (chronological)
 
-- `d2081df2` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `fdac2006` 2026-06-04 — fix(dashboard): Unit B1 — Command Center full-height in the sidebar shell (flip-blocker) [1 files] _(ai-assisted)_
+- `6f65da9a` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `f178d4b9` 2026-06-04 — feat(dashboard): Unit B2 — D5 mobile off-canvas drawer (flag governs both viewports) [5 files] _(multi: [feature, docs]; ai-assisted)_
