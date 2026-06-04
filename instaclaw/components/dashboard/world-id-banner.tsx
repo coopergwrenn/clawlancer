@@ -17,7 +17,7 @@ interface WorldIDStatus {
  *   - Has NO user-facing dismiss affordance — verification is the only
  *     path to make it disappear (per Cooper's call: this is a permanent
  *     nudge, not a dismissible promo, so users don't accidentally
- *     opt out of higher trust scores / premium bounty access).
+ *     opt out of the capabilities verification unlocks).
  *
  * The /api/auth/world-id/dismiss-banner endpoint and the
  * world_id_banner_dismissed_at column are now unused but kept in place
@@ -58,10 +58,10 @@ export function WorldIDBanner() {
       <WorldLogo className="w-5 h-5 shrink-0" style={{ color: "#333334" }} />
       <div className="flex-1">
         <p className="text-sm font-semibold" style={{ color: "#333334" }}>
-          Prove a real human runs your agent.
+          Verify you&apos;re human to power up your agent.
         </p>
         <p className="text-xs" style={{ color: "#6b6b6b" }}>
-          Verified agents are AgentBook-registered on-chain, badged on Clawlancer, ranked higher in search, and eligible for premium contracts other agents can&apos;t see.
+          World ID verification wires premium tools into your agent (Exa, Manus, Browserbase, and more), gives it an on-chain identity, and unlocks higher autonomy as it earns standing.
         </p>
       </div>
       <Link

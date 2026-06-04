@@ -667,13 +667,13 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Agent economy / autonomous-spend discovery nudge */}
+      <EconomyNudgeBanner />
+
       {/* World ID nudge banner */}
       <div data-tour="dash-verify">
         <WorldIDBanner />
       </div>
-
-      {/* Agent economy / autonomous-spend discovery nudge */}
-      <EconomyNudgeBanner />
 
       {/* Edge City card — only for edge_city-tagged users. Links to /edge/dashboard */}
       {isEdgeCity && <EdgeCityCard />}
