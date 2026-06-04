@@ -407,9 +407,9 @@ function SidebarShellInner({
         className="flex w-60 shrink-0 sticky top-0 h-screen flex-col"
         style={{ background: SIDEBAR_BG, borderRight: "1px solid var(--border)" }}
       >
-        {/* Brand — PHASE 1: still points at /dashboard (no gravity shift yet) */}
+        {/* Brand — PHASE 2 gravity shift: logo → Command Center (home), per D1. */}
         <Link
-          href="/dashboard"
+          href="/tasks"
           className="flex items-center gap-1 h-14 px-3 shrink-0 text-xl tracking-[-0.5px] transition-opacity hover:opacity-70"
           style={{ fontFamily: "var(--font-serif)" }}
         >

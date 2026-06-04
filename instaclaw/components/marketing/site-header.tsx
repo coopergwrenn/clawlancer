@@ -58,7 +58,7 @@ export function SiteHeader() {
         </nav>
 
         <Link
-          href={session ? "/dashboard" : "/channels"}
+          href={session ? "/tasks" : "/channels"}
           className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
           style={{
             background:
@@ -74,7 +74,7 @@ export function SiteHeader() {
             color: "#333334",
           }}
         >
-          {session ? "Dashboard" : "Sign Up"}
+          {session ? "Open InstaClaw" : "Sign Up"}
         </Link>
       </div>
     </header>

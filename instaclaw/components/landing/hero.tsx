@@ -271,8 +271,8 @@ function HeroInner() {
         </Link>
         {session ? (
           <span className="liquid-glass-nav-btn-root">
-            <Link href="/dashboard" className="liquid-glass-nav-btn">
-              dashboard
+            <Link href="/tasks" className="liquid-glass-nav-btn">
+              open instaclaw
             </Link>
             <div aria-hidden="true" className="liquid-glass-nav-btn-shadow"></div>
           </span>
@@ -369,12 +369,12 @@ function HeroInner() {
                   funnel-mid callbackUrl to swap the headline from
                   "sign in." to "claim your agent." Preserves the
                   emotional energy of the click from this CTA to the
-                  auth page. Authed users → /dashboard, no flag
-                  needed (no headline downstream). */}
+                  auth page. Authed users → /tasks (Command Center,
+                  per D1 gravity shift); no flag needed. */}
               <div className="flex justify-center pt-2">
                 <div className="liquid-glass-btn-root">
                   <Link
-                    href={session ? "/dashboard" : "/channels?new=1"}
+                    href={session ? "/tasks" : "/channels?new=1"}
                     className="liquid-glass-btn"
                   >
                     <span>Claim My Agent</span>
