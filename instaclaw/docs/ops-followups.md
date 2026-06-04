@@ -170,3 +170,19 @@ Shipped: per-VM spend-policy enforcement (gate now honors band + category overri
   - The authorize-route → gate wiring (route actually feeds the stored override into `evaluateSpend`) is integration-untested. Pure logic is covered (`_test-frontier-categories.ts` 14/14).
 
 - **GAP-3 (observability) — defer until W12 produces real authorize volume.** Nothing records the gate-decision distribution (how often agents hit `just_do_it` vs `ask_first` vs `deny`, and the deny-reason breakdown — `category_not_allowed`, `exceeds_earned_budget`, `would_drain_wallet`, etc.). This is the data needed to TUNE the bands (§5 Q2/Q3) after rollout. Cheapest path: a lightweight `frontier_authz_events` rollup or a counter incremented in the authorize route, surfaced on `/economy` + an admin view. Pointless before there's autonomous-spend traffic (gated behind opt-in + W12), so this is a post-W12 ops item, not a pre-W12 one.
+
+---
+
+## 2026-06-04 — Frontier: `loadVmStanding` duplicates authorize's inline standing pipeline (consolidation)
+
+**Surfaced by:** the §5.1 PRD reconciliation (2026-06-04). `lib/frontier-standing-db.ts:loadVmStanding` (PRD §2 C29) feeds read-only dashboard surfaces (the `/policy` GET autonomy snapshot) the SAME credit standing the authorize gate enforces, and deliberately mirrors the gate's standing-input fetch: recent-ledger select (`RECENT_SCAN_LIMIT = 500`, must match the authorize route's), same-human resolution (`isSameHuman`), owner World-ID verification.
+
+**The shape:** the COMPUTATION can't drift — both paths call the same pure functions (`deriveTrackRecord` + `creditStanding` + `reserveAwareSpentTodayUsd`). Only the *fetch* could diverge: `app/api/agent-economy/authorize/route.ts` still carries its own inline copy of the ledger-select / same-human / world-id block rather than calling `loadVmStanding`. A one-sided future edit to either fetch (e.g. changing the ledger select or the scan limit on the gate side without mirroring it in the helper) would make the dashboard number silently disagree with what the gate enforces. The helper's own docblock flags this and recommends refactoring the gate to call it.
+
+**Fix when picked up:** refactor `authorize/route.ts` to call `loadVmStanding` for its standing-input fetch, deleting the inline duplicate — one fetch path, one place to edit. Verify the gate's behavior is unchanged afterward (pure-fn outputs must be identical): `_test-frontier-authz.ts` + `_test-frontier-standing.ts` still pass, and re-run the W11 canary harness (`_canary-frontier-proof.ts`) on the canary for the end-to-end confirm.
+
+**Severity:** low — not customer-facing, no drift today (the duplication is exact). A latent footgun, not an active bug. Do it before the next change touches either the gate's standing fetch or the helper, so they don't get edited out of sync.
+
+**Files of interest:**
+- `lib/frontier-standing-db.ts` (`loadVmStanding`) — the canonical helper; its docblock already documents this debt.
+- `app/api/agent-economy/authorize/route.ts` — the inline copy to remove.
