@@ -75,11 +75,10 @@ import {
   evaluateSpend,
   mapTagsToCategory,
   ALL_CATEGORIES,
-  effectiveAllowedCategories,
   type FrontierTier,
   type SpendCategory,
 } from "@/lib/frontier-policy";
-import { readPolicyOverrides } from "@/lib/frontier-overrides-db";
+import { resolveEffectivePolicy } from "@/lib/frontier-overrides-db";
 import { deriveTrackRecord } from "@/lib/frontier-ledger";
 import { creditStanding, type CreditStanding } from "@/lib/frontier-standing";
 import { toLedgerRow, reserveAwareSpentTodayUsd, HOLD_TTL_MS, SPEND_WINDOW_MS, type FrontierTxnDbRow } from "@/lib/frontier-ledger-db";
@@ -415,8 +414,7 @@ export async function POST(req: NextRequest) {
   // Band overrides are tighten-only (clampOverrides inside evaluateSpend); the
   // category override is tighten-only (effectiveAllowedCategories). Both can only
   // make an agent SAFER than its tier, never more aggressive.
-  const { bandOverrides, allowedCategoriesOverride } = await readPolicyOverrides(supabase, vm.id);
-  const allowedCategories = effectiveAllowedCategories(tier, allowedCategoriesOverride);
+  const { bandOverrides, allowedCategories } = await resolveEffectivePolicy(supabase, vm.id, tier);
 
   const evaluation = evaluateSpend(tier, {
     amountUsd: v.amount_usd,

@@ -18,7 +18,13 @@
  * use (frontier-policy.ts:clampOverrides for bands, effectiveAllowedCategories for
  * categories), so a stored value can never make an agent less safe than its tier.
  */
-import { ALL_CATEGORIES, type PolicyOverrides, type SpendCategory } from "./frontier-policy";
+import {
+  ALL_CATEGORIES,
+  effectiveAllowedCategories,
+  type FrontierTier,
+  type PolicyOverrides,
+  type SpendCategory,
+} from "./frontier-policy";
 
 // PostgREST schema-cache miss (PGRST205) / raw Postgres relation-missing (42P01).
 const TABLE_MISSING_CODES = new Set(["PGRST205", "42P01"]);
@@ -98,6 +104,31 @@ export async function readPolicyOverrides(
     bandOverrides: Object.keys(bands).length > 0 ? bands : null,
     allowedCategoriesOverride,
     persisted: true,
+  };
+}
+
+/**
+ * Resolve the EXACT pair the authorize gate hands to `evaluateSpend`: the raw
+ * band overrides (evaluateSpend clamps them tighten-only internally) and the
+ * already-intersected EFFECTIVE category allowlist (`tierDefault ∩ stored`).
+ *
+ * This is the one shared read→effective seam the gate uses, so a stored
+ * dashboard tightening provably reaches the decision — no `overrides: null`
+ * drift. Extracted from the inline authorize composition (was: readPolicyOverrides
+ * + effectiveAllowedCategories) so the wiring is unit-testable as the gate's
+ * actual code path, not a re-implementation. Behavior identical to the inline
+ * form. (Also the natural seam for the sequenced loadVmStanding↔authorize
+ * consolidation.)
+ */
+export async function resolveEffectivePolicy(
+  supabase: any,
+  vmId: string,
+  tier: FrontierTier,
+): Promise<{ bandOverrides: PolicyOverrides | null; allowedCategories: readonly SpendCategory[] }> {
+  const { bandOverrides, allowedCategoriesOverride } = await readPolicyOverrides(supabase, vmId);
+  return {
+    bandOverrides,
+    allowedCategories: effectiveAllowedCategories(tier, allowedCategoriesOverride),
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

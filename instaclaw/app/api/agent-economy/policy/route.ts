@@ -34,10 +34,9 @@ import {
   DEFAULT_ALLOWED_CATEGORIES_BY_TIER,
   DEFAULT_BANDS_BY_TIER,
   type FrontierTier,
-  type PolicyOverrides,
-  type SpendCategory,
 } from "@/lib/frontier-policy";
 import { readPolicyOverrides } from "@/lib/frontier-overrides-db";
+import { validatePolicyPutBody, upsertPolicyOverrideRow } from "@/lib/frontier-policy-write";
 import { loadVmStanding } from "@/lib/frontier-standing-db";
 import { autonomousHeadroom } from "@/lib/frontier-headroom";
 import { readUsdcBalanceUsd } from "@/lib/usdc-balance";
@@ -47,30 +46,16 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30; // GET does an on-chain wallet-balance read (Rule 11)
 
 const TIERS: readonly FrontierTier[] = ["starter", "pro", "power"];
-const MAX_OVERRIDE = 10_000_000; // sane absolute cap; the real ceiling is the tier clamp
-
-// "Table missing": PostgREST surfaces a schema-cache miss as PGRST205; raw
-// Postgres relation-missing is 42P01. Treat both as "overrides not provisioned"
-// so /policy works before the migration is applied.
-const TABLE_MISSING_CODES = new Set(["PGRST205", "42P01"]);
 
 function normalizeTier(raw: unknown): FrontierTier {
   const t = (raw ?? "").toString().toLowerCase();
   return (TIERS as readonly string[]).includes(t) ? (t as FrontierTier) : "starter";
 }
 
-// DB snake_case ↔ TS camelCase for the five bands.
-const FIELD_MAP: ReadonlyArray<[keyof PolicyOverrides, string]> = [
-  ["justDoItPerTx", "just_do_it_per_tx"],
-  ["justDoItPerDay", "just_do_it_per_day"],
-  ["neverPerTx", "never_per_tx"],
-  ["neverPerDay", "never_per_day"],
-  ["minWalletBalance", "min_wallet_balance"],
-];
-
-// Note: reads now go through lib/frontier-overrides-db.readPolicyOverrides (the
-// ONE canonical reader shared with the authorize gate). The former local
-// readOverrides()/num() were removed to avoid a second, drift-prone reader.
+// Note: reads go through lib/frontier-overrides-db.readPolicyOverrides (the ONE
+// canonical reader shared with the authorize gate); the PUT body validation +
+// upsert (incl. the PGRST204 retry) live in lib/frontier-policy-write. The former
+// local readers/validators were removed to avoid second, drift-prone copies.
 
 /** session → assigned VM. The session user IS the owner (assigned_to). Returns
  *  the fields GET needs for the live autonomy snapshot; PUT uses only vmId/tier. */
@@ -179,87 +164,25 @@ export async function PUT(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "body must be valid JSON" }, { status: 400 });
   }
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return NextResponse.json({ error: "body must be a JSON object" }, { status: 400 });
-  }
-  const b = body as Record<string, unknown>;
-
-  // Validate each band: present → finite, >= 0, <= MAX_OVERRIDE; absent/null →
-  // cleared (revert to tier default). Replace-semantics: {} resets everything.
-  const rawOverrides: PolicyOverrides = {};
-  const row: Record<string, number | string[] | null> = {};
-  for (const [camel, snake] of FIELD_MAP) {
-    const raw = b[camel];
-    if (raw === undefined || raw === null) {
-      row[snake] = null; // cleared
-      continue;
-    }
-    if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0 || raw > MAX_OVERRIDE) {
-      return NextResponse.json(
-        { error: `${camel} must be a number in [0, ${MAX_OVERRIDE}] (or null to clear)` },
-        { status: 400 },
-      );
-    }
-    row[snake] = raw;
-    rawOverrides[camel] = raw;
-  }
-
-  // Validate the category allowlist override (W3). `allowed_categories`:
-  //   absent / null         → clear (revert to the tier default)
-  //   array of SpendCategory → store (must be a subset of ALL_CATEGORIES; the
-  //                            gate further intersects with the tier default —
-  //                            tighten-only, so a value above the tier is inert).
-  // `allowed_categories: []` is valid and DISTINCT from null: it means "turn every
-  // category off" (the agent then asks before any categorized spend).
-  let categoryOverride: SpendCategory[] | null = null;
-  const rawCats = b["allowed_categories"];
-  if (rawCats !== undefined && rawCats !== null) {
-    if (!Array.isArray(rawCats)) {
-      return NextResponse.json(
-        { error: "allowed_categories must be an array of category strings (or null to clear)" },
-        { status: 400 },
-      );
-    }
-    const invalid = rawCats.filter((c) => !ALL_CATEGORIES.includes(c as SpendCategory));
-    if (invalid.length > 0) {
-      return NextResponse.json(
-        { error: `allowed_categories has unknown categories: ${invalid.join(", ")}. Valid: ${ALL_CATEGORIES.join(", ")}` },
-        { status: 400 },
-      );
-    }
-    // De-dupe, preserve taxonomy order.
-    categoryOverride = ALL_CATEGORIES.filter((c) => rawCats.includes(c));
-  }
-  row["allowed_categories"] = categoryOverride; // null clears
+  // Validate the body (bands range + category shape) — pure, in frontier-policy-write.
+  const parsed = validatePolicyPutBody(body);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+  const { row, rawOverrides, categoryOverride } = parsed;
 
   const supabase = getSupabase();
-  // PGRST204 = "column not found in schema cache" → the allowed_categories
-  // column isn't applied yet (pre-migration). Retry the upsert without it so the
-  // band overrides still persist; flag categories as not-yet-stored to the UI.
-  const CATEGORY_COLUMN_MISSING = "PGRST204";
-  let categoryPersisted = true;
-  let { error: upErr } = await supabase
-    .from("frontier_policy_overrides")
-    .upsert({ vm_id: r.vmId, ...row }, { onConflict: "vm_id" });
-
-  if (upErr && upErr.code === CATEGORY_COLUMN_MISSING && "allowed_categories" in row) {
-    const { allowed_categories: _drop, ...bandsOnly } = row;
-    categoryPersisted = false;
-    ({ error: upErr } = await supabase
-      .from("frontier_policy_overrides")
-      .upsert({ vm_id: r.vmId, ...bandsOnly }, { onConflict: "vm_id" }));
-  }
-
-  if (upErr) {
-    if (TABLE_MISSING_CODES.has(upErr.code)) {
+  // Upsert with the PGRST204 (category-column-absent) retry — in frontier-policy-write.
+  const up = await upsertPolicyOverrideRow(supabase, r.vmId, row);
+  if (!up.ok) {
+    if (up.kind === "table_missing") {
       return NextResponse.json(
         { error: "policy override storage not yet provisioned" },
         { status: 503 },
       );
     }
-    console.error("[/api/agent-economy/policy PUT] upsert failed:", upErr);
+    console.error("[/api/agent-economy/policy PUT] upsert failed:", up.error);
     return NextResponse.json({ error: "failed to save policy" }, { status: 500 });
   }
+  const categoryPersisted = up.categoryPersisted;
 
   // Return the EFFECTIVE bands + categories so the dashboard shows what'll
   // actually be enforced (raw intent clamped/intersected to tighten-only).
