@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-04
 
-Window: `186f5f43c47b7b7884a31bcef710360c7d83007c` → `HEAD` (HEAD = `b8454119`)
+Window: `b8454119a91771c0fd9dd490bc5bf073509a2304` → `HEAD` (HEAD = `e28c4228`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: b8454119a91771c0fd9dd490bc5bf073509a2304 -->
+<!-- LAST_GENERATED_SHA: e28c42280f6a3f00a58a3374e930d43aa48e3a40 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `05fc3fa1` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `b8454119` 2026-06-04 — docs(frontier): reconcile §5.1 self-audit — GAP-1/GAP-2 shipped, GAP-3/4/5 open [1 files] _(ai-assisted)_
+- `80a46963` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `e28c4228` 2026-06-04 — docs(frontier): §4+§6 — Phase-2-partial status + lock test count to 469/0/13 suites [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -45,16 +45,16 @@ _(none)_
 
 ### Docs / PRD only (2)
 
-- `05fc3fa1` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `b8454119` 2026-06-04 — docs(frontier): reconcile §5.1 self-audit — GAP-1/GAP-2 shipped, GAP-3/4/5 open [1 files] _(ai-assisted)_
+- `80a46963` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `e28c4228` 2026-06-04 — docs(frontier): §4+§6 — Phase-2-partial status + lock test count to 469/0/13 suites [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `b8454119` 2026-06-04 — docs(frontier): reconcile §5.1 self-audit — GAP-1/GAP-2 shipped, GAP-3/4/5 open
+- `e28c4228` 2026-06-04 — docs(frontier): §4+§6 — Phase-2-partial status + lock test count to 469/0/13 suites
 
 ## Appendix — every commit (chronological)
 
-- `05fc3fa1` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `b8454119` 2026-06-04 — docs(frontier): reconcile §5.1 self-audit — GAP-1/GAP-2 shipped, GAP-3/4/5 open [1 files] _(ai-assisted)_
+- `80a46963` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `e28c4228` 2026-06-04 — docs(frontier): §4+§6 — Phase-2-partial status + lock test count to 469/0/13 suites [1 files] _(ai-assisted)_
