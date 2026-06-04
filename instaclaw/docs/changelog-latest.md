@@ -1,16 +1,16 @@
 # Changelog — generated 2026-06-04
 
-Window: `86c75f3114dd4ef6e18aa45c1de35a70398ee33a` → `HEAD` (HEAD = `3f7767b2`)
+Window: `3f7767b2fcc4a3344f9b1f2a8ec91bb799420870` → `HEAD` (HEAD = `ab96486c`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 3f7767b2fcc4a3344f9b1f2a8ec91bb799420870 -->
+<!-- LAST_GENERATED_SHA: ab96486c2d8cda17af2f2637b8ef4f13d65a3c7b -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
-- **Feature (user-facing):** 0
+- **Infrastructure:** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,12 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-_None in this window._
+- `ab96486c` 2026-06-04 — feat(dashboard): Sessions index Stage 2 — durable server-backed pins (flag-off) [3 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `3f7767b2` 2026-06-04 — refactor(frontier): C29 — authorize standing read → shared loadVmStanding (fail-closed) [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
-- `6eb46d73` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `958e81f3` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,13 +30,13 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
-
-- `3f7767b2` 2026-06-04 — refactor(frontier): C29 — authorize standing read → shared loadVmStanding (fail-closed) [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
-
-### Feature (user-facing) (0)
+### Infrastructure (0)
 
 _(none)_
+
+### Feature (user-facing) (1)
+
+- `ab96486c` 2026-06-04 — feat(dashboard): Sessions index Stage 2 — durable server-backed pins (flag-off) [3 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,21 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `6eb46d73` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `3f7767b2` 2026-06-04 — [infrastructure, docs] — refactor(frontier): C29 — authorize standing read → shared loadVmStanding (fail-closed)
+- `958e81f3` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `3f7767b2` 2026-06-04 — refactor(frontier): C29 — authorize standing read → shared loadVmStanding (fail-closed)
+- `ab96486c` 2026-06-04 — feat(dashboard): Sessions index Stage 2 — durable server-backed pins (flag-off)
 
 ## Appendix — every commit (chronological)
 
-- `6eb46d73` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `3f7767b2` 2026-06-04 — refactor(frontier): C29 — authorize standing read → shared loadVmStanding (fail-closed) [4 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `958e81f3` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `ab96486c` 2026-06-04 — feat(dashboard): Sessions index Stage 2 — durable server-backed pins (flag-off) [3 files] _(ai-assisted)_
