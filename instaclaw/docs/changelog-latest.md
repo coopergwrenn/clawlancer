@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-04
 
-Window: `3e7f73ed5b1f2c592626b193662f7a5226532d31` → `HEAD` (HEAD = `186f5f43`)
+Window: `186f5f43c47b7b7884a31bcef710360c7d83007c` → `HEAD` (HEAD = `b8454119`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 186f5f43c47b7b7884a31bcef710360c7d83007c -->
+<!-- LAST_GENERATED_SHA: b8454119a91771c0fd9dd490bc5bf073509a2304 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `4153c779` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `186f5f43` 2026-06-04 — docs(frontier): §2 registry reconciliation — flip shipped dashboard surface to live [1 files] _(ai-assisted)_
+- `05fc3fa1` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `b8454119` 2026-06-04 — docs(frontier): reconcile §5.1 self-audit — GAP-1/GAP-2 shipped, GAP-3/4/5 open [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -45,16 +45,16 @@ _(none)_
 
 ### Docs / PRD only (2)
 
-- `4153c779` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `186f5f43` 2026-06-04 — docs(frontier): §2 registry reconciliation — flip shipped dashboard surface to live [1 files] _(ai-assisted)_
+- `05fc3fa1` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `b8454119` 2026-06-04 — docs(frontier): reconcile §5.1 self-audit — GAP-1/GAP-2 shipped, GAP-3/4/5 open [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `186f5f43` 2026-06-04 — docs(frontier): §2 registry reconciliation — flip shipped dashboard surface to live
+- `b8454119` 2026-06-04 — docs(frontier): reconcile §5.1 self-audit — GAP-1/GAP-2 shipped, GAP-3/4/5 open
 
 ## Appendix — every commit (chronological)
 
-- `4153c779` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `186f5f43` 2026-06-04 — docs(frontier): §2 registry reconciliation — flip shipped dashboard surface to live [1 files] _(ai-assisted)_
+- `05fc3fa1` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `b8454119` 2026-06-04 — docs(frontier): reconcile §5.1 self-audit — GAP-1/GAP-2 shipped, GAP-3/4/5 open [1 files] _(ai-assisted)_
