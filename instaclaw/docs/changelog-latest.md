@@ -1,16 +1,16 @@
-# Changelog — generated 2026-06-03
+# Changelog — generated 2026-06-04
 
-Window: `8d9b6375a45f3fc326538ce65fc3f57bc99515d1` → `HEAD` (HEAD = `8533af1a`)
+Window: `8533af1ac5678cf461f74ad9b2aa6d466bcfce8f` → `HEAD` (HEAD = `4c47627f`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 8533af1ac5678cf461f74ad9b2aa6d466bcfce8f -->
+<!-- LAST_GENERATED_SHA: 4c47627f7dddd7e72de4c9095e6ae4a1029ef279 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Infrastructure:** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,11 +18,12 @@ Total commits: 2
 
 ## What changed for users
 
-- `8533af1a` 2026-06-03 — feat(skills): premium glass View button on Premium Tools card [1 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `c931e276` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `4c47627f` 2026-06-03 — feat(frontier/economy): GAP-1 honest autonomy headline + GAP-2 tighten-only ceilings [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `decfd44b` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -30,13 +31,13 @@ Total commits: 2
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
+
+- `4c47627f` 2026-06-03 — feat(frontier/economy): GAP-1 honest autonomy headline + GAP-2 tighten-only ceilings [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
+
+### Feature (user-facing) (0)
 
 _(none)_
-
-### Feature (user-facing) (1)
-
-- `8533af1a` 2026-06-03 — feat(skills): premium glass View button on Premium Tools card [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `c931e276` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `decfd44b` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `4c47627f` 2026-06-03 — [infrastructure, feature] — feat(frontier/economy): GAP-1 honest autonomy headline + GAP-2 tighten-only ceilings
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `8533af1a` 2026-06-03 — feat(skills): premium glass View button on Premium Tools card
+- `4c47627f` 2026-06-03 — feat(frontier/economy): GAP-1 honest autonomy headline + GAP-2 tighten-only ceilings
 
 ## Appendix — every commit (chronological)
 
-- `c931e276` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
-- `8533af1a` 2026-06-03 — feat(skills): premium glass View button on Premium Tools card [1 files] _(ai-assisted)_
+- `decfd44b` 2026-06-03 — chore(changelog): auto-update [skip ci] [2 files]
+- `4c47627f` 2026-06-03 — feat(frontier/economy): GAP-1 honest autonomy headline + GAP-2 tighten-only ceilings [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
