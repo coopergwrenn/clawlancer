@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-04
 
-Window: `b8454119a91771c0fd9dd490bc5bf073509a2304` → `HEAD` (HEAD = `e28c4228`)
+Window: `e28c42280f6a3f00a58a3374e930d43aa48e3a40` → `HEAD` (HEAD = `ec4bc83c`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: e28c42280f6a3f00a58a3374e930d43aa48e3a40 -->
+<!-- LAST_GENERATED_SHA: ec4bc83c79aaa215cdcf07019938ba5b57942001 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `80a46963` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `e28c4228` 2026-06-04 — docs(frontier): §4+§6 — Phase-2-partial status + lock test count to 469/0/13 suites [1 files] _(ai-assisted)_
+- `3b10f920` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `ec4bc83c` 2026-06-04 — docs(frontier): close reconciliation — §5 Q7 ownership, §1 headroom refinement, ops consolidation item [2 files] _(ai-assisted)_
 
 ## By category
 
@@ -45,16 +45,16 @@ _(none)_
 
 ### Docs / PRD only (2)
 
-- `80a46963` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `e28c4228` 2026-06-04 — docs(frontier): §4+§6 — Phase-2-partial status + lock test count to 469/0/13 suites [1 files] _(ai-assisted)_
+- `3b10f920` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `ec4bc83c` 2026-06-04 — docs(frontier): close reconciliation — §5 Q7 ownership, §1 headroom refinement, ops consolidation item [2 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `e28c4228` 2026-06-04 — docs(frontier): §4+§6 — Phase-2-partial status + lock test count to 469/0/13 suites
+- `ec4bc83c` 2026-06-04 — docs(frontier): close reconciliation — §5 Q7 ownership, §1 headroom refinement, ops consolidation item
 
 ## Appendix — every commit (chronological)
 
-- `80a46963` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `e28c4228` 2026-06-04 — docs(frontier): §4+§6 — Phase-2-partial status + lock test count to 469/0/13 suites [1 files] _(ai-assisted)_
+- `3b10f920` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `ec4bc83c` 2026-06-04 — docs(frontier): close reconciliation — §5 Q7 ownership, §1 headroom refinement, ops consolidation item [2 files] _(ai-assisted)_
