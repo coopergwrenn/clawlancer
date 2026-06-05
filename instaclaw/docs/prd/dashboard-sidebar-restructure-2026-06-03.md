@@ -1,11 +1,11 @@
 # Dashboard Sidebar Restructure — Planning Doc
 
-**Status:** 🚧 IN PROGRESS — Phase 1 SHIPPED (live on `main`, dark behind `NEXT_PUBLIC_SIDEBAR_NAV`); Phase 2 partially shipped; Phase 3 (flag flip) pending Cooper.
+**Status:** 🚧 IN PROGRESS — Phase 1 + Phase 2 SHIPPED (live on `main`, dark behind `NEXT_PUBLIC_SIDEBAR_NAV`; both viewports complete); Phase 3 (flag flip) pending Cooper.
 
 **Build status (as of 2026-06-04, verified against live code on `main`):**
 - **Phase 1 — sidebar shell behind flag — ✅ SHIPPED, dark.** Shell (`318185db`), desktop-only + collapsible clusters + navMode gating in `layout.tsx` (`705a9673`), navMode-aware tour `buildTourSteps()` (`168b3003`, copy `99ea1682`), glass material (`e83a5099`). The full **D3 IA** is built in the shell (Command Center anchor → `/tasks`, WORKSPACE + ACCOUNT clusters, Overview rename [D2], Credits, Edge City + Invite pinned). Gates/banners/overlay live in `layout.tsx`, applied before the nav branch.
 - **Sessions index (sub-PRD) — ✅ SHIPPED, dark.** Stage 1 rail + deep-link (`d1f5770a`), Stage 2 durable server-backed pins (`ab96486c`).
-- **Phase 2 — shift center of gravity — 🟡 NEARLY DONE (completionist pass 2026-06-04).** DONE: Live View + Files (D4); re-entry CTAs + logo → `/tasks` (D1, `51ea60d7`); Billing↔Credits flywheel (D6, light); **Command Center full-height in the shell** (B1, `fdac2006` — input pins to bottom both viewports); **mobile off-canvas drawer** (D5/B2 — the sidebar now renders on mobile, so the flag governs BOTH viewports). REMAINING: the **status strip** (§2.3 health-dot + credits in the shell header / mobile top bar — Unit C). Desktop icon-rail collapse: DEFERRED polish (not killed). Bottom-tab hybrid: KILLED.
+- **Phase 2 — shift center of gravity — ✅ SHIPPED, dark (completionist pass 2026-06-04 → 2026-06-05).** Live View + Files (D4); re-entry CTAs + logo → `/tasks` (D1, `51ea60d7`); Billing↔Credits flywheel (D6, light); **Command Center full-height in the shell** (B1, `fdac2006` — input pins to bottom both viewports); **mobile off-canvas drawer** (D5/B2, `f178d4b9` — the sidebar now renders on mobile, so the flag governs BOTH viewports); **status strip** (§2.3 health-dot + credits in the rail header / mobile top bar — Unit C, `5fa210da`; two independent halves, credits fail-silent). **No remaining Phase 2 items.** Desktop icon-rail collapse: DEFERRED polish (not killed). Bottom-tab hybrid: KILLED.
 - **Phase 3 — flip flag default-on + delete old nav — ⬜ PENDING.** The flag flip is **Cooper's call** (env var). Post-B2 the gate is `navMode === "sidebar"` (no `&& isDesktop`), so the flip now governs BOTH viewports — desktop rail + mobile off-canvas drawer (D5 shipped). Old-nav deletion is a separate PR ~1 week after the flip soaks.
 
 **Date:** 2026-06-03 (plan) · build status updated 2026-06-04
@@ -321,7 +321,7 @@ Small gaps elevating it exposes (none are blockers; all are post-reorg polish):
    `(dashboard)` group), so an unconfigured user can never see a broken
    Command Center — they're redirected first.
 
-Verdict: elevate Command Center; defer the optional status-strip enhancement.
+Verdict: elevate Command Center. *(Update 2026-06-05 — the optional status strip is now SHIPPED: Unit C, `5fa210da`. Health dot + credits in the desktop rail header AND mobile top bar, two independent halves — the dot can't fail; credits is best-effort `GET /api/vm/usage` with a 4s abort, fail-silent so a usage-endpoint hiccup never degrades the nav.)*
 
 ## 2.4 SaaS sidebar principles applied (not vibes)
 
@@ -388,13 +388,13 @@ flip only when proven.**
   at a preview URL / with the flag on; production users see the old nav.
   *Net effect: pure visual reskin, no behavior change.*
   *Shipped `318185db` (shell) + `705a9673` (desktop-only + gating) + `168b3003` (tour) + Sessions `d1f5770a`/`ab96486c`. The shell was built with the full D3 IA, so D4's Live View + Files promotion landed here too.*
-- **Phase 2 — shift the center of gravity. — 🟡 PARTIAL.** Logo + sidebar "Home" → `/tasks`;
-  promote `/live` + `/files` to visible slots; (optional) status strip.
-  Onboarding redirects (§1.5) **untouched.** Re-verify §2.1 branch table.
-  *Status: Live View + Files promotion ✅ DONE (in the Phase 1 shell). The Command Center anchor already → `/tasks`. REMAINING: logo repoint → `/tasks` (`sidebar-shell.tsx` logo still → `/dashboard`); the 3 re-entry CTAs (D1); the optional status strip (not built).*
+- **Phase 2 — shift the center of gravity. — ✅ SHIPPED, dark.** Logo + sidebar "Home" → `/tasks`;
+  promote `/live` + `/files` to visible slots; status strip.
+  Onboarding redirects (§1.5) **untouched.** §2.1 branch table re-verified (both partners, fresh accounts).
+  *Status: Live View + Files (D4) ✅; Command Center anchor + logo → `/tasks` ✅ (D1, `51ea60d7` — `sidebar-shell.tsx` logo verified → `/tasks` at both rail + mobile-top-bar); 3 re-entry CTAs → `/tasks` ✅ (D1); status strip ✅ (Unit C, `5fa210da`). All Phase 2 items shipped, dark.*
 - **Phase 3 — flip the flag default-on. — ⬜ PENDING (Cooper's call).** Keep old top-nav behind the flag for
   ~1 week as instant rollback. Then a separate PR deletes the old nav.
-  *Desktop-only by construction; mobile keeps the top-nav (D5 drawer not yet built — not blocking the desktop flip).*
+  *Post-B2 the gate is `navMode === "sidebar"` (no `&& isDesktop`), so the flip governs BOTH viewports — desktop rail + mobile off-canvas drawer (D5/B2 shipped, `f178d4b9`). The flip is purely the env var; no remaining build work gates it.*
 
 This gives Cooper an eyeball gate before any user sees a change, and an
 env-var/flag rollback at every step.
@@ -763,9 +763,11 @@ to maintain). **Decision (v1):** slim top bar (logo · hamburger · optional "+"
 → hamburger opens the **full sidebar as an off-canvas drawer** with a scrim; the
 tour's `open-drawer` preAction (§4.5) handles nav-item steps. Desktop sidebar is
 collapsible to a ~64px icon rail (persisted in localStorage) — *optional polish*.
-**Fast-follow (post-launch, if mobile usage warrants):** a bottom-tab bar holding
-Command Center · The Floor · Heartbeat · a "Menu" button (opens the drawer). Spec'd
-now, not built in v1.
+**Killed for v1 (spec retained):** bottom-tabs are KILLED for v1 (see the D5
+header — the off-canvas drawer is the web-native pattern). The spec is kept on
+record only if mobile usage ever warrants revisiting: a bottom-tab bar holding
+Command Center · The Floor · Heartbeat · a "Menu" button (opens the drawer).
+Reviving it would be a deliberate new decision, not a planned fast-follow.
 
 ### D6 — Credits vs Billing: **keep Credits as its own dedicated item; build a bidirectional flywheel.** *(Cooper-directed.)* — ✅ SHIPPED. Credits sidebar item in shell (adjacent to Billing). Flywheel cross-links built (2026-06-04, LIGHT — page content, not flag-gated, per Cooper's call): Billing → `/dashboard/credits` ("Credits & balances →", both active + inactive states); Credits → `/billing` ("Manage subscription & payment →"). Route stays `/dashboard/credits` (deep-link safety).
 Per Cooper: there are multiple distinct credit types (video credits, premium-tool
