@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-05
 
-Window: `15cf73eab1bcc9f4d78dae505390fa2c071282c6` → `HEAD` (HEAD = `8c65d5e0`)
+Window: `8c65d5e04ed3bf9e4538f0b83eb77c8c14d723e7` → `HEAD` (HEAD = `dc0dd147`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 8c65d5e04ed3bf9e4538f0b83eb77c8c14d723e7 -->
+<!-- LAST_GENERATED_SHA: dc0dd147cd9aaeb54c579e8c4a93c64ec3a53424 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `8c65d5e0` 2026-06-05 — fix(onboarding-tour): sidebar tour fires + paints step 1 (was a dead button, then a dim-blank loop) [3 files] _(ai-assisted)_
+- `dc0dd147` 2026-06-05 — feat(economy): first-run hero — agent-as-economic-actor surface [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `c15ccaa1` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
+- `ca14b96c` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `8c65d5e0` 2026-06-05 — fix(onboarding-tour): sidebar tour fires + paints step 1 (was a dead button, then a dim-blank loop) [3 files] _(ai-assisted)_
+- `dc0dd147` 2026-06-05 — feat(economy): first-run hero — agent-as-economic-actor surface [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `c15ccaa1` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
+- `ca14b96c` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `8c65d5e0` 2026-06-05 — fix(onboarding-tour): sidebar tour fires + paints step 1 (was a dead button, then a dim-blank loop)
+- `dc0dd147` 2026-06-05 — feat(economy): first-run hero — agent-as-economic-actor surface
 
 ## Appendix — every commit (chronological)
 
-- `c15ccaa1` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
-- `8c65d5e0` 2026-06-05 — fix(onboarding-tour): sidebar tour fires + paints step 1 (was a dead button, then a dim-blank loop) [3 files] _(ai-assisted)_
+- `ca14b96c` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
+- `dc0dd147` 2026-06-05 — feat(economy): first-run hero — agent-as-economic-actor surface [2 files] _(ai-assisted)_
