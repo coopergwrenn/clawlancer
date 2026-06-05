@@ -17,6 +17,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { EconomyPolicyControls } from "@/components/dashboard/economy-policy-controls";
+import { EconomyHero } from "@/components/dashboard/economy-hero";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -123,6 +124,10 @@ export default function EconomyPage() {
   }, [settings?.wallet_address]);
 
   const enabled = settings?.spend_enabled === true;
+  // First-run = the agent has no economic activity yet (every real user today). This
+  // is the flagship surface, not an edge case: show the anticipatory economic-actor
+  // hero rather than zeroed cards. Rich-data hero is a separate next pass.
+  const firstRun = !econ || (econ.lifetime.earned_usdc === 0 && econ.lifetime.spent_usdc === 0);
 
   // ── Render ──
 
@@ -160,19 +165,27 @@ export default function EconomyPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-      {/* ── Header ── */}
-      <div>
-        <h1
-          className="text-3xl sm:text-4xl font-normal tracking-[-0.5px] flex items-center gap-3"
-          style={{ fontFamily: "var(--font-serif)" }}
-        >
-          <Coins className="w-7 h-7 sm:w-8 sm:h-8" style={{ color: "var(--accent, #DC6743)" }} />
-          Economy
-        </h1>
-        <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
-          Where your agent earns, spends, and builds a reputation — always under limits you set.
-        </p>
-      </div>
+      {/* ── First-run: the economic-actor hero (the flagship surface every user hits today).
+             Rich-data header/hero is the next state-by-state pass. ── */}
+      {firstRun ? (
+        <EconomyHero
+          walletAddress={settings?.wallet_address ?? null}
+          standingScore={econ?.reputation_score ?? null}
+        />
+      ) : (
+        <div>
+          <h1
+            className="text-3xl sm:text-4xl font-normal tracking-[-0.5px] flex items-center gap-3"
+            style={{ fontFamily: "var(--font-serif)" }}
+          >
+            <Coins className="w-7 h-7 sm:w-8 sm:h-8" style={{ color: "var(--accent, #DC6743)" }} />
+            Economy
+          </h1>
+          <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
+            Where your agent earns, spends, and builds a reputation — always under limits you set.
+          </p>
+        </div>
+      )}
 
       {/* ── HERO: Autonomous spending (the real, wired control) ── */}
       <section
@@ -343,7 +356,10 @@ export default function EconomyPage() {
         )}
       </section>
 
-      {/* ── Wallet + Standing (real data where it exists) ── */}
+      {/* ── Wallet + Standing — only in the rich-data state; the first-run hero
+             presents these as the agent's economic identity instead. ── */}
+      {!firstRun && (
+      <>
       <div className="grid sm:grid-cols-2 gap-4">
         {/* Wallet */}
         <div className="glass rounded-2xl p-6" style={{ border: "1px solid var(--border)" }}>
@@ -439,6 +455,8 @@ export default function EconomyPage() {
           </p>
         )}
       </div>
+      </>
+      )}
 
       {/* ── Spending controls (real, wired to /api/agent-economy/policy) ── */}
       <EconomyPolicyControls />
