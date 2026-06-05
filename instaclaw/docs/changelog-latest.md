@@ -1,29 +1,28 @@
 # Changelog — generated 2026-06-05
 
-Window: `dc0dd147cd9aaeb54c579e8c4a93c64ec3a53424` → `HEAD` (HEAD = `9d5170fc`)
+Window: `9d5170fcbd3cdf40acd072ee351e90f57a3e8d6a` → `HEAD` (HEAD = `34275a1b`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 9d5170fcbd3cdf40acd072ee351e90f57a3e8d6a -->
+<!-- LAST_GENERATED_SHA: 34275a1b8d4377e9a970829c7c9c3c2ba99c539a -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
 - **Infrastructure:** 0
-- **Feature (user-facing):** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-_None in this window._
+- `34275a1b` 2026-06-05 — fix(sidebar): dispatch sessions-changed on task mutations so the rail updates instantly [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `cfb2b1a3` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
-- `9d5170fc` 2026-06-05 — docs(sidebar): reconcile both PRDs to shipped reality — Phase 3 flag flipped + LIVE [2 files] _(ai-assisted)_
+- `b7de1ee1` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -35,26 +34,25 @@ _(none)_
 
 _(none)_
 
-### Feature (user-facing) (0)
+### Feature (user-facing) (1)
 
-_(none)_
+- `34275a1b` 2026-06-05 — fix(sidebar): dispatch sessions-changed on task mutations so the rail updates instantly [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `cfb2b1a3` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
-- `9d5170fc` 2026-06-05 — docs(sidebar): reconcile both PRDs to shipped reality — Phase 3 flag flipped + LIVE [2 files] _(ai-assisted)_
+- `b7de1ee1` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `9d5170fc` 2026-06-05 — docs(sidebar): reconcile both PRDs to shipped reality — Phase 3 flag flipped + LIVE
+- `34275a1b` 2026-06-05 — fix(sidebar): dispatch sessions-changed on task mutations so the rail updates instantly
 
 ## Appendix — every commit (chronological)
 
-- `cfb2b1a3` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
-- `9d5170fc` 2026-06-05 — docs(sidebar): reconcile both PRDs to shipped reality — Phase 3 flag flipped + LIVE [2 files] _(ai-assisted)_
+- `b7de1ee1` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
+- `34275a1b` 2026-06-05 — fix(sidebar): dispatch sessions-changed on task mutations so the rail updates instantly [1 files] _(ai-assisted)_
