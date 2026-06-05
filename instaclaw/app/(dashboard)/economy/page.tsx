@@ -134,11 +134,11 @@ export default function EconomyPage() {
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        <div className="h-10 w-48 rounded-lg animate-pulse" style={{ background: "rgba(255,255,255,0.05)" }} />
-        <div className="h-48 rounded-2xl animate-pulse" style={{ background: "rgba(255,255,255,0.04)" }} />
+        <div className="h-10 w-48 rounded-lg animate-pulse" style={{ background: "rgba(0,0,0,0.05)" }} />
+        <div className="h-48 rounded-2xl animate-pulse" style={{ background: "rgba(0,0,0,0.04)" }} />
         <div className="grid sm:grid-cols-2 gap-4">
-          <div className="h-36 rounded-2xl animate-pulse" style={{ background: "rgba(255,255,255,0.04)" }} />
-          <div className="h-36 rounded-2xl animate-pulse" style={{ background: "rgba(255,255,255,0.04)" }} />
+          <div className="h-36 rounded-2xl animate-pulse" style={{ background: "rgba(0,0,0,0.04)" }} />
+          <div className="h-36 rounded-2xl animate-pulse" style={{ background: "rgba(0,0,0,0.04)" }} />
         </div>
       </div>
     );
@@ -187,17 +187,18 @@ export default function EconomyPage() {
         </div>
       )}
 
-      {/* ── HERO: Autonomous spending (the real, wired control) ── */}
+      {/* ── CONTROL: Autonomous spending (the real, wired control — secondary to the
+             hero, which owns the headline). A calm light card, not a second hero. ── */}
       <section
-        className="rounded-2xl p-7 sm:p-8 relative overflow-hidden"
+        className="rounded-2xl p-6 sm:p-7 relative overflow-hidden"
         style={{
           background: enabled
-            ? "linear-gradient(135deg, rgba(34,197,94,0.10), rgba(34,197,94,0.02))"
-            : "linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015))",
-          border: enabled ? "1px solid rgba(34,197,94,0.25)" : "1px solid var(--border)",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.05)",
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
+            ? "linear-gradient(135deg, rgba(34,197,94,0.07), rgba(255,255,255,0.92))"
+            : "#ffffff",
+          border: enabled ? "1px solid rgba(34,197,94,0.30)" : "1px solid rgba(0,0,0,0.08)",
+          boxShadow: enabled
+            ? "0 4px 18px rgba(34,150,90,0.10), inset 0 1px 0 rgba(255,255,255,0.9)"
+            : "0 4px 16px rgba(120,70,50,0.06), inset 0 1px 0 rgba(255,255,255,0.9)",
         }}
       >
         <div className="flex items-start justify-between gap-4">
@@ -207,8 +208,8 @@ export default function EconomyPage() {
                 className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
                 style={{
                   background: enabled
-                    ? "linear-gradient(135deg, rgba(34,197,94,0.25), rgba(34,197,94,0.1))"
-                    : "linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.03))",
+                    ? "linear-gradient(135deg, rgba(34,197,94,0.22), rgba(34,197,94,0.10))"
+                    : "rgba(0,0,0,0.04)",
                 }}
               >
                 {enabled ? (
@@ -221,9 +222,8 @@ export default function EconomyPage() {
               <span
                 className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
                 style={{
-                  background: enabled ? "rgba(34,197,94,0.18)" : "rgba(255,255,255,0.06)",
-                  color: enabled ? "rgb(34,197,94)" : "var(--muted)",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
+                  background: enabled ? "rgba(34,197,94,0.16)" : "rgba(0,0,0,0.05)",
+                  color: enabled ? "rgb(22,163,74)" : "var(--muted)",
                 }}
               >
                 {enabled ? "On" : "Off"}
@@ -247,12 +247,11 @@ export default function EconomyPage() {
             className="relative w-12 h-7 rounded-full transition-all flex-shrink-0 cursor-pointer disabled:opacity-50"
             style={{
               background: enabled
-                ? "linear-gradient(135deg, rgba(34,197,94,0.85), rgba(22,163,74,0.9))"
-                : "rgba(255,255,255,0.08)",
+                ? "linear-gradient(135deg, rgba(34,197,94,0.9), rgba(22,163,74,0.95))"
+                : "rgba(0,0,0,0.13)",
               boxShadow: enabled
-                ? "0 0 0 1px rgba(34,197,94,0.35), 0 2px 8px rgba(34,197,94,0.25), inset 0 1px 0 rgba(255,255,255,0.15)"
-                : "0 0 0 1px rgba(255,255,255,0.1), inset 0 1px 2px rgba(0,0,0,0.25)",
-              backdropFilter: "blur(8px)",
+                ? "0 0 0 1px rgba(34,197,94,0.35), 0 2px 8px rgba(34,197,94,0.25), inset 0 1px 0 rgba(255,255,255,0.25)"
+                : "inset 0 1px 2px rgba(0,0,0,0.12)",
             }}
             aria-label={enabled ? "Disable autonomous spending" : "Enable autonomous spending"}
           >
@@ -278,7 +277,7 @@ export default function EconomyPage() {
             <div
               key={title}
               className="rounded-xl p-3.5"
-              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+              style={{ background: "rgba(0,0,0,0.025)", border: "1px solid rgba(0,0,0,0.06)" }}
             >
               <Icon className="w-4 h-4 mb-1.5" style={{ color: "var(--muted)" }} />
               <p className="text-xs font-medium mb-0.5">{title}</p>
@@ -319,10 +318,9 @@ export default function EconomyPage() {
           <div
             className="mt-4 rounded-2xl p-5"
             style={{
-              background: "linear-gradient(135deg, rgba(34,197,94,0.08), rgba(255,255,255,0.02))",
-              border: "1px solid rgba(34,197,94,0.22)",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-              backdropFilter: "blur(12px)",
+              background: "linear-gradient(135deg, rgba(34,197,94,0.10), rgba(255,255,255,0.9))",
+              border: "1px solid rgba(34,197,94,0.28)",
+              boxShadow: "0 2px 10px rgba(34,150,90,0.06)",
             }}
           >
             <p className="text-sm font-medium mb-1">Let your agent spend on its own?</p>
@@ -347,7 +345,7 @@ export default function EconomyPage() {
                 onClick={() => setConfirmEnable(false)}
                 disabled={saving}
                 className="px-4 py-2 rounded-full text-sm font-medium transition-all active:scale-95 cursor-pointer disabled:opacity-50"
-                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid var(--border)" }}
+                style={{ background: "rgba(0,0,0,0.04)", border: "1px solid var(--border)" }}
               >
                 Not yet
               </button>
@@ -475,7 +473,7 @@ export default function EconomyPage() {
             <div
               key={row.title}
               className="flex items-start justify-between gap-4 p-4"
-              style={{ borderColor: "var(--border)", background: i % 2 ? "transparent" : "rgba(255,255,255,0.015)" }}
+              style={{ borderColor: "var(--border)", background: i % 2 ? "transparent" : "rgba(0,0,0,0.018)" }}
             >
               <div>
                 <p className="text-sm font-medium mb-0.5">{row.title}</p>
@@ -485,7 +483,7 @@ export default function EconomyPage() {
               </div>
               <span
                 className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 mt-0.5"
-                style={{ background: "rgba(255,255,255,0.05)", color: "var(--muted)", border: "1px solid rgba(255,255,255,0.06)" }}
+                style={{ background: "rgba(0,0,0,0.045)", color: "var(--muted)", border: "1px solid rgba(0,0,0,0.08)" }}
               >
                 Coming soon
               </span>

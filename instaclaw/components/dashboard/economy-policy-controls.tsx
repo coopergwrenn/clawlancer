@@ -195,12 +195,12 @@ export function EconomyPolicyControls() {
         style={{
           background:
             a && a.effectiveMaxTodayUsd > 0
-              ? "linear-gradient(135deg, rgba(34,197,94,0.10), rgba(34,197,94,0.02))"
-              : "rgba(255,255,255,0.03)",
+              ? "linear-gradient(135deg, rgba(34,197,94,0.10), rgba(255,255,255,0.85))"
+              : "rgba(0,0,0,0.025)",
           border:
             a && a.effectiveMaxTodayUsd > 0
-              ? "1px solid rgba(34,197,94,0.2)"
-              : "1px solid rgba(255,255,255,0.06)",
+              ? "1px solid rgba(34,197,94,0.22)"
+              : "1px solid rgba(0,0,0,0.06)",
         }}
       >
         <div className="flex items-center gap-2 mb-1.5">
@@ -270,7 +270,7 @@ export function EconomyPolicyControls() {
               { icon: TrendingUp, label: "Spent today", value: a.spentTodayUsd, hint: "" },
               { icon: Wallet, label: "Wallet", value: a.walletBalanceUsd ?? 0, hint: "" },
             ].map((c) => (
-              <div key={c.label} className="rounded-lg p-2.5" style={{ background: "rgba(255,255,255,0.025)" }}>
+              <div key={c.label} className="rounded-lg p-2.5" style={{ background: "rgba(0,0,0,0.025)", border: "1px solid rgba(0,0,0,0.05)" }}>
                 <div className="flex items-center gap-1 mb-0.5">
                   <c.icon className="w-3 h-3" style={{ color: "var(--muted)" }} />
                   <span className="text-[10px] uppercase tracking-wide" style={{ color: "var(--muted)" }}>
@@ -343,8 +343,8 @@ export function EconomyPolicyControls() {
               onClick={() => toggle(cat)}
               className="flex items-center gap-2.5 rounded-lg p-2.5 text-left transition-colors cursor-pointer"
               style={{
-                background: on ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.025)",
-                border: on ? "1px solid rgba(34,197,94,0.2)" : "1px solid rgba(255,255,255,0.06)",
+                background: on ? "rgba(34,197,94,0.08)" : "rgba(0,0,0,0.025)",
+                border: on ? "1px solid rgba(34,197,94,0.22)" : "1px solid rgba(0,0,0,0.06)",
               }}
             >
               <span
@@ -374,7 +374,7 @@ export function EconomyPolicyControls() {
           onClick={save}
           disabled={saving || !dirty}
           className="px-4 py-2 rounded-full text-sm font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-default"
-          style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border)" }}
+          style={{ background: "rgba(0,0,0,0.05)", border: "1px solid var(--border)" }}
         >
           {saving ? "Saving…" : "Save changes"}
         </button>
@@ -409,7 +409,7 @@ function BandInput({
 }) {
   const tightened = value < max;
   return (
-    <label className="block rounded-xl p-3" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}>
+    <label className="block rounded-xl p-3" style={{ background: "rgba(0,0,0,0.025)", border: "1px solid rgba(0,0,0,0.06)" }}>
       <span className="text-[11px] block mb-1.5" style={{ color: "var(--muted)" }}>
         Ask before {label}
       </span>
