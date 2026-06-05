@@ -1,14 +1,14 @@
 # Dashboard Sidebar Restructure — Planning Doc
 
-**Status:** 🚧 IN PROGRESS — Phase 1 + Phase 2 SHIPPED (live on `main`, dark behind `NEXT_PUBLIC_SIDEBAR_NAV`; both viewports complete); Phase 3 (flag flip) pending Cooper.
+**Status:** ✅ LIVE — Phases 1–3 shipped; the sidebar is **flipped ON in production** (`NEXT_PUBLIC_SIDEBAR_NAV=true`, 2026-06-05, deploy `instaclaw-48ulg4w56`, verified serving the sidebar on instaclaw.io, both viewports). Only remaining step: old-nav deletion (separate PR, ~1 week after the flip soaks).
 
 **Build status (as of 2026-06-04, verified against live code on `main`):**
 - **Phase 1 — sidebar shell behind flag — ✅ SHIPPED, dark.** Shell (`318185db`), desktop-only + collapsible clusters + navMode gating in `layout.tsx` (`705a9673`), navMode-aware tour `buildTourSteps()` (`168b3003`, copy `99ea1682`), glass material (`e83a5099`). The full **D3 IA** is built in the shell (Command Center anchor → `/tasks`, WORKSPACE + ACCOUNT clusters, Overview rename [D2], Credits, Edge City + Invite pinned). Gates/banners/overlay live in `layout.tsx`, applied before the nav branch.
 - **Sessions index (sub-PRD) — ✅ SHIPPED, dark.** Stage 1 rail + deep-link (`d1f5770a`), Stage 2 durable server-backed pins (`ab96486c`).
 - **Phase 2 — shift center of gravity — ✅ SHIPPED, dark (completionist pass 2026-06-04 → 2026-06-05).** Live View + Files (D4); re-entry CTAs + logo → `/tasks` (D1, `51ea60d7`); Billing↔Credits flywheel (D6, light); **Command Center full-height in the shell** (B1, `fdac2006` — input pins to bottom both viewports); **mobile off-canvas drawer** (D5/B2, `f178d4b9` — the sidebar now renders on mobile, so the flag governs BOTH viewports); **status strip** (§2.3 health-dot + credits in the rail header / mobile top bar — Unit C, `5fa210da`; two independent halves, credits fail-silent). **No remaining Phase 2 items.** Desktop icon-rail collapse: DEFERRED polish (not killed). Bottom-tab hybrid: KILLED.
-- **Phase 3 — flip flag default-on + delete old nav — ⬜ PENDING.** The flag flip is **Cooper's call** (env var). Post-B2 the gate is `navMode === "sidebar"` (no `&& isDesktop`), so the flip now governs BOTH viewports — desktop rail + mobile off-canvas drawer (D5 shipped). Old-nav deletion is a separate PR ~1 week after the flip soaks.
+- **Phase 3 — flip flag default-on + delete old nav — ✅ FLAG FLIPPED + LIVE (2026-06-05); old-nav deletion PENDING (~1wk soak).** `NEXT_PUBLIC_SIDEBAR_NAV=true` set in production (non-sensitive; value `od`-verified exactly `true`), redeployed (`instaclaw-48ulg4w56`, Ready), verified on instaclaw.io serving the sidebar (rail + Account cluster + status strip; no top-nav). The gate is `navMode === "sidebar"` (no `&& isDesktop`) so it governs BOTH viewports. Live gates re-exercised post-flip (2026-06-05): auth unauth → `/signin`; needsOnboarding/Rule-33 no-VM → `/channels`; edge-intent null-intent → `/edge/intents` — all pass. Old top-nav stays behind the flag for the ~1-week soak (instant rollback: `?nav=topnav` per-user, or unset the env var + redeploy), then a separate PR deletes it.
 
-**Date:** 2026-06-03 (plan) · build status updated 2026-06-04
+**Date:** 2026-06-03 (plan) · build status updated 2026-06-05 (flag flipped live)
 **Author:** CC terminal (onboarding/dashboard)
 **Reference inspiration:** ZO Computer (`coop.zo.computer`) — persistent left
 sidebar: Home / Chats / Files / Automations / Plugins / Computer / Terminal /
@@ -201,7 +201,7 @@ The key insight that makes the routing nuance safe: "where the user goes" is
 |---|---|---|---|---|
 | **A. First-land** (end of onboarding) | one-time `router.replace` at funnel end (§1.5) | `/dashboard` | **`/dashboard` (UNCHANGED)** | — (frozen) |
 | **B. Workspace home** (logo + sidebar "Home" item) | `<Link href>` in the shell | `/dashboard` | **`/tasks`** | No |
-| **C. Re-entry** (marketing "Go to Dashboard", `/go/[code]`) | external CTAs / redirects | `/dashboard` | **decision — §Open Q1** | No |
+| **C. Re-entry** (marketing "Go to Dashboard", `/go/[code]`) | external CTAs / redirects | `/dashboard` | **✅ RESOLVED (D1, `51ea60d7`): authed re-entry CTAs → `/tasks`; `/go/[code]` deep-link unchanged** | No |
 
 Because A is a distinct one-time redirect, moving B to Command Center **cannot**
 change where a new user first lands. A new user is *sent* to `/dashboard` by the
@@ -220,7 +220,7 @@ as their ongoing home.
 | **Unconfigured** user somehow hits `/tasks` directly | `/tasks` is in `(dashboard)` group → `needsOnboarding` gate fires → `/channels`÷`/deploying`÷`/connect` | redirected to correct funnel step | **Safety net intact** — they can't "first-land" on `/tasks` |
 | Edge user hits any `(dashboard)` route w/o intent | Edge intent gate → `/edge/intents` | intents | Unchanged |
 | WLD-only user (gate on) hits `/tasks` or `/dashboard` | neither exempt → gate overlay | overlay on either | No regression |
-| User from marketing "Go to Dashboard" | external CTA → `/dashboard` (today) | **Open Q1** | TBD |
+| Authed user from marketing "Open InstaClaw" CTA | external CTA → `/tasks` (D1, `51ea60d7`) | Command Center | ✅ shipped (D1) |
 
 **Why this is safe:** the only way a brand-new user reaches the app is via path
 A (frozen → Dashboard). The `needsOnboarding` gate is the backstop: even if some
@@ -392,9 +392,12 @@ flip only when proven.**
   promote `/live` + `/files` to visible slots; status strip.
   Onboarding redirects (§1.5) **untouched.** §2.1 branch table re-verified (both partners, fresh accounts).
   *Status: Live View + Files (D4) ✅; Command Center anchor + logo → `/tasks` ✅ (D1, `51ea60d7` — `sidebar-shell.tsx` logo verified → `/tasks` at both rail + mobile-top-bar); 3 re-entry CTAs → `/tasks` ✅ (D1); status strip ✅ (Unit C, `5fa210da`). All Phase 2 items shipped, dark.*
-- **Phase 3 — flip the flag default-on. — ⬜ PENDING (Cooper's call).** Keep old top-nav behind the flag for
-  ~1 week as instant rollback. Then a separate PR deletes the old nav.
-  *Post-B2 the gate is `navMode === "sidebar"` (no `&& isDesktop`), so the flip governs BOTH viewports — desktop rail + mobile off-canvas drawer (D5/B2 shipped, `f178d4b9`). The flip is purely the env var; no remaining build work gates it.*
+- **Phase 3 — flip the flag default-on. — ✅ DONE + LIVE (2026-06-05).** `NEXT_PUBLIC_SIDEBAR_NAV=true`
+  set in production (non-sensitive; `od`-verified exactly `true`) + redeployed (`instaclaw-48ulg4w56`, Ready);
+  verified serving the sidebar on instaclaw.io. Old top-nav stays behind the flag for ~1 week as instant
+  rollback, then a separate PR deletes it (**only remaining step**).
+  *The gate is `navMode === "sidebar"` (no `&& isDesktop`), so the flip governs BOTH viewports. Rollback:
+  `?nav=topnav` per-user, or unset the env var + redeploy.*
 
 This gives Cooper an eyeball gate before any user sees a change, and an
 env-var/flag rollback at every step.

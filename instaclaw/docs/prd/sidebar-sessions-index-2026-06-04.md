@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-04
 **Branch:** `feat/sidebar-restructure-phase1` (sidebar worktree)
-**Status:** ✅ SHIPPED — both stages live on `main`, flag-off/dark (no user-visible change until `NEXT_PUBLIC_SIDEBAR_NAV` flips).
+**Status:** ✅ LIVE — both stages shipped to `main` and now live in production. The sidebar flag `NEXT_PUBLIC_SIDEBAR_NAV` was flipped ON 2026-06-05 (deploy `instaclaw-48ulg4w56`), so the Sessions index renders for all users (the rail on desktop, the off-canvas drawer on mobile).
   - **Stage 1** (live rail index + deep-link open) — shipped `d1f5770a` (2026-06-04).
   - **Stage 2** (durable server-backed pins) — shipped `ab96486c` (2026-06-04): `instaclaw_session_pins` table (applied to prod, migration `20260604120000_session_pins.sql`), `/api/sessions/pins` GET/POST/DELETE, `use-pins.ts` swapped to server + localStorage cache. Verified headless against the real endpoint + real table (pin→POST, reload→server-survive, DB rows, unpin→DELETE, 7-click fast-toggle settles clean). `PinStore` interface + `sessions-section.tsx` unchanged (the seam held).
 **Author:** sidebar terminal (Claude)
