@@ -367,6 +367,83 @@ function CollapsibleSection({
   );
 }
 
+/* ─── Status strip (§2.3) — at-a-glance agent health + daily usage ──────────
+   TWO independent halves so a usage-endpoint hiccup can NEVER degrade the nav:
+   - Health dot: from heartbeatHealth (already in the shell, no fetch) — always
+     renders, can't fail.
+   - Credits: best-effort GET /api/vm/usage with a 4s timeout. Fail-SILENT: on
+     slow / error / unexpected shape it renders nothing for the credits half
+     (never a hanging spinner, never an error bubbling into the chrome). The
+     health dot stands alone. */
+
+function StatusStrip({
+  heartbeatHealth,
+  className = "",
+}: {
+  heartbeatHealth: "healthy" | "unhealthy" | "paused" | null;
+  className?: string;
+}) {
+  const [usage, setUsage] = useState<{ today: number; dailyLimit: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000); // never hang the header
+    fetch("/api/vm/usage", { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (
+          !cancelled &&
+          d &&
+          typeof d.today === "number" &&
+          typeof d.dailyLimit === "number"
+        ) {
+          setUsage({ today: d.today, dailyLimit: d.dailyLimit });
+        }
+      })
+      .catch(() => {
+        /* slow / network / abort / bad shape — fail silent, dot stands alone */
+      })
+      .finally(() => clearTimeout(timer));
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, []);
+
+  const dotColor =
+    heartbeatHealth === "healthy"
+      ? "#22c55e"
+      : heartbeatHealth === "unhealthy"
+        ? "#ef4444"
+        : heartbeatHealth === "paused"
+          ? "#f59e0b"
+          : "var(--muted)";
+
+  return (
+    <div
+      data-status-strip
+      data-credits={usage ? `${Math.round(usage.today)}/${usage.dailyLimit}` : ""}
+      className={`flex items-center gap-1.5 text-[11px] ${className}`}
+      style={{ color: "var(--muted)" }}
+    >
+      <span
+        data-health-dot
+        className="w-2 h-2 rounded-full shrink-0"
+        style={{ background: dotColor, boxShadow: `0 0 0 2px ${SIDEBAR_BG}` }}
+        title={heartbeatHealth ? `Agent ${heartbeatHealth}` : "Agent status"}
+        aria-label={heartbeatHealth ? `Agent ${heartbeatHealth}` : "Agent status"}
+      />
+      {usage && (
+        <span className="whitespace-nowrap">
+          {Math.round(usage.today)}/{usage.dailyLimit}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /* ─── Shared nav body — rendered in the desktop rail AND the mobile drawer ───
    ONE source of truth so "every inventory item reachable" holds structurally on
    both viewports (not hand-maintained). Only one of {rail, drawer} mounts per
@@ -383,6 +460,7 @@ function SidebarNav({
   toggle,
   isEdge,
   email,
+  variant = "rail",
 }: {
   pathname: string;
   activeChatId: string | null;
@@ -393,6 +471,11 @@ function SidebarNav({
   toggle: (key: string) => void;
   isEdge: boolean;
   email: string;
+  // "rail" = desktop aside (shows the status strip under the logo, §2.3).
+  // "drawer" = mobile off-canvas (the mobile top bar owns the strip instead, so
+  // we don't double-render it). Only one SidebarNav renders per viewport, so the
+  // strip fetches /api/vm/usage at most once.
+  variant?: "rail" | "drawer";
 }) {
   return (
     <>
@@ -412,6 +495,15 @@ function SidebarNav({
         />
         <span>Instaclaw</span>
       </Link>
+
+      {/* Status strip (§2.3) — at-a-glance agent health + daily usage, under the
+          logo. Rail only; the mobile top bar renders its own copy in the
+          reserved slot so it's always visible without opening the drawer. */}
+      {variant !== "drawer" && (
+        <div className="shrink-0 px-3 pb-1.5">
+          <StatusStrip heartbeatHealth={heartbeatHealth} />
+        </div>
+      )}
 
       {/* Command Center — permanent home anchor. Pinned ABOVE the scroll
           region (shrink-0) so it holds its full natural height in every
@@ -726,8 +818,12 @@ function SidebarShellInner({
               <Image src="/logo.png" alt="InstaClaw" width={32} height={32} unoptimized style={{ imageRendering: "pixelated" }} />
               <span>Instaclaw</span>
             </Link>
-            {/* Unit C status strip mounts here (right-aligned). */}
-            <div className="ml-auto flex items-center" data-status-strip-slot />
+            {/* Unit C status strip — right-aligned, always visible on mobile
+                without opening the drawer. Health dot can't fail; credits is
+                best-effort (fail-silent). */}
+            <div className="ml-auto flex items-center" data-status-strip-slot>
+              <StatusStrip heartbeatHealth={heartbeatHealth} />
+            </div>
           </header>
         )}
         <div className="shrink-0">
@@ -809,6 +905,7 @@ function SidebarShellInner({
                   toggle={toggle}
                   isEdge={isEdge}
                   email={email}
+                  variant="drawer"
                 />
               </motion.aside>
             </>
