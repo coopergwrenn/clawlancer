@@ -2513,6 +2513,8 @@ function CommandCenterInner() {
 
         // Start polling for this task
         setPollingIds((prev) => [...prev, realTask.id]);
+
+        window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT)); // refresh the rail's Sessions index
       } catch (err) {
         // Remove optimistic card
         setTasks((prev) => prev.filter((t) => t.id !== optimisticId));
@@ -2546,6 +2548,8 @@ function CommandCenterInner() {
         setTasks((prev) =>
           prev.map((t) => (t.id === task.id ? task : t))
         );
+      } else {
+        window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT)); // refresh the rail's Sessions index
       }
     } catch {
       setTasks((prev) =>
@@ -2562,6 +2566,7 @@ function CommandCenterInner() {
 
     try {
       await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+      window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT)); // refresh the rail's Sessions index
     } catch {
       // Already removed from UI — re-fetch to sync
       fetchTasks(filterToStatus(filter), filter === "recurring" ? { recurring: true } : undefined);
@@ -2584,6 +2589,7 @@ function CommandCenterInner() {
       const res = await fetch(`/api/tasks/${taskId}/rerun`, { method: "POST" });
       if (res.ok) {
         setPollingIds((prev) => [...prev, taskId]);
+        window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT)); // refresh the rail's Sessions index
       }
     } catch {
       // Re-fetch to get true state
@@ -2605,6 +2611,7 @@ function CommandCenterInner() {
 
     try {
       await fetch(`/api/tasks/${taskId}/trigger`, { method: "POST" });
+      window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT)); // refresh the rail's Sessions index
     } catch {
       fetchTasks(filterToStatus(filter), filter === "recurring" ? { recurring: true } : undefined);
     }
@@ -2626,6 +2633,8 @@ function CommandCenterInner() {
       });
       if (!res.ok) {
         setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
+      } else {
+        window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT)); // refresh the rail's Sessions index
       }
     } catch {
       setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
@@ -2651,6 +2660,7 @@ function CommandCenterInner() {
         setTasks((prev) =>
           prev.map((t) => (t.id === task.id ? data.task : t))
         );
+        window.dispatchEvent(new Event(SESSIONS_CHANGED_EVENT)); // refresh the rail's Sessions index
       } else {
         setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
       }
