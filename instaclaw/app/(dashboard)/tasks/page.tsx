@@ -3790,8 +3790,11 @@ function CommandCenterInner() {
                       </div>
                     )}
                     {togglePills}
+                    {/* No overflow-hidden: the + menu and model-picker open UPWARD
+                        (absolute bottom-full) and must escape this box. border-radius
+                        already clips the box's own bg + backdrop-blur; no child bleeds. */}
                     <div
-                      className="rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 flex items-center gap-2 sm:gap-3 overflow-hidden"
+                      className="rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 flex items-center gap-2 sm:gap-3"
                       style={{
                         background: "rgba(255,255,255,0.8)",
                         backdropFilter: "blur(12px)",
@@ -3967,8 +3970,11 @@ function CommandCenterInner() {
             </button>
           </div>
           {togglePills}
+          {/* No overflow-hidden: the + menu and model-picker open UPWARD
+              (absolute bottom-full) and must escape this box. border-radius
+              already clips the box's own bg + backdrop-blur; no child bleeds. */}
           <div
-            className="rounded-2xl px-3 py-2.5 sm:px-5 sm:py-3.5 flex items-center gap-2 sm:gap-3 overflow-hidden"
+            className="rounded-2xl px-3 py-2.5 sm:px-5 sm:py-3.5 flex items-center gap-2 sm:gap-3"
             style={{
               background: "rgba(255,255,255,0.8)",
               backdropFilter: "blur(12px)",
