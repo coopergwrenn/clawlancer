@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-05
 
-Window: `9d5170fcbd3cdf40acd072ee351e90f57a3e8d6a` → `HEAD` (HEAD = `34275a1b`)
+Window: `34275a1b8d4377e9a970829c7c9c3c2ba99c539a` → `HEAD` (HEAD = `8fc00302`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 34275a1b8d4377e9a970829c7c9c3c2ba99c539a -->
+<!-- LAST_GENERATED_SHA: 8fc003024cb1e7f9586edd480b53d7e6974d8c9a -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `34275a1b` 2026-06-05 — fix(sidebar): dispatch sessions-changed on task mutations so the rail updates instantly [1 files] _(ai-assisted)_
+- `8fc00302` 2026-06-05 — feat(economy): demote spend control + light-retheme first-run body [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `b7de1ee1` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
+- `96701638` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `34275a1b` 2026-06-05 — fix(sidebar): dispatch sessions-changed on task mutations so the rail updates instantly [1 files] _(ai-assisted)_
+- `8fc00302` 2026-06-05 — feat(economy): demote spend control + light-retheme first-run body [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `b7de1ee1` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
+- `96701638` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `34275a1b` 2026-06-05 — fix(sidebar): dispatch sessions-changed on task mutations so the rail updates instantly
+- `8fc00302` 2026-06-05 — feat(economy): demote spend control + light-retheme first-run body
 
 ## Appendix — every commit (chronological)
 
-- `b7de1ee1` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
-- `34275a1b` 2026-06-05 — fix(sidebar): dispatch sessions-changed on task mutations so the rail updates instantly [1 files] _(ai-assisted)_
+- `96701638` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
+- `8fc00302` 2026-06-05 — feat(economy): demote spend control + light-retheme first-run body [2 files] _(ai-assisted)_
