@@ -1,9 +1,9 @@
-# Changelog — generated 2026-06-04
+# Changelog — generated 2026-06-05
 
-Window: `fdac20065295d73a850b42de667f0dcfde54d09b` → `HEAD` (HEAD = `f178d4b9`)
+Window: `f178d4b962ed8000030945eda01817d20903147b` → `HEAD` (HEAD = `5fa210da`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: f178d4b962ed8000030945eda01817d20903147b -->
+<!-- LAST_GENERATED_SHA: 5fa210da90b62f316b9099b0a12c9e9a3be69b89 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `f178d4b9` 2026-06-04 — feat(dashboard): Unit B2 — D5 mobile off-canvas drawer (flag governs both viewports) [5 files] _(multi: [feature, docs]; ai-assisted)_
+- `5fa210da` 2026-06-05 — feat(dashboard): Unit C — status strip (§2.3), two independent halves [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `6f65da9a` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `38c67e24` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `f178d4b9` 2026-06-04 — feat(dashboard): Unit B2 — D5 mobile off-canvas drawer (flag governs both viewports) [5 files] _(multi: [feature, docs]; ai-assisted)_
+- `5fa210da` 2026-06-05 — feat(dashboard): Unit C — status strip (§2.3), two independent halves [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,21 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `6f65da9a` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `f178d4b9` 2026-06-04 — [feature, docs] — feat(dashboard): Unit B2 — D5 mobile off-canvas drawer (flag governs both viewports)
+- `38c67e24` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `f178d4b9` 2026-06-04 — feat(dashboard): Unit B2 — D5 mobile off-canvas drawer (flag governs both viewports)
+- `5fa210da` 2026-06-05 — feat(dashboard): Unit C — status strip (§2.3), two independent halves
 
 ## Appendix — every commit (chronological)
 
-- `6f65da9a` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
-- `f178d4b9` 2026-06-04 — feat(dashboard): Unit B2 — D5 mobile off-canvas drawer (flag governs both viewports) [5 files] _(multi: [feature, docs]; ai-assisted)_
+- `38c67e24` 2026-06-04 — chore(changelog): auto-update [skip ci] [2 files]
+- `5fa210da` 2026-06-05 — feat(dashboard): Unit C — status strip (§2.3), two independent halves [1 files] _(ai-assisted)_
