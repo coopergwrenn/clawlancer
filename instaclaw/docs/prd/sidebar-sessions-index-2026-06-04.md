@@ -24,10 +24,17 @@
 3. **Staged pinning** — Stage 1 ships `localStorage` pins; Stage 2 swaps to a server table behind one interface.
 4. **Deep-link open is IN Stage 1** — clicking a row resumes that exact session.
 
-Non-negotiable build discipline (carried from the sidebar work so far): **flag-off + mobile byte-identical**
-(the section only renders inside `SidebarShell`, which is already gated `navMode === "sidebar" && isDesktop`);
+Non-negotiable build discipline (carried from the sidebar work so far): **flag-off byte-identical** (the section
+renders only inside `SidebarShell`; flag off → nothing mounts → top-nav + mobile untouched);
 **real glass material** (the `.glass` / `.skill-pill` recipe, reused from the surfaces just shipped); **iOS-spring**
 collapse (unchanged); **preview-first, LOOK at it** before any push.
+
+> **Update (2026-06-05):** this was written assuming `SidebarShell` stayed desktop-only (`navMode === "sidebar"
+> && isDesktop`). The sidebar's D5 mobile work later **dropped `&& isDesktop`** from the shell gate, so the shell
+> (and `SessionsSection` inside the shared `SidebarNav`) now also renders in the **mobile off-canvas drawer**. Net:
+> flag-OFF is still byte-identical on both viewports; flag-ON, the Sessions index is **additive** in the mobile
+> drawer too (not breaking — same component, self-contained Suspense). The original desktop-only verification did
+> not cover the drawer; a one-minute mobile-drawer eyeball is the open follow-up.
 
 ---
 
@@ -238,6 +245,13 @@ The sidebar's read is wrapped **inside `sidebar-shell.tsx`** (Suspense around `S
    conversation was archived/deleted — and archive/delete **already** set `activeConversationId = null` locally
    (`:2744`). So a non-null active id is, by construction, a deliberate selection (deep-link or in-page click) and
    must be honored even when it's outside the fetched 100.
+
+   **Shipped as (2026-06-05, `tasks/page.tsx`):** the implementation is *more conservative* than "drop the guard
+   entirely" — it **kept** `convs.some(...)` and added a URL-ref clause:
+   `if (prev && (convs.some(c => c.id === prev) || prev === urlConvRef.current)) keep; else convs[0]`. Same
+   RACE-2 kill — a deep-linked / in-page-selected id is mirrored into `urlConvRef`, so it's honored even when
+   outside the fetched 100 — and a *truly* stale non-URL `prev` resets to `convs[0]` instead of sticking. Net
+   behavior matches this spec; only the mechanism differs (kept-and-augmented vs dropped).
 3. **Kill RACE 3 (deep-linked id outside the loaded list):** messages already load by id (`loadConversationMessages`,
    verified). For the **row/title** to render, add a hydration step after `loadConversations` resolves:
    - If `activeConversationId` is set and **not** in `convs`, `GET /api/chat/conversations/[id]`.
@@ -447,8 +461,11 @@ Before any push, with the flag on (desktop), LOOK at it; with the flag off, prov
 
 ## 10. Rollback / invariants
 
-- The entire feature renders only inside `SidebarShell` (gated `navMode === "sidebar" && isDesktop`). Flag off →
-  nothing mounts → top-nav + mobile byte-identical.
+- The entire feature renders only inside `SidebarShell` (gated `navMode === "sidebar"`; D5 dropped the original
+  `&& isDesktop`, so the shell — and `SessionsSection` within the shared `SidebarNav` — now renders on the desktop
+  rail AND in the mobile off-canvas drawer). Flag off → nothing mounts → top-nav + mobile byte-identical. Flag on →
+  Sessions is additive in the drawer too (same component, self-contained Suspense); reverting the flag fully
+  removes it from both viewports.
 - The `/tasks` deep-link wiring is additive and **backward-compatible**: with no URL params, the page behaves exactly
   as today (tab defaults to `tasks`, `loadConversations` auto-selects the newest — the only change there is "don't
   override a deliberately-set id," which a bare load never has).
