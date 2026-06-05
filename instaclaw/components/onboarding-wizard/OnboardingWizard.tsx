@@ -34,9 +34,14 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
   switch (action.type) {
     case "LOADED":
       if (!action.shouldShow) return { ...state, phase: "done" };
-      // If gmail popup is still active, wait (done state — we'll re-check)
-      if (action.gmailPopupActive) return { ...state, phase: "done" };
-      // Sparkle button restart — skip welcome, go straight to tour
+      // Sparkle "take the tour again" — an explicit restart goes straight to the
+      // tour. Checked BEFORE the gmail-popup-wait below: that wait is a FIRST-RUN
+      // concern (don't start the tour while the gmail insights popup is up), but a
+      // restart from the account row never re-triggers that popup, so gating the
+      // restart on a stale `gmail_popup_dismissed=false` flag silently dropped it
+      // (dead restart button for any user in that gmail-flag state, both navs).
+      // isRestart is false for first-run, so the gmail-popup-wait stays intact for
+      // new users (the moved-up check is skipped when isRestart is false).
       if (action.isRestart) {
         return {
           ...state,
@@ -47,6 +52,9 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
           gmailConnected: action.gmailConnected,
         };
       }
+      // If gmail popup is still active, wait (done state — we'll re-check).
+      // FIRST-RUN only now; the restart path is handled above.
+      if (action.gmailPopupActive) return { ...state, phase: "done" };
       // Resume from saved step
       if (action.currentStep > 0) {
         return {
@@ -219,6 +227,28 @@ export default function OnboardingWizard({
     }
   }, []);
 
+  // STABLE tour callbacks. These MUST be memoized: SpotlightTour's setup
+  // useEffect depends on onStepChange/onComplete, so inline arrows (new ref every
+  // render) made the effect re-fire on every parent re-render — and since the
+  // effect calls setDrawerOpen/navigate (which re-render the layout), that was a
+  // feedback loop that left the sidebar tour stuck on a dim, blank step 1.
+  // dispatch is stable (useReducer); saveStep/completeWizard are useCallback.
+  const handleTourStepChange = useCallback(
+    (step: number) => {
+      dispatch({ type: "TOUR_STEP", step });
+      saveStep(step);
+    },
+    [saveStep]
+  );
+  const handleTourComplete = useCallback(() => {
+    dispatch({ type: "TOUR_COMPLETE" });
+    completeWizard();
+  }, [completeWizard]);
+  const handleTourClose = useCallback(() => {
+    dispatch({ type: "TOUR_CLOSE" });
+    completeWizard();
+  }, [completeWizard]);
+
   // Tour controlling More dropdown
   useEffect(() => {
     const isTourPhase = state.phase === "tour";
@@ -289,18 +319,9 @@ export default function OnboardingWizard({
         <SpotlightTour
           key="tour"
           startStep={state.tourStep}
-          onStepChange={(step) => {
-            dispatch({ type: "TOUR_STEP", step });
-            saveStep(step);
-          }}
-          onComplete={() => {
-            dispatch({ type: "TOUR_COMPLETE" });
-            completeWizard();
-          }}
-          onClose={() => {
-            dispatch({ type: "TOUR_CLOSE" });
-            completeWizard();
-          }}
+          onStepChange={handleTourStepChange}
+          onComplete={handleTourComplete}
+          onClose={handleTourClose}
           setMoreOpen={setMoreOpen}
           setDrawerOpen={setDrawerOpen}
           navigateTo={handleNavigate}

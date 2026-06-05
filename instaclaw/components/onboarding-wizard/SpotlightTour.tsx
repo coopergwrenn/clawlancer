@@ -206,7 +206,15 @@ export default function SpotlightTour({
           setMoreOpen(false);
         }
       } else if (navMode === "sidebar") {
-        setDrawerOpen?.(Boolean(step.sidebarNav));
+        // Mobile only: open the off-canvas drawer for nav-item steps so the
+        // spotlight target is visible. On DESKTOP the rail is always shown and
+        // the drawer isn't rendered — so this MUST be a true no-op there
+        // (PRD §4.5). Firing setDrawerOpen(true) on desktop engaged the
+        // body-scroll-lock and re-rendered the layout, which kicked the
+        // step-1 re-render loop. Keep it false on desktop.
+        const isMobileViewport =
+          typeof window !== "undefined" && window.innerWidth < 640;
+        setDrawerOpen?.(isMobileViewport ? Boolean(step.sidebarNav) : false);
       }
 
       // Wait for DOM to settle after navigation / chrome reveal. The mobile

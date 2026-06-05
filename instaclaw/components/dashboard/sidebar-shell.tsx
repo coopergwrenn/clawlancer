@@ -89,7 +89,10 @@ const HOME: NavItem = {
   hero: true,
 };
 
-type NavSection = { key: string; label: string; items: NavItem[] };
+// `tourKey` (optional) puts a data-tour anchor on the section CONTAINER so the
+// onboarding tour can spotlight a whole cluster (e.g. nav-manage-section → the
+// Account group, replacing the old "More" dropdown step). PRD §4.6.
+type NavSection = { key: string; label: string; items: NavItem[]; tourKey?: string };
 
 const SECTIONS: NavSection[] = [
   {
@@ -110,6 +113,7 @@ const SECTIONS: NavSection[] = [
   {
     key: "account",
     label: "Account & Plan",
+    tourKey: "nav-manage-section", // onboarding tour step 19 spotlights this cluster
     items: [
       { href: "/dashboard", label: "Overview", icon: LayoutDashboard, tourKey: "nav-dashboard" },
       { href: "/dashboard/credits", label: "Credits", icon: Zap, tourKey: "nav-credits" },
@@ -307,7 +311,7 @@ function CollapsibleSection({
   const locked = hasActive;
 
   return (
-    <div className="mt-1">
+    <div className="mt-1" data-tour={section.tourKey}>
       <button
         type="button"
         onClick={locked ? undefined : onToggle}
