@@ -19,7 +19,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { MessageSquare, ListTodo, Pin, ChevronDown, Plus } from "lucide-react";
 import {
   useSessions,
@@ -45,6 +45,35 @@ import {
 // session count OR scroll. Overflow lives behind "See all", shown only when
 // there are genuinely more sessions than the cap displays.
 const SESSIONS_CAP = 3;
+
+// Reorder + enter/exit motion for the session rows (the audit's deferred polish:
+// rows used to SNAP to their new slot on pin/unpin/add/remove while the
+// active-pill glided via layoutId — a pop, not a settle).
+//
+// Composition notes (why it's built this way):
+//   • Each row carries EXPLICIT `initial/animate/exit` opacity (NOT the parent's
+//     collapse variant). Inheriting the container's open/closed variant THROUGH
+//     AnimatePresence left rows stuck at opacity 0 (the variant `animate` didn't
+//     resolve past the presence boundary). Explicit opacity is self-contained:
+//     rows are always visible (animate→1), fade in on add, fade out on remove.
+//     `AnimatePresence initial={false}` suppresses the enter fade on first paint.
+//   • Opacity is the ONLY animated style here — never `y`/transform — because
+//     `layout` already drives transform for the reorder glide; an animating `y`
+//     would fight it on the same element.
+//   • Collapse/expand is handled entirely by the CONTAINER (LIST_VARIANTS:
+//     height spring + opacity fade), so it's unchanged. The rows ride the
+//     container's collapse; they no longer self-stagger (a small loss vs the old
+//     per-row stagger, the cost of making reorder + presence compose cleanly).
+//   • The layout spring MATCHES the active-pill spring (SidebarActivePill in
+//     sidebar-primitives = stiffness 420 / damping 36). The pill sits
+//     `absolute inset-0` INSIDE the row, so with `layout` on the row the pill is
+//     a nested layout descendant and rides the row — identical springs make the
+//     gliding row + gliding pill ONE motion on the active row, never two
+//     competing ones. Keep these in lockstep if either is retuned.
+const SESSION_ROW_TRANSITION = {
+  opacity: { duration: 0.18 },
+  layout: { type: "spring" as const, stiffness: 420, damping: 36 },
+};
 
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
 
@@ -412,16 +441,32 @@ export function SessionsSection({
             filled-pin marker, so no subgroup headers are needed — which keeps
             the footprint FIXED (a "Pinned" header would otherwise pop in the
             moment you make your first pin) and the nav below anchored. */}
-        {visibleRows.map((row) => (
-          <motion.div key={row.uid} variants={ROW_VARIANTS}>
-            <SessionRowItem
-              row={row}
-              active={isActiveRow(row)}
-              pinned={isPinned(row.uid as PinKey)}
-              onTogglePin={togglePin}
-            />
-          </motion.div>
-        ))}
+        {/* Rows glide to their new slot on pin/unpin/add/remove via `layout` and
+            fade OUT on remove via AnimatePresence `exit`. No `initial` prop on
+            purpose: under popLayout, an `initial` (even `false`/`undefined`)
+            replays on REORDER, fading every shifting row on each pin/unpin — a
+            worse artifact than a new row simply appearing. So add = the row
+            appears while its neighbors glide to make room; remove = fade + glide;
+            reorder = pure glide, all rows solid. (Enter-fade intentionally
+            dropped to keep the reorder clean — see the audit notes.) */}
+        <AnimatePresence initial={false} mode="popLayout">
+          {visibleRows.map((row) => (
+            <motion.div
+              key={row.uid}
+              layout
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={SESSION_ROW_TRANSITION}
+            >
+              <SessionRowItem
+                row={row}
+                active={isActiveRow(row)}
+                pinned={isPinned(row.uid as PinKey)}
+                onTogglePin={togglePin}
+              />
+            </motion.div>
+          ))}
+        </AnimatePresence>
 
         {!showSkeleton && !showEmpty && hasOverflow && (
           <motion.div variants={ROW_VARIANTS}>
