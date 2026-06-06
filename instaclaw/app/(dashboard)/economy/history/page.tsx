@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ArrowLeft, Coins } from "lucide-react";
+import { ArrowLeft, Coins, AlertTriangle, RotateCw } from "lucide-react";
 import { EconomyActivityFeed, type ActivityRow } from "@/components/dashboard/economy-activity-feed";
 
 /**
@@ -17,8 +17,13 @@ export default function EconomyHistoryPage() {
   const [rows, setRows] = useState<ActivityRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [noVm, setNoVm] = useState(false);
+  // Distinct from the empty archive: a fetch failure must NOT borrow the "no
+  // transactions yet" copy (which is correct for a real new user). (#2 fix.)
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    let failed = false;
     try {
       const res = await fetch("/api/agent-economy/history");
       if (res.status === 404) {
@@ -28,10 +33,13 @@ export default function EconomyHistoryPage() {
       if (res.ok) {
         const data = await res.json();
         setRows((data.rows as ActivityRow[]) ?? []);
+      } else {
+        failed = true;
       }
     } catch {
-      /* leave null — render the neutral empty surface */
+      failed = true;
     } finally {
+      setLoadError(failed);
       setLoading(false);
     }
   }, []);
@@ -78,6 +86,37 @@ export default function EconomyHistoryPage() {
           <p className="text-sm" style={{ color: "var(--muted)" }}>
             Your agent&apos;s history appears here once it&apos;s set up.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Load error (distinct from an empty archive): a transient fetch failure must
+  // not render the feed's "no transactions yet" empty state — that copy is right
+  // for a real new user, wrong for a hiccup. Show a neutral retry instead.
+  if (loadError && !rows) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {BackLink}
+        <div className="glass rounded-2xl p-10 text-center" style={{ border: "1px solid var(--border)" }}>
+          <div
+            className="w-12 h-12 rounded-2xl mx-auto mb-4 flex items-center justify-center"
+            style={{ background: "rgba(220,103,67,0.10)" }}
+          >
+            <AlertTriangle className="w-6 h-6" style={{ color: "var(--accent, #DC6743)" }} />
+          </div>
+          <h2 className="text-lg font-medium mb-1">Couldn&apos;t load history</h2>
+          <p className="text-sm mb-5 max-w-sm mx-auto" style={{ color: "var(--muted)" }}>
+            This is usually temporary, not a sign anything is wrong with your agent.
+          </p>
+          <button
+            onClick={() => load()}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all active:scale-95 cursor-pointer"
+            style={{ background: "rgba(0,0,0,0.05)", border: "1px solid var(--border)" }}
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+            Retry
+          </button>
         </div>
       </div>
     );
