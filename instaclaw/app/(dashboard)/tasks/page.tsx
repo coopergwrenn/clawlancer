@@ -2130,6 +2130,10 @@ function CommandCenterInner() {
   urlConvRef.current = searchParams.get("c");
 
   const [activeTab, setActiveTab] = useState<Tab>(() => {
+    // "New session" intent from the rail's "+" — make first paint correct.
+    const n = searchParams.get("new");
+    if (n === "chat") return "chat";
+    if (n === "task") return "tasks";
     const c = searchParams.get("c");
     const t = searchParams.get("t");
     if (c) return "chat";
@@ -2848,6 +2852,35 @@ function CommandCenterInner() {
     if (sidebarNav) router.replace("/tasks", { scroll: false }); // clear ?c so the rail drops the highlight
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [router, sidebarNav]);
+
+  // ─── "New session" intent (?new=chat|task) ─────────────────────────────────
+  // The rail's "+" routes here so the GENUINE new-chat / new-task flow runs
+  // (createNewConversation for chat; the real new-task-ready reset for tasks) —
+  // no parallel half-version. Outside Command Center the "+" shows the fork
+  // modal first; inside CC it skips straight to here for the current tab. We
+  // consume the intent, run the real action, then strip the param.
+  const newIntentGuard = useRef(false);
+  useEffect(() => {
+    const intent = searchParams.get("new");
+    if (intent !== "chat" && intent !== "task") {
+      newIntentGuard.current = false;
+      return;
+    }
+    if (newIntentGuard.current) return; // already consumed this intent
+    newIntentGuard.current = true;
+    if (intent === "chat") {
+      setActiveTab("chat");
+      createNewConversation(); // real action: clears active + shows composer + focuses
+      router.replace("/tasks", { scroll: false }); // strip ?new (createNewConversation's own replace is navMode-gated)
+    } else {
+      setActiveTab("tasks");
+      setFilter("all"); // don't hide a fresh task behind a non-"all" filter
+      setExpandedTaskId(null);
+      setChatInput("");
+      router.replace("/tasks?v=tasks", { scroll: false }); // strip ?new, keep the tasks tab
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [searchParams, createNewConversation, router]);
 
   const renameConversation = useCallback(async (convId: string, title: string) => {
     const trimmed = title.trim();

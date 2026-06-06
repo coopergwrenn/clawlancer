@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -36,6 +36,7 @@ import type { Session } from "next-auth";
 import { AgentbookHatBanner } from "@/components/dashboard/agentbook-hat-banner";
 import { ChannelNudgeBanner } from "@/components/dashboard/channel-nudge-banner";
 import { SessionsSection } from "@/components/dashboard/sessions-section";
+import { NewSessionModal, type NewSessionMode } from "@/components/dashboard/new-session-modal";
 import { useIsDesktop } from "@/components/dashboard/use-is-desktop";
 
 /**
@@ -465,6 +466,7 @@ function SidebarNav({
   isEdge,
   email,
   variant = "rail",
+  onNewSession,
 }: {
   pathname: string;
   activeChatId: string | null;
@@ -480,6 +482,7 @@ function SidebarNav({
   // we don't double-render it). Only one SidebarNav renders per viewport, so the
   // strip fetches /api/vm/usage at most once.
   variant?: "rail" | "drawer";
+  onNewSession?: () => void;
 }) {
   return (
     <>
@@ -531,6 +534,7 @@ function SidebarNav({
           onToggle={() => toggle("sessions")}
           activeChatId={activeChatId}
           activeTaskId={activeTaskId}
+          onNewSession={onNewSession}
         />
         {/* Collapsible sections */}
         {SECTIONS.map((section) => (
@@ -740,6 +744,37 @@ function SidebarShellInner({
   // computed (flexbox), never guessed — the seam-6 requirement.
   const isCommandCenter = pathname === "/tasks";
 
+  const router = useRouter();
+
+  // ─── "New session" (+) on the Sessions header. INSIDE Command Center we skip
+  // the fork modal (the Chat/Tasks tabs are right there) and start a new session
+  // in the current tab; OUTSIDE we open the fork modal so the user picks Chat vs
+  // Tasks. Both route through the page's REAL new-session flow via the ?new=
+  // intent. On mobile we close the drawer too, so the new session is visible.
+  const [newSessionOpen, setNewSessionOpen] = useState(false);
+  const handleNewSession = useCallback(() => {
+    if (isCommandCenter) {
+      // Known edge (deliberate, not a miss): the page doesn't write ?v= on tab
+      // switch, so we infer the active tab from ?t (a task is open) / ?v=tasks.
+      // Bare /tasks (default Tasks tab, nothing open) therefore forks to chat.
+      // Defensible default; not worth rewriting tab-switch URL behavior for.
+      const mode: NewSessionMode =
+        activeTaskId || searchParams.get("v") === "tasks" ? "task" : "chat";
+      router.push(`/tasks?new=${mode}`);
+      setDrawerOpen(false);
+    } else {
+      setNewSessionOpen(true);
+    }
+  }, [isCommandCenter, activeTaskId, searchParams, router, setDrawerOpen]);
+  const handleChooseNewSession = useCallback(
+    (mode: NewSessionMode) => {
+      router.push(`/tasks?new=${mode}`);
+      setNewSessionOpen(false);
+      setDrawerOpen(false);
+    },
+    [router, setDrawerOpen],
+  );
+
   // If the viewport grows to desktop while the drawer is open, close it — the
   // rail takes over and a left-open drawer must not linger off-screen.
   useEffect(() => {
@@ -785,6 +820,7 @@ function SidebarShellInner({
             toggle={toggle}
             isEdge={isEdge}
             email={email}
+            onNewSession={handleNewSession}
           />
         </aside>
       )}
@@ -910,12 +946,22 @@ function SidebarShellInner({
                   isEdge={isEdge}
                   email={email}
                   variant="drawer"
+                  onNewSession={handleNewSession}
                 />
               </motion.aside>
             </>
           )}
         </AnimatePresence>
       )}
+
+      {/* New-session fork modal (shown only when "+" is clicked OUTSIDE Command
+          Center). Rendered at the shell root so it overlays both rail + drawer;
+          z-[70] sits above the drawer (z-[45]) and below the gate overlay. */}
+      <NewSessionModal
+        open={newSessionOpen}
+        onClose={() => setNewSessionOpen(false)}
+        onChoose={handleChooseNewSession}
+      />
     </div>
   );
 }

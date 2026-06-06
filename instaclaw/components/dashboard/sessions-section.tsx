@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
-import { MessageSquare, ListTodo, Pin, ChevronDown } from "lucide-react";
+import { MessageSquare, ListTodo, Pin, ChevronDown, Plus } from "lucide-react";
 import {
   useSessions,
   rowFromConversation,
@@ -259,11 +259,15 @@ export function SessionsSection({
   onToggle,
   activeChatId,
   activeTaskId,
+  onNewSession,
 }: {
   collapsed: boolean;
   onToggle: () => void;
   activeChatId: string | null;
   activeTaskId: string | null;
+  // The rail's "+" — pinned on the header, always visible. The shell owns the
+  // routing (fork modal outside Command Center; straight-to-new inside it).
+  onNewSession?: () => void;
 }) {
   // Active-route protection: when a session is open, force the section open and
   // lock it (you can't collapse away your current session). Same pattern as
@@ -318,35 +322,64 @@ export function SessionsSection({
 
   return (
     <div className="mt-1">
-      {/* Header — mirrors CollapsibleSection's header */}
-      <button
-        type="button"
-        onClick={locked ? undefined : onToggle}
-        aria-expanded={open}
-        aria-disabled={locked || undefined}
-        title={locked ? "Current section" : open ? "Collapse" : "Expand"}
-        className={`group flex items-center gap-1.5 w-full px-3 pt-1 pb-1.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40 ${
-          locked ? "cursor-default" : "cursor-pointer"
-        }`}
-      >
-        <span
-          className="text-[10px] font-semibold uppercase tracking-[0.08em] select-none transition-colors"
-          style={{ color: "var(--muted)", opacity: locked ? 0.7 : open ? 0.7 : 0.55 }}
+      {/* Header — mirrors CollapsibleSection's header, plus the "+" new-session
+          affordance pinned on it (always visible, understated, left of the
+          chevron). A flex row of separate buttons so the "+" is its own action
+          (no nested <button>) while the label + chevron both toggle collapse. */}
+      <div className="group flex items-center w-full px-3 pt-1 pb-1.5 rounded-md gap-0.5">
+        <button
+          type="button"
+          onClick={locked ? undefined : onToggle}
+          aria-expanded={open}
+          aria-disabled={locked || undefined}
+          title={locked ? "Current section" : open ? "Collapse" : "Expand"}
+          className={`flex items-center flex-1 min-w-0 text-left rounded outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40 ${
+            locked ? "cursor-default" : "cursor-pointer"
+          }`}
         >
-          Sessions
-        </span>
-        <motion.span
-          className="ml-auto flex items-center"
-          animate={{ rotate: open ? 0 : -90 }}
-          transition={CHEVRON_SPRING}
-          style={{ opacity: locked ? 0.25 : 0.5 }}
-        >
-          <ChevronDown
-            className="w-3.5 h-3.5 transition-opacity group-hover:opacity-100"
+          <span
+            className="text-[10px] font-semibold uppercase tracking-[0.08em] select-none transition-colors"
+            style={{ color: "var(--muted)", opacity: locked ? 0.7 : open ? 0.7 : 0.55 }}
+          >
+            Sessions
+          </span>
+        </button>
+
+        {onNewSession && (
+          <button
+            type="button"
+            onClick={onNewSession}
+            aria-label="New session"
+            title="New session"
+            className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md cursor-pointer transition-all hover:bg-black/[0.06] active:scale-90 outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40"
             style={{ color: "var(--muted)" }}
-          />
-        </motion.span>
-      </button>
+          >
+            <Plus className="w-3.5 h-3.5 opacity-50 transition-opacity group-hover:opacity-90 hover:!opacity-100" />
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={locked ? undefined : onToggle}
+          aria-label={open ? "Collapse Sessions" : "Expand Sessions"}
+          aria-disabled={locked || undefined}
+          className={`shrink-0 flex items-center rounded outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40 ${
+            locked ? "cursor-default" : "cursor-pointer"
+          }`}
+        >
+          <motion.span
+            className="flex items-center"
+            animate={{ rotate: open ? 0 : -90 }}
+            transition={CHEVRON_SPRING}
+            style={{ opacity: locked ? 0.25 : 0.5 }}
+          >
+            <ChevronDown
+              className="w-3.5 h-3.5 transition-opacity group-hover:opacity-100"
+              style={{ color: "var(--muted)" }}
+            />
+          </motion.span>
+        </button>
+      </div>
 
       <motion.div
         initial={false}
