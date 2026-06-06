@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { EconomyPolicyControls } from "@/components/dashboard/economy-policy-controls";
 import { EconomyHero } from "@/components/dashboard/economy-hero";
+import { EconomyActivityFeed, type ActivityRow } from "@/components/dashboard/economy-activity-feed";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -32,14 +33,7 @@ interface EconomyState {
   lifetime: { earned_usdc: number; spent_usdc: number; net_usdc: number; truncated: boolean };
   reputation_score: number | null;
   active_offerings: number;
-  recent: Array<{
-    id: string;
-    direction: "earn" | "spend";
-    amount_usdc: number;
-    status: string;
-    response_summary: string | null;
-    created_at: string;
-  }>;
+  recent: ActivityRow[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -353,6 +347,11 @@ export default function EconomyPage() {
           </div>
         )}
       </section>
+
+      {/* ── Recent activity — the live stream of the agent's economic decisions.
+             Universal (gated on recent.length, not firstRun): a populated feed
+             for any agent that's transacted, a crafted empty state otherwise. ── */}
+      <EconomyActivityFeed recent={econ?.recent ?? null} />
 
       {/* ── Wallet + Standing — only in the rich-data state; the first-run hero
              presents these as the agent's economic identity instead. ── */}

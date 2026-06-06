@@ -51,6 +51,7 @@ interface TxnRow {
   tx_hash: string | null;
   created_at: string;
   settled_at: string | null;
+  metadata: Record<string, unknown> | null;
 }
 
 function num(v: number | string | null | undefined): number {
@@ -82,7 +83,7 @@ export async function GET() {
   const { data: txns, error: txnErr } = await supabase
     .from("frontier_transactions")
     .select(
-      "id, rail, direction, amount_usdc, protocol_fee_usdc, status, counterparty_address, counterparty_vm_id, response_summary, tx_hash, created_at, settled_at",
+      "id, rail, direction, amount_usdc, protocol_fee_usdc, status, counterparty_address, counterparty_vm_id, response_summary, tx_hash, created_at, settled_at, metadata",
     )
     .eq("vm_id", vmId)
     .order("created_at", { ascending: false })
@@ -120,18 +121,48 @@ export async function GET() {
 
   const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
-  const recent = rows.slice(0, RECENT_COUNT).map((r) => ({
-    id: r.id,
-    rail: r.rail,
-    direction: r.direction,
-    amount_usdc: round6(num(r.amount_usdc)),
-    status: r.status,
-    counterparty_address: r.counterparty_address,
-    counterparty_vm_id: r.counterparty_vm_id,
-    response_summary: r.response_summary,
-    tx_hash: r.tx_hash,
-    created_at: r.created_at,
-  }));
+  // Decision-context extractors from the authorize-time metadata jsonb. Every
+  // authorize stamps the agent's economic state (standing + earned budget) and
+  // the eventual outcome (result_used, latency); the activity feed surfaces it
+  // so a row reads like a decision, not a line item. Guarded — metadata shape
+  // is owned by the spend skill and may be partial on older rows.
+  const mStr = (m: Record<string, unknown>, k: string): string | null =>
+    typeof m[k] === "string" && (m[k] as string).trim() !== "" ? (m[k] as string) : null;
+  const mNum = (m: Record<string, unknown>, k: string): number | null => {
+    const v = m[k];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) return Number(v);
+    return null;
+  };
+  const mBool = (m: Record<string, unknown>, k: string): boolean | null =>
+    typeof m[k] === "boolean" ? (m[k] as boolean) : null;
+
+  const recent = rows.slice(0, RECENT_COUNT).map((r) => {
+    const m = (r.metadata ?? {}) as Record<string, unknown>;
+    return {
+      id: r.id,
+      rail: r.rail,
+      direction: r.direction,
+      amount_usdc: round6(num(r.amount_usdc)),
+      protocol_fee_usdc: round6(num(r.protocol_fee_usdc)),
+      status: r.status,
+      counterparty_address: r.counterparty_address,
+      counterparty_vm_id: r.counterparty_vm_id,
+      response_summary: r.response_summary,
+      tx_hash: r.tx_hash,
+      created_at: r.created_at,
+      settled_at: r.settled_at,
+      // decision context — the agent's economic state at the moment it decided
+      category: mStr(m, "category"),
+      mode: mStr(m, "mode"),
+      result_used: mBool(m, "result_used"),
+      standing_at_decision: mNum(m, "score_at_authorize"),
+      earned_budget_at_decision: mNum(m, "earned_budget_at_authorize"),
+      latency_ms: mNum(m, "latency_ms"),
+      endpoint: mStr(m, "endpoint"),
+      pay_error: mStr(m, "pay_error"),
+    };
+  });
 
   return NextResponse.json({
     window_24h: {
