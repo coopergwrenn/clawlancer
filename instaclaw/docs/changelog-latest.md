@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-06
 
-Window: `20d26ae9532e81045e7f6a69c21ec742d9f6759c` → `HEAD` (HEAD = `b696606f`)
+Window: `b696606fc7d3982cf7b91fa7ce76e9ce008130c8` → `HEAD` (HEAD = `eb010a58`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: b696606fc7d3982cf7b91fa7ce76e9ce008130c8 -->
+<!-- LAST_GENERATED_SHA: eb010a5812f19ea57efc940d96dfd46045c2c56e -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `b696606f` 2026-06-06 — fix(sidebar): new-session modal a11y + "+" findability (audit pass) [2 files] _(ai-assisted)_
+- `eb010a58` 2026-06-06 — fix(economy): remove em-dashes from /economy copy (standing rule) [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `e1d7ee2d` 2026-06-06 — chore(changelog): auto-update [skip ci] [2 files]
+- `d49a7b8f` 2026-06-06 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `b696606f` 2026-06-06 — fix(sidebar): new-session modal a11y + "+" findability (audit pass) [2 files] _(ai-assisted)_
+- `eb010a58` 2026-06-06 — fix(economy): remove em-dashes from /economy copy (standing rule) [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `e1d7ee2d` 2026-06-06 — chore(changelog): auto-update [skip ci] [2 files]
+- `d49a7b8f` 2026-06-06 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `b696606f` 2026-06-06 — fix(sidebar): new-session modal a11y + "+" findability (audit pass)
+- `eb010a58` 2026-06-06 — fix(economy): remove em-dashes from /economy copy (standing rule)
 
 ## Appendix — every commit (chronological)
 
-- `e1d7ee2d` 2026-06-06 — chore(changelog): auto-update [skip ci] [2 files]
-- `b696606f` 2026-06-06 — fix(sidebar): new-session modal a11y + "+" findability (audit pass) [2 files] _(ai-assisted)_
+- `d49a7b8f` 2026-06-06 — chore(changelog): auto-update [skip ci] [2 files]
+- `eb010a58` 2026-06-06 — fix(economy): remove em-dashes from /economy copy (standing rule) [1 files] _(ai-assisted)_
