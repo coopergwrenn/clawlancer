@@ -99,10 +99,10 @@ export default function EconomyPage() {
         } else if (j.reason === "pending_setup") {
           setPendingSetup(true);
         } else {
-          setSaveError("Couldn't save that — try again in a moment.");
+          setSaveError("Couldn't save that. Try again in a moment.");
         }
       } catch {
-        setSaveError("Couldn't save that — try again in a moment.");
+        setSaveError("Couldn't save that. Try again in a moment.");
       } finally {
         setSaving(false);
         setConfirmEnable(false);
@@ -177,7 +177,7 @@ export default function EconomyPage() {
             Economy
           </h1>
           <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
-            Where your agent earns, spends, and builds a reputation — always under limits you set.
+            Where your agent earns, spends, and builds a reputation, always under limits you set.
           </p>
         </div>
       )}
@@ -226,8 +226,8 @@ export default function EconomyPage() {
             </div>
             <p className="text-sm max-w-xl" style={{ color: "var(--muted)" }}>
               {enabled
-                ? "Your agent can pay for services on its own — within the limits it earns. It still asks you before anything large or unusual, and you can switch this off instantly."
-                : "Off by default. Your agent will ask you before paying for anything. Turn this on to let it handle small, routine purchases on its own — within limits it earns over time."}
+                ? "Your agent can pay for services on its own, within the limits it earns. It still asks you before anything large or unusual, and you can switch this off instantly."
+                : "Off by default. Your agent will ask you before paying for anything. Turn this on to let it handle small, routine purchases on its own, within limits it earns over time."}
             </p>
           </div>
 
@@ -297,7 +297,7 @@ export default function EconomyPage() {
           >
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "rgb(234,179,8)" }} />
             <p className="text-xs" style={{ color: "var(--muted)" }}>
-              This control is being switched on for your account — check back shortly. (Your agent stays in
+              This control is being switched on for your account. Check back shortly. (Your agent stays in
               ask-first mode until then.)
             </p>
           </div>
@@ -320,7 +320,7 @@ export default function EconomyPage() {
           >
             <p className="text-sm font-medium mb-1">Let your agent spend on its own?</p>
             <p className="text-xs mb-4" style={{ color: "var(--muted)" }}>
-              Your agent will be able to pay for small, routine services without checking in first — capped by the
+              Your agent will be able to pay for small, routine services without checking in first, capped by the
               limits it earns. It still asks you before anything large, and you can turn this off in one tap.
             </p>
             <div className="flex gap-2">
