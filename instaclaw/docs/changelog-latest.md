@@ -1,29 +1,28 @@
-# Changelog — generated 2026-06-05
+# Changelog — generated 2026-06-06
 
-Window: `8fc003024cb1e7f9586edd480b53d7e6974d8c9a` → `HEAD` (HEAD = `a3b4fd8c`)
+Window: `a3b4fd8c0e110abaac950de22eef68f880e511c2` → `HEAD` (HEAD = `bc492c9d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: a3b4fd8c0e110abaac950de22eef68f880e511c2 -->
+<!-- LAST_GENERATED_SHA: bc492c9dd6d1a56567afa87a6a546842563291e6 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
 - **Infrastructure:** 0
-- **Feature (user-facing):** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-_None in this window._
+- `bc492c9d` 2026-06-05 — fix(sidebar): hard-cap the Sessions rail at 3 — fixed height, nav never hostage to session count [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `d96a672e` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
-- `a3b4fd8c` 2026-06-05 — docs(sidebar): reconcile 2 sub-PRD drifts the adversarial pass found [1 files] _(ai-assisted)_
+- `a1085cd4` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -35,26 +34,25 @@ _(none)_
 
 _(none)_
 
-### Feature (user-facing) (0)
+### Feature (user-facing) (1)
 
-_(none)_
+- `bc492c9d` 2026-06-05 — fix(sidebar): hard-cap the Sessions rail at 3 — fixed height, nav never hostage to session count [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `d96a672e` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
-- `a3b4fd8c` 2026-06-05 — docs(sidebar): reconcile 2 sub-PRD drifts the adversarial pass found [1 files] _(ai-assisted)_
+- `a1085cd4` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `a3b4fd8c` 2026-06-05 — docs(sidebar): reconcile 2 sub-PRD drifts the adversarial pass found
+- `bc492c9d` 2026-06-05 — fix(sidebar): hard-cap the Sessions rail at 3 — fixed height, nav never hostage to session count
 
 ## Appendix — every commit (chronological)
 
-- `d96a672e` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
-- `a3b4fd8c` 2026-06-05 — docs(sidebar): reconcile 2 sub-PRD drifts the adversarial pass found [1 files] _(ai-assisted)_
+- `a1085cd4` 2026-06-05 — chore(changelog): auto-update [skip ci] [2 files]
+- `bc492c9d` 2026-06-05 — fix(sidebar): hard-cap the Sessions rail at 3 — fixed height, nav never hostage to session count [1 files] _(ai-assisted)_
