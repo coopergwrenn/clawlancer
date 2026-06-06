@@ -34,6 +34,7 @@ interface EconomyState {
   reputation_score: number | null;
   active_offerings: number;
   recent: ActivityRow[];
+  recent_has_more?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -351,7 +352,7 @@ export default function EconomyPage() {
       {/* ── Recent activity — the live stream of the agent's economic decisions.
              Universal (gated on recent.length, not firstRun): a populated feed
              for any agent that's transacted, a crafted empty state otherwise. ── */}
-      <EconomyActivityFeed recent={econ?.recent ?? null} />
+      <EconomyActivityFeed recent={econ?.recent ?? null} hasMore={econ?.recent_has_more ?? false} />
 
       {/* ── Wallet + Standing — only in the rich-data state; the first-run hero
              presents these as the agent's economic identity instead. ── */}
@@ -383,7 +384,7 @@ export default function EconomyPage() {
                 {copied ? "Copied" : shortAddr(settings.wallet_address)}
               </button>
               <p className="text-[11px] mt-4 leading-snug" style={{ color: "var(--muted)" }}>
-                Your agent&apos;s on-chain wallet. Funding it from the dashboard is coming soon — for now, send USDC to
+                Your agent&apos;s on-chain wallet. Funding it from the dashboard is coming soon. For now, send USDC to
                 this address on Base.
               </p>
             </>

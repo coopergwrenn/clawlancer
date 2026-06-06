@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Activity,
   ChevronDown,
+  ArrowRight,
   ExternalLink,
   Sparkles,
   Bot,
@@ -448,76 +450,145 @@ function DecisionRecord({ r }: { r: ActivityRow }) {
 
 // ── feed ─────────────────────────────────────────────────────────────────────
 
-export function EconomyActivityFeed({ recent }: { recent?: ActivityRow[] | null }) {
-  const rows = (recent ?? []).slice(0, 10);
-  const live = rows.length > 0 && Date.now() - Date.parse(rows[0].created_at) < 2 * 60 * 1000;
+export function EconomyActivityFeed({
+  recent,
+  hasMore = false,
+  full = false,
+  historyHref = "/economy/history",
+}: {
+  recent?: ActivityRow[] | null;
+  /** true when the archive holds more decisions than the dashboard's recent
+   *  set (state.recent_has_more) — gates the "See full history" footer. */
+  hasMore?: boolean;
+  /** the dedicated full-history surface: render every row, with no cap /
+   *  show-more / footer, and let the page own the heading. */
+  full?: boolean;
+  historyHref?: string;
+}) {
+  // Dashboard caps the SOURCE at 10 (state returns ≤10 anyway); the full-history
+  // page passes the complete set and renders all of it.
+  const rows = full ? recent ?? [] : (recent ?? []).slice(0, 10);
+
+  // Compact-at-every-state: default to a short glance, reveal the rest IN PLACE.
+  // The trap with a single whole-card toggle is that "expanded" just restores
+  // the sprawl; capping to CAP + show-more keeps the card small in BOTH states.
+  const CAP = 5;
+  const [expanded, setExpanded] = useState(false);
+  const capActive = !full && rows.length > CAP && !expanded;
+  const visible = capActive ? rows.slice(0, CAP) : rows;
+  const hiddenCount = rows.length - CAP;
+
+  const live = !full && rows.length > 0 && Date.now() - Date.parse(rows[0].created_at) < 2 * 60 * 1000;
+  const showFooter = !full && rows.length > 0 && hasMore;
 
   return (
     <div className="glass rounded-2xl p-6 sm:p-7">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Activity className="w-4 h-4" style={{ color: "var(--muted)" }} />
-          <h3 className="text-sm font-medium">Recent activity</h3>
-        </div>
-        {live && (
-          <span
-            className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em]"
-            style={{ color: ACCENT }}
-          >
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping" style={{ background: ACCENT }} />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5" style={{ background: ACCENT }} />
-            </span>
-            Live
-          </span>
-        )}
-      </div>
-      <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>
-        Your agent&apos;s economic decisions, as they happen.
-      </p>
+      {!full && (
+        <>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4" style={{ color: "var(--muted)" }} />
+              <h3 className="text-sm font-medium">Recent activity</h3>
+            </div>
+            {live && (
+              <span
+                className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em]"
+                style={{ color: ACCENT }}
+              >
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping" style={{ background: ACCENT }} />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5" style={{ background: ACCENT }} />
+                </span>
+                Live
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>
+            Your agent&apos;s economic decisions, as they happen.
+          </p>
+        </>
+      )}
 
       {rows.length === 0 ? (
         <EmptyState />
       ) : (
-        <div className="relative mt-4">
-          {/* the timeline spine — one continuous warm thread the decision-nodes
-              sit on; faded at both ends so it reads as the agent's economic life
-              emerging and trailing off, not a hard rule. left:30px = the node
-              centers (px-3 inset + half of the w-9 disc). */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute top-0 bottom-0 w-[1.5px]"
-            style={{
-              left: "28px",
-              transform: "translateX(-50%)",
-              background: SPINE,
-              maskImage: "linear-gradient(to bottom, transparent 0, #000 26px, #000 calc(100% - 22px), transparent 100%)",
-              WebkitMaskImage:
-                "linear-gradient(to bottom, transparent 0, #000 26px, #000 calc(100% - 22px), transparent 100%)",
-            }}
-          />
+        <>
+          <div className={full ? "relative" : "relative mt-4"}>
+            {/* the timeline spine — one continuous warm thread the decision-nodes
+                sit on; faded at both ends so it reads as the agent's economic life
+                emerging and trailing off, not a hard rule. left:28px = the node
+                centers (px-3 inset + half of the w-8 disc). */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute top-0 bottom-0 w-[1.5px]"
+              style={{
+                left: "28px",
+                transform: "translateX(-50%)",
+                background: SPINE,
+                maskImage: "linear-gradient(to bottom, transparent 0, #000 26px, #000 calc(100% - 22px), transparent 100%)",
+                WebkitMaskImage:
+                  "linear-gradient(to bottom, transparent 0, #000 26px, #000 calc(100% - 22px), transparent 100%)",
+              }}
+            />
 
-          {(() => {
-            let lastBucket: string | null = null;
-            return rows.map((r, i) => {
-              const bucket = dayBucket(r.created_at);
-              const showHeader = bucket !== lastBucket;
-              lastBucket = bucket;
-              return (
-                <Fragment key={r.id}>
-                  {showHeader && <GroupHeader label={bucket} first={i === 0} />}
-                  <motion.div
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: Math.min(i, 8) * 0.04, duration: 0.45, ease: EASE }}
-                  >
-                    <Row r={r} />
-                  </motion.div>
-                </Fragment>
-              );
-            });
-          })()}
-        </div>
+            {(() => {
+              let lastBucket: string | null = null;
+              return visible.map((r, i) => {
+                const bucket = dayBucket(r.created_at);
+                const showHeader = bucket !== lastBucket;
+                lastBucket = bucket;
+                return (
+                  <Fragment key={r.id}>
+                    {showHeader && <GroupHeader label={bucket} first={i === 0} />}
+                    <motion.div
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: Math.min(i, 8) * 0.04, duration: 0.45, ease: EASE }}
+                    >
+                      <Row r={r} />
+                    </motion.div>
+                  </Fragment>
+                );
+              });
+            })()}
+          </div>
+
+          {/* Show more / less — expands the list in place, keeping the card
+              compact by default. Only when there's more than the cap to show. */}
+          {!full && rows.length > CAP && (
+            <button
+              onClick={() => setExpanded((e) => !e)}
+              className="w-full flex items-center justify-center gap-1.5 mt-1.5 py-2 text-[12px] font-medium rounded-lg transition-colors cursor-pointer"
+              style={{ color: "var(--muted)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = ACCENT; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--muted)"; }}
+            >
+              {expanded ? "Show less" : `Show ${hiddenCount} more`}
+              <ChevronDown
+                className="w-3.5 h-3.5 transition-transform duration-300"
+                style={{ transform: expanded ? "rotate(180deg)" : "none" }}
+              />
+            </button>
+          )}
+
+          {/* "See every decision" — a quiet card footer to the dedicated archive
+              (/economy/history), shown only when the archive holds more than the
+              dashboard does (recent_has_more). */}
+          {showFooter && (
+            <div className="mt-2 pt-2.5" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+              <Link
+                href={historyHref}
+                className="group flex items-center justify-between px-1 py-1.5 text-[12.5px] rounded-lg transition-colors"
+                style={{ color: "var(--muted)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = ACCENT; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--muted)"; }}
+              >
+                <span>See every decision</span>
+                <ArrowRight className="w-3.5 h-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
+              </Link>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

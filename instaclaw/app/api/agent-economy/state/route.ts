@@ -182,5 +182,9 @@ export async function GET() {
     reputation_score: vm.frontier_reputation_score ?? null,
     active_offerings: offeringCount ?? 0,
     recent,
+    // True when the agent has more decisions than the recent[] slice surfaces —
+    // the dashboard feed uses this to offer "See full history" only when the
+    // archive genuinely holds more than what's shown (see /economy/history).
+    recent_has_more: rows.length > RECENT_COUNT,
   });
 }
