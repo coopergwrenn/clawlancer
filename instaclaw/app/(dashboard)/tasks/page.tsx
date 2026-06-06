@@ -3396,22 +3396,34 @@ function CommandCenterInner() {
         onChange={handleFileSelect}
       />
       {/* ── Static header (never scrolls) ───────────────────── */}
+      {/* The page-title H1 ("Command Center") + subtitle were removed
+          (2026-06-06): the left nav already marks this page active, so the H1
+          restated where you are and ate vertical space for zero info. The
+          filter-pills row is now the page top, with The Floor flush-right on the
+          same line. The flex PIN MATH IS UNCHANGED — this is still the shrink-0
+          child 1; the scroll region (flex-1 min-h-0) below absorbs the reclaimed
+          height, and the composer (shrink-0) stays pinned to the bottom. Do not
+          move FilterPills/The Floor out of this shrink-0 block or alter the
+          three flex children, or the composer can drop off-screen. */}
       <div className="shrink-0">
-        <div className="hidden sm:flex items-center justify-between gap-4">
-          <h1
-            className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]"
-            style={{ fontFamily: "var(--font-serif)" }}
-          >
-            Command Center
-          </h1>
-          {/* The Floor — flush-right on the title row so it never steals
-              vertical space from the task list. This is the landing-hero
-              liquid-glass nav button (.liquid-glass-nav-btn), transplanted
-              verbatim — same 3-element root/surface/shadow architecture, same
-              frosting, depth, and hover the hero's "dashboard" / "get started"
-              buttons use. Text + arrow only; no icon, no dot. Desktop-only like
-              the title — mobile reaches The Floor via primaryNav. */}
-          <span className="liquid-glass-nav-btn-root">
+        <div className="flex items-center justify-between gap-4">
+          {/* Filter pills are the new top-left. flex-1 + min-w-0 so they own the
+              row width and The Floor stays flush-right even when the pills are
+              dimmed (chat/library tabs) — FilterPills always renders, so the
+              left slot is never empty and The Floor never floats orphaned. */}
+          <div className="min-w-0 flex-1">
+            <FilterPills
+              active={filter}
+              onChange={setFilter}
+              visible={activeTab === "tasks"}
+              failedCount={failedCount}
+            />
+          </div>
+          {/* The Floor — desktop-only liquid-glass nav button, re-homed flush-
+              right on the new top row (was anchored to the removed title row).
+              Verbatim 3-element root/surface/shadow architecture. Mobile reaches
+              The Floor via primaryNav. */}
+          <span className="hidden sm:block liquid-glass-nav-btn-root shrink-0">
             <Link href="/floor" className="liquid-glass-nav-btn group">
               The Floor
               <span
@@ -3423,19 +3435,6 @@ function CommandCenterInner() {
             </Link>
             <div aria-hidden="true" className="liquid-glass-nav-btn-shadow"></div>
           </span>
-        </div>
-        <p className="hidden sm:block text-base mt-2" style={{ color: "var(--muted)" }}>
-          Your agent works around the clock. Here&apos;s everything
-          it&apos;s handling.
-        </p>
-
-        <div className="mt-1 sm:mt-4">
-          <FilterPills
-            active={filter}
-            onChange={setFilter}
-            visible={activeTab === "tasks"}
-            failedCount={failedCount}
-          />
         </div>
 
         <div
