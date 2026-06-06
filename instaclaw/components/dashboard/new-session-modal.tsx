@@ -32,20 +32,61 @@ export function NewSessionModal({
   onChoose: (mode: NewSessionMode) => void;
 }) {
   const firstRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // The element that opened the modal (the rail "+") — restored on close so
+  // keyboard users return to where they were instead of dropping to <body>.
+  const openerRef = useRef<HTMLElement | null>(null);
+  // onClose can be an inline arrow from the parent (new identity each render);
+  // keep it in a ref so the effect below only runs when `open` toggles (not on
+  // every parent re-render, which would re-trap + re-steal focus mid-interaction).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
-  // Esc to close + focus the first choice on open.
+  // On open: stash the opener, focus the first choice, and trap Tab/Shift+Tab
+  // within the dialog (so focus can't reach the page behind — e.g. a blind-tab
+  // to a destructive control). On close/unmount: return focus to the opener.
   useEffect(() => {
     if (!open) return;
+    const opener = document.activeElement;
+    openerRef.current = opener instanceof HTMLElement ? opener : null;
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const nodes = panel.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (nodes.length === 0) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey) {
+        if (active === first || !panel.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !panel.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      }
     };
+
     window.addEventListener("keydown", onKey);
     const t = requestAnimationFrame(() => firstRef.current?.focus());
     return () => {
       window.removeEventListener("keydown", onKey);
       cancelAnimationFrame(t);
+      const o = openerRef.current;
+      // rAF so focus lands after the close state settles; guard against an
+      // opener that's been unmounted (e.g. mobile drawer closed on choose).
+      if (o && document.body.contains(o)) requestAnimationFrame(() => o.focus());
     };
-  }, [open, onClose]);
+  }, [open]);
 
   return (
     <AnimatePresence>
@@ -67,6 +108,7 @@ export function NewSessionModal({
 
           {/* panel — the dashboard's warm/light material, not a system dialog */}
           <motion.div
+            ref={panelRef}
             role="dialog"
             aria-modal="true"
             aria-label="Start a new session"

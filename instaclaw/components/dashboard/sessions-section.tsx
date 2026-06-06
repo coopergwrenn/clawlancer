@@ -354,7 +354,7 @@ export function SessionsSection({
             className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md cursor-pointer transition-all hover:bg-black/[0.06] active:scale-90 outline-none focus-visible:ring-2 focus-visible:ring-[#DC6743]/40"
             style={{ color: "var(--muted)" }}
           >
-            <Plus className="w-3.5 h-3.5 opacity-50 transition-opacity group-hover:opacity-90 hover:!opacity-100" />
+            <Plus className="w-3.5 h-3.5 opacity-[0.65] transition-opacity group-hover:opacity-90 hover:!opacity-100" />
           </button>
         )}
 
