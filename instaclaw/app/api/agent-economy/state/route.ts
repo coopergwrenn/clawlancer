@@ -28,6 +28,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
+import { loadVmStanding } from "@/lib/frontier-standing-db";
+import type { FrontierTier } from "@/lib/frontier-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +72,7 @@ export async function GET() {
   // user → VM. A user without an assigned VM has no economy yet.
   const { data: vm } = await supabase
     .from("instaclaw_vms")
-    .select("id, frontier_reputation_score")
+    .select("id, tier")
     .eq("assigned_to", session.user.id)
     .single();
 
@@ -109,6 +111,34 @@ export async function GET() {
     } else {
       spentLife += amt;
       if (inWindow) { spent24h += amt; count24h++; }
+    }
+  }
+
+  // Live credit standing — the SAME 300-850 score the authorize gate stamps into
+  // each decision's score_at_authorize (lib/frontier-standing-db.loadVmStanding,
+  // shared one-source-of-truth with the gate), so the Standing surfaces match the
+  // feed instead of the never-written frontier_reputation_score rollup column.
+  // Surfaced only once the agent has a settled track record; a brand-new agent
+  // stays null so the crafted empty / first-run Standing copy is preserved.
+  // Tolerant of a ledger-read failure (degrade to null; never break the page).
+  const TIERS: readonly FrontierTier[] = ["starter", "pro", "power"];
+  const tier = (TIERS as readonly string[]).includes(String(vm.tier ?? "").toLowerCase())
+    ? (String(vm.tier).toLowerCase() as FrontierTier)
+    : "starter";
+  const hasTrackRecord = earnedLife > 0 || spentLife > 0;
+  let reputationScore: number | null = null;
+  if (hasTrackRecord) {
+    try {
+      const { standing } = await loadVmStanding(supabase, {
+        vmId,
+        ownerId: session.user.id,
+        tier,
+        nowMs: Date.now(),
+      });
+      reputationScore = standing.score;
+    } catch (e) {
+      console.error("[/api/agent-economy/state] standing read failed:", e);
+      reputationScore = null;
     }
   }
 
@@ -179,7 +209,7 @@ export async function GET() {
       // totals are a floor and the dashboard should prefer rollup columns.
       truncated: rows.length >= SCAN_LIMIT,
     },
-    reputation_score: vm.frontier_reputation_score ?? null,
+    reputation_score: reputationScore,
     active_offerings: offeringCount ?? 0,
     recent,
     // True when the agent has more decisions than the recent[] slice surfaces —
