@@ -149,10 +149,10 @@ export function EconomyPolicyControls() {
         // Re-fetch so the live headline (autonomy) + effective bands reflect the save.
         await fetchPolicy();
       } else {
-        setError("Couldn't save — try again in a moment.");
+        setError("Couldn't save. Try again in a moment.");
       }
     } catch {
-      setError("Couldn't save — try again in a moment.");
+      setError("Couldn't save. Try again in a moment.");
     } finally {
       setSaving(false);
     }
@@ -182,7 +182,7 @@ export function EconomyPolicyControls() {
 
   // ── GAP-1 headline content ──
   const bindingMsg: Record<string, string> = {
-    earned: "its earned trust — this grows as it makes good decisions",
+    earned: "its earned trust, which grows as it makes good decisions",
     daily_limit: "your daily ceiling",
     wallet: "its wallet balance",
   };
@@ -213,14 +213,14 @@ export function EconomyPolicyControls() {
         {!a ? (
           <p className="text-sm" style={{ color: "var(--muted)" }}>
             {data.autonomy_error
-              ? "Couldn't load your agent's current spending power — refresh in a moment."
+              ? "Couldn't load your agent's current spending power. Refresh in a moment."
               : "Loading…"}
           </p>
         ) : a.binding === "spend_disabled" ? (
           <>
             <p className="text-2xl font-semibold tracking-tight">Off</p>
             <p className="text-xs mt-1 leading-snug" style={{ color: "var(--muted)" }}>
-              Autonomous spending is off — your agent asks before every purchase.
+              Autonomous spending is off. Your agent asks before every purchase.
               {a.potentialMaxTodayUsd > 0
                 ? ` Turn it on above and it could handle up to ${usd(a.potentialMaxTodayUsd)}/day on its own.`
                 : ""}
@@ -240,8 +240,8 @@ export function EconomyPolicyControls() {
               {a.binding === "wallet"
                 ? `Its wallet is below the ${usd(data.bands.minWalletBalance)} floor it keeps in reserve. Add USDC to the wallet above and it can spend up to ${usd(a.potentialMaxTodayUsd)}/day on its own.`
                 : a.binding === "daily_limit"
-                  ? "It's used its autonomous budget for today — resets on a rolling 24 hours."
-                  : "It hasn't earned spending room yet — this grows as it makes good decisions."}
+                  ? "It's used its autonomous budget for today. Resets on a rolling 24 hours."
+                  : "It hasn't earned spending room yet. This grows as it makes good decisions."}
             </p>
           </>
         ) : (
@@ -293,7 +293,7 @@ export function EconomyPolicyControls() {
         <h3 className="text-sm font-medium">Ask-first ceilings</h3>
       </div>
       <p className="text-[11px] mb-4 leading-snug" style={{ color: "var(--muted)" }}>
-        The most your agent will ever spend without asking. It grows toward these as it earns trust — the gate always
+        The most your agent will ever spend without asking. It grows toward these as it earns trust. The gate always
         uses whichever is lower (what it&apos;s earned, or your ceiling). Lower these anytime; you can&apos;t raise them above your plan.
       </p>
 
@@ -332,7 +332,7 @@ export function EconomyPolicyControls() {
         <h3 className="text-sm font-medium">What it may buy on its own</h3>
       </div>
       <p className="text-[11px] mb-3 leading-snug" style={{ color: "var(--muted)" }}>
-        Uncheck anything you&apos;d rather approve case by case — those still work, your agent just asks first.
+        Uncheck anything you&apos;d rather approve case by case. Those still work, your agent just asks first.
       </p>
       <div className="grid sm:grid-cols-2 gap-2">
         {data.tier_default_categories.map((cat) => {
@@ -363,7 +363,7 @@ export function EconomyPolicyControls() {
           <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: "var(--muted)" }} />
           <p className="text-[11px] leading-snug" style={{ color: "var(--muted)" }}>
             Not available for autonomous spend: {aboveTier.map((c) => CATEGORY_LABELS[c] ?? c).join(", ")}
-            {aboveTier.includes("market") ? " — trading stays approval-only by design." : "."}
+            {aboveTier.includes("market") ? ". Trading stays approval-only by design." : "."}
           </p>
         </div>
       )}
@@ -386,7 +386,7 @@ export function EconomyPolicyControls() {
         )}
         {pending && (
           <span className="text-xs" style={{ color: "rgb(234,179,8)" }}>
-            Categories are being set up — check back shortly.
+            Categories are being set up. Check back shortly.
           </span>
         )}
         {error && <span className="text-xs" style={{ color: "rgb(239,68,68)" }}>{error}</span>}
