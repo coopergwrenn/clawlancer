@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-06
 
-Window: `8b4f3aec969d4732e8a794e9fe87faab32d3027f` → `HEAD` (HEAD = `20d26ae9`)
+Window: `20d26ae9532e81045e7f6a69c21ec742d9f6759c` → `HEAD` (HEAD = `b696606f`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 20d26ae9532e81045e7f6a69c21ec742d9f6759c -->
+<!-- LAST_GENERATED_SHA: b696606fc7d3982cf7b91fa7ce76e9ce008130c8 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `20d26ae9` 2026-06-05 — feat(sidebar): new-session "+" fork on the Sessions rail [4 files] _(ai-assisted)_
+- `b696606f` 2026-06-06 — fix(sidebar): new-session modal a11y + "+" findability (audit pass) [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `c430546a` 2026-06-06 — chore(changelog): auto-update [skip ci] [2 files]
+- `e1d7ee2d` 2026-06-06 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `20d26ae9` 2026-06-05 — feat(sidebar): new-session "+" fork on the Sessions rail [4 files] _(ai-assisted)_
+- `b696606f` 2026-06-06 — fix(sidebar): new-session modal a11y + "+" findability (audit pass) [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `c430546a` 2026-06-06 — chore(changelog): auto-update [skip ci] [2 files]
+- `e1d7ee2d` 2026-06-06 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `20d26ae9` 2026-06-05 — feat(sidebar): new-session "+" fork on the Sessions rail
+- `b696606f` 2026-06-06 — fix(sidebar): new-session modal a11y + "+" findability (audit pass)
 
 ## Appendix — every commit (chronological)
 
-- `c430546a` 2026-06-06 — chore(changelog): auto-update [skip ci] [2 files]
-- `20d26ae9` 2026-06-05 — feat(sidebar): new-session "+" fork on the Sessions rail [4 files] _(ai-assisted)_
+- `e1d7ee2d` 2026-06-06 — chore(changelog): auto-update [skip ci] [2 files]
+- `b696606f` 2026-06-06 — fix(sidebar): new-session modal a11y + "+" findability (audit pass) [2 files] _(ai-assisted)_
