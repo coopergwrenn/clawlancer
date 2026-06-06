@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Check, RotateCw, Tag, Lock, Sparkles, Hand, Wallet, TrendingUp } from "lucide-react";
+import { Check, RotateCw, Tag, Lock, Sparkles, Hand, Wallet, TrendingUp, AlertTriangle } from "lucide-react";
 
 /**
  * The "see + control your agent's money" surface on /economy.
@@ -91,11 +91,12 @@ export function EconomyPolicyControls() {
   }, []);
 
   const fetchPolicy = useCallback(async () => {
+    setLoading(true);
     try {
       const res = await fetch("/api/agent-economy/policy");
       if (res.ok) hydrate(await res.json());
     } catch {
-      /* leave null → neutral state */
+      /* leave null → render the inline error-with-retry below, not a vanished panel */
     } finally {
       setLoading(false);
     }
@@ -174,7 +175,29 @@ export function EconomyPolicyControls() {
       />
     );
   }
-  if (!data) return null;
+  // Error-vs-null: a failed /policy load used to silently vanish the whole panel
+  // (return null). After loading, !data only happens on a failed fetch (success
+  // always hydrates), so show a small inline retry instead of disappearing.
+  if (!data) {
+    return (
+      <div className="glass rounded-2xl p-6" style={{ border: "1px solid var(--border)" }}>
+        <div className="flex items-center gap-2.5">
+          <AlertTriangle className="w-4 h-4 shrink-0" style={{ color: "var(--accent, #DC6743)" }} />
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            Couldn&apos;t load your spending controls.
+          </p>
+          <button
+            onClick={() => fetchPolicy()}
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 cursor-pointer"
+            style={{ background: "rgba(0,0,0,0.05)", border: "1px solid var(--border)" }}
+          >
+            <RotateCw className="w-3 h-3" />
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const a = data.autonomy;
   const td = data.tier_default_bands;

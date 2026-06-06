@@ -51,6 +51,10 @@ export default function EconomyPage() {
   const [econ, setEcon] = useState<EconomyState | null>(null);
   const [loading, setLoading] = useState(true);
   const [noVm, setNoVm] = useState(false);
+  // Distinct from !econ: a transient /state failure must degrade to "couldn't
+  // load, retry" — NOT the brand-new first-run hero, which would misrepresent a
+  // real user's actual state. (#2 error-state fix, misrepresentation subset.)
+  const [loadError, setLoadError] = useState(false);
 
   // Opt-in toggle interaction state
   const [confirmEnable, setConfirmEnable] = useState(false);
@@ -60,6 +64,8 @@ export default function EconomyPage() {
   const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    let stateFailed = false;
     try {
       const [sRes, eRes] = await Promise.all([
         fetch("/api/agent-economy/spend-settings"),
@@ -70,10 +76,15 @@ export default function EconomyPage() {
         return;
       }
       if (sRes.ok) setSettings(await sRes.json());
+      // /state drives firstRun; a transient failure here must NOT be read as
+      // "brand-new user" (the hero asserts a state we can't actually confirm).
       if (eRes.ok) setEcon(await eRes.json());
+      else stateFailed = true;
     } catch {
-      /* leave nulls — render the neutral empty surface */
+      // Network throw — we genuinely don't know the user's economy state.
+      stateFailed = true;
     } finally {
+      setLoadError(stateFailed);
       setLoading(false);
     }
   }, []);
@@ -153,6 +164,36 @@ export default function EconomyPage() {
           <p className="text-sm" style={{ color: "var(--muted)" }}>
             Your agent&apos;s economy appears here once it&apos;s set up.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Load error (distinct from first-run): /state genuinely failed and we have
+  //    no economy data, so we must NOT render the "you're brand new" hero. Show a
+  //    neutral retry instead — a hiccup never gets to misrepresent a real user. ──
+  if (loadError && !econ) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <div className="glass rounded-2xl p-10 text-center" style={{ border: "1px solid var(--border)" }}>
+          <div
+            className="w-12 h-12 rounded-2xl mx-auto mb-4 flex items-center justify-center"
+            style={{ background: "rgba(220,103,67,0.10)" }}
+          >
+            <AlertTriangle className="w-6 h-6" style={{ color: "var(--accent, #DC6743)" }} />
+          </div>
+          <h2 className="text-lg font-medium mb-1">Couldn&apos;t load your economy</h2>
+          <p className="text-sm mb-5 max-w-sm mx-auto" style={{ color: "var(--muted)" }}>
+            This is usually temporary. Your agent&apos;s wallet, standing, and activity are safe.
+          </p>
+          <button
+            onClick={() => load()}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all active:scale-95 cursor-pointer"
+            style={{ background: "rgba(0,0,0,0.05)", border: "1px solid var(--border)" }}
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+            Retry
+          </button>
         </div>
       </div>
     );
