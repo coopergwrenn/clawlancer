@@ -36,7 +36,15 @@ import {
   SidebarRowHover,
 } from "./sidebar-primitives";
 
-const RECENT_CAP = 6;
+// Hard cap the Sessions list at the 3 most-recent. NO in-rail scroll region —
+// the rail is "a few recent + a door to the rest", and Command Center is the
+// actual session browser. Pinned count toward the cap (pinned-first, then
+// recent); the ACTIVE session is always kept visible even if it's older than the
+// cap (the one case a hard cap would otherwise bite — losing your place in an
+// old session). Fixed footprint → the nav below Sessions never reflows on
+// session count OR scroll. Overflow lives behind "See all", shown only when
+// there are genuinely more sessions than the cap displays.
+const SESSIONS_CAP = 3;
 
 /* ─── helpers ─────────────────────────────────────────────────────────────── */
 
@@ -233,19 +241,6 @@ function SessionRowItem({
   );
 }
 
-/* ─── a faint subgroup label ──────────────────────────────────────────────── */
-
-function SubLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="px-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] select-none"
-      style={{ color: "var(--muted)", opacity: 0.5 }}
-    >
-      {children}
-    </div>
-  );
-}
-
 /* ─── skeleton row ────────────────────────────────────────────────────────── */
 
 function SkeletonRow() {
@@ -282,10 +277,36 @@ export function SessionsSection({
 
   const pinnedRows = usePinnedRows(pins, sessions, togglePin);
   const pinnedUids = useMemo(() => new Set(pinnedRows.map((r) => r.uid)), [pinnedRows]);
-  const recentRows = useMemo(
-    () => sessions.filter((s) => !pinnedUids.has(s.uid)).slice(0, RECENT_CAP),
-    [sessions, pinnedUids],
-  );
+
+  // The visible set: pinned first (they're the "kept" ones — pinning earns a
+  // limited slot), then recent, hard-capped to SESSIONS_CAP. The ACTIVE session
+  // is appended if it falls outside the cap, so you never lose your place in an
+  // older chat/task. Max footprint = CAP rows (+1 only while you're actively in
+  // an old session) — fixed and predictable, never growing with session count.
+  const visibleRows = useMemo(() => {
+    const recent = sessions.filter((s) => !pinnedUids.has(s.uid));
+    const combined = [...pinnedRows, ...recent];
+    const capped = combined.slice(0, SESSIONS_CAP);
+    const activeUid = activeChatId
+      ? `chat:${activeChatId}`
+      : activeTaskId
+        ? `task:${activeTaskId}`
+        : null;
+    if (activeUid && !capped.some((r) => r.uid === activeUid)) {
+      const activeRow = combined.find((r) => r.uid === activeUid);
+      if (activeRow) return [...capped, activeRow];
+    }
+    return capped;
+  }, [sessions, pinnedRows, pinnedUids, activeChatId, activeTaskId]);
+
+  // "See all" appears ONLY when there are genuinely more sessions than we show —
+  // never a dead link with nothing behind it.
+  const totalCount = useMemo(() => {
+    const uids = new Set(sessions.map((s) => s.uid));
+    pinnedRows.forEach((r) => uids.add(r.uid));
+    return uids.size;
+  }, [sessions, pinnedRows]);
+  const hasOverflow = totalCount > visibleRows.length;
 
   const isActiveRow = (row: SessionRow) =>
     (row.type === "chat" && row.id === activeChatId) ||
@@ -354,45 +375,22 @@ export function SessionsSection({
           </motion.div>
         )}
 
-        {pinnedRows.length > 0 && (
-          <>
-            <motion.div variants={ROW_VARIANTS}>
-              <SubLabel>Pinned</SubLabel>
-            </motion.div>
-            {pinnedRows.map((row) => (
-              <motion.div key={row.uid} variants={ROW_VARIANTS}>
-                <SessionRowItem
-                  row={row}
-                  active={isActiveRow(row)}
-                  pinned
-                  onTogglePin={togglePin}
-                />
-              </motion.div>
-            ))}
-          </>
-        )}
+        {/* Flat hard-capped list (SESSIONS_CAP + active). Pinned rows keep their
+            filled-pin marker, so no subgroup headers are needed — which keeps
+            the footprint FIXED (a "Pinned" header would otherwise pop in the
+            moment you make your first pin) and the nav below anchored. */}
+        {visibleRows.map((row) => (
+          <motion.div key={row.uid} variants={ROW_VARIANTS}>
+            <SessionRowItem
+              row={row}
+              active={isActiveRow(row)}
+              pinned={isPinned(row.uid as PinKey)}
+              onTogglePin={togglePin}
+            />
+          </motion.div>
+        ))}
 
-        {recentRows.length > 0 && (
-          <>
-            {pinnedRows.length > 0 && (
-              <motion.div variants={ROW_VARIANTS}>
-                <SubLabel>Recent</SubLabel>
-              </motion.div>
-            )}
-            {recentRows.map((row) => (
-              <motion.div key={row.uid} variants={ROW_VARIANTS}>
-                <SessionRowItem
-                  row={row}
-                  active={isActiveRow(row)}
-                  pinned={isPinned(row.uid as PinKey)}
-                  onTogglePin={togglePin}
-                />
-              </motion.div>
-            ))}
-          </>
-        )}
-
-        {!showSkeleton && !showEmpty && (pinnedRows.length > 0 || recentRows.length > 0) && (
+        {!showSkeleton && !showEmpty && hasOverflow && (
           <motion.div variants={ROW_VARIANTS}>
             <Link
               href="/tasks"
