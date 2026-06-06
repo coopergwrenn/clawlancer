@@ -17,7 +17,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { EconomyPolicyControls } from "@/components/dashboard/economy-policy-controls";
-import { EconomyHero } from "@/components/dashboard/economy-hero";
+import { EconomyHero, CARD_STYLE } from "@/components/dashboard/economy-hero";
 import { EconomyActivityFeed, type ActivityRow } from "@/components/dashboard/economy-activity-feed";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -360,7 +360,7 @@ export default function EconomyPage() {
       <>
       <div className="grid sm:grid-cols-2 gap-4">
         {/* Wallet */}
-        <div className="glass rounded-2xl p-6" style={{ border: "1px solid var(--border)" }}>
+        <div className="rounded-2xl p-6" style={CARD_STYLE}>
           <div className="flex items-center gap-2 mb-4">
             <Wallet className="w-4 h-4" style={{ color: "var(--muted)" }} />
             <h3 className="text-sm font-medium">Wallet</h3>
@@ -368,7 +368,7 @@ export default function EconomyPage() {
           {settings?.wallet_address ? (
             <>
               <div className="flex items-baseline gap-2 mb-3">
-                <span className="text-3xl font-semibold tracking-tight">
+                <span className="text-[1.9rem] leading-none tracking-tight tabular-nums" style={{ fontFamily: "var(--font-serif)" }}>
                   {fmtUsd(settings.wallet_balance_usd)}
                 </span>
                 <span className="text-xs" style={{ color: "var(--muted)" }}>
@@ -378,7 +378,7 @@ export default function EconomyPage() {
               <button
                 onClick={copyAddr}
                 className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
-                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", color: "var(--muted)" }}
+                style={{ background: "rgba(0,0,0,0.035)", border: "1px solid rgba(0,0,0,0.08)", color: "var(--muted)" }}
               >
                 {copied ? <Check className="w-3 h-3" style={{ color: "rgb(34,197,94)" }} /> : <Copy className="w-3 h-3" />}
                 {copied ? "Copied" : shortAddr(settings.wallet_address)}
@@ -396,7 +396,7 @@ export default function EconomyPage() {
         </div>
 
         {/* Standing */}
-        <div className="glass rounded-2xl p-6" style={{ border: "1px solid var(--border)" }}>
+        <div className="rounded-2xl p-6" style={CARD_STYLE}>
           <div className="flex items-center gap-2 mb-4">
             <Trophy className="w-4 h-4" style={{ color: "var(--muted)" }} />
             <h3 className="text-sm font-medium">Standing</h3>
@@ -404,7 +404,7 @@ export default function EconomyPage() {
           {econ && (econ.lifetime.earned_usdc > 0 || econ.lifetime.spent_usdc > 0) && econ.reputation_score != null ? (
             <>
               <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-3xl font-semibold tracking-tight">{econ.reputation_score}</span>
+                <span className="text-[1.9rem] leading-none tracking-tight tabular-nums" style={{ fontFamily: "var(--font-serif)" }}>{econ.reputation_score}</span>
                 <span className="text-xs" style={{ color: "var(--muted)" }}>
                   credit standing
                 </span>
@@ -425,7 +425,7 @@ export default function EconomyPage() {
       </div>
 
       {/* ── Activity (real, last 24h + lifetime) ── */}
-      <div className="glass rounded-2xl p-6" style={{ border: "1px solid var(--border)" }}>
+      <div className="rounded-2xl p-6" style={CARD_STYLE}>
         <div className="flex items-center gap-2 mb-5">
           <TrendingUp className="w-4 h-4" style={{ color: "var(--muted)" }} />
           <h3 className="text-sm font-medium">Activity</h3>
@@ -441,7 +441,7 @@ export default function EconomyPage() {
                 <p className="text-[11px] uppercase tracking-wide mb-1" style={{ color: "var(--muted)" }}>
                   {s.label}
                 </p>
-                <p className="text-xl font-semibold tracking-tight" style={{ color: s.color }}>
+                <p className="text-2xl leading-none tracking-tight tabular-nums" style={{ fontFamily: "var(--font-serif)", color: s.color }}>
                   {fmtUsd(s.value)}
                 </p>
               </div>

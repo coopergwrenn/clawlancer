@@ -40,7 +40,9 @@ const rise = {
 };
 
 // Warm light-glass identity card — reads as a crisp card on the cream panel.
-const CARD_STYLE: CSSProperties = {
+// Exported as the shared warm-card material so the rich-data Wallet / Standing /
+// Activity cards match the hero's treatment (one design language across states).
+export const CARD_STYLE: CSSProperties = {
   background: "rgba(255,255,255,0.66)",
   border: "1px solid rgba(0,0,0,0.07)",
   boxShadow: "0 2px 10px rgba(120,70,50,0.05), inset 0 1px 0 rgba(255,255,255,0.7)",
@@ -129,7 +131,7 @@ export function EconomyHero({ walletAddress, standingScore }: EconomyHeroProps) 
           style={{ color: "var(--muted)" }}
         >
           It has its own wallet on Base and a standing it earns through good decisions. The first
-          time it earns or spends, its economic life takes shape here — always within the limits you
+          time it earns or spends, its economic life takes shape here, always within the limits you
           set.
         </motion.p>
 
