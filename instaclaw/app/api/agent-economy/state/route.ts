@@ -30,6 +30,7 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { loadVmStanding } from "@/lib/frontier-standing-db";
 import type { FrontierTier } from "@/lib/frontier-policy";
+import { aggregateWindows, mapRecentTxn, type StateTxnRow } from "@/lib/frontier-economy-readpath";
 
 export const dynamic = "force-dynamic";
 
@@ -38,28 +39,6 @@ export const dynamic = "force-dynamic";
 // should prefer the (cron-maintained) rollup columns.
 const SCAN_LIMIT = 500;
 const RECENT_COUNT = 10;
-const WINDOW_MS = 24 * 60 * 60 * 1000;
-
-interface TxnRow {
-  id: string;
-  rail: string;
-  direction: "earn" | "spend";
-  amount_usdc: number | string; // PostgREST returns numeric as string
-  protocol_fee_usdc: number | string;
-  status: string;
-  counterparty_address: string | null;
-  counterparty_vm_id: string | null;
-  response_summary: string | null;
-  tx_hash: string | null;
-  created_at: string;
-  settled_at: string | null;
-  metadata: Record<string, unknown> | null;
-}
-
-function num(v: number | string | null | undefined): number {
-  const n = typeof v === "string" ? parseFloat(v) : v ?? 0;
-  return Number.isFinite(n as number) ? (n as number) : 0;
-}
 
 export async function GET() {
   const session = await auth();
@@ -96,23 +75,11 @@ export async function GET() {
     return NextResponse.json({ error: "failed to load economy state" }, { status: 500 });
   }
 
-  const rows = (txns ?? []) as TxnRow[];
-  const since = Date.now() - WINDOW_MS;
+  const rows = (txns ?? []) as StateTxnRow[];
 
-  let earned24h = 0, spent24h = 0, count24h = 0;
-  let earnedLife = 0, spentLife = 0;
-  for (const r of rows) {
-    if (r.status !== "settled") continue;
-    const amt = num(r.amount_usdc);
-    const inWindow = Date.parse(r.created_at) >= since;
-    if (r.direction === "earn") {
-      earnedLife += amt;
-      if (inWindow) { earned24h += amt; count24h++; }
-    } else {
-      spentLife += amt;
-      if (inWindow) { spent24h += amt; count24h++; }
-    }
-  }
+  // Rolling-24h + lifetime earn/spend/net (settled-only). hasTrackRecord gates
+  // whether reputation is surfaced (a brand-new agent stays null).
+  const { window_24h, lifetime, hasTrackRecord } = aggregateWindows(rows, Date.now(), SCAN_LIMIT);
 
   // Live credit standing — the SAME 300-850 score the authorize gate stamps into
   // each decision's score_at_authorize (lib/frontier-standing-db.loadVmStanding,
@@ -125,7 +92,6 @@ export async function GET() {
   const tier = (TIERS as readonly string[]).includes(String(vm.tier ?? "").toLowerCase())
     ? (String(vm.tier).toLowerCase() as FrontierTier)
     : "starter";
-  const hasTrackRecord = earnedLife > 0 || spentLife > 0;
   let reputationScore: number | null = null;
   if (hasTrackRecord) {
     try {
@@ -149,66 +115,12 @@ export async function GET() {
     .eq("vm_id", vmId)
     .eq("active", true);
 
-  const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
-
-  // Decision-context extractors from the authorize-time metadata jsonb. Every
-  // authorize stamps the agent's economic state (standing + earned budget) and
-  // the eventual outcome (result_used, latency); the activity feed surfaces it
-  // so a row reads like a decision, not a line item. Guarded — metadata shape
-  // is owned by the spend skill and may be partial on older rows.
-  const mStr = (m: Record<string, unknown>, k: string): string | null =>
-    typeof m[k] === "string" && (m[k] as string).trim() !== "" ? (m[k] as string) : null;
-  const mNum = (m: Record<string, unknown>, k: string): number | null => {
-    const v = m[k];
-    if (typeof v === "number" && Number.isFinite(v)) return v;
-    if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) return Number(v);
-    return null;
-  };
-  const mBool = (m: Record<string, unknown>, k: string): boolean | null =>
-    typeof m[k] === "boolean" ? (m[k] as boolean) : null;
-
-  const recent = rows.slice(0, RECENT_COUNT).map((r) => {
-    const m = (r.metadata ?? {}) as Record<string, unknown>;
-    return {
-      id: r.id,
-      rail: r.rail,
-      direction: r.direction,
-      amount_usdc: round6(num(r.amount_usdc)),
-      protocol_fee_usdc: round6(num(r.protocol_fee_usdc)),
-      status: r.status,
-      counterparty_address: r.counterparty_address,
-      counterparty_vm_id: r.counterparty_vm_id,
-      response_summary: r.response_summary,
-      tx_hash: r.tx_hash,
-      created_at: r.created_at,
-      settled_at: r.settled_at,
-      // decision context — the agent's economic state at the moment it decided
-      category: mStr(m, "category"),
-      mode: mStr(m, "mode"),
-      result_used: mBool(m, "result_used"),
-      standing_at_decision: mNum(m, "score_at_authorize"),
-      earned_budget_at_decision: mNum(m, "earned_budget_at_authorize"),
-      latency_ms: mNum(m, "latency_ms"),
-      endpoint: mStr(m, "endpoint"),
-      pay_error: mStr(m, "pay_error"),
-    };
-  });
+  // Each row → an activity-feed decision (decision-context lifted from metadata).
+  const recent = rows.slice(0, RECENT_COUNT).map(mapRecentTxn);
 
   return NextResponse.json({
-    window_24h: {
-      earned_usdc: round6(earned24h),
-      spent_usdc: round6(spent24h),
-      net_usdc: round6(earned24h - spent24h),
-      transactions: count24h,
-    },
-    lifetime: {
-      earned_usdc: round6(earnedLife),
-      spent_usdc: round6(spentLife),
-      net_usdc: round6(earnedLife - spentLife),
-      // True only if the VM has more than SCAN_LIMIT transactions — then these
-      // totals are a floor and the dashboard should prefer rollup columns.
-      truncated: rows.length >= SCAN_LIMIT,
-    },
+    window_24h,
+    lifetime,
     reputation_score: reputationScore,
     active_offerings: offeringCount ?? 0,
     recent,

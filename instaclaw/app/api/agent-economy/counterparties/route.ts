@@ -19,8 +19,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import { deriveCounterpartyRollup, type CounterpartyTxn } from "@/lib/frontier-ledger";
-import type { SpendCategory } from "@/lib/frontier-policy";
+import { deriveCounterpartyRollup } from "@/lib/frontier-ledger";
+import { mapCounterpartyTxn, type CounterpartyDbRow } from "@/lib/frontier-economy-readpath";
 
 export const dynamic = "force-dynamic";
 
@@ -28,32 +28,6 @@ export const dynamic = "force-dynamic";
 const SCAN_LIMIT = 500;
 // Cap the response; the card shows the top 5 with an in-place "show more".
 const TOP_N = 24;
-
-const CATEGORIES: readonly SpendCategory[] = [
-  "data",
-  "search",
-  "inference",
-  "compute",
-  "market",
-  "media",
-  "agent",
-  "other",
-];
-
-interface TxnRow {
-  direction: "earn" | "spend";
-  status: string;
-  amount_usdc: number | string; // PostgREST returns numeric as string
-  created_at: string;
-  counterparty_vm_id: string | null;
-  counterparty_address: string | null;
-  metadata: Record<string, unknown> | null;
-}
-
-function num(v: number | string | null | undefined): number {
-  const n = typeof v === "string" ? parseFloat(v) : v ?? 0;
-  return Number.isFinite(n as number) ? (n as number) : 0;
-}
 
 export async function GET() {
   const session = await auth();
@@ -86,7 +60,7 @@ export async function GET() {
     return NextResponse.json({ error: "failed to load counterparties" }, { status: 500 });
   }
 
-  const rows = (txns ?? []) as TxnRow[];
+  const rows = (txns ?? []) as CounterpartyDbRow[];
 
   // same-human resolution — which counterparty VMs share this user's account
   // (self-dealing). Identical pattern to lib/frontier-standing-db.loadVmStanding.
@@ -107,28 +81,7 @@ export async function GET() {
 
   // map DB rows → the pure rollup's input. `category` from metadata.category (the
   // feed's source); `endpoint` from metadata.endpoint (the label's source).
-  const txnInput: CounterpartyTxn[] = rows.map((r) => {
-    const m = (r.metadata ?? {}) as Record<string, unknown>;
-    const rawCat = typeof m.category === "string" ? (m.category as string) : null;
-    const category = rawCat && (CATEGORIES as readonly string[]).includes(rawCat)
-      ? (rawCat as SpendCategory)
-      : null;
-    const endpoint = typeof m.endpoint === "string" && m.endpoint.trim() !== "" ? (m.endpoint as string) : null;
-    return {
-      direction: r.direction === "earn" ? "earn" : "spend",
-      status: (["pending", "settled", "failed", "disputed", "refunded"] as const).includes(
-        r.status as never,
-      )
-        ? (r.status as CounterpartyTxn["status"])
-        : "failed",
-      amountUsd: num(r.amount_usdc),
-      createdAtMs: Date.parse(r.created_at),
-      counterpartyVmId: r.counterparty_vm_id,
-      counterpartyAddress: r.counterparty_address,
-      endpoint,
-      category,
-    };
-  });
+  const txnInput = rows.map(mapCounterpartyTxn);
 
   const rolled = deriveCounterpartyRollup(txnInput, { isSameHuman });
 
