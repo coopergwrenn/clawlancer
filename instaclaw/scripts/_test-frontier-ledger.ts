@@ -5,7 +5,14 @@
  * are adversarial (self-dealing must NOT inflate standing).
  * Run: npx tsx scripts/_test-frontier-ledger.ts  (exit 0 = all pass)
  */
-import { supplierIdOf, deriveTrackRecord, deriveSupplierStats, type LedgerRow } from "../lib/frontier-ledger";
+import {
+  supplierIdOf,
+  deriveTrackRecord,
+  deriveSupplierStats,
+  deriveCounterpartyRollup,
+  type LedgerRow,
+  type CounterpartyTxn,
+} from "../lib/frontier-ledger";
 import { mapTagsToCategory } from "../lib/frontier-policy";
 
 let passed = 0;
@@ -128,6 +135,51 @@ const opts = { nowMs: NOW, isSameHuman: sameHuman };
   check("supplierStats: 2 successes 1 failure", stats[0].successes === 2 && stats[0].failures === 1);
   check("supplierStats: avg cost over successes", Math.abs(stats[0].avgCostUsd - 0.02) < 1e-9);
   check("supplierStats: internal flag (vm: prefix)", stats[0].internal === true);
+}
+
+// ── deriveCounterpartyRollup (the /economy "who it works with" card) ──
+function cpTxn(p: Partial<CounterpartyTxn>): CounterpartyTxn {
+  return {
+    direction: "spend", status: "settled", amountUsd: 0.01, createdAtMs: hAgo(1),
+    counterpartyVmId: null, counterpartyAddress: null, endpoint: null, category: "data", ...p,
+  };
+}
+const isSelf = (id: string) => id === "self-vm";
+{
+  const rows: CounterpartyTxn[] = [
+    cpTxn({ counterpartyVmId: "p1", endpoint: "https://a.com", category: "data", status: "settled", amountUsd: 0.01, createdAtMs: hAgo(3) }),
+    cpTxn({ counterpartyVmId: "p1", endpoint: "https://a.com", category: "data", status: "settled", amountUsd: 0.03, createdAtMs: hAgo(2) }),
+    cpTxn({ counterpartyVmId: "p1", endpoint: "https://a.com", category: "search", status: "failed", createdAtMs: hAgo(1) }),
+    cpTxn({ counterpartyVmId: "p2", endpoint: "https://b.com", category: "agent", status: "settled", amountUsd: 0.02 }),
+    cpTxn({ counterpartyVmId: "self-vm", endpoint: "https://self.com", category: "data", status: "settled" }), // self-dealing
+    cpTxn({ direction: "earn", counterpartyVmId: "p3", status: "settled", amountUsd: 1 }), // earn
+    cpTxn({ counterpartyVmId: "p4", endpoint: "https://c.com", status: "pending" }), // unresolved
+  ];
+  const roll = deriveCounterpartyRollup(rows, { isSameHuman: isSelf });
+  check("rollup: self-dealing counterparty excluded", !roll.some((r) => r.supplierId === "vm:self-vm"));
+  check("rollup: earn-side counterparty excluded", !roll.some((r) => r.supplierId === "vm:p3"));
+  check("rollup: pending-only counterparty excluded", !roll.some((r) => r.supplierId === "vm:p4"));
+  check("rollup: count = 2 (p1, p2)", roll.length === 2);
+  const p1 = roll.find((r) => r.supplierId === "vm:p1");
+  check("rollup: p1 present", !!p1);
+  check("rollup: p1 delivered=2, didntGoThrough=1", !!p1 && p1.delivered === 2 && p1.didntGoThrough === 1);
+  check("rollup: p1 timesTransacted=3", !!p1 && p1.timesTransacted === 3);
+  check("rollup: p1 dominant category = data", !!p1 && p1.category === "data");
+  check("rollup: p1 categories include data + search", !!p1 && p1.categories.includes("data") && p1.categories.includes("search"));
+  check("rollup: p1 totalSpent = settled only (0.04)", !!p1 && Math.abs(p1.totalSpentUsd - 0.04) < 1e-9);
+  check("rollup: p1 internal (vm: prefix)", !!p1 && p1.internal === true);
+  check("rollup: sorted most-worked-with first (p1 before p2)", roll[0].supplierId === "vm:p1");
+}
+{
+  // external endpoint counterparty: url: identity, not internal, grouped across rows
+  const rows: CounterpartyTxn[] = [
+    cpTxn({ counterpartyVmId: null, endpoint: "https://anchor-x402.com/v1/price", category: "data", status: "settled", amountUsd: 0.001 }),
+    cpTxn({ counterpartyVmId: null, endpoint: "https://anchor-x402.com/v1/price", category: "data", status: "failed" }),
+  ];
+  const roll = deriveCounterpartyRollup(rows, { isSameHuman: isSelf });
+  check("rollup: external grouped to one url: id", roll.length === 1 && roll[0].supplierId.startsWith("url:"));
+  check("rollup: external not internal", roll[0].internal === false);
+  check("rollup: external delivered=1, didntGoThrough=1", roll[0].delivered === 1 && roll[0].didntGoThrough === 1);
 }
 
 console.log(`\nfrontier-ledger: ${passed} passed, ${failed} failed`);

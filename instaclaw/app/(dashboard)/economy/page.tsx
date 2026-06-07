@@ -19,6 +19,7 @@ import {
 import { EconomyPolicyControls } from "@/components/dashboard/economy-policy-controls";
 import { EconomyHero, CARD_STYLE } from "@/components/dashboard/economy-hero";
 import { EconomyActivityFeed, type ActivityRow } from "@/components/dashboard/economy-activity-feed";
+import { EconomyCounterparties } from "@/components/dashboard/economy-counterparties";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -494,6 +495,11 @@ export default function EconomyPage() {
           </p>
         )}
       </div>
+
+      {/* ── Who it works with — the ledger pivoted by relationship (suppliers +
+             reliability), sitting on the same CARD_STYLE material as Wallet /
+             Standing / Activity. Self-fetches; owns its own loading/empty/error. ── */}
+      <EconomyCounterparties />
       </>
       )}
 

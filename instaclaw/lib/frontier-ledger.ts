@@ -268,3 +268,152 @@ export function deriveSupplierStats(rows: LedgerRow[], opts: Pick<DeriveOptions,
   }
   return [...byKey.values()];
 }
+
+// ── per-counterparty relationship rollup (the /economy "who it works with" card) ──
+
+/**
+ * The minimal per-transaction input the counterparty rollup reads. The caller
+ * maps a frontier_transactions row to this, taking `category` from the SAME
+ * source the activity feed renders (metadata.category) so the card and the feed
+ * never disagree about what a purchase was.
+ */
+export interface CounterpartyTxn {
+  direction: "earn" | "spend";
+  status: LedgerRow["status"];
+  amountUsd: number;
+  createdAtMs: number;
+  counterpartyVmId: string | null;
+  counterpartyAddress: string | null;
+  endpoint: string | null;
+  category: SpendCategory | null;
+}
+
+/**
+ * One distinct counterparty the agent has worked with, summarized for display:
+ * how many times, how many DELIVERED (settled) vs DIDN'T GO THROUGH (failed), what
+ * it mostly bought there, and how recently. Identity (`endpoint`/vm/address) is
+ * carried so the card derives the SAME label as the feed (serviceLabel).
+ */
+export interface CounterpartyRollup {
+  /** canonical identity (vm:/url:/addr:) — the grouping + dedup key. */
+  supplierId: string;
+  endpoint: string | null;
+  counterpartyVmId: string | null;
+  counterpartyAddress: string | null;
+  /** dominant (most-transacted) capability — what it mostly bought there. */
+  category: SpendCategory;
+  /** every capability seen with this counterparty. */
+  categories: SpendCategory[];
+  /** resolved spend attempts = delivered + didntGoThrough. */
+  timesTransacted: number;
+  /** settled — "delivered". */
+  delivered: number;
+  /** failed — "didn't go through". */
+  didntGoThrough: number;
+  /** total USD settled with this counterparty (real value exchanged). */
+  totalSpentUsd: number;
+  lastSeenMs: number;
+  /** true if a fleet agent (vm:) vs external. */
+  internal: boolean;
+}
+
+/**
+ * Roll the agent's spend ledger up to one row PER COUNTERPARTY (not per
+ * supplier×capability like deriveSupplierStats). Spend-side only (suppliers are
+ * who we BUY from); self-dealing excluded (§7.3.1 #1 — a counterparty bonded to
+ * the agent's own World-ID human can't pad the "relationships"); pending/disputed/
+ * refunded rows are not counted in the delivered/didn't-go-through binary (only a
+ * clean settled-vs-failed is a reliability signal). Pure: rows in, rollups out.
+ */
+export function deriveCounterpartyRollup(
+  rows: CounterpartyTxn[],
+  opts: Pick<DeriveOptions, "isSameHuman">,
+): CounterpartyRollup[] {
+  interface Acc {
+    supplierId: string;
+    endpoint: string | null;
+    counterpartyVmId: string | null;
+    counterpartyAddress: string | null;
+    delivered: number;
+    didntGoThrough: number;
+    totalSpentUsd: number;
+    lastSeenMs: number;
+    repAtMs: number; // representative-identity recency: pick label from the most recent row
+    internal: boolean;
+    catCounts: Map<SpendCategory, number>;
+  }
+  const byId = new Map<string, Acc>();
+
+  for (const r of rows) {
+    if (r.direction !== "spend") continue; // suppliers = who we BUY from
+    if (r.counterpartyVmId && opts.isSameHuman(r.counterpartyVmId)) continue; // §7.3.1 #1
+    const delivered = r.status === "settled";
+    const failed = r.status === "failed";
+    if (!delivered && !failed) continue; // only resolved attempts are a reliability signal
+    const sid = supplierIdOf(r);
+    if (!sid) continue;
+
+    let a = byId.get(sid);
+    if (!a) {
+      a = {
+        supplierId: sid,
+        endpoint: r.endpoint,
+        counterpartyVmId: r.counterpartyVmId,
+        counterpartyAddress: r.counterpartyAddress,
+        delivered: 0,
+        didntGoThrough: 0,
+        totalSpentUsd: 0,
+        lastSeenMs: 0,
+        repAtMs: -1,
+        internal: sid.startsWith("vm:"),
+        catCounts: new Map(),
+      };
+      byId.set(sid, a);
+    }
+    if (delivered) {
+      a.delivered += 1;
+      a.totalSpentUsd += r.amountUsd;
+    } else {
+      a.didntGoThrough += 1;
+    }
+    a.lastSeenMs = Math.max(a.lastSeenMs, r.createdAtMs);
+    if (r.createdAtMs >= a.repAtMs) {
+      a.repAtMs = r.createdAtMs;
+      a.endpoint = r.endpoint;
+      a.counterpartyVmId = r.counterpartyVmId;
+      a.counterpartyAddress = r.counterpartyAddress;
+    }
+    const cat = r.category ?? "other";
+    a.catCounts.set(cat, (a.catCounts.get(cat) ?? 0) + 1);
+  }
+
+  const out: CounterpartyRollup[] = [];
+  for (const a of byId.values()) {
+    let domCat: SpendCategory = "other";
+    let domN = -1;
+    const categories: SpendCategory[] = [];
+    for (const [cat, n] of a.catCounts) {
+      categories.push(cat);
+      if (n > domN) {
+        domN = n;
+        domCat = cat;
+      }
+    }
+    out.push({
+      supplierId: a.supplierId,
+      endpoint: a.endpoint,
+      counterpartyVmId: a.counterpartyVmId,
+      counterpartyAddress: a.counterpartyAddress,
+      category: domCat,
+      categories,
+      timesTransacted: a.delivered + a.didntGoThrough,
+      delivered: a.delivered,
+      didntGoThrough: a.didntGoThrough,
+      totalSpentUsd: Math.round(a.totalSpentUsd * 1e6) / 1e6,
+      lastSeenMs: a.lastSeenMs,
+      internal: a.internal,
+    });
+  }
+  out.sort((x, y) => y.timesTransacted - x.timesTransacted || y.lastSeenMs - x.lastSeenMs);
+  return out;
+}
