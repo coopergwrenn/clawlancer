@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { EconomyPolicyControls } from "@/components/dashboard/economy-policy-controls";
 import { EconomyHero, CARD_STYLE } from "@/components/dashboard/economy-hero";
+import { EconomyHeroActive, EARNED_THRESHOLD } from "@/components/dashboard/economy-hero-active";
 import { EconomyActivityFeed, type ActivityRow } from "@/components/dashboard/economy-activity-feed";
 import { EconomyCounterparties } from "@/components/dashboard/economy-counterparties";
 
@@ -210,18 +211,16 @@ export default function EconomyPage() {
           standingScore={econ?.reputation_score ?? null}
         />
       ) : (
-        <div>
-          <h1
-            className="text-3xl sm:text-4xl font-normal tracking-[-0.5px] flex items-center gap-3"
-            style={{ fontFamily: "var(--font-serif)" }}
-          >
-            <Coins className="w-7 h-7 sm:w-8 sm:h-8" style={{ color: "var(--accent, #DC6743)" }} />
-            Economy
-          </h1>
-          <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
-            Where your agent earns, spends, and builds a reputation, always under limits you set.
-          </p>
-        </div>
+        // Rich-data headline — replaces the bare "Economy" title for an active
+        // agent. First-run hero (above) is untouched. Reads /state only.
+        <EconomyHeroActive
+          standingScore={econ?.reputation_score ?? null}
+          earnedUsd={econ?.lifetime.earned_usdc ?? 0}
+          spentUsd={econ?.lifetime.spent_usdc ?? 0}
+          netUsd={econ?.lifetime.net_usdc ?? 0}
+          walletAddress={settings?.wallet_address ?? null}
+          walletBalanceUsd={settings?.wallet_balance_usd ?? null}
+        />
       )}
 
       {/* ── CONTROL: Autonomous spending (the real, wired control — secondary to the
@@ -451,8 +450,13 @@ export default function EconomyPage() {
                   credit standing
                 </span>
               </div>
+              {/* Same >=550 gate as the active hero: below 550 (incl. the 500
+                  unverified cap) the standing is a starting point, NOT "built
+                  from track record" — so the card never contradicts the hero. */}
               <p className="text-[11px] mt-3 leading-snug" style={{ color: "var(--muted)" }}>
-                Built from your agent&apos;s track record. Higher standing earns it more spending room.
+                {econ.reputation_score >= EARNED_THRESHOLD
+                  ? "Built from your agent's track record. Higher standing earns it more spending room."
+                  : "Building from here as your agent earns trust."}
               </p>
             </>
           ) : (
