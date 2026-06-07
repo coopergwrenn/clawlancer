@@ -728,6 +728,104 @@ html.lenis body {
   z-index: 2;
 }
 
+/* ─── Liquid Glass FILTER PILL (.glass-filter-pill) ──────────────────
+   The Command Center /tasks filter row (All / Recurring / Scheduled /
+   Completed). SINGLE-element glass — surface + ::after rim, NO root and NO
+   drop-shadow sibling — so it drops onto the existing motion.button in a tight
+   gap-2 row without the -8px/-10px shadow siblings (.liquid-glass-pill /
+   -nav-btn) bleeding into neighbouring pills. Geometry stays on the button via
+   Tailwind (px-3.5 py-1.5 rounded-full text-xs) — this class is MATERIAL ONLY.
+   Modeled on .liquid-glass-eyebrow (26px small-scale recipe, dialed-down
+   4-layer shadow) with the softened 0.18 conic rim shipped on
+   .liquid-glass-nav-btn (a 0.5 rim reads as a heavy outline at pill scale).
+   Isolated — does NOT touch the other glass classes.
+   Active state: .fp-active-dark — a darker frosted "smoked" glass that keeps the
+   same rim family + depth as the inactive pills so the row reads as one piece,
+   while the dark fill + white label make the selected filter unambiguous. */
+.glass-filter-pill {
+  position: relative;
+  border: 0;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: linear-gradient(-75deg,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.20),
+    rgba(255, 255, 255, 0.05));
+  -webkit-backdrop-filter: blur(3px);
+          backdrop-filter: blur(3px);
+  box-shadow:
+    rgba(0, 0, 0, 0.04) 0px 1px 1px 0px inset,
+    rgba(255, 255, 255, 0.45) 0px -1px 1px 0px inset,
+    rgba(0, 0, 0, 0.10) 0px 1px 2px -1px,
+    rgba(255, 255, 255, 0.18) 0px 0px 1px 2px inset;
+  color: #6b7280;
+  transition: background-color 0.2s, background-image 0.2s, box-shadow 0.2s, color 0.2s;
+}
+
+.glass-filter-pill::after {
+  content: '';
+  position: absolute;
+  inset: -0.5px 0 0 -0.5px;
+  width: calc(100% + 1px);
+  height: calc(100% + 1px);
+  padding: 1px;
+  background-image:
+    conic-gradient(from -75deg at 50% 50%,
+      rgba(0, 0, 0, 0.18),
+      rgba(0, 0, 0, 0) 5%,
+      rgba(0, 0, 0, 0) 40%,
+      rgba(0, 0, 0, 0.18) 50%,
+      rgba(0, 0, 0, 0) 60%,
+      rgba(0, 0, 0, 0) 95%,
+      rgba(0, 0, 0, 0.18)),
+    linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5));
+  -webkit-mask:
+    linear-gradient(#000, #000) content-box,
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  box-shadow: rgba(255, 255, 255, 0.5) 0px 0px 0px 0.5px inset;
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.glass-filter-pill > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* inactive hover — brighten the frost a touch (cool lift) */
+.glass-filter-pill:hover {
+  background-image: linear-gradient(-75deg,
+    rgba(255, 255, 255, 0.10),
+    rgba(255, 255, 255, 0.30),
+    rgba(255, 255, 255, 0.10));
+  box-shadow:
+    rgba(0, 0, 0, 0.04) 0px 1px 1px 0px inset,
+    rgba(255, 255, 255, 0.60) 0px -1px 1px 0px inset,
+    rgba(0, 0, 0, 0.10) 0px 2px 3px -1px,
+    rgba(255, 255, 255, 0.22) 0px 0px 1px 2px inset;
+  color: #4b5563;
+}
+
+/* ACTIVE option A — darker frosted "smoked" glass. Closest in intent to the
+   current dark "All" pill, but a real glass material (frost + rim + depth),
+   white label for unambiguous selection. */
+.glass-filter-pill.fp-active-dark,
+.glass-filter-pill.fp-active-dark:hover {
+  background-color: rgba(28, 25, 23, 0.82);
+  background-image: linear-gradient(-75deg,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.16),
+    rgba(255, 255, 255, 0.04));
+  color: #ffffff;
+  box-shadow:
+    rgba(0, 0, 0, 0.12) 0px 1px 1px 0px inset,
+    rgba(255, 255, 255, 0.20) 0px -1px 1px 0px inset,
+    rgba(0, 0, 0, 0.24) 0px 2px 6px -1px,
+    rgba(255, 255, 255, 0.10) 0px 0px 1px 2px inset;
+}
+
 /* ─── Liquid Glass SIGNIN pill (.liquid-glass-signin) ────────────────
    Full-width variant of .liquid-glass-btn for /signin's OAuth pills.
    Verbatim port of the wabi 5-ingredient recipe, retuned for:
