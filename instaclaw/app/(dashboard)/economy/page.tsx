@@ -18,7 +18,8 @@ import {
 } from "lucide-react";
 import { EconomyPolicyControls } from "@/components/dashboard/economy-policy-controls";
 import { EconomyHero, CARD_STYLE } from "@/components/dashboard/economy-hero";
-import { EconomyHeroActive, EARNED_THRESHOLD } from "@/components/dashboard/economy-hero-active";
+import { EconomyHeroActive } from "@/components/dashboard/economy-hero-active";
+import { standingTone } from "@/lib/frontier-economy-readpath";
 import { EconomyActivityFeed, type ActivityRow } from "@/components/dashboard/economy-activity-feed";
 import { EconomyCounterparties } from "@/components/dashboard/economy-counterparties";
 
@@ -454,7 +455,7 @@ export default function EconomyPage() {
                   unverified cap) the standing is a starting point, NOT "built
                   from track record" — so the card never contradicts the hero. */}
               <p className="text-[11px] mt-3 leading-snug" style={{ color: "var(--muted)" }}>
-                {econ.reputation_score >= EARNED_THRESHOLD
+                {standingTone(econ.reputation_score) === "earned"
                   ? "Built from your agent's track record. Higher standing earns it more spending room."
                   : "Building from here as your agent earns trust."}
               </p>

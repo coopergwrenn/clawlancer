@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { Wallet, Trophy, TrendingUp } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { CARD_STYLE } from "./economy-hero";
+import { standingTone } from "@/lib/frontier-economy-readpath";
 
 /**
  * EconomyHeroActive — the RICH-DATA headline for a !firstRun agent.
@@ -35,11 +36,6 @@ import { CARD_STYLE } from "./economy-hero";
 
 const ACCENT = "var(--accent, #DC6743)";
 const SERIF = "var(--font-serif)";
-// Leaving the "audit" level (frontier-standing.ts). UNVERIFIED_CAP=500 < this,
-// so score >= 550 ⟹ World-ID-verified AND earned above the baseline. Exported so
-// the Standing card (economy/page.tsx) gates its "earned" copy the SAME way —
-// one threshold, so the hero and the card can't tell contradicting stories.
-export const EARNED_THRESHOLD = 550;
 
 interface Props {
   standingScore: number | null;
@@ -88,8 +84,11 @@ function Tile({ icon: Icon, label, value, valueColor, sub }: {
 }
 
 export function EconomyHeroActive({ standingScore, earnedUsd, spentUsd, netUsd, walletAddress, walletBalanceUsd }: Props) {
-  const earned = standingScore != null && standingScore >= EARNED_THRESHOLD;
-  const degraded = standingScore == null;
+  // standingTone is the single source of the hero/card honesty gate (lib/
+  // frontier-economy-readpath) — hero and card can't diverge even in logic.
+  const tone = standingTone(standingScore);
+  const earned = tone === "earned";
+  const degraded = tone === "degraded";
   const walletKnown = typeof walletBalanceUsd === "number";
   const hasWalletAddr = !!walletAddress;
   const moved = earnedUsd + spentUsd; // gross economic flow the agent has put through
