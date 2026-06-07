@@ -473,6 +473,11 @@ function StatusDot({ status }: { status: TaskStatus }) {
 
 /* ─── Filter Pills ───────────────────────────────────────── */
 
+// Selected-pill glass treatment. "fp-active-dark" = darker frosted "smoked"
+// glass with a white label, so the selected filter reads unambiguously while
+// still belonging to the same glass family as the inactive pills. (globals.css)
+const FP_ACTIVE_CLASS = "fp-active-dark";
+
 function FilterPills({
   active,
   onChange,
@@ -494,35 +499,15 @@ function FilterPills({
         <motion.button
           key={f.key}
           onClick={() => onChange(f.key)}
-          className="relative px-3.5 py-1.5 rounded-full text-xs font-medium cursor-pointer backdrop-blur-md"
-          animate={{
-            background:
-              active === f.key
-                ? "rgba(30, 30, 30, 0.75)"
-                : "rgba(255, 255, 255, 0.45)",
-            color: active === f.key ? "#ffffff" : "#6b7280",
-            borderColor:
-              active === f.key
-                ? "rgba(255, 255, 255, 0.2)"
-                : "rgba(0, 0, 0, 0.08)",
-            boxShadow:
-              active === f.key
-                ? "0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)"
-                : "0 1px 3px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
-          }}
-          whileHover={{
-            background:
-              active === f.key
-                ? "rgba(30, 30, 30, 0.85)"
-                : "rgba(255, 255, 255, 0.65)",
-            boxShadow:
-              active === f.key
-                ? "0 4px 12px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15)"
-                : "0 2px 6px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.7)",
-          }}
+          // Liquid-glass material (globals.css). Geometry stays in Tailwind;
+          // active pill gets the selected-glass variant. Surface/rim/depth +
+          // the active↔inactive transition are all CSS now (no framer animate),
+          // so the row reads as one glass piece; whileTap keeps the press feel.
+          className={`glass-filter-pill relative px-3.5 py-1.5 rounded-full text-xs font-medium cursor-pointer ${
+            active === f.key ? FP_ACTIVE_CLASS : ""
+          }`}
           whileTap={{ scale: 0.96 }}
           transition={{ duration: 0.15 }}
-          style={{ border: "1px solid rgba(0, 0, 0, 0.08)" }}
         >
           {f.label}
           {f.key === "all" && failedCount > 0 && (
