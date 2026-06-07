@@ -1,16 +1,16 @@
 # Changelog — generated 2026-06-07
 
-Window: `7367c4db242f2a4b7a0ae0bcc659d79c8eb0bbaa` → `HEAD` (HEAD = `e13b46ad`)
+Window: `e13b46ad9bb746c691874875fdceb7de21c8dfc8` → `HEAD` (HEAD = `b16e93c4`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: e13b46ad9bb746c691874875fdceb7de21c8dfc8 -->
+<!-- LAST_GENERATED_SHA: b16e93c467623d6a3bac31b70c9970af2618fce7 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Infrastructure:** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,11 +18,12 @@ Total commits: 2
 
 ## What changed for users
 
-- `e13b46ad` 2026-06-07 — add active-agent /economy hero (standing-led, >=550-gated "earned" copy) + gate Standing card [2 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `7849b69e` 2026-06-07 — chore(changelog): auto-update [skip ci] [2 files]
+- `b16e93c4` 2026-06-07 — test(frontier): GAP-4 — lock /economy read-path logic (gate + row→shape mappers) [6 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `d34b5ed8` 2026-06-07 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -30,13 +31,13 @@ Total commits: 2
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
+
+- `b16e93c4` 2026-06-07 — test(frontier): GAP-4 — lock /economy read-path logic (gate + row→shape mappers) [6 files] _(multi: [infrastructure, feature]; ai-assisted)_
+
+### Feature (user-facing) (0)
 
 _(none)_
-
-### Feature (user-facing) (1)
-
-- `e13b46ad` 2026-06-07 — add active-agent /economy hero (standing-led, >=550-gated "earned" copy) + gate Standing card [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `7849b69e` 2026-06-07 — chore(changelog): auto-update [skip ci] [2 files]
+- `d34b5ed8` 2026-06-07 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `b16e93c4` 2026-06-07 — [infrastructure, feature] — test(frontier): GAP-4 — lock /economy read-path logic (gate + row→shape mappers)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `e13b46ad` 2026-06-07 — add active-agent /economy hero (standing-led, >=550-gated "earned" copy) + gate Standing card
+- `b16e93c4` 2026-06-07 — test(frontier): GAP-4 — lock /economy read-path logic (gate + row→shape mappers)
 
 ## Appendix — every commit (chronological)
 
-- `7849b69e` 2026-06-07 — chore(changelog): auto-update [skip ci] [2 files]
-- `e13b46ad` 2026-06-07 — add active-agent /economy hero (standing-led, >=550-gated "earned" copy) + gate Standing card [2 files] _(ai-assisted)_
+- `d34b5ed8` 2026-06-07 — chore(changelog): auto-update [skip ci] [2 files]
+- `b16e93c4` 2026-06-07 — test(frontier): GAP-4 — lock /economy read-path logic (gate + row→shape mappers) [6 files] _(multi: [infrastructure, feature]; ai-assisted)_
