@@ -3346,11 +3346,12 @@ function CommandCenterInner() {
           setShowModelPicker(false);
           if (showPlusMenu) setShowConnectorsSubmenu(false);
         }}
-        className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 active:scale-95"
-        style={{
-          background: showPlusMenu ? "var(--accent)" : "rgba(0,0,0,0.06)",
-          color: showPlusMenu ? "#fff" : "var(--muted)",
-        }}
+        // Rest + hover: the shipped single-element liquid glass (.glass-filter-pill,
+        // same material/rim/timing as the filter pills above) — geometry stays in
+        // Tailwind, the class is material-only. Open state keeps the coral "engaged"
+        // affordance (inline background wins over the class's frost gradient).
+        className="glass-filter-pill w-7 h-7 rounded-full flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
+        style={showPlusMenu ? { background: "var(--accent)", color: "#fff" } : undefined}
       >
         <Plus className={`w-4 h-4 transition-transform ${showPlusMenu ? "rotate-45" : ""}`} strokeWidth={2.5} />
       </button>
