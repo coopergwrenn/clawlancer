@@ -78,6 +78,10 @@ export function EconomyPolicyControls() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [perTx, setPerTx] = useState<number>(0);
   const [perDay, setPerDay] = useState<number>(0);
+  // Reserve (minWalletBalance). Slice A is RAISE-ONLY: the control clamps to
+  // >= the tier default; lowering it / "spend it all" needs the floor reversal
+  // (Slice B). clampOverrides (max) neutralizes any sub-default value at read.
+  const [reserve, setReserve] = useState<number>(0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
@@ -88,6 +92,7 @@ export function EconomyPolicyControls() {
     setSelected(new Set(d.allowed_categories));
     setPerTx(d.bands.justDoItPerTx);
     setPerDay(d.bands.justDoItPerDay);
+    setReserve(d.bands.minWalletBalance);
   }, []);
 
   const fetchPolicy = useCallback(async () => {
@@ -136,6 +141,10 @@ export function EconomyPolicyControls() {
       const body = {
         justDoItPerTx: perTx < td.justDoItPerTx ? perTx : null,
         justDoItPerDay: perDay < td.justDoItPerDay ? perDay : null,
+        // Reserve is RAISE-only here: send it only if raised ABOVE the tier
+        // default; otherwise null → tier default (unchanged behavior). A raise
+        // is a tighten (floor up); clampOverrides' max() makes it stick.
+        minWalletBalance: reserve > td.minWalletBalance ? reserve : null,
         allowed_categories: data.tier_default_categories.filter((c) => selected.has(c)),
       };
       const res = await fetch("/api/agent-economy/policy", {
@@ -157,15 +166,20 @@ export function EconomyPolicyControls() {
     } finally {
       setSaving(false);
     }
-  }, [data, perTx, perDay, selected, fetchPolicy]);
+  }, [data, perTx, perDay, reserve, selected, fetchPolicy]);
 
   const dirty = useMemo(() => {
     if (!data) return false;
     const catsDiff =
       selected.size !== data.allowed_categories.length ||
       data.allowed_categories.some((c) => !selected.has(c));
-    return catsDiff || perTx !== data.bands.justDoItPerTx || perDay !== data.bands.justDoItPerDay;
-  }, [data, selected, perTx, perDay]);
+    return (
+      catsDiff ||
+      perTx !== data.bands.justDoItPerTx ||
+      perDay !== data.bands.justDoItPerDay ||
+      reserve !== data.bands.minWalletBalance
+    );
+  }, [data, selected, perTx, perDay, reserve]);
 
   if (loading) {
     return (
@@ -212,6 +226,54 @@ export function EconomyPolicyControls() {
 
   return (
     <div className="glass rounded-2xl p-6 sm:p-7" style={{ border: "1px solid var(--border)" }}>
+      {/* ── The contract, in one sentence (§6) — funding + posture, read-only. ── */}
+      <div
+        className="rounded-xl p-5 mb-5"
+        style={{ background: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.05)" }}
+      >
+        <p className="text-[13px] leading-relaxed" style={{ color: "var(--foreground)" }}>
+          Your agent spends from a wallet <span className="font-medium">you fund</span> — we cover the
+          gas. It can spend up to{" "}
+          <span className="font-semibold" style={{ color: ACCENT }}>
+            {usd(data.bands.justDoItPerTx)}
+          </span>{" "}
+          per purchase on its own
+          {a && a.binding !== "spend_disabled" ? (
+            <>
+              , within a daily allowance it earns (
+              <span className="font-semibold">{usd(a.earnedDailyBudgetUsd)}</span>/day so far)
+            </>
+          ) : (
+            <>, within a daily allowance it earns</>
+          )}
+          , and keeps <span className="font-semibold">{usd(data.bands.minWalletBalance)}</span> in
+          reserve.
+        </p>
+      </div>
+
+      {/* ── Low-balance soft warning (§16.5): fires with runway (< ~1 day of the
+          earned budget left), above the hard floor. A nudge, not a block. ── */}
+      {a &&
+        a.binding !== "spend_disabled" &&
+        a.binding !== "balance_unknown" &&
+        a.walletBalanceUsd != null &&
+        a.walletHeadroomUsd > 0 &&
+        a.walletHeadroomUsd < a.earnedDailyBudgetUsd && (
+          <div
+            className="rounded-xl p-3 mb-5 flex items-start gap-2"
+            style={{ background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)" }}
+          >
+            <AlertTriangle
+              className="w-3.5 h-3.5 mt-0.5 shrink-0"
+              style={{ color: "rgb(234,179,8)" }}
+            />
+            <p className="text-[12px] leading-snug" style={{ color: "var(--foreground)" }}>
+              Running low — about a day of spending left. Top up the wallet when you get a chance and
+              your agent keeps handling things on its own.
+            </p>
+          </div>
+        )}
+
       {/* ── GAP-1: the honest "what it can spend on its own today" headline ── */}
       <div
         className="rounded-xl p-5 mb-6"
@@ -320,6 +382,28 @@ export function EconomyPolicyControls() {
         uses whichever is lower (what it&apos;s earned, or your ceiling). Lower these anytime; you can&apos;t raise them above your plan.
       </p>
 
+      {/* ── Presets (§6): one tap to the cautious end or the default. Both set
+          the existing tighten-only per-tx ceiling. (Hands-off — raising the
+          ceiling to the plan cap — needs the §5 reversal → Slice B.) ── */}
+      <div className="flex items-center gap-2 mb-4">
+        <PresetBtn
+          label="Ask me first"
+          active={perTx === 0}
+          onClick={() => {
+            setSaved(false);
+            setPerTx(0);
+          }}
+        />
+        <PresetBtn
+          label="Earned autonomy"
+          active={perTx === td.justDoItPerTx}
+          onClick={() => {
+            setSaved(false);
+            setPerTx(td.justDoItPerTx);
+          }}
+        />
+      </div>
+
       <div className="grid sm:grid-cols-2 gap-3 mb-4">
         <BandInput
           label="Any single purchase over"
@@ -337,6 +421,20 @@ export function EconomyPolicyControls() {
           onChange={(v) => {
             setSaved(false);
             setPerDay(clampBand(v, td.justDoItPerDay));
+          }}
+        />
+      </div>
+
+      {/* ── Reserve (§16): RAISE-only in Slice A. The minimum the agent always
+          leaves in the wallet. Lowering it / "spend it all" needs the §16.6
+          floor reversal → Slice B; this control clamps to >= the plan default. ── */}
+      <div className="mb-4">
+        <ReserveInput
+          value={reserve}
+          min={td.minWalletBalance}
+          onChange={(v) => {
+            setSaved(false);
+            setReserve(Math.max(td.minWalletBalance, Number.isFinite(v) ? v : td.minWalletBalance));
           }}
         />
       </div>
@@ -452,6 +550,55 @@ function BandInput({
       </div>
       <span className="text-[10px]" style={{ color: "var(--muted)" }}>
         your plan allows up to {`$${max.toLocaleString("en-US", { maximumFractionDigits: 2 })}`}
+      </span>
+    </label>
+  );
+}
+
+/** A small posture preset pill (sets the per-tx ceiling to one end). */
+function PresetBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 cursor-pointer"
+      style={{
+        background: active ? "rgba(34,197,94,0.10)" : "rgba(0,0,0,0.04)",
+        border: active ? "1px solid rgba(34,197,94,0.30)" : "1px solid var(--border)",
+        color: active ? "rgb(21,128,61)" : "var(--foreground)",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/**
+ * The reserve control — RAISE-only in Slice A (clamped to >= the plan default;
+ * lowering / "spend it all" needs the §16.6 floor reversal → Slice B). The floor
+ * the agent never spends below.
+ */
+function ReserveInput({ value, min, onChange }: { value: number; min: number; onChange: (v: number) => void }) {
+  const raised = value > min;
+  return (
+    <label className="block rounded-xl p-3" style={{ background: "rgba(0,0,0,0.025)", border: "1px solid rgba(0,0,0,0.06)" }}>
+      <span className="text-[11px] block mb-1.5" style={{ color: "var(--muted)" }}>
+        Always keep in reserve (your agent never spends below this)
+      </span>
+      <div className="flex items-center gap-1">
+        <span className="text-lg font-semibold" style={{ color: raised ? "rgb(34,197,94)" : "var(--foreground)" }}>$</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          min={min}
+          step={1}
+          value={value}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          className="w-full bg-transparent text-lg font-semibold tracking-tight outline-none"
+          style={{ color: raised ? "rgb(34,197,94)" : "var(--foreground)" }}
+        />
+      </div>
+      <span className="text-[10px]" style={{ color: "var(--muted)" }}>
+        keep more if you like · your plan reserves {`$${min.toLocaleString("en-US", { maximumFractionDigits: 2 })}`} by default
       </span>
     </label>
   );
