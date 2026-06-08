@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-08
 
-Window: `8caf6507ceba8f3329cd18765015a1a941c8f284` → `HEAD` (HEAD = `446feb25`)
+Window: `446feb251c709d67acdd628136fc26365eda43cf` → `HEAD` (HEAD = `f7b691d2`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 446feb251c709d67acdd628136fc26365eda43cf -->
+<!-- LAST_GENERATED_SHA: f7b691d20c1f4766812155b2e08a361641b0348c -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `446feb25` 2026-06-08 — refine Command Center composer to glass family — both tabs (tasks + chat) [1 files] _(ai-assisted)_
+- `f7b691d2` 2026-06-08 — feat(economy): Slice A spend-approval controls (contract sentence + presets + reserve-raise + low-balance states) [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `c7b648b3` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
+- `a7ebf189` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `446feb25` 2026-06-08 — refine Command Center composer to glass family — both tabs (tasks + chat) [1 files] _(ai-assisted)_
+- `f7b691d2` 2026-06-08 — feat(economy): Slice A spend-approval controls (contract sentence + presets + reserve-raise + low-balance states) [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `c7b648b3` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
+- `a7ebf189` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `446feb25` 2026-06-08 — refine Command Center composer to glass family — both tabs (tasks + chat)
+- `f7b691d2` 2026-06-08 — feat(economy): Slice A spend-approval controls (contract sentence + presets + reserve-raise + low-balance states)
 
 ## Appendix — every commit (chronological)
 
-- `c7b648b3` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
-- `446feb25` 2026-06-08 — refine Command Center composer to glass family — both tabs (tasks + chat) [1 files] _(ai-assisted)_
+- `a7ebf189` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
+- `f7b691d2` 2026-06-08 — feat(economy): Slice A spend-approval controls (contract sentence + presets + reserve-raise + low-balance states) [1 files] _(ai-assisted)_
