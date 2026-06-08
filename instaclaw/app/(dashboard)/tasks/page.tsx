@@ -3131,9 +3131,17 @@ function CommandCenterInner() {
       transition={{ type: "spring", stiffness: 500, damping: 30 }}
       className="absolute bottom-full left-0 mb-1.5 rounded-xl py-1.5 min-w-[240px] z-50"
       style={{
+        // Opaque popover over scrolling content (NOT translucent — would bleed).
+        // Elevation harmonized to the glass family's shadow vocabulary (same 3-layer
+        // approach as the input edge, tuned UP — a popover floats a layer higher than
+        // the input slab): tight contact + soft strong lifted ambient + whisper rim
+        // replacing the flat single shadow + hard 1px border. Reads as a deliberate
+        // floating sheet, not a default dropdown.
         background: "var(--card)",
-        border: "1px solid var(--border)",
-        boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+        boxShadow:
+          "0 1px 2px rgba(0,0,0,0.04), " +
+          "0 12px 32px -8px rgba(0,0,0,0.18), " +
+          "0 0 0 1px rgba(0,0,0,0.05)",
       }}
     >
       {/* Add files */}
@@ -3155,14 +3163,19 @@ function CommandCenterInner() {
         onClick={() => setDeepResearchEnabled((v) => !v)}
         className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
         style={{
-          color: deepResearchEnabled ? "#7c3aed" : "var(--foreground)",
-          background: deepResearchEnabled ? "rgba(124,58,237,0.08)" : "transparent",
+          // Active = app accent (coral), matching the model-picker dropdown + the app's
+          // universal "selected" language (was an off-brand purple one-off). Icon inherits
+          // currentColor, so the active row reads clean monochrome coral.
+          color: deepResearchEnabled ? "var(--accent)" : "var(--foreground)",
+          background: deepResearchEnabled ? "rgba(220,103,67,0.08)" : "transparent",
         }}
         onMouseEnter={(e) => { if (!deepResearchEnabled) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = deepResearchEnabled ? "rgba(124,58,237,0.08)" : "transparent"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = deepResearchEnabled ? "rgba(220,103,67,0.08)" : "transparent"; }}
       >
         <span className="flex items-center gap-2.5">
-          <Telescope className="w-4 h-4" />
+          {/* icon muted when off (matches Add files / Connectors), accent when on —
+              consistent intentional icon treatment across all rows */}
+          <Telescope className="w-4 h-4" style={{ color: deepResearchEnabled ? "var(--accent)" : "var(--muted)" }} />
           Deep research
         </span>
         {deepResearchEnabled && <Check className="w-3.5 h-3.5" />}
@@ -3173,14 +3186,16 @@ function CommandCenterInner() {
         onClick={() => setWebSearchEnabled((v) => !v)}
         className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
         style={{
-          color: webSearchEnabled ? "#2563eb" : "var(--foreground)",
-          background: webSearchEnabled ? "rgba(37,99,235,0.08)" : "transparent",
+          // Active = app accent (coral), matching the model-picker dropdown + app language
+          // (was an off-brand blue one-off — and #2563eb didn't even match the icon blue).
+          color: webSearchEnabled ? "var(--accent)" : "var(--foreground)",
+          background: webSearchEnabled ? "rgba(220,103,67,0.08)" : "transparent",
         }}
         onMouseEnter={(e) => { if (!webSearchEnabled) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = webSearchEnabled ? "rgba(37,99,235,0.08)" : "transparent"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = webSearchEnabled ? "rgba(220,103,67,0.08)" : "transparent"; }}
       >
         <span className="flex items-center gap-2.5">
-          <Globe className="w-4 h-4" />
+          <Globe className="w-4 h-4" style={{ color: webSearchEnabled ? "var(--accent)" : "var(--muted)" }} />
           Web search
         </span>
         {webSearchEnabled && <Check className="w-3.5 h-3.5" />}
@@ -3200,7 +3215,7 @@ function CommandCenterInner() {
         onMouseLeave={(e) => { e.currentTarget.style.background = useMyStyleEnabled ? "rgba(220,103,67,0.08)" : "transparent"; }}
       >
         <span className="flex items-center gap-2.5">
-          <Pencil className="w-4 h-4" />
+          <Pencil className="w-4 h-4" style={{ color: useMyStyleEnabled ? "var(--accent)" : "var(--muted)" }} />
           Use my style
           {!connectorInfo.gmailConnected && <span className="text-[10px] ml-1">(connect Gmail)</span>}
         </span>
