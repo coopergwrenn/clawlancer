@@ -818,13 +818,10 @@ function ChatEmptyState({
           <button
             key={a.label}
             onClick={() => onChipClick(a.prefill)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
-            style={{
-              background: "rgba(255,255,255,0.45)",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
-              border: "1px solid rgba(0,0,0,0.06)",
-              color: "var(--foreground)",
-            }}
+            // Material: shipped .glass-filter-pill (same as the composer suggestion
+            // chips). Empty-state has no refresh/shimmer — static glass; geometry stays
+            // in Tailwind. Label color moves --foreground → class #6b7280 muted.
+            className="glass-filter-pill flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer active:scale-[0.98]"
           >
             {a.label}
           </button>
@@ -3263,17 +3260,9 @@ function CommandCenterInner() {
     </motion.div>
   );
 
-  // Toggle indicator pills (shown above input when toggles are active)
-  // Glass pill style matching suggestion chips
-  const glassPillStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,0.6)",
-    backdropFilter: "blur(8px)",
-    WebkitBackdropFilter: "blur(8px)",
-    boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
-    border: "1px solid rgba(0,0,0,0.06)",
-    color: "var(--muted)",
-  };
-
+  // Toggle indicator pills (shown above input when toggles are active).
+  // Material is the shipped .glass-filter-pill (same family as the suggestion chips);
+  // each pill keeps its brand-colored icon + × remove button + framer enter/exit.
   const togglePills = (hasAnyToggle || attachedFile) ? (
     <div className="flex items-center gap-1.5 pb-1.5 flex-wrap px-1">
       <AnimatePresence>
@@ -3283,8 +3272,7 @@ function CommandCenterInner() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
-            style={glassPillStyle}
+            className="glass-filter-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
           >
             <Telescope className="w-3 h-3" style={{ color: "#7c3aed" }} />
             Deep research
@@ -3297,8 +3285,7 @@ function CommandCenterInner() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
-            style={glassPillStyle}
+            className="glass-filter-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
           >
             <Globe className="w-3 h-3" style={{ color: "#4285F4" }} />
             Web search
@@ -3311,8 +3298,7 @@ function CommandCenterInner() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
-            style={glassPillStyle}
+            className="glass-filter-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
           >
             <Pencil className="w-3 h-3" style={{ color: "var(--accent)" }} />
             My style
@@ -3325,8 +3311,7 @@ function CommandCenterInner() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
-            style={glassPillStyle}
+            className="glass-filter-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
           >
             <FileText className="w-3 h-3" style={{ color: "#34A853" }} />
             <span className="max-w-[120px] truncate">{attachedFile.name}</span>
@@ -3773,17 +3758,20 @@ function CommandCenterInner() {
                           <button
                             key={a.label}
                             onClick={() => !isRefreshingChips && handleChipClick(a.prefill)}
-                            className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.97]"
+                            // Material: shipped .glass-filter-pill (same as tasks-composer
+                            // chips). whitespace-nowrap + geometry stay in Tailwind. During
+                            // refresh the inline shimmer background overrides the class frost
+                            // so the re-roll glow + fade-in are preserved. Label color moves
+                            // --foreground → class #6b7280 muted.
+                            className="glass-filter-pill shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium whitespace-nowrap cursor-pointer active:scale-[0.97]"
                             style={{
-                              background: isRefreshingChips
-                                ? "linear-gradient(90deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.5) 40%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0.5) 60%, rgba(255,255,255,0.5) 100%)"
-                                : "rgba(255,255,255,0.6)",
-                              backgroundSize: isRefreshingChips ? "200% 100%" : undefined,
-                              backdropFilter: "blur(8px)",
-                              boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
-                              border: "1px solid rgba(0,0,0,0.06)",
-                              color: isRefreshingChips ? "var(--muted)" : "var(--foreground)",
-                              whiteSpace: "nowrap",
+                              ...(isRefreshingChips
+                                ? {
+                                    background:
+                                      "linear-gradient(90deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.5) 40%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0.5) 60%, rgba(255,255,255,0.5) 100%)",
+                                    backgroundSize: "200% 100%",
+                                  }
+                                : {}),
                               opacity: isRefreshingChips ? 0.7 : 1,
                               animation: isRefreshingChips
                                 ? `chip-shimmer 1.5s ease-in-out infinite ${i * 0.15}s`
@@ -3798,19 +3786,16 @@ function CommandCenterInner() {
                         <button
                           onClick={refreshChips}
                           disabled={isRefreshingChips}
-                          className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 disabled:cursor-default"
-                          style={{
-                            background: "rgba(255,255,255,0.5)",
-                            backdropFilter: "blur(8px)",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
-                            border: "1px solid rgba(0,0,0,0.06)",
-                          }}
+                          // Same shipped .glass-filter-pill material as the composer "+" /
+                          // tasks ↻ — a circular glass button. Icon inherits #6b7280 at rest,
+                          // flips to accent + spins on re-roll. Disabled + re-roll unchanged.
+                          className="glass-filter-pill shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer active:scale-95 disabled:cursor-default"
                           title="Refresh suggestions"
                         >
                           <RotateCw
                             className="w-3 h-3"
                             style={{
-                              color: isRefreshingChips ? "var(--accent)" : "var(--muted)",
+                              color: isRefreshingChips ? "var(--accent)" : undefined,
                               animation: isRefreshingChips ? "refresh-spin 0.7s linear infinite" : undefined,
                             }}
                           />
