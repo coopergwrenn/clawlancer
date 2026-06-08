@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-08
 
-Window: `b16e93c467623d6a3bac31b70c9970af2618fce7` → `HEAD` (HEAD = `f56965a0`)
+Window: `f56965a050d2895bc79c080ac2ba869a50886474` → `HEAD` (HEAD = `8abffd74`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: f56965a050d2895bc79c080ac2ba869a50886474 -->
+<!-- LAST_GENERATED_SHA: 8abffd74011d984e5e23b5dd27c7d9be5c995c08 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `f56965a0` 2026-06-08 — restyle Command Center "+" button to shipped liquid glass (.glass-filter-pill), both composers [1 files] _(ai-assisted)_
+- `8abffd74` 2026-06-08 — restyle Command Center quick-action chips to shipped liquid glass (.glass-filter-pill) + glass refresh button [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `cc196d7a` 2026-06-07 — chore(changelog): auto-update [skip ci] [2 files]
+- `d2101095` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `f56965a0` 2026-06-08 — restyle Command Center "+" button to shipped liquid glass (.glass-filter-pill), both composers [1 files] _(ai-assisted)_
+- `8abffd74` 2026-06-08 — restyle Command Center quick-action chips to shipped liquid glass (.glass-filter-pill) + glass refresh button [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `cc196d7a` 2026-06-07 — chore(changelog): auto-update [skip ci] [2 files]
+- `d2101095` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `f56965a0` 2026-06-08 — restyle Command Center "+" button to shipped liquid glass (.glass-filter-pill), both composers
+- `8abffd74` 2026-06-08 — restyle Command Center quick-action chips to shipped liquid glass (.glass-filter-pill) + glass refresh button
 
 ## Appendix — every commit (chronological)
 
-- `cc196d7a` 2026-06-07 — chore(changelog): auto-update [skip ci] [2 files]
-- `f56965a0` 2026-06-08 — restyle Command Center "+" button to shipped liquid glass (.glass-filter-pill), both composers [1 files] _(ai-assisted)_
+- `d2101095` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
+- `8abffd74` 2026-06-08 — restyle Command Center quick-action chips to shipped liquid glass (.glass-filter-pill) + glass refresh button [1 files] _(ai-assisted)_
