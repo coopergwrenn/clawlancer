@@ -57,12 +57,17 @@ const STAKER_CEILING_MULTIPLIER = 2;
 export type PolicyOverrides = Partial<Record<keyof TierBands, number>>;
 
 /**
- * Apply user overrides to a band set, TIGHTEN-ONLY. The dashboard can make an
- * agent more conservative than its paid bands, never more aggressive — ceilings
- * can only go DOWN, the wallet floor can only go UP. Loosening beyond the tier
- * (×staker) is gated behind tier/staking, not a free override. Invalid override
- * values (negative / non-finite / absent) silently fall back to the base (the
- * agent never ends up LESS safe because of a bad override).
+ * Apply user overrides to a band set. FOUR bands are TIGHTEN-ONLY — the dashboard
+ * can make an agent more conservative, never more aggressive: neverPerTx / neverPerDay
+ * (hard ceilings) can only go DOWN, the wallet floor can only go UP, and justDoItPerDay
+ * (the no-ask DAILY band) can only go DOWN. The ONE band the user may RAISE is
+ * justDoItPerTx — the per-transaction no-ask line — up to the hard per-tx ceiling
+ * neverPerTx (the Slice-B §5 ceiling reversal: "grant a ceiling, the agent earns toward
+ * it"). Raising it widens only WILLINGNESS to auto-spend per-transaction; the agent's
+ * earned daily budget (decideAuthorization gate 2c) is the real, independent bound on
+ * autonomous spend, so a high ceiling on a low-earned agent still ASKS. Invalid override
+ * values (negative / non-finite / absent) silently fall back to the base (the agent
+ * never ends up LESS safe because of a bad override).
  */
 export function clampOverrides(base: TierBands, ov: PolicyOverrides): TierBands {
   const at = (v: number | undefined, fallback: number): number =>
@@ -70,10 +75,13 @@ export function clampOverrides(base: TierBands, ov: PolicyOverrides): TierBands 
   const neverPerTx = Math.min(base.neverPerTx, at(ov.neverPerTx, base.neverPerTx));
   const neverPerDay = Math.min(base.neverPerDay, at(ov.neverPerDay, base.neverPerDay));
   const minWalletBalance = Math.max(base.minWalletBalance, at(ov.minWalletBalance, base.minWalletBalance));
-  // Re-coerce coherence: clamping a hard ceiling below the just-do-it band would
-  // leave just_do_it > never (auto-approve above the deny line). just_do_it must
-  // never exceed the hard ceiling.
-  const justDoItPerTx = Math.min(base.justDoItPerTx, at(ov.justDoItPerTx, base.justDoItPerTx), neverPerTx);
+  // justDoItPerTx (the per-tx no-ask line) is USER-RAISABLE up to neverPerTx (§5
+  // ceiling reversal) — the `base` cap is intentionally ABSENT so an override may
+  // exceed the tier default. Math.min(neverPerTx, …) keeps it ≤ the hard per-tx
+  // ceiling, so just_do_it can never exceed the deny line (neverPerTx). It is safe to
+  // raise because the earned-budget gate (decideAuthorization 2c), which reads
+  // justDoItPerDay — NOT justDoItPerTx — is the binding autonomous-spend limit.
+  const justDoItPerTx = Math.min(neverPerTx, at(ov.justDoItPerTx, base.justDoItPerTx));
   const justDoItPerDay = Math.min(base.justDoItPerDay, at(ov.justDoItPerDay, base.justDoItPerDay), neverPerDay);
   return { justDoItPerTx, justDoItPerDay, neverPerTx, neverPerDay, minWalletBalance };
 }
