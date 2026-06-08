@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-08
 
-Window: `f7b691d20c1f4766812155b2e08a361641b0348c` → `HEAD` (HEAD = `4c91f73f`)
+Window: `4c91f73f1588e30b520c017b775f81da86ba5843` → `HEAD` (HEAD = `fb748665`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 4c91f73f1588e30b520c017b775f81da86ba5843 -->
+<!-- LAST_GENERATED_SHA: fb7486650f3d3f4e46ec366f859325e8ae7eefd9 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `4c91f73f` 2026-06-08 — feat(economy): §8 value-led feed copy — lead with the value the spend delivered [1 files] _(ai-assisted)_
+- `fb748665` 2026-06-08 — refine "+" composer menu to glass family — elevation + coral-unify (both tabs) [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `9867c515` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
+- `ba434794` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `4c91f73f` 2026-06-08 — feat(economy): §8 value-led feed copy — lead with the value the spend delivered [1 files] _(ai-assisted)_
+- `fb748665` 2026-06-08 — refine "+" composer menu to glass family — elevation + coral-unify (both tabs) [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `9867c515` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
+- `ba434794` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `4c91f73f` 2026-06-08 — feat(economy): §8 value-led feed copy — lead with the value the spend delivered
+- `fb748665` 2026-06-08 — refine "+" composer menu to glass family — elevation + coral-unify (both tabs)
 
 ## Appendix — every commit (chronological)
 
-- `9867c515` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
-- `4c91f73f` 2026-06-08 — feat(economy): §8 value-led feed copy — lead with the value the spend delivered [1 files] _(ai-assisted)_
+- `ba434794` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
+- `fb748665` 2026-06-08 — refine "+" composer menu to glass family — elevation + coral-unify (both tabs) [1 files] _(ai-assisted)_
