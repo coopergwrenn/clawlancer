@@ -3957,14 +3957,19 @@ function CommandCenterInner() {
               <button
                 key={action.label}
                 onClick={() => handleChipClick(action.prefill)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs whitespace-nowrap cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+                // Material: shipped .glass-filter-pill (frost + 0.18 rim + 0.2s hover) —
+                // geometry stays in Tailwind. During refresh the inline shimmer background
+                // overrides the class frost (inline wins) so the re-roll glow + fade-in
+                // animations are preserved unchanged.
+                className="glass-filter-pill flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs whitespace-nowrap cursor-pointer active:scale-[0.98]"
                 style={{
-                  background: isRefreshingChips
-                    ? "linear-gradient(90deg, rgba(255,255,255,0.45) 0%, rgba(0,0,0,0.03) 50%, rgba(255,255,255,0.45) 100%)"
-                    : "rgba(255,255,255,0.45)",
-                  backgroundSize: isRefreshingChips ? "200% 100%" : undefined,
-                  border: "1px solid rgba(0,0,0,0.06)",
-                  color: isRefreshingChips ? "var(--muted)" : "var(--muted)",
+                  ...(isRefreshingChips
+                    ? {
+                        background:
+                          "linear-gradient(90deg, rgba(255,255,255,0.45) 0%, rgba(0,0,0,0.03) 50%, rgba(255,255,255,0.45) 100%)",
+                        backgroundSize: "200% 100%",
+                      }
+                    : {}),
                   opacity: isRefreshingChips ? 0.7 : 1,
                   animation: isRefreshingChips
                     ? `chip-shimmer 1.5s ease-in-out infinite ${i * 0.15}s`
@@ -3979,19 +3984,16 @@ function CommandCenterInner() {
             <button
               onClick={refreshChips}
               disabled={isRefreshingChips}
-              className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 disabled:cursor-default"
-              style={{
-                background: "rgba(255,255,255,0.5)",
-                backdropFilter: "blur(8px)",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
-                border: "1px solid rgba(0,0,0,0.06)",
-              }}
+              // Same shipped .glass-filter-pill material as the composer "+" — a circular
+              // glass button. Icon inherits the class's #6b7280 at rest; flips to accent
+              // (coral) + spins while re-rolling. Disabled + re-roll behavior unchanged.
+              className="glass-filter-pill shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer active:scale-95 disabled:cursor-default"
               title="Refresh suggestions"
             >
               <RotateCw
                 className="w-3 h-3"
                 style={{
-                  color: isRefreshingChips ? "var(--accent)" : "var(--muted)",
+                  color: isRefreshingChips ? "var(--accent)" : undefined,
                   animation: isRefreshingChips ? "refresh-spin 0.7s linear infinite" : undefined,
                 }}
               />
