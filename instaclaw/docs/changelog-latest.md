@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-08
 
-Window: `8abffd74011d984e5e23b5dd27c7d9be5c995c08` → `HEAD` (HEAD = `8caf6507`)
+Window: `8caf6507ceba8f3329cd18765015a1a941c8f284` → `HEAD` (HEAD = `446feb25`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 8caf6507ceba8f3329cd18765015a1a941c8f284 -->
+<!-- LAST_GENERATED_SHA: 446feb251c709d67acdd628136fc26365eda43cf -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `8caf6507` 2026-06-08 — restyle sibling suggestion-chip rows + active-tool chips to shipped liquid glass (.glass-filter-pill) [1 files] _(ai-assisted)_
+- `446feb25` 2026-06-08 — refine Command Center composer to glass family — both tabs (tasks + chat) [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `ac297f87` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
+- `c7b648b3` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `8caf6507` 2026-06-08 — restyle sibling suggestion-chip rows + active-tool chips to shipped liquid glass (.glass-filter-pill) [1 files] _(ai-assisted)_
+- `446feb25` 2026-06-08 — refine Command Center composer to glass family — both tabs (tasks + chat) [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `ac297f87` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
+- `c7b648b3` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `8caf6507` 2026-06-08 — restyle sibling suggestion-chip rows + active-tool chips to shipped liquid glass (.glass-filter-pill)
+- `446feb25` 2026-06-08 — refine Command Center composer to glass family — both tabs (tasks + chat)
 
 ## Appendix — every commit (chronological)
 
-- `ac297f87` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
-- `8caf6507` 2026-06-08 — restyle sibling suggestion-chip rows + active-tool chips to shipped liquid glass (.glass-filter-pill) [1 files] _(ai-assisted)_
+- `c7b648b3` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
+- `446feb25` 2026-06-08 — refine Command Center composer to glass family — both tabs (tasks + chat) [1 files] _(ai-assisted)_
