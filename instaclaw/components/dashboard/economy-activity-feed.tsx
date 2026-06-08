@@ -155,19 +155,27 @@ function EconomicStatement({ r }: { r: ActivityRow }) {
   // doesn't need green. Color is reserved for the one terracotta thread (budget)
   // and the rare red (failure). Texture comes from the spine, not from tinting
   // every row.
-  const used =
-    typeof r.result_used === "boolean" ? (
-      r.result_used ? (
-        <span style={{ color: "var(--muted)" }}>used the result</span>
-      ) : (
-        <span style={{ color: "var(--muted)" }}>explored, didn&rsquo;t use it</span>
-      )
-    ) : null;
+  // §8 value-legibility: lead with the VALUE the spend delivered (was the result
+  // used?), the cost follows as the tail. Spend-led only as the fallback when we
+  // don't know (result_used null). The title already carries WHAT it bought.
+  if (r.result_used === true)
+    return (
+      <>
+        Used what it bought · {strong(amt)}
+        {drewOn}
+      </>
+    );
+  if (r.result_used === false)
+    return (
+      <>
+        Explored it, didn&rsquo;t use it · {strong(amt)}
+        {drewOn}
+      </>
+    );
   return (
     <>
       Spent {strong(amt)}
       {drewOn}
-      {used && <> · {used}</>}
     </>
   );
 }
