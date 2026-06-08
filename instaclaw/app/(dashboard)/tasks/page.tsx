@@ -3811,7 +3811,14 @@ function CommandCenterInner() {
                       style={{
                         background: "rgba(255,255,255,0.8)",
                         backdropFilter: "blur(12px)",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)",
+                        // Edge harmonized into the glass family (mirrors the tasks composer):
+                        // solid + legible base, soft gently-lifted ambient + whisper rim
+                        // replacing the flat tight drop + hard hairline. Flagged inline
+                        // refinement — intentionally NOT .liquid-glass-card.
+                        boxShadow:
+                          "0 1px 2px rgba(0,0,0,0.04), " +
+                          "0 4px 12px -4px rgba(0,0,0,0.06), " +
+                          "0 0 0 1px rgba(0,0,0,0.035)",
                       }}
                     >
                       {plusButton}
@@ -3835,7 +3842,9 @@ function CommandCenterInner() {
                         <div className="relative" ref={modelPickerRef}>
                           <button
                             onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
-                            className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
+                            // pr trimmed 2.5→1 (spacing only — mirrors tasks composer) so
+                            // model-picker · mic · send read as one even, deliberate cluster.
+                            className="hidden sm:flex items-center gap-1 pl-2.5 pr-1 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
                             style={{ color: "var(--muted)" }}
                           >
                             <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}</span>
@@ -3891,10 +3900,16 @@ function CommandCenterInner() {
                         <button
                           onClick={handleSubmit}
                           disabled={isSending || !chatInput.trim()}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 disabled:opacity-30 disabled:scale-95"
-                          style={{ background: "var(--accent)" }}
+                          // Send: glass circle (reuse .glass-filter-pill, mirrors the "+" /
+                          // tasks send) that ARMS coral when actionable. Disable-gate
+                          // preserved EXACTLY (isSending || !trim()); the arm visual = the
+                          // not-disabled state (chatInput.trim() && !isSending) so coral shows
+                          // only when a send can fire. Arrow inherits currentColor. Behavior
+                          // identical: handleSubmit + the isSending||!trim() gate unchanged.
+                          className="glass-filter-pill w-7 h-7 rounded-full flex items-center justify-center shrink-0 cursor-pointer active:scale-95 disabled:cursor-default"
+                          style={chatInput.trim() && !isSending ? { background: "var(--accent)", color: "#fff" } : undefined}
                         >
-                          <ArrowUp className="w-4 h-4" style={{ color: "#ffffff" }} strokeWidth={2.5} />
+                          <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
                         </button>
                       </div>
                     </div>
@@ -3993,7 +4008,17 @@ function CommandCenterInner() {
             style={{
               background: "rgba(255,255,255,0.8)",
               backdropFilter: "blur(12px)",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)",
+              // Edge harmonized into the glass family while staying SOLID + legible (the
+              // calm base the glass floats above — NOT translucent). Flat tight drop + hard
+              // 1px hairline replaced by a tight contact + a soft gently-lifted ambient +
+              // a whisper rim, so the box reads as a deliberate frosted surface from the
+              // same hand as the pills, not a default form-input border. FLAGGED inline
+              // refinement — no light-container glass token exists; intentionally NOT
+              // .liquid-glass-card so the two glass systems don't mix.
+              boxShadow:
+                "0 1px 2px rgba(0,0,0,0.04), " +
+                "0 4px 12px -4px rgba(0,0,0,0.06), " +
+                "0 0 0 1px rgba(0,0,0,0.035)",
             }}
           >
             {plusButton}
@@ -4016,7 +4041,11 @@ function CommandCenterInner() {
               <div className="relative" ref={modelPickerRef2}>
                 <button
                   onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
-                  className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
+                  // pr trimmed 2.5→1 (spacing only, behavior untouched): the model picker's
+                  // right padding made the model→mic gap read ~16px vs the mic→send ~6px, so
+                  // the trio looked loose. Evening it lets model-picker · mic · send read as
+                  // one deliberate cluster.
+                  className="hidden sm:flex items-center gap-1 pl-2.5 pr-1 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
                   style={{ color: "var(--muted)" }}
                 >
                   <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}</span>
@@ -4072,10 +4101,17 @@ function CommandCenterInner() {
               <button
                 onClick={handleSubmit}
                 disabled={!chatInput.trim()}
-                className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 disabled:opacity-30 disabled:scale-95"
-                style={{ background: chatInput.trim() ? "var(--accent)" : "var(--accent)" }}
+                // Send: glass circle (reuse .glass-filter-pill, mirrors the "+") that ARMS
+                // coral when there's text — empty = calm glass "ready & waiting" (never the
+                // old faded square), text = confident coral fill. Arm is inline accent on
+                // chatInput.trim() (same technique as the "+" open state); the class's 0.2s
+                // background-color/color transition carries the glass→coral fade — no new
+                // timing. Arrow inherits currentColor (#6b7280 glass → #fff armed). Behavior
+                // identical: handleSubmit + disabled empty-gate unchanged.
+                className="glass-filter-pill w-7 h-7 rounded-full flex items-center justify-center shrink-0 cursor-pointer active:scale-95 disabled:cursor-default"
+                style={chatInput.trim() ? { background: "var(--accent)", color: "#fff" } : undefined}
               >
-                <ArrowUp className="w-4 h-4" style={{ color: "#ffffff" }} strokeWidth={2.5} />
+                <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
               </button>
             </div>
           </div>
