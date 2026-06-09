@@ -191,3 +191,35 @@ Both marquee features are generation features — they reach Higgsfield only thr
 - ✅ Tiering (re-prioritized), cutover (+orphan + rollback), Homer/extend dependency, open questions.
 - ✅ Severity honest: G14 elevated to hard-blocker; the "saved in your Studio" line named as shipped copy that lies.
 - Boundary held: **this one doc only**; read-only elsewhere; no code/build/spend.
+
+---
+
+## §9. G1 build + adversarial-review outcomes (2026-06-09)
+
+Free-only path under construction (commerce stack G4/G14/G13 deferred). Shipped to the canary branch (not on a VM): G6 copy fix; G1 Part A (gate-side agent-poll: `?action=status`, optional chat_id, settle-only-unless-c webhook); G1 Part B (the `higgsfield-cloud` skill files + discriminating model-select guard). Adversarial self-review of the Part B skill produced the findings below.
+
+### H1 (CRITICAL, decision pending) — Option B delivers a LINK, not native video
+The agent-poll model has no chat_id, and (proven from code) **no agent-invocable path to the Telegram adapter's media-send exists**: no agent send-media tool, no markdown/URL auto-attach, and every media-delivering skill (motion-graphics, computer-dispatch) calls the bot API directly with a chat_id. The adapter *can* `sendVideo` (28 refs) but only the gateway/skills-with-chat_id invoke it. So v1 Option B delivers the Higgsfield **URL as a text link** (expires ≤7 days, not reliably inline), not a native video. **Native-quality delivery requires a chat_id**, and the clean native path is the **already-built+proven webhook** (`sendTelegramVideo`). So the real fork: **(a)** ship link delivery for v1, or **(b)** solve **chat_id capture** (gateway-inbound hook populating `channels.telegram.chatId` / writing `.telegram_chat_id` per message) and let the webhook deliver native video (the "v2 async" path pulled forward). The deferred chat_id problem is the true gate on *good* delivery. **Cooper decides.**
+
+### H2 (scope decision pending) — "animate my photo" (user-sent Telegram photo → i2v)
+The new skill has no Telegram-file_id → public-URL bridge (the old Muapi rail had one: `higgsfield-video/scripts/higgsfield-generate.py:245-293`, download via Telegram getFile → upload to Muapi CDN). A user's Telegram photo is a file_id, not an http URL; the gate requires http(s). So "animate this selfie" can't work; the text→generate-image→animate flow does (soul returns an http URL). **Cost to port:** a new gate `?action=upload` (~30-50 lines: auth, server-side Telegram getFile via bot token, upload to a public store, return URL) + skill file_id detection (~15 lines) + SKILL.md guidance. The public-store options: **(a) Higgsfield's own upload endpoint** (SDK references `uploadImage`/`upload`; cleanest since Higgsfield ingests its own CDN URL, but the Cloud upload path/auth is **unverified**), or **(b) Vercel Blob** (definitely available, one more hop). **~half a day, low-moderate risk** (bounded: Blob is the fallback if Higgsfield-upload isn't on Cloud). **Recommendation: v1 = text→image→video only** (covers "make a video of X," the dominant ask); "animate my photo" = **fast-follow #1**. The canary's goal (prove the pipeline) is met without it. **Hold for Cooper's scope call.**
+
+### Fixed this pass (M1, M2)
+- **M1** — `mapHiggsfieldStatus` flipped to a transient whitelist (queued/in_progress/unknown only); any undocumented terminal status now ends the poll as a failure instead of poll-to-timeout "still rendering." Guard: 62/62.
+- **M2** — persistent upstream errors (429/5xx) surface a distinct "busy, try again" outcome instead of a "still rendering" mislabel (poll-loop error-streak + create/status 503/429 mapping).
+
+### v1 known limitations / hardening backlog (do NOT build now)
+- **M3** — "make a video" with no source image consumes **2 free slots** (image + video). v1 accepts it (SKILL.md tells the agent). Backlog: a combined path or discount.
+- **M4** — `>10s` not code-enforced (`resolve_model` maps quality, not requested seconds); SKILL.md-guidance-only. Backlog: a duration ceiling in `resolve_model`/the gate.
+- **M5** — the blocking `generate` poll (≤480s) vs OpenClaw's bash-tool timeout is **unverified**; the canary reveals it. Backlog: if the tool timeout < 480s, switch to submit-only + agent-driven polling across turns, or lower `max-wait`.
+- **M7** — agent re-check bound: SKILL.md now says "after a couple re-checks over ~10 min, tell them it's taking unusually long." Backlog: a hard bound.
+- **M8** — settle is **webhook-only** in Option B; a dropped webhook → delivered-but-unbilled (paid era only; free-only charges 0). Backlog: have the status-poll settle as a backstop (idempotent with the webhook) for the paid era.
+- **Nits** — N1 generic create-error still improvises (busy/blocked are handled); N2 "standard clip" (=dop/lite, free) vs the "standard" model (=dop/standard, hq) terminology; N3 request_id/JSON leak is soft-prevented (SKILL.md instruction); N4 kling + non-10 `--duration` → graceful gate 400.
+
+### Canary prerequisites (vm-050) — all need Cooper's go (Rule 64)
+1. **Gate reachable-with-secrets from vm-050:** EITHER (a) add `HIGGSFIELD_WEBHOOK_SECRET` to **Preview** + point `INSTACLAW_GATEWAY_BASE` at the stable branch alias (`instaclaw-git-worktree-higgsfield-…vercel.app`) with Vercel SSO off; OR (b) merge the dark gate to main (G2) and use Production secrets (`instaclaw.io`). **[decision]**
+2. **Disable the old Muapi `higgsfield-video` skill on vm-050** (rename `.disabled`) so the agent routes to `higgsfield-cloud`, not the old rail (else the canary tests the wrong path).
+3. **H1 delivery decision** (link vs solve-chat_id-for-native) — determines what the canary actually proves. **[decision]**
+4. **(If H2 in scope)** port the photo-upload bridge before testing "animate my photo." **[decision]**
+5. Set `INSTACLAW_GATEWAY_BASE` on vm-050 to the chosen gate URL.
+6. **Rule 64 + explicit Cooper approval** for the install + end-to-end test.
