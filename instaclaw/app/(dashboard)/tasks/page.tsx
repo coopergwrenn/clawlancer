@@ -3125,18 +3125,19 @@ function CommandCenterInner() {
   // Shared plus menu content
   const plusMenuContent = (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95, y: 4 }}
+      initial={{ opacity: 0, scale: 0.96, y: 4 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95, y: 4 }}
+      exit={{ opacity: 0, scale: 0.96, y: 4 }}
       transition={{ type: "spring", stiffness: 500, damping: 30 }}
-      className="absolute bottom-full left-0 mb-1.5 rounded-xl py-1.5 min-w-[240px] z-50"
+      /* Direction A — Raycast-style command surface. Opaque popover over scrolling
+         content (NOT translucent — would bleed): background var(--card) + the glass
+         family's 3-layer lifted shadow. Inset container (p-1.5) so every row's
+         hover/active is a CONTAINED rounded pill, not edge-to-edge. Icons sit in
+         rounded tiles (neutral off / coral on) to anchor each row. Active row = inset
+         coral pill + coral tile + coral icon + coral text + check (paired with the
+         tile/tint, no longer lonely). All from our tokens — no .liquid-glass-card. */
+      className="absolute bottom-full left-0 mb-1.5 rounded-2xl p-1.5 min-w-[256px] z-50"
       style={{
-        // Opaque popover over scrolling content (NOT translucent — would bleed).
-        // Elevation harmonized to the glass family's shadow vocabulary (same 3-layer
-        // approach as the input edge, tuned UP — a popover floats a layer higher than
-        // the input slab): tight contact + soft strong lifted ambient + whisper rim
-        // replacing the flat single shadow + hard 1px border. Reads as a deliberate
-        // floating sheet, not a default dropdown.
         background: "var(--card)",
         boxShadow:
           "0 1px 2px rgba(0,0,0,0.04), " +
@@ -3145,100 +3146,52 @@ function CommandCenterInner() {
       }}
     >
       {/* Add files */}
-      <button
-        onClick={() => { fileInputRef.current?.click(); }}
-        className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center gap-2.5"
+      <button onClick={() => { fileInputRef.current?.click(); }}
+        className="w-full rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors flex items-center gap-2.5"
         style={{ color: "var(--foreground)" }}
         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-      >
-        <FileText className="w-4 h-4" style={{ color: "var(--muted)" }} />
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+        <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(0,0,0,0.05)" }}><FileText className="w-4 h-4" style={{ color: "var(--muted)" }} /></span>
         Add files or photos
       </button>
-
-      <div className="my-1 mx-3" style={{ borderTop: "1px solid var(--border)" }} />
-
+      <div className="my-1 mx-2" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }} />
       {/* Deep research toggle */}
-      <button
-        onClick={() => setDeepResearchEnabled((v) => !v)}
-        className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
-        style={{
-          // Active = app accent (coral), matching the model-picker dropdown + the app's
-          // universal "selected" language (was an off-brand purple one-off). Icon inherits
-          // currentColor, so the active row reads clean monochrome coral.
-          color: deepResearchEnabled ? "var(--accent)" : "var(--foreground)",
-          background: deepResearchEnabled ? "rgba(220,103,67,0.08)" : "transparent",
-        }}
+      <button onClick={() => setDeepResearchEnabled((v) => !v)}
+        className="w-full rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
+        style={{ color: deepResearchEnabled ? "var(--accent)" : "var(--foreground)", background: deepResearchEnabled ? "rgba(220,103,67,0.10)" : "transparent" }}
         onMouseEnter={(e) => { if (!deepResearchEnabled) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = deepResearchEnabled ? "rgba(220,103,67,0.08)" : "transparent"; }}
-      >
-        <span className="flex items-center gap-2.5">
-          {/* icon muted when off (matches Add files / Connectors), accent when on —
-              consistent intentional icon treatment across all rows */}
-          <Telescope className="w-4 h-4" style={{ color: deepResearchEnabled ? "var(--accent)" : "var(--muted)" }} />
-          Deep research
-        </span>
+        onMouseLeave={(e) => { e.currentTarget.style.background = deepResearchEnabled ? "rgba(220,103,67,0.10)" : "transparent"; }}>
+        <span className="flex items-center gap-2.5"><span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors" style={{ background: deepResearchEnabled ? "rgba(220,103,67,0.14)" : "rgba(0,0,0,0.05)" }}><Telescope className="w-4 h-4" style={{ color: deepResearchEnabled ? "var(--accent)" : "var(--muted)" }} /></span>Deep research</span>
         {deepResearchEnabled && <Check className="w-3.5 h-3.5" />}
       </button>
-
       {/* Web search toggle */}
-      <button
-        onClick={() => setWebSearchEnabled((v) => !v)}
-        className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
-        style={{
-          // Active = app accent (coral), matching the model-picker dropdown + app language
-          // (was an off-brand blue one-off — and #2563eb didn't even match the icon blue).
-          color: webSearchEnabled ? "var(--accent)" : "var(--foreground)",
-          background: webSearchEnabled ? "rgba(220,103,67,0.08)" : "transparent",
-        }}
+      <button onClick={() => setWebSearchEnabled((v) => !v)}
+        className="w-full rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
+        style={{ color: webSearchEnabled ? "var(--accent)" : "var(--foreground)", background: webSearchEnabled ? "rgba(220,103,67,0.10)" : "transparent" }}
         onMouseEnter={(e) => { if (!webSearchEnabled) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = webSearchEnabled ? "rgba(220,103,67,0.08)" : "transparent"; }}
-      >
-        <span className="flex items-center gap-2.5">
-          <Globe className="w-4 h-4" style={{ color: webSearchEnabled ? "var(--accent)" : "var(--muted)" }} />
-          Web search
-        </span>
+        onMouseLeave={(e) => { e.currentTarget.style.background = webSearchEnabled ? "rgba(220,103,67,0.10)" : "transparent"; }}>
+        <span className="flex items-center gap-2.5"><span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors" style={{ background: webSearchEnabled ? "rgba(220,103,67,0.14)" : "rgba(0,0,0,0.05)" }}><Globe className="w-4 h-4" style={{ color: webSearchEnabled ? "var(--accent)" : "var(--muted)" }} /></span>Web search</span>
         {webSearchEnabled && <Check className="w-3.5 h-3.5" />}
       </button>
-
       {/* Use my style toggle */}
-      <button
-        onClick={() => { if (connectorInfo.gmailConnected) setUseMyStyleEnabled((v) => !v); }}
-        className="w-full text-left px-3.5 py-2.5 text-sm transition-colors flex items-center justify-between"
-        style={{
-          color: !connectorInfo.gmailConnected ? "var(--muted)" : useMyStyleEnabled ? "var(--accent)" : "var(--foreground)",
-          background: useMyStyleEnabled ? "rgba(220,103,67,0.08)" : "transparent",
-          cursor: connectorInfo.gmailConnected ? "pointer" : "default",
-          opacity: connectorInfo.gmailConnected ? 1 : 0.5,
-        }}
+      <button onClick={() => { if (connectorInfo.gmailConnected) setUseMyStyleEnabled((v) => !v); }}
+        className="w-full rounded-lg px-2 py-1.5 text-sm transition-colors flex items-center justify-between"
+        style={{ color: !connectorInfo.gmailConnected ? "var(--muted)" : useMyStyleEnabled ? "var(--accent)" : "var(--foreground)", background: useMyStyleEnabled ? "rgba(220,103,67,0.10)" : "transparent", cursor: connectorInfo.gmailConnected ? "pointer" : "default", opacity: connectorInfo.gmailConnected ? 1 : 0.5 }}
         onMouseEnter={(e) => { if (connectorInfo.gmailConnected && !useMyStyleEnabled) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = useMyStyleEnabled ? "rgba(220,103,67,0.08)" : "transparent"; }}
-      >
-        <span className="flex items-center gap-2.5">
-          <Pencil className="w-4 h-4" style={{ color: useMyStyleEnabled ? "var(--accent)" : "var(--muted)" }} />
-          Use my style
-          {!connectorInfo.gmailConnected && <span className="text-[10px] ml-1">(connect Gmail)</span>}
-        </span>
+        onMouseLeave={(e) => { e.currentTarget.style.background = useMyStyleEnabled ? "rgba(220,103,67,0.10)" : "transparent"; }}>
+        <span className="flex items-center gap-2.5"><span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors" style={{ background: useMyStyleEnabled ? "rgba(220,103,67,0.14)" : "rgba(0,0,0,0.05)" }}><Pencil className="w-4 h-4" style={{ color: useMyStyleEnabled ? "var(--accent)" : "var(--muted)" }} /></span>Use my style{!connectorInfo.gmailConnected && <span className="text-[10px] ml-1">(connect Gmail)</span>}</span>
         {useMyStyleEnabled && <Check className="w-3.5 h-3.5" />}
       </button>
-
-      <div className="my-1 mx-3" style={{ borderTop: "1px solid var(--border)" }} />
-
+      <div className="my-1 mx-2" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }} />
       {/* Connectors */}
-      <button
-        onClick={() => setShowConnectorsSubmenu((v) => !v)}
-        className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
+      <button onClick={() => setShowConnectorsSubmenu((v) => !v)}
+        className="w-full rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
         style={{ color: "var(--foreground)" }}
         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-      >
-        <span className="flex items-center gap-2.5">
-          <Link2 className="w-4 h-4" style={{ color: "var(--muted)" }} />
-          Connectors
-        </span>
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+        <span className="flex items-center gap-2.5"><span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(0,0,0,0.05)" }}><Link2 className="w-4 h-4" style={{ color: "var(--muted)" }} /></span>Connectors</span>
         <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showConnectorsSubmenu ? "rotate-90" : ""}`} style={{ color: "var(--muted)" }} />
       </button>
-
       <AnimatePresence>
         {showConnectorsSubmenu && (
           <motion.div
@@ -3256,15 +3209,12 @@ function CommandCenterInner() {
             ].map((c) => (
               <div
                 key={c.name}
-                className="flex items-center justify-between px-6 py-1.5 text-xs"
+                className="flex items-center justify-between px-7 py-1.5 text-xs"
                 style={{ color: "var(--muted)" }}
               >
                 <span>{c.name}</span>
                 <span className="flex items-center gap-1.5">
-                  <span
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ background: c.connected ? "#22c55e" : "var(--border)" }}
-                  />
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: c.connected ? "#22c55e" : "var(--border)" }} />
                   {c.connected ? "Connected" : "Not connected"}
                 </span>
               </div>
