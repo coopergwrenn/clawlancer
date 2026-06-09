@@ -5,7 +5,16 @@
  * If this module throws, callers fall back to the VM's default model.
  */
 
-import { TIER_MODELS, TIER_BUDGET_LIMITS } from "@/lib/models";
+import { TIER_MODELS, TIER_BUDGET_LIMITS, FALLBACK_MODEL } from "@/lib/models";
+
+/**
+ * Models that MUST NEVER be reached by the auto-router. Cost-safety line for
+ * Fable (weight 38): cost only rises when a user DELIBERATELY picks it (an
+ * explicit request via x-model-override / future D1(B)), never from content
+ * classification. Enforced as a hard guard in the routeModel wrapper below,
+ * so even a future mis-set TIER_MODELS can't silently auto-route to Fable.
+ */
+const AUTO_ROUTE_FORBIDDEN = new Set<string>(["claude-fable-5"]);
 
 export interface RoutingContext {
   userMessage: string;
@@ -101,7 +110,31 @@ function opusDecision(ctx: RoutingContext, reason: string): RoutingDecision {
  * Layer 2: Content classification (regex/keyword + heuristics on last user message)
  * Default: Haiku (tier 1)
  */
+/**
+ * Public router entry point. Wraps the classifier with the hard
+ * AUTO_ROUTE_FORBIDDEN guard so a non-explicit (auto) context can never resolve
+ * to a forbidden model (Fable). A deliberate explicit pick still passes through.
+ */
 export function routeModel(ctx: RoutingContext): RoutingDecision {
+  const decision = routeModelInner(ctx);
+  if (AUTO_ROUTE_FORBIDDEN.has(decision.model) && !ctx.explicitModelRequest) {
+    // Should be unreachable (no AUTO_ROUTE_FORBIDDEN id is in TIER_MODELS).
+    // If it ever fires, a TIER_MODELS mis-set is auto-routing to Fable - force
+    // the safe default and log loudly rather than silently bill the priciest model.
+    console.error(
+      `[model-router] BLOCKED auto-route to forbidden model "${decision.model}" ` +
+        `(reason: ${decision.reason}); forced ${FALLBACK_MODEL}`,
+    );
+    return {
+      model: FALLBACK_MODEL,
+      tier: 2,
+      reason: `blocked auto-route to ${decision.model}; forced ${FALLBACK_MODEL}`,
+    };
+  }
+  return decision;
+}
+
+function routeModelInner(ctx: RoutingContext): RoutingDecision {
   const msg = ctx.userMessage;
 
   // ── Layer 1: Static overrides ──────────────────────────────
