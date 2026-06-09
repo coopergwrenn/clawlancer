@@ -3773,16 +3773,15 @@ function CommandCenterInner() {
                     <div
                       className="rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 flex items-center gap-2 sm:gap-3"
                       style={{
-                        background: "rgba(255,255,255,0.8)",
-                        backdropFilter: "blur(12px)",
-                        // Edge harmonized into the glass family (mirrors the tasks composer):
-                        // solid + legible base, soft gently-lifted ambient + whisper rim
-                        // replacing the flat tight drop + hard hairline. Flagged inline
-                        // refinement — intentionally NOT .liquid-glass-card.
+                        // RAISED — opaque white card lifted off the page (mirrors the tasks
+                        // composer): lit-from-above gradient + soft downward ambient + rim.
+                        // OPAQUE: the old rgba(255,255,255,0.8)+blur(12px) was bleed-prone and
+                        // read flat; removed. NOT .liquid-glass-card.
+                        background: "linear-gradient(180deg, #ffffff 0%, #fcfbf9 100%)",
                         boxShadow:
-                          "0 1px 2px rgba(0,0,0,0.04), " +
-                          "0 4px 12px -4px rgba(0,0,0,0.06), " +
-                          "0 0 0 1px rgba(0,0,0,0.035)",
+                          "0 1px 2px rgba(0,0,0,0.05), " +
+                          "0 10px 28px -8px rgba(0,0,0,0.14), " +
+                          "0 0 0 1px rgba(0,0,0,0.045)",
                       }}
                     >
                       {plusButton}
@@ -3970,19 +3969,18 @@ function CommandCenterInner() {
           <div
             className="rounded-2xl px-3 py-2.5 sm:px-5 sm:py-3.5 flex items-center gap-2 sm:gap-3"
             style={{
-              background: "rgba(255,255,255,0.8)",
-              backdropFilter: "blur(12px)",
-              // Edge harmonized into the glass family while staying SOLID + legible (the
-              // calm base the glass floats above — NOT translucent). Flat tight drop + hard
-              // 1px hairline replaced by a tight contact + a soft gently-lifted ambient +
-              // a whisper rim, so the box reads as a deliberate frosted surface from the
-              // same hand as the pills, not a default form-input border. FLAGGED inline
-              // refinement — no light-container glass token exists; intentionally NOT
-              // .liquid-glass-card so the two glass systems don't mix.
+              // RAISED — an opaque white card lifted off the warm #f8f7f4 page, the same
+              // upward elevation language as the lit active-tool pill + the "+" popover.
+              // Lit-from-above surface gradient (bright top catches light → faint warm-shadow
+              // bottom) + a soft downward-biased ambient drop (the float) + whisper rim.
+              // OPAQUE on purpose: this sits over scrolling content, so no translucency — the
+              // old rgba(255,255,255,0.8)+blur(12px) was bleed-prone AND read flat; gone now.
+              // FLAGGED inline refinement — intentionally NOT .liquid-glass-card.
+              background: "linear-gradient(180deg, #ffffff 0%, #fcfbf9 100%)",
               boxShadow:
-                "0 1px 2px rgba(0,0,0,0.04), " +
-                "0 4px 12px -4px rgba(0,0,0,0.06), " +
-                "0 0 0 1px rgba(0,0,0,0.035)",
+                "0 1px 2px rgba(0,0,0,0.05), " +
+                "0 10px 28px -8px rgba(0,0,0,0.14), " +
+                "0 0 0 1px rgba(0,0,0,0.045)",
             }}
           >
             {plusButton}
