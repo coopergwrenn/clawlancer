@@ -43,11 +43,18 @@ export interface TierBands {
   minWalletBalance: number;
 }
 
-/** Defaults straight from PRD §6.6. Non-staker. */
+/**
+ * Defaults from PRD §6.6 (non-staker), EXCEPT minWalletBalance — flattened to a
+ * flat $0.10 dust floor across all tiers (Slice B #2a, 2026-06-09). The wallet
+ * reserve is now a true dust floor; the §16.5 low-balance warning (a live,
+ * floor-relative Slice-A nudge — "about a day of spending left") is the runway
+ * protection, replacing the old hard $2/$10/$25 stop. Fleet-wide on deploy, not
+ * opt-in; benign direction (agent can spend nearer to empty) and reversible.
+ */
 export const DEFAULT_BANDS_BY_TIER: Record<FrontierTier, TierBands> = {
-  starter: { justDoItPerTx: 1, justDoItPerDay: 5, neverPerTx: 10, neverPerDay: 25, minWalletBalance: 2 },
-  pro: { justDoItPerTx: 5, justDoItPerDay: 25, neverPerTx: 50, neverPerDay: 200, minWalletBalance: 10 },
-  power: { justDoItPerTx: 20, justDoItPerDay: 100, neverPerTx: 200, neverPerDay: 1000, minWalletBalance: 25 },
+  starter: { justDoItPerTx: 1, justDoItPerDay: 5, neverPerTx: 10, neverPerDay: 25, minWalletBalance: 0.1 },
+  pro: { justDoItPerTx: 5, justDoItPerDay: 25, neverPerTx: 50, neverPerDay: 200, minWalletBalance: 0.1 },
+  power: { justDoItPerTx: 20, justDoItPerDay: 100, neverPerTx: 200, neverPerDay: 1000, minWalletBalance: 0.1 },
 };
 
 /** Stakers get 2x ceilings (caps), floor unchanged. */
