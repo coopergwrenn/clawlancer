@@ -27,7 +27,7 @@
 
 **The claim under test (the spine of the whole Slice B suite):** a widened band never auto-spends above the earned budget — i.e., `decideAuthorization` gate 2c (`projected > earned → ask_first`) executes on *every* autonomous path, and the earned budget it compares against is independent of any band #1 widens.
 
-**Evidence — full path trace of `decideAuthorization` (`frontier-authz.ts:95-157`), verified line-by-line:**
+**Evidence — full path trace of `decideAuthorization` (`frontier-authz.ts:95-170`), verified line-by-line:**
 
 ```
 :107  Gate 1   if evaluation.decision === "deny"  → return deny            (no auto-spend)
@@ -35,15 +35,16 @@
 :127  Gate 2a  if evaluation.decision==="ask_first"→ return ask_first        (not authorized)
 :132  Gate 2b  if !categoryKnown                  → return ask_first        (not authorized)
 :139  Gate 2c  if projected > earned              → return ask_first        ← THE KEYSTONE
-:150  Gate 2d  (fallthrough)                      → return authorized (mode:"autonomous")
+:158  Gate 2e  if anomalyFlag === true            → return ask_first        (velocity_anomaly; #5b — downstream of 2c)
+:163  Gate 2d  (fallthrough)                      → return authorized (mode:"autonomous")
 ```
 
-The autonomous authorization (2d, `:150-156`) is reachable **only by falling through 2c (`:139`)**. There is no branch between Gate 3 and 2d that returns `authorized` except 2d itself, and every intervening gate (2a, 2b, 2c) returns *not-authorized* on its trigger. **Therefore `outcome:"autonomous"` is logically unreachable unless 2c evaluated `projected > earned` as false.** Proven, not asserted.
+The autonomous authorization (2d, `:163-169`) is reachable **only by falling through 2c (`:139`)**. There is no branch between Gate 3 and 2d that returns `authorized` except 2d itself, and every intervening gate (2a, 2b, 2c) returns *not-authorized* on its trigger. **Therefore `outcome:"autonomous"` is logically unreachable unless 2c evaluated `projected > earned` as false.** Proven, not asserted.
 
 **The one path that skips 2c is Gate 3 (`humanApproved`, `:114-122`) — and it is BY DESIGN and NOT a #1 concern.** `humanApproved=true` means the human approved *this specific spend*; the bypass is the human's authority exercised above the agent's earned ceiling (the docblock states this at `:30-32`). It is *not* autonomous spend. #1 widens the autonomous no-ask line (`justDoItPerTx`); it has zero interaction with `humanApproved`. The invariant is precisely scoped to autonomous spend, and on that path 2c is unconditional.
 
-**Why #1 cannot move the earned budget that 2c compares against (the critical sub-proof):** the earned budget is computed by `creditStanding` (`frontier-standing.ts:94-126`). Its tier cap reads **`effectiveBands(...).justDoItPerDay`** (`:109`) — the *daily* band, not the per-tx band. #1 reverses the `justDoItPerTx` clamp (`frontier-policy.ts:84`) **only**; `justDoItPerDay` (`:85`) stays tighten-only and is computed independently (`:85` does not reference `justDoItPerTx`). So:
-- `tierCap` (`:109`) is invariant under #1 → `cap` (`:111`) invariant → `earnedDailyBudgetUsd` (`:117,:122`) invariant.
+**Why #1 cannot move the earned budget that 2c compares against (the critical sub-proof):** the earned budget is computed by `creditStanding` (`frontier-standing.ts:104-137`). Its tier cap reads **`effectiveBands(...).justDoItPerDay`** (`:119`) — the *daily* band, not the per-tx band. #1 reverses the `justDoItPerTx` clamp (`frontier-policy.ts:84`) **only**; `justDoItPerDay` (`:85`) stays tighten-only and is computed independently (`:85` does not reference `justDoItPerTx`). So:
+- `tierCap` (`:119`) is invariant under #1 → `cap` (`:121`) invariant → `earnedDailyBudgetUsd` (`:127,:132`) invariant.
 - Raising `justDoItPerTx` makes *more amounts* return `just_do_it` from `evaluateSpend` (amounts in `(old-ceiling, new-ceiling)` that used to be `ask_first`) — but each then hits an unchanged 2c and is re-gated against an unchanged earned budget. **Widening raises *candidacy* for autonomy, never *realized* autonomy.** Exactly the spec's safety proof, now confirmed at code level.
 
 **Second, independent enforcement (defense in depth — this *strengthens* the verdict):** after `decideAuthorization` authorizes, the route reserves via the `frontier_reserve_spend` RPC, which **re-enforces the earned budget atomically under a per-VM advisory lock** (`20260602210000_frontier_reserve_spend.sql:63`: `IF (NOT p_human_approved) AND (v_committed + p_amount) > p_cap_earned → reserved:false, exceeds_earned_budget`) and the hard daily ceiling (`:59`, always binds). The RPC receives `p_cap_earned = decision.earnedDailyBudgetUsd` (invariant under #1) and `p_cap_daily = neverPerDay` (tighten-only, untouched by #1). So the earned budget is enforced **twice** — gate 2c (TS) and the reserve RPC (SQL, atomic) — and #1 touches neither's inputs. The RPC never even sees `justDoItPerTx` (it governs daily aggregates, not the per-tx no-ask decision).
@@ -74,8 +75,8 @@ The autonomous authorization (2d, `:150-156`) is reachable **only by falling thr
 | `clampOverrides:72-87`, `justDoItPerTx` clamp `:84`, `minWalletBalance` `:77`, `justDoItPerDay` `:85` | `clampOverrides` at `:72`; `:77`/`:84`/`:85` (post-#1) | ✓ |
 | `effectiveBands:132`, clamp call `:147` | `:132`, `:147` | ✓ |
 | `evaluateSpend:164`; per-tx hard deny `:203`; just-do-it split `:220-221` | `:164`, `:203`, `withinJustDoIt :220` | ✓ |
-| `decideAuthorization:95`; humanApproved `:114`; categoryKnown `:132`; gate 2c `:139`; autonomous `:150-156` | all exact | ✓ |
-| `creditStanding` earned budget `:94-126`, tierCap `:109` | `tierCap = effectiveBands(...).justDoItPerDay` at `:109` | ✓ |
+| `decideAuthorization:95`; humanApproved `:114`; categoryKnown `:132`; gate 2c `:139`; gate 2e `:158`; autonomous `:163-169` | all exact (post-#5b) | ✓ |
+| `creditStanding` earned budget `:104-137`, tierCap `:119` | `tierCap = effectiveBands(...).justDoItPerDay` at `:119` | ✓ |
 | `upsertPolicyOverrideRow (frontier-policy-write.ts:142-157)` (cited in §9.1) | `upsertPolicyOverrideRow` at `:142`, upsert `:150` | ✓ |
 | **§1.5: `/policy` PUT validator at `app/api/agent-economy/policy/route.ts:117-226`, band validation `:142`, stores raw `:148-149`** | **STALE.** GAP-4 (`178a0ff5`) extracted validation to `frontier-policy-write.ts`: the route now *delegates* (`policy/route.ts:39` imports, `:168` calls `validatePolicyPutBody`, `:174` calls `upsertPolicyOverrideRow`). The actual validation (`raw < 0 \|\| raw > MAX_OVERRIDE`) is at **`frontier-policy-write.ts:83`**, `MAX_OVERRIDE=10_000_000` at **`:28`**, raw-store + replace-semantics (`row[snake]=null` clears; `upsert(..., {onConflict:"vm_id"})`) at **`:80,:150`**. | **STALE → fixed** |
 
@@ -96,7 +97,7 @@ The autonomous authorization (2d, `:150-156`) is reachable **only by falling thr
 | Caller | Reads | Effect of #1 | Verdict |
 |---|---|---|---|
 | `evaluateSpend` (`frontier-policy.ts:165`) | full bands incl. `justDoItPerTx` | **intended widen** — this is the no-ask line #1 raises | ✓ as designed |
-| `creditStanding` (`frontier-standing.ts:109`) | **`.justDoItPerDay` ONLY** | **none** — #1 touches `justDoItPerTx`, not `justDoItPerDay`; earned budget invariant (proven §1) | ✓ unaffected |
+| `creditStanding` (`frontier-standing.ts:119`) | **`.justDoItPerDay` ONLY** | **none** — #1 touches `justDoItPerTx`, not `justDoItPerDay`; earned budget invariant (proven §1) | ✓ unaffected |
 | `policy` GET (`route.ts:102`) + PUT (`:190`) | full bands, for display/echo | shows the raised ceiling as effective — **correct** (the dashboard should reflect the user's set ceiling) | ✓ intended display |
 
 **The spec's blast-radius enumeration was INCOMPLETE — a 4th reader of `justDoItPerTx` exists that the spec did not name:** `frontier-headroom.ts:116` —
