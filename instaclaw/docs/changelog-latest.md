@@ -1,16 +1,16 @@
-# Changelog — generated 2026-06-08
+# Changelog — generated 2026-06-09
 
-Window: `fb7486650f3d3f4e46ec366f859325e8ae7eefd9` → `HEAD` (HEAD = `36f0c262`)
+Window: `36f0c262fe2f3fe8fb848d4835d8368d8e3c6d2e` → `HEAD` (HEAD = `9279e43b`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 36f0c262fe2f3fe8fb848d4835d8368d8e3c6d2e -->
+<!-- LAST_GENERATED_SHA: 9279e43b07a7e2ae241feb9a9a68f445e622432d -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
-- **Feature (user-facing):** 0
+- **Infrastructure:** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
@@ -18,12 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-_None in this window._
+- `9279e43b` 2026-06-08 — redesign "+" composer menu — Raycast-style command surface (Direction A, both tabs) [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `36f0c262` 2026-06-08 — feat(frontier): Slice B #1 — justDoItPerTx ceiling reversal (allow-raise to neverPerTx) [2 files] _(ai-assisted)_
-- `37413bf2` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
+- `51f28993` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,13 +30,13 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
-
-- `36f0c262` 2026-06-08 — feat(frontier): Slice B #1 — justDoItPerTx ceiling reversal (allow-raise to neverPerTx) [2 files] _(ai-assisted)_
-
-### Feature (user-facing) (0)
+### Infrastructure (0)
 
 _(none)_
+
+### Feature (user-facing) (1)
+
+- `9279e43b` 2026-06-08 — redesign "+" composer menu — Raycast-style command surface (Direction A, both tabs) [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `37413bf2` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
+- `51f28993` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `36f0c262` 2026-06-08 — feat(frontier): Slice B #1 — justDoItPerTx ceiling reversal (allow-raise to neverPerTx)
+- `9279e43b` 2026-06-08 — redesign "+" composer menu — Raycast-style command surface (Direction A, both tabs)
 
 ## Appendix — every commit (chronological)
 
-- `37413bf2` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
-- `36f0c262` 2026-06-08 — feat(frontier): Slice B #1 — justDoItPerTx ceiling reversal (allow-raise to neverPerTx) [2 files] _(ai-assisted)_
+- `51f28993` 2026-06-08 — chore(changelog): auto-update [skip ci] [2 files]
+- `9279e43b` 2026-06-08 — redesign "+" composer menu — Raycast-style command surface (Direction A, both tabs) [1 files] _(ai-assisted)_
