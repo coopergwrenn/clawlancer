@@ -13,10 +13,13 @@ import {
   VIDEO_DAILY_CREDIT_CEILING,
   FRESH_PENDING_TTL_MS,
   utcDayStartISO,
+  mapHiggsfieldStatus,
 } from "@/lib/higgsfield-models";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // Rule 11 — LLM/slow-API routes
+
+const HF_BASE = "https://platform.higgsfield.ai";
 
 /**
  * Higgsfield Cloud API gateway proxy — GUARDRAIL #1: pre-call credit gate.
@@ -113,9 +116,47 @@ export async function POST(req: NextRequest) {
     }
 
     const action = req.nextUrl.searchParams.get("action");
+
+    // --- ?action=status: the agent polls Higgsfield job status (G1 Option B). ---
+    // A thin authed proxy of /requests/{id}/status. The opaque Higgsfield
+    // request_id is the bearer capability — only the owning VM got it back from
+    // its own ?action=create, and it's unguessable, so we don't leak across VMs.
+    // Settle/release stay in the webhook (keyed by OUR request_id); this is a
+    // pure read for the agent's poll loop, which delivers in-conversation.
+    if (action === "status") {
+      const requestId = req.nextUrl.searchParams.get("request_id") || "";
+      if (!/^[A-Za-z0-9_-]{8,64}$/.test(requestId)) {
+        return NextResponse.json({ error: "invalid_request_id" }, { status: 400 });
+      }
+      try {
+        const res = await fetch(`${HF_BASE}/requests/${requestId}/status`, {
+          headers: { Authorization: `Key ${cloudKey}` },
+        });
+        if (!res.ok) {
+          // Unknown id / transient upstream → tell the agent to keep waiting.
+          return NextResponse.json({
+            status: "unknown",
+            done: false,
+            ok: false,
+            video_url: null,
+            http: res.status,
+          });
+        }
+        const authoritative = await res.json();
+        return NextResponse.json(mapHiggsfieldStatus(authoritative));
+      } catch (err) {
+        logger.error("Higgsfield status proxy failed", {
+          route: "gateway/higgsfield",
+          vmId: vm.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return NextResponse.json({ error: "status_unavailable" }, { status: 503 });
+      }
+    }
+
     if (action !== "create") {
       return NextResponse.json(
-        { error: "invalid_action", message: "Only ?action=create is supported." },
+        { error: "invalid_action", message: "Only ?action=create and ?action=status are supported." },
         { status: 400 },
       );
     }
@@ -128,13 +169,12 @@ export async function POST(req: NextRequest) {
       chat_id?: string | number;
     };
 
+    // chat_id is OPTIONAL (G1 Option B = agent-poll delivery: the agent replies
+    // in-conversation, so neither the gate nor the webhook needs a chat_id). If
+    // supplied (the v2 async path, once reliable chat_id capture exists), it's
+    // signed into the webhook payload and the webhook delivers directly; absent
+    // → the webhook settles only and the agent delivers from its poll loop.
     const chatId = body.chat_id != null ? String(body.chat_id) : undefined;
-    if (!chatId) {
-      return NextResponse.json(
-        { error: "missing_params", message: "chat_id is required." },
-        { status: 400 },
-      );
-    }
 
     // --- 1. VALIDATE model (allowlist) — NO arbitrary endpoint passthrough. ---
     const endpoint = (typeof body.endpoint === "string" && body.endpoint) || DEFAULT_MODEL;
@@ -169,7 +209,7 @@ export async function POST(req: NextRequest) {
     const windowStart = utcDayStartISO();
     const freshPendingCutoff = new Date(Date.now() - FRESH_PENDING_TTL_MS).toISOString();
     const freeCap = freeCapForTier(vm.tier);
-    const metadata = { endpoint, chat_id: chatId, tier: vm.tier ?? null };
+    const metadata = { endpoint, chat_id: chatId ?? null, tier: vm.tier ?? null };
 
     async function reserve(isFree: boolean) {
       return supabase.rpc("instaclaw_video_reserve_spend", {
@@ -230,8 +270,18 @@ export async function POST(req: NextRequest) {
     }
 
     // --- 4. Hold secured. Sign the delivery target + our request_id, then submit. ---
+    // Signed webhook payload. r (our request_id) + v drive settle; t bounds replay.
+    // c (chat_id) is included ONLY when present → its presence is the v1/v2 delivery
+    // switch: absent (v1) = webhook settles only, the agent delivers; present (v2) =
+    // webhook delivers directly. No chat_id is ever fabricated.
+    const dPayload: { v: string; t: number; r: string; c?: string } = {
+      v: vm.id,
+      t: Date.now(),
+      r: internalRequestId,
+    };
+    if (chatId) dPayload.c = chatId;
     const payload = Buffer.from(
-      JSON.stringify({ v: vm.id, c: chatId, t: Date.now(), r: internalRequestId }),
+      JSON.stringify(dPayload),
     ).toString("base64url");
     const sig = sign(payload, webhookSecret);
     const origin = process.env.HIGGSFIELD_WEBHOOK_BASE || req.nextUrl.origin;

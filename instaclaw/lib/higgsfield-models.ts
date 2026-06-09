@@ -272,3 +272,29 @@ export function utcDayStartISO(now = new Date()): string {
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
   ).toISOString();
 }
+
+// ── Agent-poll status mapping (G1 Option B) ────────────────────────────────
+// The agent polls `?action=status`; the gate proxies Higgsfield's
+// /requests/{id}/status and maps it to this shape. The agent keeps polling
+// while !done and delivers in-conversation when `ok`. Pure (no I/O) so it's
+// unit-testable (Rule 31). Higgsfield status enum (catalog sweep): queued,
+// in_progress, completed, failed, nsfw (+ legacy "cancelled" tolerated).
+export type HFPollStatus = {
+  status: string;
+  done: boolean; // terminal — stop polling
+  ok: boolean; // completed AND a media URL is present → deliver
+  video_url: string | null;
+};
+const HF_TERMINAL = new Set(["completed", "failed", "nsfw", "cancelled"]);
+export function mapHiggsfieldStatus(
+  a:
+    | { status?: string; video?: { url?: string }; images?: Array<{ url?: string }> }
+    | null
+    | undefined,
+): HFPollStatus {
+  const status = a?.status ?? "unknown";
+  const url = a?.video?.url || a?.images?.[0]?.url || null;
+  const done = HF_TERMINAL.has(status);
+  const ok = status === "completed" && !!url;
+  return { status, done, ok, video_url: ok ? url : null };
+}

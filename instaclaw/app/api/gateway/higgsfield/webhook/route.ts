@@ -77,9 +77,11 @@ export async function POST(req: NextRequest) {
     } catch {
       return ack();
     }
+    // v (VM) + r (our request_id) drive settle/release; c (chat_id) is OPTIONAL
+    // (present only on the v2 async-delivery path). v1 agent-poll → no c.
     if (
       !target?.v ||
-      !target?.c ||
+      !target?.r ||
       typeof target.t !== "number" ||
       Date.now() - target.t > WEBHOOK_TTL_MS
     ) {
@@ -184,7 +186,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // --- Resolve the delivery bot for this VM ---
+    // --- DELIVERY GATE (G1 Option B). ---
+    // v1 (agent-poll): no chat_id was signed in → the webhook is SETTLE-ONLY and
+    // the agent delivers in-conversation from its ?action=status poll loop. This
+    // also makes delivery idempotent-by-construction (the webhook never delivers,
+    // so a Higgsfield retry can't double-send). The proven delivery code below is
+    // preserved for the v2 async path, which flips on by signing a chat_id (c).
+    if (!target.c) {
+      logger.info("video webhook settle-only (no chat_id; agent-poll delivery)", {
+        route: "gateway/higgsfield/webhook",
+        vmId: target.v,
+        requestId,
+        status,
+      });
+      return ack();
+    }
+
+    // --- Resolve the delivery bot for this VM (v2 async-delivery path) ---
     const { data: vm } = await supabase
       .from("instaclaw_vms")
       .select("telegram_bot_token")

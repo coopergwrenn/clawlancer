@@ -36,6 +36,7 @@ import {
   freeCapForTier,
   utcDayStartISO,
   FRESH_PENDING_TTL_MS,
+  mapHiggsfieldStatus,
 } from "../lib/higgsfield-models";
 
 for (const f of ["/Users/cooperwrenn/wild-west-bots/instaclaw/.env.local"]) {
@@ -194,6 +195,22 @@ async function main() {
   const kOmit = validateInput(kling, { image_url: "https://x/y.png", prompt: "hi" });
   ok("kling omitted duration PINNED to 10 (the priced length)", kOmit.ok === true && kOmit.ok && kOmit.input.duration === 10);
   ok("dop/lite still accepts generic duration 5 (no enum, flat cost)", validateInput(lite, { image_url: "https://x/y.png", prompt: "hi", duration: 5 }).ok === true);
+
+  // G1 Option B — agent-poll status state machine (the ?action=status contract).
+  const mq = mapHiggsfieldStatus({ status: "queued" });
+  ok("status queued → not done", mq.done === false && mq.ok === false && mq.video_url === null);
+  ok("status in_progress → not done", mapHiggsfieldStatus({ status: "in_progress" }).done === false);
+  const mc = mapHiggsfieldStatus({ status: "completed", video: { url: "https://x/y.mp4" } });
+  ok("status completed+video → done+ok+url", mc.done === true && mc.ok === true && mc.video_url === "https://x/y.mp4");
+  const mi = mapHiggsfieldStatus({ status: "completed", images: [{ url: "https://x/i.png" }] });
+  ok("status completed+image (no video) → ok+image url", mi.ok === true && mi.video_url === "https://x/i.png");
+  const mnurl = mapHiggsfieldStatus({ status: "completed" });
+  ok("status completed+NO url → done but NOT ok", mnurl.done === true && mnurl.ok === false && mnurl.video_url === null);
+  ok("status failed → done, not ok, no url", (() => { const m = mapHiggsfieldStatus({ status: "failed" }); return m.done && !m.ok && m.video_url === null; })());
+  ok("status nsfw → done, not ok", (() => { const m = mapHiggsfieldStatus({ status: "nsfw" }); return m.done && !m.ok; })());
+  ok("status cancelled (legacy) → done, not ok", mapHiggsfieldStatus({ status: "cancelled" }).done === true);
+  ok("status missing → unknown, not done", (() => { const m = mapHiggsfieldStatus({}); return m.status === "unknown" && !m.done; })());
+  ok("status null input → unknown, not done", (() => { const m = mapHiggsfieldStatus(null); return m.status === "unknown" && !m.done && !m.ok; })());
 
   ok("freeCap starter=2", freeCapForTier("starter") === 2);
   ok("freeCap pro=5", freeCapForTier("pro") === 5);
