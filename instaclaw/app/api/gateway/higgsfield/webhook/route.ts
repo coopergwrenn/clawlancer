@@ -278,7 +278,7 @@ export async function POST(req: NextRequest) {
       await sendTelegramNotification(
         botToken,
         target.c,
-        `🎬 Your cinematic clip is ready:\n${videoUrl}\n(also saved in your Studio)`
+        `🎬 Your cinematic clip is ready:\n${videoUrl}`
       );
     }
 
