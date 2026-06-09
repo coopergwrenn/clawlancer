@@ -263,6 +263,18 @@ function routeModelInner(ctx: RoutingContext): RoutingDecision {
 function respectExplicitModel(ctx: RoutingContext): RoutingDecision {
   const m = ctx.explicitModelRequest!.toLowerCase();
 
+  // D1(B) contained: a deliberate Fable pick is the ONLY model the auto-router
+  // can't reach (AUTO_ROUTE_FORBIDDEN), so it can only arrive here via an
+  // explicit request. Grant-governed (Option Y): served regardless of the opus
+  // daily call-cap - the daily grant (instaclaw_check_and_increment, 38/msg) is
+  // the governor, not a tier wall. tier=3 is for opus-class telemetry only; the
+  // proxy skips the opus tier-usage counter for Fable so it never consumes the
+  // opus call budget. Always returns the canonical bare id so the served model
+  // matches what the auto-router emits for every other model.
+  if (m.includes("fable")) {
+    return { model: "claude-fable-5", tier: 3, reason: "explicit fable pick (grant-governed)" };
+  }
+
   if (m.includes("opus")) {
     if (ctx.tierBudget.opusRemaining > 0) {
       return { model: ctx.explicitModelRequest!, tier: 3, reason: "explicit config model (opus)" };
