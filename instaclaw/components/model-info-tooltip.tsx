@@ -3,7 +3,7 @@ import { Info } from "lucide-react";
 /**
  * Per-model copy for the model-picker info tooltip.
  *
- * CREDIT NUMBERS ARE LOAD-BEARING (money-facing — users act on them). They are
+ * CREDIT NUMBERS ARE LOAD-BEARING (money-facing; users act on them). They are
  * VERIFIED against the single source of truth: lib/credit-constants.ts
  * `MODEL_COST_WEIGHTS` = { haiku: 1, sonnet: 4, opus: 19 } (credit units per
  * API call; `getModelCostWeight()` matches model id by substring). If those
@@ -14,12 +14,12 @@ import { Info } from "lucide-react";
 const MODEL_INFO: Record<string, { name: string; desc: string; cost: string }> = {
   "claude-haiku-4-5-20251001": {
     name: "Haiku 4.5",
-    desc: "Fastest and most efficient — best for quick questions, simple lookups, and rapid back-and-forth.",
+    desc: "Fastest and most efficient. Best for quick questions, simple lookups, and rapid back-and-forth.",
     cost: "1 credit per message",
   },
   "claude-sonnet-4-6": {
     name: "Sonnet 4.6",
-    desc: "The balanced default. Strong at everyday writing, coding, and analysis without the heavier cost — the right pick when you're unsure.",
+    desc: "The balanced default. Strong at everyday writing, coding, and analysis without the heavier cost. The right pick when you're unsure.",
     cost: "4 credits per message",
   },
   "claude-opus-4-6": {
@@ -38,7 +38,7 @@ const TOOLTIP_SHADOW =
  * (mobile) surfaces a concise, opaque tooltip: positioning + verified credit cost.
  *
  * Rendered INSIDE the row <button>, so it is a <span role="button"> (never a
- * nested <button> — invalid DOM) and stops pointerdown+click propagation so it
+ * nested <button>, which is invalid DOM) and stops pointerdown+click propagation so it
  * NEVER triggers the row's model selection or press animation.
  */
 export function ModelInfoButton({
@@ -86,7 +86,7 @@ export function ModelInfoButton({
           role="tooltip"
           // Opens LEFT of the icon (the picker is right-anchored near the screen
           // edge → left keeps it on-screen), vertically centered on the row.
-          // Opaque var(--card) + the picker's glass shadow — never translucent.
+          // Opaque var(--card) + the picker's glass shadow, never translucent.
           // pointer-events-none so it never captures clicks or blocks the row.
           className="absolute right-full top-1/2 -translate-y-1/2 mr-2 w-56 rounded-xl p-3 text-left z-[70] pointer-events-none"
           style={{ background: "var(--card)", boxShadow: TOOLTIP_SHADOW }}
