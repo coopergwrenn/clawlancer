@@ -354,5 +354,6 @@ export function getRegistryCreditWeight(id: string): number {
   if (m.includes("haiku")) return 1;
   if (m.includes("sonnet")) return 4;
   if (m.includes("opus")) return 19;
+  if (m.includes("fable")) return 38;
   return 1; // default - haiku-equivalent
 }

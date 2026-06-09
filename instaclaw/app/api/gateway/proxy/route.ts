@@ -14,6 +14,7 @@ import { sendPerVmAlertDeduped } from "@/lib/admin-alert";
 import { trackProxy401, resetProxy401Count } from "@/lib/proxy-alert";
 import { repairCorruptedSession, type VMRecord } from "@/lib/ssh";
 import { routeModel, extractLastUserMessage, computeTierBudget, type RoutingContext, type RoutingDecision } from "@/lib/model-router";
+import { getRegistryCreditWeight } from "@/lib/model-registry";
 import { TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
 import { shouldFireCircuitBreaker, sendCircuitBreakerAlert, sendCronResumedNotification, resolveTelegramTarget } from "@/lib/cron-guard";
 import {
@@ -1760,8 +1761,11 @@ export async function POST(req: NextRequest) {
     {
       const logModel = finalModel || requestedModel || "unknown";
       const logTier = routingDecision?.tier ?? (logModel.includes("haiku") ? 1 : logModel.includes("sonnet") ? 2 : logModel.includes("opus") ? 3 : 1);
-      const logBaseCost = logTier === 1 ? 1 : logTier === 2 ? 4 : logTier === 3 ? 19 : 1;
-      if (logModel.includes("minimax")) { /* minimax = 0.2 */ }
+      // Model-aware weight (single source: registry). Byte-identical to the old
+      // tier->{1,4,19} map for haiku/sonnet/opus; correctly 38 for Fable. The
+      // minimax branch preserves the prior 0.2-always quirk verbatim so this
+      // change is byte-identical for every existing model (D1 step a).
+      const logBaseCost = getRegistryCreditWeight(logModel);
       const logCost = logModel.includes("minimax") ? 0.2 : isToolContinuation ? logBaseCost * 0.2 : logBaseCost;
       const callType = isInfrastructureCall ? "infrastructure" : isHeartbeat ? "heartbeat" : isVirtuals ? "virtuals" : isToolContinuation ? "tool_continuation" : "user";
 
