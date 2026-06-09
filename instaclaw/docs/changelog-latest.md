@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-09
 
-Window: `b4afcf288a2e633533befebe6d7fc0d87f6381df` → `HEAD` (HEAD = `871701ef`)
+Window: `871701ef87e69b2b5771b70b6443ac9893141ffc` → `HEAD` (HEAD = `fbcdb290`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 871701ef87e69b2b5771b70b6443ac9893141ffc -->
+<!-- LAST_GENERATED_SHA: fbcdb290030c198b5317e7b5eead28d4a7df67c0 -->
 
 ## Summary
 
@@ -18,11 +18,11 @@ Total commits: 2
 
 ## What changed for users
 
-- `871701ef` 2026-06-09 — model-info tooltips: remove em dashes (no-em-dash standing rule) [1 files] _(ai-assisted)_
+- `fbcdb290` 2026-06-09 — feat(economy): activate #1 per-tx no-ask raise on the dashboard (UI-inert fix) [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `406610c8` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
+- `c46edfc1` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -36,7 +36,7 @@ _(none)_
 
 ### Feature (user-facing) (1)
 
-- `871701ef` 2026-06-09 — model-info tooltips: remove em dashes (no-em-dash standing rule) [1 files] _(ai-assisted)_
+- `fbcdb290` 2026-06-09 — feat(economy): activate #1 per-tx no-ask raise on the dashboard (UI-inert fix) [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +44,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `406610c8` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
+- `c46edfc1` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `871701ef` 2026-06-09 — model-info tooltips: remove em dashes (no-em-dash standing rule)
+- `fbcdb290` 2026-06-09 — feat(economy): activate #1 per-tx no-ask raise on the dashboard (UI-inert fix)
 
 ## Appendix — every commit (chronological)
 
-- `406610c8` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
-- `871701ef` 2026-06-09 — model-info tooltips: remove em dashes (no-em-dash standing rule) [1 files] _(ai-assisted)_
+- `c46edfc1` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
+- `fbcdb290` 2026-06-09 — feat(economy): activate #1 per-tx no-ask raise on the dashboard (UI-inert fix) [1 files] _(ai-assisted)_
