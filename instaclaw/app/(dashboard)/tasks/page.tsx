@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { SESSIONS_CHANGED_EVENT } from "@/components/dashboard/use-sessions";
 import { useNavMode } from "@/components/dashboard/use-nav-mode";
+import { ClaudeLogo } from "@/components/icons/claude-logo";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronLeft,
@@ -3823,32 +3824,43 @@ function CommandCenterInner() {
                           </button>
                           {showModelPicker && (
                             <div
-                              className="absolute bottom-full right-0 mb-1.5 rounded-xl py-1.5 min-w-[160px] z-50"
+                              className="absolute bottom-full right-0 mb-1.5 rounded-2xl p-1.5 min-w-[200px] z-50"
                               style={{
                                 background: "var(--card)",
-                                border: "1px solid var(--border)",
-                                boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                                boxShadow:
+                                  "0 1px 2px rgba(0,0,0,0.04), " +
+                                  "0 12px 32px -8px rgba(0,0,0,0.18), " +
+                                  "0 0 0 1px rgba(0,0,0,0.05)",
                               }}
                             >
                               {MODEL_OPTIONS.map((m) => (
-                                <button
+                                <motion.button
                                   key={m.id}
                                   onClick={() => handleModelChange(m.id)}
-                                  className="w-full text-left px-3.5 py-2 text-xs cursor-pointer transition-colors flex items-center justify-between"
+                                  whileTap={{ scale: 0.96 }}
+                                  transition={{ type: "spring", stiffness: 500, damping: 18, mass: 0.85 }}
+                                  className="w-full rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
                                   style={{
                                     color: m.id === currentModel ? "var(--accent)" : "var(--foreground)",
-                                    background: m.id === currentModel ? "rgba(220,103,67,0.08)" : "transparent",
+                                    background: m.id === currentModel ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent",
+                                    boxShadow: m.id === currentModel ? "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -1px 0 rgba(220,103,67,0.12), 0 1px 3px -1px rgba(220,103,67,0.20)" : "none",
                                   }}
-                                  onMouseEnter={(e) => {
-                                    if (m.id !== currentModel) e.currentTarget.style.background = "rgba(0,0,0,0.04)";
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.background = m.id === currentModel ? "rgba(220,103,67,0.08)" : "transparent";
-                                  }}
+                                  onMouseEnter={(e) => { if (m.id !== currentModel) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = m.id === currentModel ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent"; }}
                                 >
-                                  {m.label}
+                                  <span className="flex items-center gap-2.5">
+                                    <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors" style={{ background: m.id === currentModel ? "rgba(220,103,67,0.14)" : "rgba(0,0,0,0.05)" }}>
+                                      {/* #D97757 = Claude brand orange — intentionally NOT var(--accent)
+                                          (#DC6743). The logo carries Claude's OWN color; the pill/text/check
+                                          carry our coral selection accent. Do NOT snap this to the token —
+                                          that kills the "selected model's mark comes alive in Claude orange"
+                                          effect. Unselected rows gray out (var(--muted)). */}
+                                      <ClaudeLogo className="w-4 h-4" style={{ color: m.id === currentModel ? "#D97757" : "var(--muted)" }} />
+                                    </span>
+                                    {m.label}
+                                  </span>
                                   {m.id === currentModel && <Check className="w-3.5 h-3.5" />}
-                                </button>
+                                </motion.button>
                               ))}
                             </div>
                           )}
@@ -4023,32 +4035,43 @@ function CommandCenterInner() {
                 </button>
                 {showModelPicker && (
                   <div
-                    className="absolute bottom-full right-0 mb-1.5 rounded-xl py-1.5 min-w-[160px] z-50"
+                    className="absolute bottom-full right-0 mb-1.5 rounded-2xl p-1.5 min-w-[200px] z-50"
                     style={{
                       background: "var(--card)",
-                      border: "1px solid var(--border)",
-                      boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                      boxShadow:
+                        "0 1px 2px rgba(0,0,0,0.04), " +
+                        "0 12px 32px -8px rgba(0,0,0,0.18), " +
+                        "0 0 0 1px rgba(0,0,0,0.05)",
                     }}
                   >
                     {MODEL_OPTIONS.map((m) => (
-                      <button
+                      <motion.button
                         key={m.id}
                         onClick={() => handleModelChange(m.id)}
-                        className="w-full text-left px-3.5 py-2 text-xs cursor-pointer transition-colors flex items-center justify-between"
+                        whileTap={{ scale: 0.96 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 18, mass: 0.85 }}
+                        className="w-full rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
                         style={{
                           color: m.id === currentModel ? "var(--accent)" : "var(--foreground)",
-                          background: m.id === currentModel ? "rgba(220,103,67,0.08)" : "transparent",
+                          background: m.id === currentModel ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent",
+                          boxShadow: m.id === currentModel ? "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -1px 0 rgba(220,103,67,0.12), 0 1px 3px -1px rgba(220,103,67,0.20)" : "none",
                         }}
-                        onMouseEnter={(e) => {
-                          if (m.id !== currentModel) e.currentTarget.style.background = "rgba(0,0,0,0.04)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = m.id === currentModel ? "rgba(220,103,67,0.08)" : "transparent";
-                        }}
+                        onMouseEnter={(e) => { if (m.id !== currentModel) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = m.id === currentModel ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent"; }}
                       >
-                        {m.label}
+                        <span className="flex items-center gap-2.5">
+                          <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors" style={{ background: m.id === currentModel ? "rgba(220,103,67,0.14)" : "rgba(0,0,0,0.05)" }}>
+                            {/* #D97757 = Claude brand orange — intentionally NOT var(--accent)
+                                (#DC6743). The logo carries Claude's OWN color; the pill/text/check
+                                carry our coral selection accent. Do NOT snap this to the token —
+                                that kills the "selected model's mark comes alive in Claude orange"
+                                effect. Unselected rows gray out (var(--muted)). */}
+                            <ClaudeLogo className="w-4 h-4" style={{ color: m.id === currentModel ? "#D97757" : "var(--muted)" }} />
+                          </span>
+                          {m.label}
+                        </span>
                         {m.id === currentModel && <Check className="w-3.5 h-3.5" />}
-                      </button>
+                      </motion.button>
                     ))}
                   </div>
                 )}
