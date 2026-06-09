@@ -1,7 +1,7 @@
 # PRD — Frontier Slice B: cold spec of the five gate-touching/loosening changes (plan + Rule-31 test suite, pre-build)
 
 **Date:** 2026-06-08
-**Status:** SPEC — planning pass only. **No gate code written. Nothing built.** This is the map Cooper reviews before any of Slice B is implemented.
+**Status:** SPEC — the Slice B map. **SHIPPED so far: #1 (justDoItPerTx ceiling reversal, `36f0c262`) + #5b (velocity-anomaly Gate 2e, `f877fd35`) — both live on `origin/main` 2026-06-08.** Remaining (#2a/#2b, #5a+#3, #4) unbuilt; this is the map Cooper reviews before each.
 **Author:** frontier terminal (econ-surface worktree).
 **Scope:** the five Slice-B changes named in `frontier-spend-approval-model-2026-06-08.md` §19 — each one moves a line on a real-money autonomous-spend surface. For each: the exact gate code it touches (verified against source, line-cited), the line it moves, the blast radius if wrong, the dependency order, the Rule-31 failure-mode test that gates merge, and the blockers that aren't ready to spec.
 
@@ -72,16 +72,17 @@ Ordered, deny-first. Verified order:
 
 `at(v, fb)` (`:73-74`) coerces negative / non-finite / absent → fallback to base. The whole function is the *two-guard safety property*: `/policy` PUT stores raw values (no tighten-enforcement at write), and `clampOverrides` enforces tightening at **read** — so a bad stored value can never make the agent less safe, because the clamp neutralizes it. **Slice B's #1 and #2b each punch a controlled hole in exactly one line of this guard.**
 
-### 1.3 — `decideAuthorization` (`lib/frontier-authz.ts:95-157`) — the three-actor composition
+### 1.3 — `decideAuthorization` (`lib/frontier-authz.ts:95-170`) — the three-actor composition
 
 - `:107-109` **Gate 1** — `evaluation.decision === "deny"` → deny. Absolute; the human cannot override per-spend.
 - `:114-122` **Gate 3** — `humanApproved` → just_do_it (`human_approved`). Lifts the autonomy gate, NOT the hard denies.
 - `:127-129` **Gate 2a** — policy `ask_first` → ask_first.
 - `:132-134` **Gate 2b** — `!categoryKnown` → ask_first (`unknown_category`).
 - `:139-147` **Gate 2c — THE KEYSTONE** — `projected (= reserveAwareSpentToday + amount) > earnedDailyBudget` → ask_first (`exceeds_earned_budget`).
-- `:150-156` **Gate 2d** — within policy AND within earned → autonomous.
+- `:158-160` **Gate 2e** — `standing.anomalyFlag === true` → ask_first (`velocity_anomaly`). #5b SHIPPED; additive, strictly downstream of 2c.
+- `:163-169` **Gate 2d** — within policy AND within earned → autonomous.
 
-**The load-bearing invariant for ALL of Slice B:** the earned budget at 2c ANDs independently of every policy band, and `earnedDailyBudget ≤ justDoItPerDay` by construction (`frontier-standing.ts:109-111`). Therefore widening any policy band (raising the no-ask ceiling, trusting a supplier) raises **willingness**, never **realized** autonomy — the agent must still have *earned* it at 2c. **Every Slice-B change is safe iff 2c still executes on its path.** This is the single assertion that runs through the whole test suite.
+**The load-bearing invariant for ALL of Slice B:** the earned budget at 2c ANDs independently of every policy band, and `earnedDailyBudget ≤ justDoItPerDay` by construction (`frontier-standing.ts:119-121`). Therefore widening any policy band (raising the no-ask ceiling, trusting a supplier) raises **willingness**, never **realized** autonomy — the agent must still have *earned* it at 2c. **Every Slice-B change is safe iff 2c still executes on its path.** This is the single assertion that runs through the whole test suite.
 
 **What `decideAuthorization` does NOT take today (verified):** no supplier identity, no supplier-novelty flag, no anomaly flag, no trusted-supplier set. `AuthorizationInput` (`:58-76`) is `{evaluation, standing, reserveAwareSpentTodayUsd, amountUsd, humanApproved, categoryKnown}`. **#3 and #5 must add new inputs here** — that is the surface they edit.
 
@@ -92,7 +93,7 @@ Ordered, deny-first. Verified order:
 - `:401-408` `decideAuthorization({evaluation, standing, reserveAwareSpentTodayUsd, amountUsd, humanApproved, categoryKnown})` — **no supplier-novelty, no anomaly, no trust input.**
 - `:468-482` `frontier_reserve_spend` RPC — atomic re-check + insert. **Slice B does not touch this.**
 
-The route is where #3 and #5 compute their new signals (`supplierIdOf` from the ledger, first-contact from `deriveSupplierStats`/`deriveCounterpartyRollup`, anomaly from `deriveTrackRecord.anomalyFlag`) and thread them into the gate. **`standing` already carries the anomaly effect indirectly** — `anomalyFlag` feeds `computeFactors` integrity (`frontier-standing.ts:85`), which lowers the score and thus the earned budget. #5b's anomaly ask is a *new direct* escalation on top of that indirect effect.
+The route is where #3 and #5 compute their new signals (`supplierIdOf` from the ledger, first-contact from `deriveSupplierStats`/`deriveCounterpartyRollup`, anomaly from `deriveTrackRecord.anomalyFlag`) and thread them into the gate. **`standing` already carries the anomaly effect indirectly** — `anomalyFlag` feeds `computeFactors` integrity (`frontier-standing.ts:95`), which lowers the score and thus the earned budget. #5b's anomaly ask is a *new direct* escalation on top of that indirect effect.
 
 ### 1.5 — The `/policy` PUT validator — what #1's reversal does and does NOT need
 
@@ -117,7 +118,7 @@ For each: **(a)** gate code touched (cited), **(b)** the line it moves (deny vs 
 - **(b) Line it moves:** the **autonomy line** (just-do-it ↔ ask-first split, `evaluateSpend:219-220`). **Not a deny line.** Raising it widens *willingness* to auto-spend per-tx, not the refusal boundary. The deny line (`neverPerTx`, step 5) is untouched.
 - **(c) Blast radius if wrong:** the failure that matters is a regression that lets a *raised* ceiling auto-spend *above the earned budget* — i.e., gate 2c gets short-circuited or the earned-budget path stops executing on the raised-ceiling branch. If that happened: a brand-new agent ($0.10 earned) with a user-set $10 ceiling could auto-spend up to `min(justDoItPerDay, neverPerDay, wallet−floor)` ≈ $5/day to *any* supplier with no human in the loop. **Bounded by:** (i) `neverPerTx`/`neverPerDay` hard caps still deny above them; (ii) on-chain settlement (can't spend USDC you don't hold). **Not bounded by** the earned budget *if the regression is specifically a 2c bypass* — which is why the load-bearing test is "raised ceiling + low earned → MUST ask." The correctly-implemented change is safe; the *regression* is the risk, and it's a 2c-bypass regression.
 - **(d) One change?** Yes — genuinely one line. The cleanest of the five.
-- **(e) Verified blast radius (foundation audit §4, 2026-06-08):** `clampOverrides` is reached ONLY via `effectiveBands`, whose complete caller set is: `evaluateSpend` (the intended widen), `creditStanding:109` (reads `.justDoItPerDay` ONLY → **earned budget provably invariant under #1**), and `policy` GET/PUT (display/echo of the new ceiling — intended). **One reader the original spec missed:** `frontier-headroom.ts:116` reads `justDoItPerTx` — but it is **display-only** (sole caller: `policy` GET `:122`), **earned-bounded** (`perPurchaseCapUsd = min(justDoItPerTx, effectiveMaxToday)`, and `effectiveMaxToday` includes `earnedRemaining`), and **gate-consistency-tested** (`_test-frontier-headroom.ts`). So after #1 it honestly displays `min(raised-ceiling, earned-remaining)` — correct, not a leak. **No hidden enforcement reader exists.** Test note: add a raised-ceiling case to `_test-frontier-headroom.ts` (display stays earned-bounded) — the display-side mirror of authz test 1.1.
+- **(e) Verified blast radius (foundation audit §4, 2026-06-08):** `clampOverrides` is reached ONLY via `effectiveBands`, whose complete caller set is: `evaluateSpend` (the intended widen), `creditStanding:119` (reads `.justDoItPerDay` ONLY → **earned budget provably invariant under #1**), and `policy` GET/PUT (display/echo of the new ceiling — intended). **One reader the original spec missed:** `frontier-headroom.ts:116` reads `justDoItPerTx` — but it is **display-only** (sole caller: `policy` GET `:122`), **earned-bounded** (`perPurchaseCapUsd = min(justDoItPerTx, effectiveMaxToday)`, and `effectiveMaxToday` includes `earnedRemaining`), and **gate-consistency-tested** (`_test-frontier-headroom.ts`). So after #1 it honestly displays `min(raised-ceiling, earned-remaining)` — correct, not a leak. **No hidden enforcement reader exists.** Test note: add a raised-ceiling case to `_test-frontier-headroom.ts` (display stays earned-bounded) — the display-side mirror of authz test 1.1.
 
 ### Change #2 — `minWalletBalance` floor reversal — **actually two changes**
 
@@ -161,10 +162,11 @@ For each: **(a)** gate code touched (cited), **(b)** the line it moves (deny vs 
   - **(c) Blast radius if wrong:** implementation-only — a mis-placed `return ask_first` could (i) over-fire (every sub-cent exploration asks → notification fatigue → user disables spend, the worst churn outcome), or (ii) under-fire (a non-trivial first buy from a never-seen counterparty auto-pays — the exact compromised-agent failure this defends against). The novelty floor is what separates (i) from the intent. **Data-blocked** on that floor (§6.2).
   - **(d)** Coupled to #3 (trust *is* "skip this ask"). Build together.
 - **#5b — anomaly ask.**
-  - **(a) Code touched (corrected 2026-06-08 to the as-built read-shape):** `anomalyFlag` (computed in `deriveTrackRecord` — window `:206-214`, flag-set `:212-214` — and also driving the integrity score factor via `computeFactors:85`) is surfaced as an **explicit read-only boolean on `CreditStanding`** (`frontier-standing.ts`; passthrough, zero score/budget change), so the gate reads `standing.anomalyFlag` DIRECTLY rather than inferring it from `factors.integrity` (a money gate must not silently change which spends trip the ask if the score encoding ever changes — Cooper's call, Option B). It rides on the `standing` object already passed to the gate — **no route / `AuthorizationInput` change** (the original "route passes it as a direct gate input" was imprecise; `CreditStanding` did not previously carry the flag). `decideAuthorization` adds **Gate 2e**, placed strictly between 2c (earned-budget keystone) and 2d (autonomous fallthrough): `if (standing.anomalyFlag === true) → ask_first` (reason `velocity_anomaly`). Boundary: `frontier-standing.ts` (the field) + `frontier-authz.ts` (the 2e branch) + `scripts/_test-frontier-anomaly-ask.ts`.
+  - **(a) Code touched (corrected 2026-06-08 to the as-built read-shape):** `anomalyFlag` (computed in `deriveTrackRecord` — window `:206-214`, flag-set `:212-214` — and also driving the integrity score factor via `computeFactors:95`) is surfaced as an **explicit read-only boolean on `CreditStanding`** (`frontier-standing.ts`; passthrough, zero score/budget change), so the gate reads `standing.anomalyFlag` DIRECTLY rather than inferring it from `factors.integrity` (a money gate must not silently change which spends trip the ask if the score encoding ever changes — Cooper's call, Option B). It rides on the `standing` object already passed to the gate — **no route / `AuthorizationInput` change** (the original "route passes it as a direct gate input" was imprecise; `CreditStanding` did not previously carry the flag). `decideAuthorization` adds **Gate 2e**, placed strictly between 2c (earned-budget keystone) and 2d (autonomous fallthrough): `if (standing.anomalyFlag === true) → ask_first` (reason `velocity_anomaly`). Boundary: `frontier-standing.ts` (the field) + `frontier-authz.ts` (the 2e branch) + `scripts/_test-frontier-anomaly-ask.ts`.
   - **(b) Line it moves:** **adds an ask line** (tightening).
   - **(c) Blast radius if wrong:** lowest. A false-positive anomaly (legit burst of new suppliers) → spurious asks (recoverable: user approves, flag is a rolling-window heuristic that clears, `ledger:206-214`). A false-negative → the spend proceeds under the *indirect* score penalty anyway (the integrity factor already cut the earned budget). So even a broken #5b degrades to "the indirect effect still applies."
   - **(d)** **Independent of #3 and #5a.** Signal exists; can land early.
+  - **(e) Follow-up (logged at ship, 2026-06-08):** #5b ships RAW (no dollar floor) — Cooper's call. The FP consequence is bounded to one recoverable, self-healing `ask_first`, never a block, and the flag self-clears (rolling window). If real fleet usage shows the FP rate (legit new-supplier bursts) is annoying, add a dollar floor so sub-threshold exploration stays frictionless. NOT load-bearing for any other Slice B piece.
 
 ---
 
@@ -203,8 +205,8 @@ For each: **(a)** gate code touched (cited), **(b)** the line it moves (deny vs 
 
 **Recommended build sequence (derived from the graph):**
 
-1. **#1 ceiling reversal** — standalone, foundational, one line, highest-value (unlocks Hands-off + "raise my line"). Ship first behind its Rule-31 test.
-2. **#5b anomaly ask** — standalone, lowest risk, additive defense. Can parallel #1.
+1. **#1 ceiling reversal** — ✅ **SHIPPED 2026-06-08 (`36f0c262`).** standalone, foundational, one line, highest-value (unlocks Hands-off + "raise my line"). Shipped behind its Rule-31 test.
+2. **#5b anomaly ask** — ✅ **SHIPPED 2026-06-08 (`f877fd35`).** standalone, lowest risk, additive defense.
 3. **#2a + #2b floor work** — together, *after* the §16.5 low-balance warning is live (Slice A). Sequencing gate, not a code gate.
 4. **#5a + #3 coupled unit** — *after* the storage-shape decision (§6.1) and an interim novelty floor (§6.2). Same gate review. This is the big one.
 5. **#4 chat-settings tool** — *after* #1 + #2 land (else it no-ops). Integration-tested, not gate-tested.
@@ -329,7 +331,7 @@ Per Rule 72, I cross-checked every claim I'm relying on against source. Two corr
 
 2. **CORRECTION — "the five all move deny lines" overstates it.** Verified against `evaluateSpend`: only **#2 (the `minWalletBalance` floor)** moves a genuine deny line (`would_drain_wallet`, `:210-217`). #1 and #3 move the **autonomy line** (just-do-it↔ask split); #5a/#5b **add** ask lines; #4 moves nothing. This isn't pedantry — it changes the blast-radius reasoning (deny is bounded by on-chain settlement; autonomy-line is bounded by the earned-budget AND), and it's why #2b (the one deny-line move) is actually *lower* risk than #1 (an autonomy-line move) despite sounding scarier.
 
-3. **CONFIRMED — the earned-budget AND (gate 2c) is intact and is the safety spine.** `decideAuthorization:139-147` executes after every policy verdict; `earnedDailyBudget ≤ justDoItPerDay` by construction (`standing:109-111`). Every Slice-B safety argument reduces to "2c still runs." The suite's load-bearing assertions all check exactly that.
+3. **CONFIRMED — the earned-budget AND (gate 2c) is intact and is the safety spine.** `decideAuthorization:139-147` executes after every policy verdict; `earnedDailyBudget ≤ justDoItPerDay` by construction (`standing:119-121`). Every Slice-B safety argument reduces to "2c still runs." The suite's load-bearing assertions all check exactly that.
 
 4. **CONFIRMED — the chat settings tool does not exist.** `find`/`grep` across the worktree: `frontier-spend.mjs` (spend), `/spend-settings` (opt-in), `frontier-spend-optin.ts` — no `frontier-settings`. #4 is net-new, hence "build a bounded write-client," not "enforce bounds on an existing tool."
 
