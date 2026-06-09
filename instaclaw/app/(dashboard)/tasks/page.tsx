@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { SESSIONS_CHANGED_EVENT } from "@/components/dashboard/use-sessions";
 import { useNavMode } from "@/components/dashboard/use-nav-mode";
 import { ClaudeLogo } from "@/components/icons/claude-logo";
+import { ModelInfoButton } from "@/components/model-info-tooltip";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronLeft,
@@ -2167,6 +2168,12 @@ function CommandCenterInner() {
   // Model state
   const [currentModel, setCurrentModel] = useState("claude-sonnet-4-6");
   const [showModelPicker, setShowModelPicker] = useState(false);
+  // Which model row's info tooltip is open (null = none). Shared by both pickers
+  // (only one is mounted at a time, tab-gated). Cleared whenever the picker closes.
+  const [infoTooltip, setInfoTooltip] = useState<string | null>(null);
+  useEffect(() => {
+    if (!showModelPicker) setInfoTooltip(null);
+  }, [showModelPicker]);
   const [updatingModel, setUpdatingModel] = useState(false);
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const modelPickerRef2 = useRef<HTMLDivElement>(null);
@@ -2413,7 +2420,13 @@ function CommandCenterInner() {
 
   async function handleModelChange(newModel: string) {
     setUpdatingModel(true);
-    setShowModelPicker(false);
+    // VISUAL DISMISSAL ONLY — delayed ~120ms so the chosen row's spring "confirm"
+    // (the existing whileTap bounce + the row lighting up to the new selection:
+    // coral pill + Claude-orange logo + check) is perceptible before the popover
+    // exit-animates (AnimatePresence). Selection state stays IMMEDIATE: setCurrentModel
+    // + the /api/vm/update-model persist below are unchanged. The check still tracks the
+    // real currentModel; we only smooth the dismissal, never gate the selection on it.
+    setTimeout(() => setShowModelPicker(false), 120);
     const prev = currentModel;
     setCurrentModel(newModel);
     try {
@@ -3811,7 +3824,18 @@ function CommandCenterInner() {
                             className="hidden sm:flex items-center gap-1 pl-2.5 pr-1 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
                             style={{ color: "var(--muted)" }}
                           >
-                            <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}</span>
+                            <AnimatePresence mode="wait" initial={false}>
+                              <motion.span
+                                key={currentModel}
+                                initial={{ opacity: 0, y: 5 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -5 }}
+                                transition={{ duration: 0.15, ease: "easeOut" }}
+                                className="inline-block"
+                              >
+                                {MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}
+                              </motion.span>
+                            </AnimatePresence>
                             <ChevronDown className="w-3 h-3" />
                           </button>
                           <button
@@ -3822,8 +3846,13 @@ function CommandCenterInner() {
                           >
                             <ChevronDown className="w-3.5 h-3.5" />
                           </button>
+                          <AnimatePresence>
                           {showModelPicker && (
-                            <div
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.96, y: 4 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.96, y: 4, transition: { duration: 0.13, ease: "easeIn" } }}
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
                               className="absolute bottom-full right-0 mb-1.5 rounded-2xl p-1.5 min-w-[200px] z-50"
                               style={{
                                 background: "var(--card)",
@@ -3859,11 +3888,15 @@ function CommandCenterInner() {
                                     </span>
                                     {m.label}
                                   </span>
-                                  {m.id === currentModel && <Check className="w-3.5 h-3.5" />}
+                                  <span className="flex items-center gap-1.5 shrink-0">
+                                    {m.id === currentModel && <Check className="w-3.5 h-3.5" />}
+                                    <ModelInfoButton modelId={m.id} isOpen={infoTooltip === m.id} onOpenChange={setInfoTooltip} />
+                                  </span>
                                 </motion.button>
                               ))}
-                            </div>
+                            </motion.div>
                           )}
+                          </AnimatePresence>
                         </div>
                         <button
                           className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 active:scale-95"
@@ -4022,7 +4055,18 @@ function CommandCenterInner() {
                   className="hidden sm:flex items-center gap-1 pl-2.5 pr-1 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
                   style={{ color: "var(--muted)" }}
                 >
-                  <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}</span>
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.span
+                      key={currentModel}
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="inline-block"
+                    >
+                      {MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}
+                    </motion.span>
+                  </AnimatePresence>
                   <ChevronDown className="w-3 h-3" />
                 </button>
                 <button
@@ -4033,8 +4077,13 @@ function CommandCenterInner() {
                 >
                   <ChevronDown className="w-3.5 h-3.5" />
                 </button>
+                <AnimatePresence>
                 {showModelPicker && (
-                  <div
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.96, y: 4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96, y: 4, transition: { duration: 0.13, ease: "easeIn" } }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
                     className="absolute bottom-full right-0 mb-1.5 rounded-2xl p-1.5 min-w-[200px] z-50"
                     style={{
                       background: "var(--card)",
@@ -4070,11 +4119,15 @@ function CommandCenterInner() {
                           </span>
                           {m.label}
                         </span>
-                        {m.id === currentModel && <Check className="w-3.5 h-3.5" />}
+                        <span className="flex items-center gap-1.5 shrink-0">
+                          {m.id === currentModel && <Check className="w-3.5 h-3.5" />}
+                          <ModelInfoButton modelId={m.id} isOpen={infoTooltip === m.id} onOpenChange={setInfoTooltip} />
+                        </span>
                       </motion.button>
                     ))}
-                  </div>
+                  </motion.div>
                 )}
+                </AnimatePresence>
               </div>
               <button
                 className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 active:scale-95"
