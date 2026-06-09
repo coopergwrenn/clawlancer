@@ -122,6 +122,13 @@ def _gate_call(action, token, params=None, body=None, timeout=120):
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/json")
     req.add_header("x-gateway-token", token)
+    # Canary-only: Vercel Deployment-Protection bypass so vm-050 can reach the
+    # dark branch-alias preview gate while it stays SSO-walled from the public.
+    # Read from ~/.openclaw/.env (HIGGSFIELD_GATE_BYPASS); absent in prod (the
+    # prod gate isn't protection-gated), so this is a no-op there. Never hardcode.
+    bypass = _load_env_var("HIGGSFIELD_GATE_BYPASS")
+    if bypass:
+        req.add_header("x-vercel-protection-bypass", bypass)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status, json.loads(resp.read().decode() or "{}")
