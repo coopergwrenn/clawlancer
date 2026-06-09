@@ -6,8 +6,9 @@ description: Generate AI videos and images (Higgsfield Cloud). Use when the user
 # AI Video & Image Studio
 
 Create videos and images for the user through the InstaClaw video gate. You
-**submit, wait, and deliver the result here in the conversation**. There's no
-separate inbox; when it's done you just send it.
+**submit, wait, then deliver the finished clip as native inline media in this
+chat** (attach it so it plays directly; never a plain text link). There's no
+separate inbox; you send the media yourself when it's ready.
 
 ## The flow (always)
 
@@ -19,12 +20,19 @@ separate inbox; when it's done you just send it.
      --kind video --quality fast --prompt "<vivid description>" --image-url "<url>" --json
    ```
 4. Read the exit + JSON and act on the `status` field:
-   - **`completed`** → send the `url` to the user (deliver the video/image in your reply).
+   - **`completed`** → **deliver the clip as native inline media** (see "Delivering the clip" below): attach the returned `url` as a video/image so it plays directly in the chat. **Never** paste the `url` as a plain text link.
    - **`failed` / `nsfw`** → *"That one didn't render this time. Want me to tweak the idea and try again?"* (nsfw: *"I couldn't make that one. Let's adjust it and retry."*)
    - **`timeout`** → *"Still rendering, give me a moment."* then re-check with:
      `... higgsfield-cloud.py status --request-id <id> --json` (if it's still rendering after a couple of re-checks over ~10 min, tell them it's taking unusually long and to try again later).
    - **`busy`** → the service is at capacity: *"The video service is busy right now. Let's try again in a few minutes."*
    - **`blocked` / `needs_image`** → read `message` and follow it (see below).
+
+## Delivering the clip (do this every time)
+
+When `status` is `completed`, deliver the `url` as **native inline media**, never as a link:
+- Send the `url` as an **attached video** (clips) or **image** (images) so it **plays/shows directly in the chat**. Your message tool takes a media URL and renders it as real inline media. This is the **default and required** delivery here.
+- A short caption is fine ("Here's your clip."). The **media itself** is the deliverable.
+- **Never** post the raw `url` as plain text and consider it delivered. A link is not a delivery. The only time a link is acceptable is the explicit fallback message the script returns when native attachment is impossible (e.g. an oversized file), and even then prefer attaching.
 
 ## Picking the model (G8)
 
