@@ -80,9 +80,9 @@ export function EconomyPolicyControls() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [perTx, setPerTx] = useState<number>(0);
   const [perDay, setPerDay] = useState<number>(0);
-  // Reserve (minWalletBalance). Slice A is RAISE-ONLY: the control clamps to
-  // >= the tier default; lowering it / "spend it all" needs the floor reversal
-  // (Slice B). clampOverrides (max) neutralizes any sub-default value at read.
+  // Reserve (minWalletBalance). Bidirectional (Slice B #2b): the control allows 0
+  // ("spend it all") up through any cushion; the gate floors the effective value at
+  // 0 at read (clampOverrides Math.max(0, ..)), so it is never negative.
   const [reserve, setReserve] = useState<number>(0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -149,10 +149,11 @@ export function EconomyPolicyControls() {
       const body = {
         justDoItPerTx: perTx !== td.justDoItPerTx ? perTx : null,
         justDoItPerDay: perDay < td.justDoItPerDay ? perDay : null,
-        // Reserve is RAISE-only here: send it only if raised ABOVE the tier
-        // default; otherwise null → tier default (unchanged behavior). A raise
-        // is a tighten (floor up); clampOverrides' max() makes it stick.
-        minWalletBalance: reserve > td.minWalletBalance ? reserve : null,
+        // Reserve is bidirectional (Slice B #2b): send it whenever it differs from
+        // the tier default (lower toward 0 to "spend it all", or raise for a bigger
+        // cushion); null clears to the tier default. The gate floors the effective
+        // value at 0 (clampOverrides Math.max(0, ..)).
+        minWalletBalance: reserve !== td.minWalletBalance ? reserve : null,
         allowed_categories: data.tier_default_categories.filter((c) => selected.has(c)),
       };
       const res = await fetch("/api/agent-economy/policy", {
@@ -260,8 +261,15 @@ export function EconomyPolicyControls() {
           ) : (
             <>, and stays within a daily allowance it earns</>
           )}
-          . It always keeps <span className="font-semibold">{usd(data.bands.minWalletBalance)}</span> in
-          reserve.
+          .{" "}
+          {data.bands.minWalletBalance === 0 ? (
+            <>It holds nothing back in reserve.</>
+          ) : (
+            <>
+              It always keeps{" "}
+              <span className="font-semibold">{usd(data.bands.minWalletBalance)}</span> in reserve.
+            </>
+          )}
         </p>
       </div>
 
@@ -454,16 +462,16 @@ export function EconomyPolicyControls() {
         />
       </div>
 
-      {/* ── Reserve (§16): RAISE-only in Slice A. The minimum the agent always
-          leaves in the wallet. Lowering it / "spend it all" needs the §16.6
-          floor reversal → Slice B; this control clamps to >= the plan default. ── */}
+      {/* ── Reserve (§16): bidirectional (Slice B #2b). The minimum the agent leaves
+          in the wallet; lower it toward $0 to let the agent spend the wallet down, or
+          raise it for a bigger cushion. The gate floors the effective value at 0. ── */}
       <div className="mb-4">
         <ReserveInput
           value={reserve}
-          min={td.minWalletBalance}
+          tierDefault={td.minWalletBalance}
           onChange={(v) => {
             setSaved(false);
-            setReserve(Math.max(td.minWalletBalance, Number.isFinite(v) ? v : td.minWalletBalance));
+            setReserve(Math.max(0, Number.isFinite(v) ? v : 0));
           }}
         />
       </div>
@@ -472,7 +480,7 @@ export function EconomyPolicyControls() {
         <Lock className="w-3 h-3 mt-0.5 shrink-0" />
         <span>
           Hard limits (set by your {data.tier} plan, can&apos;t be exceeded): never over {usd(data.bands.neverPerTx)} per
-          purchase or {usd(data.bands.neverPerDay)} per day · always keep {usd(data.bands.minWalletBalance)} in the wallet.
+          purchase or {usd(data.bands.neverPerDay)} per day. Your reserve is yours to set, down to $0.
         </span>
       </p>
 
@@ -612,32 +620,39 @@ function PresetBtn({ label, active, onClick }: { label: string; active: boolean;
 }
 
 /**
- * The reserve control — RAISE-only in Slice A (clamped to >= the plan default;
- * lowering / "spend it all" needs the §16.6 floor reversal → Slice B). The floor
- * the agent never spends below.
+ * The reserve control: bidirectional (Slice B #2b). The amount the agent leaves in
+ * the wallet: lower toward $0 to let it spend the wallet down ("spend it all"), or
+ * raise it for a bigger cushion. The gate floors the effective value at 0.
  */
-function ReserveInput({ value, min, onChange }: { value: number; min: number; onChange: (v: number) => void }) {
-  const raised = value > min;
+function ReserveInput({ value, tierDefault, onChange }: { value: number; tierDefault: number; onChange: (v: number) => void }) {
+  // Inverted vs the ask-first lines: RAISING the reserve is the cautious direction
+  // (green); LOWERING it toward $0 leans in (amber); exactly at the default is neutral.
+  const cueColor =
+    value > tierDefault
+      ? "rgb(34,197,94)"
+      : value < tierDefault
+        ? "rgb(234,179,8)"
+        : "var(--foreground)";
   return (
     <label className="block rounded-xl p-3" style={{ background: "rgba(0,0,0,0.025)", border: "1px solid rgba(0,0,0,0.06)" }}>
       <span className="text-[11px] block mb-1.5" style={{ color: "var(--muted)" }}>
-        Always keep in reserve (your agent never spends below this)
+        Keep in reserve (your agent won&apos;t spend below this)
       </span>
       <div className="flex items-center gap-1">
-        <span className="text-lg font-semibold" style={{ color: raised ? "rgb(34,197,94)" : "var(--foreground)" }}>$</span>
+        <span className="text-lg font-semibold" style={{ color: cueColor }}>$</span>
         <input
           type="number"
           inputMode="decimal"
-          min={min}
-          step={1}
+          min={0}
+          step={tierDefault <= 5 ? 0.25 : 1}
           value={value}
           onChange={(e) => onChange(parseFloat(e.target.value))}
           className="w-full bg-transparent text-lg font-semibold tracking-tight outline-none"
-          style={{ color: raised ? "rgb(34,197,94)" : "var(--foreground)" }}
+          style={{ color: cueColor }}
         />
       </div>
       <span className="text-[10px]" style={{ color: "var(--muted)" }}>
-        keep more if you like · your plan reserves {`$${min.toLocaleString("en-US", { maximumFractionDigits: 2 })}`} by default
+        set to $0 to let it spend the wallet down · your plan reserves {`$${tierDefault.toLocaleString("en-US", { maximumFractionDigits: 2 })}`} by default
       </span>
     </label>
   );

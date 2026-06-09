@@ -64,24 +64,35 @@ const STAKER_CEILING_MULTIPLIER = 2;
 export type PolicyOverrides = Partial<Record<keyof TierBands, number>>;
 
 /**
- * Apply user overrides to a band set. FOUR bands are TIGHTEN-ONLY — the dashboard
- * can make an agent more conservative, never more aggressive: neverPerTx / neverPerDay
- * (hard ceilings) can only go DOWN, the wallet floor can only go UP, and justDoItPerDay
- * (the no-ask DAILY band) can only go DOWN. The ONE band the user may RAISE is
- * justDoItPerTx — the per-transaction no-ask line — up to the hard per-tx ceiling
- * neverPerTx (the Slice-B §5 ceiling reversal: "grant a ceiling, the agent earns toward
- * it"). Raising it widens only WILLINGNESS to auto-spend per-transaction; the agent's
- * earned daily budget (decideAuthorization gate 2c) is the real, independent bound on
- * autonomous spend, so a high ceiling on a low-earned agent still ASKS. Invalid override
- * values (negative / non-finite / absent) silently fall back to the base (the agent
- * never ends up LESS safe because of a bad override).
+ * Apply user overrides to a band set. Direction by band:
+ *   - neverPerTx / neverPerDay (hard ceilings): TIGHTEN-ONLY (can only go DOWN).
+ *   - justDoItPerDay (the no-ask DAILY band): TIGHTEN-ONLY (can only go DOWN).
+ *   - justDoItPerTx (the per-tx no-ask line): USER-RAISABLE up to the hard per-tx
+ *     ceiling neverPerTx (Slice-B §5 ceiling reversal: "grant a ceiling, the agent
+ *     earns toward it"). Raising it widens only WILLINGNESS; the earned daily budget
+ *     (decideAuthorization gate 2c) is the real bound, so a high ceiling on a
+ *     low-earned agent still ASKS.
+ *   - minWalletBalance (the wallet reserve floor): USER-LOWERABLE down to 0 ("spend
+ *     it all") and raisable above the tier default, clamped to >= 0 via Math.max(0, ..)
+ *     so the EFFECTIVE floor is never negative (Slice-B #2b floor reversal). A
+ *     non-negative effective floor is load-bearing for evaluateSpend's would_drain
+ *     guard and frontier-headroom's walletHeadroom, both of which subtract it from
+ *     the balance.
+ * Invalid override values (negative / non-finite) fall back to the base via at()
+ * BEFORE the floor clamp, so a corrupt negative minWalletBalance fails SAFE to the
+ * tier default reserve (NOT to 0); absent overrides also fall back to base. The agent
+ * never ends up LESS safe because of a bad override.
  */
 export function clampOverrides(base: TierBands, ov: PolicyOverrides): TierBands {
   const at = (v: number | undefined, fallback: number): number =>
     typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : fallback;
   const neverPerTx = Math.min(base.neverPerTx, at(ov.neverPerTx, base.neverPerTx));
   const neverPerDay = Math.min(base.neverPerDay, at(ov.neverPerDay, base.neverPerDay));
-  const minWalletBalance = Math.max(base.minWalletBalance, at(ov.minWalletBalance, base.minWalletBalance));
+  // Slice-B #2b: floor reversal. Math.max(0, ..) not Math.max(base, ..) so the user may
+  // lower the reserve to 0 ("spend it all"); at() still maps negative/non-finite to base
+  // (fail-safe), and the 0-floor keeps the effective reserve non-negative for the
+  // would_drain guard (evaluateSpend) and walletHeadroom (frontier-headroom).
+  const minWalletBalance = Math.max(0, at(ov.minWalletBalance, base.minWalletBalance));
   // justDoItPerTx (the per-tx no-ask line) is USER-RAISABLE up to neverPerTx (§5
   // ceiling reversal) — the `base` cap is intentionally ABSENT so an override may
   // exceed the tier default. Math.min(neverPerTx, …) keeps it ≤ the hard per-tx

@@ -138,8 +138,12 @@ expect("negative spentToday → deny", "starter", { ...ok(), amountUsd: 1, spent
   t("override cannot raise neverPerTx", clampOverrides(base, { neverPerTx: 999 }).neverPerTx === 50);
   // raise the wallet floor — allowed
   t("override raises minWalletBalance", clampOverrides(base, { minWalletBalance: 40 }).minWalletBalance === 40);
-  // attempt to LOWER the floor — ignored
-  t("override below base 0.10 cannot lower the floor (raise-only clamp; #2b will reverse this)", clampOverrides(base, { minWalletBalance: 0.05 }).minWalletBalance === 0.1);
+  // #2b floor reversal: the wallet reserve is now USER-LOWERABLE below the tier
+  // default, down to 0 ("spend it all"); negative/non-finite still fail safe to base
+  // (full coverage in scripts/_test-frontier-floor-reversal.ts).
+  t("override below base 0.10 LOWERS the floor (#2b floor reversal)", clampOverrides(base, { minWalletBalance: 0.05 }).minWalletBalance === 0.05);
+  t("override 0 sets the floor to 0 (#2b spend-it-all)", clampOverrides(base, { minWalletBalance: 0 }).minWalletBalance === 0);
+  t("negative floor override fails safe to base (#2b)", clampOverrides(base, { minWalletBalance: -5 }).minWalletBalance === base.minWalletBalance);
   // coherence: lowering neverPerTx below justDoItPerTx re-coerces jdt down
   const c = clampOverrides(base, { neverPerTx: 3 });
   t("ceiling below jdt re-coerces just_do_it ≤ never (per-tx)", c.justDoItPerTx === 3 && c.neverPerTx === 3);
