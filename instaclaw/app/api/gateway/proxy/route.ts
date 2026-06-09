@@ -1003,6 +1003,21 @@ export async function POST(req: NextRequest) {
         const hasDeepResearch = systemPrompt.includes("DEEP RESEARCH");
         const hasWebSearch = systemPrompt.includes("WEB SEARCH");
 
+        // D1(B) CONTAINED: honor a deliberate Fable pick. requestedModel here is
+        // the pre-route picked/default model (the gateway sends the on-disk
+        // primary, which is the user's picked default_model). Fable is the ONLY
+        // model the auto-router won't reach, so a Fable default IS a deliberate
+        // pick - plumb it into the router's explicit path (served as Fable, the
+        // governor already bills 38 via step (a)). For EVERY other model this is
+        // undefined, so content-routing is untouched (the contained boundary).
+        // x-model-override (infra defense-in-depth, Rule 69) takes precedence.
+        const fablePicked = !hasModelOverride && requestedModel.toLowerCase().includes("fable");
+        const explicitReq = hasModelOverride
+          ? modelOverrideHeader!
+          : fablePicked
+            ? "claude-fable-5"
+            : undefined;
+
         const routingCtx: RoutingContext = {
           userMessage,
           messageCount: messages.length,
@@ -1012,14 +1027,7 @@ export async function POST(req: NextRequest) {
           isRecurringTask,
           toggles: { deepResearch: hasDeepResearch, webSearch: hasWebSearch },
           tierBudget,
-          // 2026-05-28 Rule 69 defense-in-depth: when a caller sends
-          // x-model-override, plumb it into the router so the router's
-          // existing respectExplicitModel() path takes precedence over
-          // content classification. Strip-thinking et al. now also send
-          // x-call-kind: infrastructure (handled by the early skip above),
-          // but this defense layer catches any future caller that sets
-          // x-model-override without remembering the call-kind header.
-          ...(hasModelOverride ? { explicitModelRequest: modelOverrideHeader! } : {}),
+          ...(explicitReq ? { explicitModelRequest: explicitReq } : {}),
         };
 
         routingDecision = routeModel(routingCtx);
@@ -1815,7 +1823,14 @@ export async function POST(req: NextRequest) {
     // their own per-day cap enforced earlier in the request, and they should
     // not count against the user's tier-2/tier-3 sonnet/opus call counters
     // that the routing layer reads.
-    if (routingDecision && !isHeartbeat && !isInfrastructureCall) {
+    //
+    // D1(B) Option Y (grant-only, no tier wall): Fable does NOT increment the
+    // opus tier-3 counter, so it never consumes the opus daily call-cap. The
+    // daily grant (instaclaw_check_and_increment, 38/msg) is Fable's sole
+    // governor. This leaves a credit user's opus auto-budget untouched by their
+    // Fable usage.
+    const servedFable = (routingDecision?.model ?? "").toLowerCase().includes("fable");
+    if (routingDecision && !isHeartbeat && !isInfrastructureCall && !servedFable) {
       const baseCostWeight = routingDecision.tier === 1 ? 1 : routingDecision.tier === 2 ? 4 : 19;
       const costWeight = isToolContinuation ? baseCostWeight * 0.2 : baseCostWeight;
       supabase
