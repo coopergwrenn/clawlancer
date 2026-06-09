@@ -1,6 +1,7 @@
 import { getSupabase } from "./supabase";
 import { generateGatewayToken } from "./security";
 import { logger } from "./logger";
+import { MODEL_OPENCLAW_MAP } from "./model-registry";
 import {
   WORKSPACE_CAPABILITIES_MD,
   WORKSPACE_QUICK_REFERENCE_MD,
@@ -4377,15 +4378,13 @@ export function toOpenClawModel(model: string): string {
     return model;
   }
 
-  // Bare model name → canonical provider/model mapping.
-  // Add new entries here as new models / providers are onboarded.
-  const map: Record<string, string> = {
-    "minimax-m2.5": "anthropic/minimax-m2.5",
-    "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4-5-20251001",
-    "claude-sonnet-4-6": "anthropic/claude-sonnet-4-6",
-    "claude-opus-4-6": "anthropic/claude-opus-4-6",
-  };
-  return map[model] || "anthropic/claude-sonnet-4-6";
+  // Bare model name → canonical provider/model mapping, derived from the
+  // single-source registry (lib/model-registry.ts:MODEL_OPENCLAW_MAP).
+  // Adding a model to the registry automatically extends this map. The
+  // load-bearing pass-through + shell-safety + fallback logic above/below is
+  // unchanged (see the vm-974 idempotency P0 comment). Fallback is the same
+  // safe default ("anthropic/claude-sonnet-4-6") as before.
+  return MODEL_OPENCLAW_MAP[model] || "anthropic/claude-sonnet-4-6";
 }
 
 // ── OpenClaw workspace file templates ──

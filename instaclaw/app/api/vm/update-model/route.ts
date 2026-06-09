@@ -3,12 +3,7 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { updateModel } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
-
-const ALLOWED_MODELS = [
-  "claude-haiku-4-5-20251001",
-  "claude-sonnet-4-6",
-  "claude-opus-4-6",
-];
+import { ALLOWED_MODEL_IDS as ALLOWED_MODELS } from "@/lib/model-registry";
 
 export async function POST(req: NextRequest) {
   try {
