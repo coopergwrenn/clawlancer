@@ -7,6 +7,7 @@ import { SESSIONS_CHANGED_EVENT } from "@/components/dashboard/use-sessions";
 import { useNavMode } from "@/components/dashboard/use-nav-mode";
 import { ClaudeLogo } from "@/components/icons/claude-logo";
 import { ModelInfoButton } from "@/components/model-info-tooltip";
+import { MODEL_OPTIONS } from "@/lib/model-registry";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronLeft,
@@ -214,12 +215,7 @@ function ToolOrb({ tool, size = 28 }: { tool: string; size?: number }) {
 }
 
 /* ─── Model Options ──────────────────────────────────────── */
-
-const MODEL_OPTIONS = [
-  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
-  { id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
-  { id: "claude-opus-4-6", label: "Opus 4.6" },
-];
+/* MODEL_OPTIONS now sourced from lib/model-registry (single source of truth). */
 
 /* ─── Types ───────────────────────────────────────────────── */
 

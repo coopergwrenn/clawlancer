@@ -1,33 +1,14 @@
 import { Info } from "lucide-react";
+import { getModelTooltip } from "@/lib/model-registry";
 
 /**
- * Per-model copy for the model-picker info tooltip.
+ * Per-model copy now lives in lib/model-registry (single source of truth).
  *
- * CREDIT NUMBERS ARE LOAD-BEARING (money-facing; users act on them). They are
- * VERIFIED against the single source of truth: lib/credit-constants.ts
- * `MODEL_COST_WEIGHTS` = { haiku: 1, sonnet: 4, opus: 19 } (credit units per
- * API call; `getModelCostWeight()` matches model id by substring). If those
- * weights ever change, update the `cost` strings here in the same PR.
- *
- * Keyed by the exact MODEL_OPTIONS ids in app/(dashboard)/tasks/page.tsx.
+ * CREDIT NUMBERS ARE LOAD-BEARING (money-facing; users act on them). The
+ * registry's per-model `creditWeight` + `tooltip.cost` are verified against
+ * lib/credit-constants.ts `MODEL_COST_WEIGHTS` = { haiku: 1, sonnet: 4,
+ * opus: 19 }. Update the registry entry's `tooltip.cost` if a weight changes.
  */
-const MODEL_INFO: Record<string, { name: string; desc: string; cost: string }> = {
-  "claude-haiku-4-5-20251001": {
-    name: "Haiku 4.5",
-    desc: "Fastest and most efficient. Best for quick questions, simple lookups, and rapid back-and-forth.",
-    cost: "1 credit per message",
-  },
-  "claude-sonnet-4-6": {
-    name: "Sonnet 4.6",
-    desc: "The balanced default. Strong at everyday writing, coding, and analysis without the heavier cost. The right pick when you're unsure.",
-    cost: "4 credits per message",
-  },
-  "claude-opus-4-6": {
-    name: "Opus 4.6",
-    desc: "The most capable, for hard reasoning and complex multi-step work where getting it exactly right is worth the higher cost.",
-    cost: "19 credits per message",
-  },
-};
 
 // Same opaque-glass shadow family as the picker popover + the "+" menu.
 const TOOLTIP_SHADOW =
@@ -50,7 +31,7 @@ export function ModelInfoButton({
   isOpen: boolean;
   onOpenChange: (id: string | null) => void;
 }) {
-  const info = MODEL_INFO[modelId];
+  const info = getModelTooltip(modelId);
   if (!info) return null;
   return (
     <span
