@@ -285,7 +285,13 @@ export type HFPollStatus = {
   ok: boolean; // completed AND a media URL is present → deliver
   video_url: string | null;
 };
-const HF_TERMINAL = new Set(["completed", "failed", "nsfw", "cancelled"]);
+// TRANSIENT-whitelist (fail-safe, M1): only these mean "still working — keep
+// polling." ANYTHING ELSE is terminal — so an undocumented terminal status (a
+// future "moderated"/"error"/etc.) ENDS the poll as a failure instead of looping
+// to timeout and lying "still rendering." "unknown" (missing/garbled status) is
+// transient so a one-off blip keeps polling. Docs' terminal set is
+// completed/failed/nsfw; this is robust to the set growing.
+const HF_TRANSIENT = new Set(["queued", "in_progress", "unknown"]);
 export function mapHiggsfieldStatus(
   a:
     | { status?: string; video?: { url?: string }; images?: Array<{ url?: string }> }
@@ -294,7 +300,7 @@ export function mapHiggsfieldStatus(
 ): HFPollStatus {
   const status = a?.status ?? "unknown";
   const url = a?.video?.url || a?.images?.[0]?.url || null;
-  const done = HF_TERMINAL.has(status);
+  const done = !HF_TRANSIENT.has(status);
   const ok = status === "completed" && !!url;
   return { status, done, ok, video_url: ok ? url : null };
 }

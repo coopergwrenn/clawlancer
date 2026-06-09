@@ -211,6 +211,10 @@ async function main() {
   ok("status cancelled (legacy) → done, not ok", mapHiggsfieldStatus({ status: "cancelled" }).done === true);
   ok("status missing → unknown, not done", (() => { const m = mapHiggsfieldStatus({}); return m.status === "unknown" && !m.done; })());
   ok("status null input → unknown, not done", (() => { const m = mapHiggsfieldStatus(null); return m.status === "unknown" && !m.done && !m.ok; })());
+  // M1 fail-safe: an UNDOCUMENTED terminal status must be `done` (not infinite-poll).
+  ok("M1: unknown terminal 'moderated' → done, not ok (fail-safe, not poll-to-timeout)", (() => { const m = mapHiggsfieldStatus({ status: "moderated" }); return m.done === true && m.ok === false && m.video_url === null; })());
+  ok("M1: unknown terminal 'error' → done (fail-safe)", mapHiggsfieldStatus({ status: "error" }).done === true);
+  ok("M1: only queued/in_progress/unknown stay transient", mapHiggsfieldStatus({ status: "queued" }).done === false && mapHiggsfieldStatus({ status: "in_progress" }).done === false && mapHiggsfieldStatus({ status: "unknown" }).done === false);
 
   ok("freeCap starter=2", freeCapForTier("starter") === 2);
   ok("freeCap pro=5", freeCapForTier("pro") === 5);

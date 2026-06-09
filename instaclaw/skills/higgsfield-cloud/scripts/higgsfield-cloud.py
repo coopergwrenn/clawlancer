@@ -69,7 +69,7 @@ def resolve_model(kind, quality=None, explicit=None):
     if explicit:
         e = explicit.strip().lower()
         if e in UNSUPPORTED:
-            return (None, f"'{explicit}' isn't available yet — try a standard clip or image instead.")
+            return (None, f"'{explicit}' isn't available yet. Try a standard clip or image instead.")
         if e in ALIASES:
             return (ALIASES[e], None)
         if explicit in ALLOWLISTED:  # someone passed a full canonical slug
@@ -173,12 +173,14 @@ def cmd_generate(args):
         body["duration"] = args.duration
 
     status, resp = _gate_call("create", token, body=body)
-    if status == 402:
-        # free_exhausted or insufficient_balance — surface the gate's message.
+    if status in (402, 400):
+        # 402 = free_exhausted / insufficient_balance; 400 = bad params / unsupported.
+        # Surface the gate's own user-safe message.
         _out({"status": "blocked", "reason": resp.get("error"), "message": resp.get("message")}, args.json)
         return 3
-    if status == 400:
-        _out({"status": "blocked", "reason": resp.get("error"), "message": resp.get("message")}, args.json)
+    if status in (429, 503):
+        # M2: busy / rate-limited / at-capacity — distinct from a hard error.
+        _out({"status": "busy", "message": "The video service is busy right now. Please try again in a few minutes."}, args.json)
         return 3
     if status != 200 or not resp.get("request_id"):
         _out({"status": "error", "message": resp.get("message") or "Couldn't start generation."}, args.json)
@@ -192,18 +194,30 @@ def cmd_generate(args):
     # Block-poll to completion (Option B). The agent's single call returns the
     # final result; it then delivers in-conversation.
     deadline = time.time() + (args.max_wait or 480)
+    err_streak = 0  # M2: distinguish a busy/rate-limited service from a slow job
     while time.time() < deadline:
         time.sleep(15)
         s, st = _gate_call("status", token, params={"request_id": request_id})
-        if s == 200 and st.get("done"):
+        # An upstream error = our gate call wasn't 200, OR the gate proxied a
+        # non-ok Higgsfield response (it returns {http:<code>} then).
+        upstream_err = s != 200 or bool(st.get("http"))
+        if s == 200 and not st.get("http") and st.get("done"):
             if st.get("ok") and st.get("video_url"):
                 _out({"status": "completed", "request_id": request_id, "url": st["video_url"], "model": slug}, args.json)
                 return 0
             _out({"status": st.get("status", "failed"), "request_id": request_id,
-                  "message": "That one didn't render — let's tweak it and try again."}, args.json)
+                  "message": "That one didn't render. Want to tweak it and try again?"}, args.json)
             return 1
+        if upstream_err:
+            err_streak += 1
+            if err_streak >= 4:  # ~1 min of consecutive 429/5xx → not a slow job, the service is busy
+                _out({"status": "busy", "request_id": request_id,
+                      "message": "The video service is busy right now. Please try again in a few minutes."}, args.json)
+                return 3
+        else:
+            err_streak = 0  # a clean in-progress poll resets the streak
     _out({"status": "timeout", "request_id": request_id,
-          "message": "Still rendering — check again in a moment with `status`."}, args.json)
+          "message": "Still rendering. Check again in a moment with `status`."}, args.json)
     return 2
 
 
@@ -213,6 +227,9 @@ def cmd_status(args):
         print("ERROR: no GATEWAY_TOKEN configured", file=sys.stderr)
         return 4
     s, st = _gate_call("status", token, params={"request_id": args.request_id})
+    if s in (429, 503):
+        _out({"status": "busy", "message": "The video service is busy right now. Please try again in a few minutes."}, args.json)
+        return 3
     if s != 200:
         _out({"status": "error", "http": s}, args.json)
         return 4
