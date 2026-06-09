@@ -1,29 +1,28 @@
 # Changelog — generated 2026-06-09
 
-Window: `f877fd355eb7bf226cdd07c0cb4b1aa24f6e855e` → `HEAD` (HEAD = `2fe2184c`)
+Window: `2fe2184c04bf3dfa9d25a45f302bc025387bb5dc` → `HEAD` (HEAD = `5c1f5115`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 2fe2184c04bf3dfa9d25a45f302bc025387bb5dc -->
+<!-- LAST_GENERATED_SHA: 5c1f5115917133ff8fa20093c415a2b775c59a7d -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
 - **Infrastructure:** 0
-- **Feature (user-facing):** 0
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
 
-_None in this window._
+- `5c1f5115` 2026-06-09 — composer input bar: Raised glass material, both tab composers [1 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `2fe2184c` 2026-06-08 — docs(frontier): correct Slice B spec §2#5b(a) to the as-built read-shape (Option B) [1 files] _(ai-assisted)_
-- `91f5f74a` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
+- `a5f28cbf` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -35,26 +34,25 @@ _(none)_
 
 _(none)_
 
-### Feature (user-facing) (0)
+### Feature (user-facing) (1)
 
-_(none)_
+- `5c1f5115` 2026-06-09 — composer input bar: Raised glass material, both tab composers [1 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `91f5f74a` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
-- `2fe2184c` 2026-06-08 — docs(frontier): correct Slice B spec §2#5b(a) to the as-built read-shape (Option B) [1 files] _(ai-assisted)_
+- `a5f28cbf` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `2fe2184c` 2026-06-08 — docs(frontier): correct Slice B spec §2#5b(a) to the as-built read-shape (Option B)
+- `5c1f5115` 2026-06-09 — composer input bar: Raised glass material, both tab composers
 
 ## Appendix — every commit (chronological)
 
-- `91f5f74a` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
-- `2fe2184c` 2026-06-08 — docs(frontier): correct Slice B spec §2#5b(a) to the as-built read-shape (Option B) [1 files] _(ai-assisted)_
+- `a5f28cbf` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
+- `5c1f5115` 2026-06-09 — composer input bar: Raised glass material, both tab composers [1 files] _(ai-assisted)_
