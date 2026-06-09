@@ -446,3 +446,14 @@ Plus: **the two-trust collision (§9.5.1) is the most important new constraint**
 **CONFIRMED + LOCKED by Cooper 2026-06-08 — all four + the two-trust constraint. Slice B is fully specified.** Build is gated on Cooper pointing at #1 (which ships first, on its own, preview-first + boundary-checked, exactly like Slice A). Nothing starts until then.
 
 Sources: [OWASP LLM06:2025 Excessive Agency](https://genai.owasp.org/llmrisk/llm06-sensitive-information-disclosure/) · [Indusface — OWASP LLM Excessive Agency](https://www.indusface.com/learning/owasp-llm-excessive-agency/) · [OWASP LLM01:2025 Prompt Injection](https://genai.owasp.org/llmrisk/llm01-prompt-injection/) · [Red Gate — Database Design for Audit Logging](https://www.red-gate.com/blog/database-design-for-audit-logging/) · [DesignGurus — append-only audit trails](https://www.designgurus.io/answers/detail/how-do-you-enforce-immutability-and-appendonly-audit-trails)
+
+
+---
+
+## §11 — Finding D: CI enforcement of the pure Rule-31 suites (SHIPPED 2026-06-09)
+
+The 6 PROVEN-pure gate suites (`_test-frontier-authz`, `-policy`, `-standing`, `-headroom`, `-ceiling-reversal`, `-anomaly-ask` — 174 assertions, all green with infra env scrubbed) are enforced by a **non-blocking GitHub Action** (`.github/workflows/frontier-safety.yml`) running `npm run test:frontier` (the `instaclaw/package.json` sibling script). Deliberately SEPARATE from the Vercel build (`build` + `vercel.json` untouched) so a red run cannot block any deploy or push — this repo deploys on push-to-main from multiple terminals, and a build-gating test would block unrelated deploys (a billing hotfix can't ship because a frontier test is red). NOT a required status check (detection, not prevention — the correct ceiling for push-to-main).
+
+**MAINTENANCE (load-bearing — the SAME gap class this closes):** a new Frontier gate file or gate suite is silently UN-ENFORCED unless added to BOTH (a) the workflow `paths:` filter AND (b) the `test:frontier` script in `instaclaw/package.json`. Only add suites PROVEN pure (they pass with infra env scrubbed); infra-dependent suites (higgsfield video-credit, `frontier-routes` / `-x402-server` / `-standing-db` / `-ledger` / `-spend-core` / `-feedback-loop`, `economy-readpath`) MUST NOT be added — they need live infra and would make the gate flaky.
+
+**Open one-liner for Cooper:** confirm Vercel project Settings → Git does NOT "wait for CI checks" before deploying (else this non-blocking workflow would silently become deploy-blocking — the exact coupling we're avoiding). Empirically, deploys have fired immediately on push all session (consistent with the setting being off), but confirm in the dashboard before relying on it.
