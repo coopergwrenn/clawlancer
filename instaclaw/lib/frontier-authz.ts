@@ -146,6 +146,19 @@ export function decideAuthorization(input: AuthorizationInput): AuthorizationDec
     };
   }
 
+  // 2e. Velocity-anomaly ask (Slice B #5b). A burst of brand-new counterparties in
+  //     the rolling window (frontier-ledger TrackRecord.anomalyFlag — the farming /
+  //     compromised-agent signal, surfaced explicitly on CreditStanding) raises
+  //     friction even within earned budget. ADDITIVE-ONLY: reached only on the
+  //     otherwise-autonomous path (¬deny via Gate 1, ¬human via Gate 3, just_do_it +
+  //     known category, AND within earned via 2c above), and returns ONLY ask_first
+  //     — it never authorizes and never denies. Being downstream of 2c it cannot
+  //     bypass the earned-budget keystone (an over-budget spend already returned at
+  //     2c). A clean agent (anomalyFlag !== true) falls through to 2d byte-identically.
+  if (standing.anomalyFlag === true) {
+    return { authorized: false, mode: null, outcome: "ask_first", reason: "velocity_anomaly", ...base };
+  }
+
   // 2d. Within policy AND within earned autonomy → the agent acts on its own.
   return {
     authorized: true,

@@ -43,6 +43,16 @@ export interface CreditStanding {
   /** Per-factor 0..1 breakdown — drives the dashboard "why your score is X" (§7.6). */
   factors: StandingFactors;
   worldIdVerified: boolean;
+  /**
+   * Velocity-anomaly flag (frontier-ledger TrackRecord.anomalyFlag), surfaced
+   * explicitly so the authorization gate (frontier-authz Gate 2e, Slice B #5b) can
+   * read it DIRECTLY rather than inferring it from the integrity score factor — a
+   * money gate must not silently change which spends trip the anomaly-ask if
+   * computeFactors' encoding ever changes. Read-only passthrough: does not affect
+   * score, level, budget, or factors. Optional: prod (creditStanding) always sets
+   * it; absent ⇒ the gate treats the agent as clean (conservative — no added friction).
+   */
+  anomalyFlag?: boolean;
 }
 
 export interface StandingOptions {
@@ -122,5 +132,6 @@ export function creditStanding(tr: TrackRecord, tier: FrontierTier, opts: Standi
     earnedDailyBudgetUsd: Math.max(BUDGET_FLOOR, Math.min(cap, earnedDailyBudgetUsd)),
     factors: f,
     worldIdVerified: tr.worldIdVerified,
+    anomalyFlag: tr.anomalyFlag,
   };
 }
