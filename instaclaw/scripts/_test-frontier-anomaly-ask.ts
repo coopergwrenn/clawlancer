@@ -154,5 +154,34 @@ check("5b.6f clean human → human_approved", decide({ humanApproved: true }).mo
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 5b.9 + 5b.10 — DECOUPLING (guards the exact property that justified Option B):
+// the gate MUST follow anomalyFlag, NOT factors.integrity. standing() normally couples
+// them; here we deliberately MISMATCH. If the gate were ever reverted to read
+// `factors.integrity < 1`, EXACTLY these two cases flip and fail — verified against a
+// temp-reverted gate (the other 24 still pass because they couple the two).
+// ─────────────────────────────────────────────────────────────────────────────
+function standingMismatch(anomalyFlag: boolean, integrity: number): CreditStanding {
+  return {
+    score: 600,
+    level: "assist",
+    earnedDailyBudgetUsd: 10,
+    factors: { reliability: 0.5, discipline: 0.5, tenure: 0.5, diversity: 0.5, integrity },
+    worldIdVerified: true,
+    anomalyFlag,
+  };
+}
+{
+  // anomalyFlag=false but integrity=0.15 (anomalous-LOOKING score). Gate follows anomalyFlag → autonomous.
+  const r = decide({ standing: standingMismatch(false, 0.15), amountUsd: 3 });
+  check("5b.9 DECOUPLE: anomalyFlag=false WHILE integrity=0.15 → autonomous (gate reads anomalyFlag, IGNORES integrity)",
+    r.authorized === true && r.mode === "autonomous");
+}
+{
+  // anomalyFlag=true but integrity=1 (clean-LOOKING score). Gate follows anomalyFlag → ask_first.
+  const r = decide({ standing: standingMismatch(true, 1), amountUsd: 3 });
+  check("5b.10 DECOUPLE: anomalyFlag=true WHILE integrity=1 → ask_first velocity_anomaly (gate reads anomalyFlag, IGNORES integrity)",
+    r.authorized === false && r.outcome === "ask_first" && r.reason === "velocity_anomaly");
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
