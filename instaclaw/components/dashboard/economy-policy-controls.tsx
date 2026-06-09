@@ -16,9 +16,11 @@ import { Check, RotateCw, Tag, Lock, Sparkles, Hand, Wallet, TrendingUp, AlertTr
  * Three parts, one story:
  *   1. GAP-1 headline — "what your agent can spend on its own today" + WHY (the
  *      binding factor). The honest number; never implies more autonomy than real.
- *   2. GAP-2 ceilings — tighten-only no-ask thresholds (per purchase, per day).
- *      Framed as ceilings the agent grows TOWARD; the gate uses whichever is lower
- *      (the earned budget or your ceiling). Can never widen past the tier.
+ *   2. GAP-2 ceilings: the per-purchase no-ask line is bidirectional (raise it up
+ *      to the plan hard cap, or tighten it); the daily line is tighten-only. The
+ *      gate uses whichever is lower (the earned budget or your ceiling), so raising
+ *      a ceiling never widens the actual autonomous spend past what is earned, and
+ *      never past the tier hard cap.
  *   3. Categories — tighten-only allowlist (market stays approval-only by design).
  */
 
@@ -121,7 +123,9 @@ export function EconomyPolicyControls() {
     });
   }, []);
 
-  // Tighten-only clamp: [0, tier ceiling]. Typed values above the plan snap down.
+  // Clamp a typed band to [0, max]. For the per-tx line, max is the plan hard cap
+  // (raises allowed up to it); for the daily line, max is the tier default
+  // (tighten-only). Values above max snap down; negatives snap to 0.
   const clampBand = useCallback((v: number, max: number) => {
     if (!Number.isFinite(v) || v < 0) return 0;
     return Math.min(v, max);
@@ -135,11 +139,15 @@ export function EconomyPolicyControls() {
     setSaved(false);
     try {
       const td = data.tier_default_bands;
-      // Send a band only if it's tightened BELOW the tier ceiling; otherwise null
-      // (clear → tier default). Replace-semantics on the PUT means the never-bands
-      // + floor (which we don't expose) revert to the tier default — intended.
+      // Per-tx no-ask line is bidirectional: send it whenever it differs from the
+      // tier default (a raise up to the plan hard cap, or a tighten below default);
+      // null clears to the tier default. The gate clamps it at neverPerTx
+      // (clampOverrides), so a raise can never pass the hard deny line. The daily
+      // line stays tighten-only, so send it only when below the default.
+      // Replace-semantics: omitted bands and the floor (not exposed here) revert
+      // to the tier default, which is intended.
       const body = {
-        justDoItPerTx: perTx < td.justDoItPerTx ? perTx : null,
+        justDoItPerTx: perTx !== td.justDoItPerTx ? perTx : null,
         justDoItPerDay: perDay < td.justDoItPerDay ? perDay : null,
         // Reserve is RAISE-only here: send it only if raised ABOVE the tier
         // default; otherwise null → tier default (unchanged behavior). A raise
@@ -232,21 +240,27 @@ export function EconomyPolicyControls() {
         style={{ background: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.05)" }}
       >
         <p className="text-[13px] leading-relaxed" style={{ color: "var(--foreground)" }}>
-          Your agent spends from a wallet <span className="font-medium">you fund</span> — we cover the
-          gas. It can spend up to{" "}
-          <span className="font-semibold" style={{ color: ACCENT }}>
-            {usd(data.bands.justDoItPerTx)}
-          </span>{" "}
-          per purchase on its own
+          Your agent spends from a wallet <span className="font-medium">you fund</span> (we cover the
+          gas).{" "}
+          {data.bands.justDoItPerTx === 0 ? (
+            <>It asks before every purchase</>
+          ) : (
+            <>
+              It asks before any single purchase over{" "}
+              <span className="font-semibold" style={{ color: ACCENT }}>
+                {usd(data.bands.justDoItPerTx)}
+              </span>
+            </>
+          )}
           {a && a.binding !== "spend_disabled" ? (
             <>
-              , within a daily allowance it earns (
+              , and stays within a daily allowance it earns (
               <span className="font-semibold">{usd(a.earnedDailyBudgetUsd)}</span>/day so far)
             </>
           ) : (
-            <>, within a daily allowance it earns</>
+            <>, and stays within a daily allowance it earns</>
           )}
-          , and keeps <span className="font-semibold">{usd(data.bands.minWalletBalance)}</span> in
+          . It always keeps <span className="font-semibold">{usd(data.bands.minWalletBalance)}</span> in
           reserve.
         </p>
       </div>
@@ -372,20 +386,25 @@ export function EconomyPolicyControls() {
         )}
       </div>
 
-      {/* ── GAP-2: tighten-only no-ask ceilings ── */}
+      {/* ── GAP-2: no-ask ceilings. Per-tx is bidirectional (raise to the plan cap
+          or tighten); daily is tighten-only. The gate binds the real autonomous
+          spend to the earned budget regardless. ── */}
       <div className="flex items-center gap-2 mb-1">
         <Hand className="w-4 h-4" style={{ color: "var(--muted)" }} />
         <h3 className="text-sm font-medium">Ask-first ceilings</h3>
       </div>
       <p className="text-[11px] mb-4 leading-snug" style={{ color: "var(--muted)" }}>
-        The most your agent will ever spend without asking. It grows toward these as it earns trust. The gate always
-        uses whichever is lower (what it&apos;s earned, or your ceiling). Lower these anytime; you can&apos;t raise them above your plan.
+        The most your agent spends without asking. It grows toward these as it earns trust, and the gate always
+        uses whichever is lower (what it&apos;s earned, or your ceiling). Raise the per-purchase line up to your
+        plan&apos;s hard cap, or pull it down to stay cautious. The daily line you can only tighten.
       </p>
 
-      {/* ── Presets (§6): one tap to the cautious end or the default. Both set
-          the existing tighten-only per-tx ceiling. (Hands-off — raising the
-          ceiling to the plan cap — needs the §5 reversal → Slice B.) ── */}
-      <div className="flex items-center gap-2 mb-4">
+      {/* Presets (§6): one tap across the spectrum for the per-tx no-ask line.
+          "Ask me first" = 0 (most cautious). "Earned autonomy" = the tier default.
+          "Plan max" = the hard cap (neverPerTx). The gate still binds the actual
+          autonomous spend to what the agent has earned, so Plan max raises the
+          ceiling, not the spend. */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
         <PresetBtn
           label="Ask me first"
           active={perTx === 0}
@@ -402,21 +421,31 @@ export function EconomyPolicyControls() {
             setPerTx(td.justDoItPerTx);
           }}
         />
+        <PresetBtn
+          label="Plan max"
+          active={perTx === data.bands.neverPerTx}
+          onClick={() => {
+            setSaved(false);
+            setPerTx(data.bands.neverPerTx);
+          }}
+        />
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3 mb-4">
         <BandInput
           label="Any single purchase over"
           value={perTx}
-          max={td.justDoItPerTx}
+          tierDefault={td.justDoItPerTx}
+          max={data.bands.neverPerTx}
           onChange={(v) => {
             setSaved(false);
-            setPerTx(clampBand(v, td.justDoItPerTx));
+            setPerTx(clampBand(v, data.bands.neverPerTx));
           }}
         />
         <BandInput
           label="Total daily spend over"
           value={perDay}
+          tierDefault={td.justDoItPerDay}
           max={td.justDoItPerDay}
           onChange={(v) => {
             setSaved(false);
@@ -520,32 +549,42 @@ export function EconomyPolicyControls() {
 function BandInput({
   label,
   value,
+  tierDefault,
   max,
   onChange,
 }: {
   label: string;
   value: number;
+  tierDefault: number;
   max: number;
   onChange: (v: number) => void;
 }) {
-  const tightened = value < max;
+  // Color relative to the tier default: below = tightened (cautious, green), above
+  // = raised toward the plan cap (amber), exactly at = neutral. The daily line is
+  // passed tierDefault === max so it can only ever read tightened or neutral.
+  const cueColor =
+    value < tierDefault
+      ? "rgb(34,197,94)"
+      : value > tierDefault
+        ? "rgb(234,179,8)"
+        : "var(--foreground)";
   return (
     <label className="block rounded-xl p-3" style={{ background: "rgba(0,0,0,0.025)", border: "1px solid rgba(0,0,0,0.06)" }}>
       <span className="text-[11px] block mb-1.5" style={{ color: "var(--muted)" }}>
         Ask before {label}
       </span>
       <div className="flex items-center gap-1">
-        <span className="text-lg font-semibold" style={{ color: tightened ? "rgb(34,197,94)" : "var(--foreground)" }}>$</span>
+        <span className="text-lg font-semibold" style={{ color: cueColor }}>$</span>
         <input
           type="number"
           inputMode="decimal"
           min={0}
           max={max}
-          step={max <= 5 ? 0.25 : 1}
+          step={tierDefault <= 5 ? 0.25 : 1}
           value={value}
           onChange={(e) => onChange(parseFloat(e.target.value))}
           className="w-full bg-transparent text-lg font-semibold tracking-tight outline-none"
-          style={{ color: tightened ? "rgb(34,197,94)" : "var(--foreground)" }}
+          style={{ color: cueColor }}
         />
       </div>
       <span className="text-[10px]" style={{ color: "var(--muted)" }}>
