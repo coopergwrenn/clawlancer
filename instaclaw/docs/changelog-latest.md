@@ -1,18 +1,18 @@
 # Changelog — generated 2026-06-09
 
-Window: `7a2f88e206041d0f7aa6cdaf4715a12ea9211c69` → `HEAD` (HEAD = `f877fd35`)
+Window: `f877fd355eb7bf226cdd07c0cb4b1aa24f6e855e` → `HEAD` (HEAD = `2fe2184c`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: f877fd355eb7bf226cdd07c0cb4b1aa24f6e855e -->
+<!-- LAST_GENERATED_SHA: 2fe2184c04bf3dfa9d25a45f302bc025387bb5dc -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `f877fd35` 2026-06-08 — feat(frontier): Slice B #5b — velocity-anomaly ask (Gate 2e, additive-only) [3 files] _(ai-assisted)_
-- `5b806003` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
+- `2fe2184c` 2026-06-08 — docs(frontier): correct Slice B spec §2#5b(a) to the as-built read-shape (Option B) [1 files] _(ai-assisted)_
+- `91f5f74a` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `f877fd35` 2026-06-08 — feat(frontier): Slice B #5b — velocity-anomaly ask (Gate 2e, additive-only) [3 files] _(ai-assisted)_
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -43,17 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `5b806003` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
+- `91f5f74a` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
+- `2fe2184c` 2026-06-08 — docs(frontier): correct Slice B spec §2#5b(a) to the as-built read-shape (Option B) [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `f877fd35` 2026-06-08 — feat(frontier): Slice B #5b — velocity-anomaly ask (Gate 2e, additive-only)
+- `2fe2184c` 2026-06-08 — docs(frontier): correct Slice B spec §2#5b(a) to the as-built read-shape (Option B)
 
 ## Appendix — every commit (chronological)
 
-- `5b806003` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
-- `f877fd35` 2026-06-08 — feat(frontier): Slice B #5b — velocity-anomaly ask (Gate 2e, additive-only) [3 files] _(ai-assisted)_
+- `91f5f74a` 2026-06-09 — chore(changelog): auto-update [skip ci] [2 files]
+- `2fe2184c` 2026-06-08 — docs(frontier): correct Slice B spec §2#5b(a) to the as-built read-shape (Option B) [1 files] _(ai-assisted)_
