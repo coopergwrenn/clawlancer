@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-10
 
-Window: `4db1a85b1c9091dfc13b18e5eb291163c613a7ff` → `HEAD` (HEAD = `82be994a`)
+Window: `82be994af2147ddf4a76b82727eae9536711fb86` → `HEAD` (HEAD = `f8b79d9e`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 82be994af2147ddf4a76b82727eae9536711fb86 -->
+<!-- LAST_GENERATED_SHA: f8b79d9e93a6b1b3d49ebd68068758c99d3499d1 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `82be994a` 2026-06-10 — fix(billing): billing_exempt guard on both inline suspend paths [3 files] _(ai-assisted)_
-- `5e17432a` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `f8b79d9e` 2026-06-10 — fix(frontier): travel category-scoped ceiling (§6 second half) — the spec shipped as half [2 files] _(ai-assisted)_
+- `fdf8f3fa` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `82be994a` 2026-06-10 — fix(billing): billing_exempt guard on both inline suspend paths [3 files] _(ai-assisted)_
+- `f8b79d9e` 2026-06-10 — fix(frontier): travel category-scoped ceiling (§6 second half) — the spec shipped as half [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `5e17432a` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `fdf8f3fa` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `82be994a` 2026-06-10 — fix(billing): billing_exempt guard on both inline suspend paths
+- `f8b79d9e` 2026-06-10 — fix(frontier): travel category-scoped ceiling (§6 second half) — the spec shipped as half
 
 ## Appendix — every commit (chronological)
 
-- `5e17432a` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `82be994a` 2026-06-10 — fix(billing): billing_exempt guard on both inline suspend paths [3 files] _(ai-assisted)_
+- `fdf8f3fa` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `f8b79d9e` 2026-06-10 — fix(frontier): travel category-scoped ceiling (§6 second half) — the spec shipped as half [2 files] _(ai-assisted)_
