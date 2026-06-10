@@ -1,15 +1,15 @@
 # Changelog — generated 2026-06-10
 
-Window: `114d1db444b403868022a0bc05991d436b219e32` → `HEAD` (HEAD = `cdc519e6`)
+Window: `cdc519e652d9c685fb69103285c8c2ed26dd20c6` → `HEAD` (HEAD = `741cf114`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: cdc519e652d9c685fb69103285c8c2ed26dd20c6 -->
+<!-- LAST_GENERATED_SHA: 741cf1145b0267d4a91ef308dfa57a378c432519 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `cdc519e6` 2026-06-10 — feat(economy): agent-facing /settings endpoint -- structurally tighten-only money-rail writes [5 files] _(ai-assisted)_
-- `d07ef2dd` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `741cf114` 2026-06-10 — fix(fleet-health): durable manifest-version threshold — kill the drift that recreated the May 11 blind spot [4 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `ecf1fb52` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `741cf114` 2026-06-10 — fix(fleet-health): durable manifest-version threshold — kill the drift that recreated the May 11 blind spot [4 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `cdc519e6` 2026-06-10 — feat(economy): agent-facing /settings endpoint -- structurally tighten-only money-rail writes [5 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `d07ef2dd` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `ecf1fb52` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `741cf114` 2026-06-10 — [reconciler, infrastructure, docs] — fix(fleet-health): durable manifest-version threshold — kill the drift that recreated the May 11 blind spot
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `cdc519e6` 2026-06-10 — feat(economy): agent-facing /settings endpoint -- structurally tighten-only money-rail writes
+- `741cf114` 2026-06-10 — fix(fleet-health): durable manifest-version threshold — kill the drift that recreated the May 11 blind spot
 
 ## Appendix — every commit (chronological)
 
-- `d07ef2dd` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `cdc519e6` 2026-06-10 — feat(economy): agent-facing /settings endpoint -- structurally tighten-only money-rail writes [5 files] _(ai-assisted)_
+- `ecf1fb52` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `741cf114` 2026-06-10 — fix(fleet-health): durable manifest-version threshold — kill the drift that recreated the May 11 blind spot [4 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
