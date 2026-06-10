@@ -8,7 +8,8 @@ import { logger } from "@/lib/logger";
 import { getProvider } from "@/lib/providers";
 import { bankrWalletLifecycle } from "@/lib/bankr-wallet-lifecycle";
 import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
-import { isUserBillableForVmAssignment, fetchBillingExempt } from "@/lib/billing-status";
+import { isUserBillableForVmAssignment, fetchBillingExempt, getBillingStatusVerified } from "@/lib/billing-status";
+import { getStripe } from "@/lib/stripe";
 import { deleteLinodeInstance } from "@/lib/vm-lifecycle-helpers";
 
 // Prevent Vercel CDN from caching per-user responses
@@ -1761,10 +1762,35 @@ else:
     .not("suspended_at", "is", null)
     .not("assigned_to", "is", null);
 
+  const reclaimStripe = staleSupended?.length ? getStripe() : null;
   if (staleSupended?.length) {
     for (const vm of staleSupended) {
       const daysSuspended = (Date.now() - new Date(vm.suspended_at).getTime()) / (1000 * 60 * 60 * 24);
       if (daysSuspended < RECLAIM_AFTER_DAYS) continue;
+
+      // Rule 14 + billing_exempt guard (2026-06-10 audit). The 30-day reclaim
+      // is the single most destructive action in the system: wipeVMForNextUser
+      // (irreversible filesystem wipe) + instaclaw_reclaim_vm + bankr wallet
+      // suspend, and the Linode delete on the terminate branch. It previously
+      // ran with NO billing check at all (only an edge_city partner gate on the
+      // terminate branch) — so a billing_exempt founder VM, or ANY paying /
+      // credits / partner / all_inclusive user whose wake failed and left
+      // health_status='suspended', would be irreversibly wiped at 30 days.
+      // Stripe-verified per Rule 14; fail-CLOSED (skip on unverifiable — never
+      // destroy data when we couldn't confirm the customer isn't paying).
+      if (vm.assigned_to && reclaimStripe) {
+        const reclaimBilling = await getBillingStatusVerified(supabase, reclaimStripe, vm.id);
+        if (!reclaimBilling || reclaimBilling.isPaying) {
+          logger.info("30-day reclaim SKIPPED — billing-protected or unverifiable (fail-closed)", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            vmName: vm.name,
+            isPaying: reclaimBilling?.isPaying ?? null,
+            reasons: reclaimBilling?.reasons ?? ["unverifiable"],
+          });
+          continue;
+        }
+      }
 
       // Safety gate: NEVER terminate edge_city VMs even in flag-on mode.
       // Edge Esmeralda is sponsor-funded; partner VMs stay alive through
