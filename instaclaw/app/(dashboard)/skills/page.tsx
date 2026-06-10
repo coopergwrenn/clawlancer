@@ -8,6 +8,7 @@ import { SkillIcon, hasSkillIcon, getRichDescription } from "@/lib/skill-icons";
 import { SkillOrb } from "@/components/skill-orb";
 import { resolveSkillOrb, CATEGORY_COLORS } from "@/lib/skill-orb-mapping";
 import { PremiumToolsSkillCard } from "@/components/dashboard/premium-tools-skill-card";
+import { TravelAgentSkillCard } from "@/components/dashboard/travel-agent-skill-card";
 
 // ── Types ────────────────────────────────────────────
 
@@ -478,6 +479,12 @@ export default function SkillsPage() {
           {/* Premium tools — a skill entry, first in the grid on the default
               view (prominent by being first, not by being a banner). */}
           {activeCategory === "all" && <PremiumToolsSkillCard />}
+          {/* Travel Agent (Travala booking) — a Commerce skill. Shown in All
+              (prominent, near the top) and Commerce (first card, beside E-Commerce
+              / Virtuals aGDP). Presentational only — see the component header. */}
+          {(activeCategory === "all" || activeCategory === "commerce") && (
+            <TravelAgentSkillCard />
+          )}
           <AnimatePresence mode="popLayout">
             {filteredSkills.map((skill, i) => (
               <motion.div
