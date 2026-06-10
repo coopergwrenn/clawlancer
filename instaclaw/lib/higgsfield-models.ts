@@ -107,19 +107,6 @@ export const HF_MODELS: Record<string, HFModel> = {
     label: "Clip (premium, 10s)",
     allowedDurations: [10],
   },
-  // ── Seedance 1 Pro (ByteDance) — frontier image2video, the scrap-or-keep vet ──
-  // Added 2026-06-10 for the quality parity test vs legacy muapi kling-3.0. Cost
-  // is UNMEASURED (docs publish no per-model pricing); held conservatively at
-  // 15cr (settle clamps charge <= hold, so a high hold can't over-bill). Paid
-  // only. NO resolution/aspect params exist in the documented API — the gate
-  // forwards {image_url, prompt} as for any image2video model.
-  "bytedance/seedance/v1/pro/image-to-video": {
-    endpoint: "bytedance/seedance/v1/pro/image-to-video",
-    kind: "image2video",
-    hfCostCredits: 15.0, // conservative held; unmeasured
-    freeEligible: false,
-    label: "Clip (Seedance, frontier vet)",
-  },
 };
 
 /** The product default when no model is specified: cheapest + fastest. */
