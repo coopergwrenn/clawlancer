@@ -292,6 +292,14 @@ if (status.isPaying) { /* serve */ }
 
 **Companion lesson (DB drift from Stripe):** `getBillingStatusVerified` queries Stripe API directly. Local DB `instaclaw_subscriptions` can drift (webhook delivery hiccups, race conditions). Trust Stripe over local DB when about to take action a paying customer would notice. The `2026-05-02` Doug Rathell wake bug had a sub showing `current_period_end` 24 days in the past — local DB lied; Stripe said active.
 
+**"Import the SoT or it doesn't ship" — proven four times in one day (2026-06-10):** every billing-gated path consults the single classifier (`getBillingStatus*` / `classify()` / `billing_exempt`) — NEVER an inline sub / credit / partner / tier check. The discipline earned its place four separate times on 2026-06-10, each a different surface that would have mis-gated a paying-or-exempt user on its own hand-rolled logic:
+1. **Free-cap counter** — the daily-message cap reads exemption from the SoT, not a re-derived "is this user free."
+2. **Webhook `customer.subscription.deleted` suspend** — confirms non-paying via the SoT before suspending (credits / partner / all-inclusive can keep a deleted-sub user paying).
+3. **suspend-check Pass 2** — classify before suspend, never inline sub-status.
+4. **Frontier spend gate (red-team F4)** — agent-economy spend authorization gates on the SoT, not a local payment check.
+
+The rule going forward: **any new path that gates on payment/exemption status imports the SoT, or it doesn't ship.** If the classifier is missing a case, add it there (per the Detection note above), then call it — never branch inline. An inline check is the bug regardless of whether it happens to be correct today.
+
 ### 15. Three Sleep States — All Wake Paths Must Handle BOTH `hibernating` AND `suspended`
 
 The codebase has three sleep states for VMs:
@@ -4182,6 +4190,114 @@ Any PR that adds or changes a tracked component but doesn't touch the tracking d
 - **Rule 23** (lying-DB): a DB row claiming `config_version=N` that's false is the same failure class as a PRD claiming `TO BUILD` for something that's built — the record lies about reality and causes redone or wrong work.
 - **Rule 27** (coverage queries): build the visibility before you need it; same spirit — keep the source of truth current, not reconstructed under pressure.
 - **Rule 56** (a migration file is a *promise* about prod reality): docs and files must faithfully describe the real state, not an aspiration.
+
+### Rule 73 — Cross-terminal dependency probes assert the DECISION, not just validation
+
+When you probe another terminal's surface (an API, a gate, a category, a policy) to confirm a dependency is ready, the probe MUST assert the **decision** — the real outcome and its reason for a realistic input — never merely that the request validated or returned 200. A 200 means "the request was well-formed," NOT "the thing I depend on will actually allow / deny / route correctly." Reading a validation pass as a decision is how a half-broken dependency reads as done.
+
+**The incident (2026-06-10):** a category probe read "category validates (200)" as done, and the consumer treated the dependency as shipped — while every real booking through that category **hard-denied**. The 200 was schema validation; the decision (allow vs deny) was the opposite of what the probe implied. The ceiling probe and the frontier F2 probe are the correct pattern (they assert outcome + reason on a real value); the category probe is the named anti-pattern.
+
+**Mandatory pattern:** a dependency probe sends a realistic value and asserts the returned **decision + reason** (e.g., `allow=true reason=within_ceiling`, or `denied reason=session_required`), not the HTTP status. If you can't see the decision in the probe output, you have not verified the dependency.
+
+**Banned:** treating 200 / "validates" / "parses" as proof a gate will permit (or deny) the real case; "the endpoint is up" as a stand-in for "the endpoint decides correctly."
+
+**Detection:** any "X is ready / shipped" claim backed only by a status code or a validation pass, with no quoted decision+reason on a realistic input, is a Rule 73 violation.
+
+### Rule 74 — Multi-part specs: announce each load-bearing part as shipped / not, verify each against code
+
+When a spec has more than one load-bearing part (category + ceiling; suppress + dedup; render + deliver), a "shipped" announcement MUST enumerate **each part** explicitly as shipped or not-shipped. The consumer of that announcement verifies **each part against the shipped code**, never against the announcement.
+
+**The incident (2026-06-10):** half-shipped specs read as complete because the announcement said "done" while only one of two load-bearing parts had actually landed. The reader trusted the summary; the missing part silently failed in production until someone read the code.
+
+**Mandatory pattern:** ship announcements for multi-part specs carry a per-part checklist (`category: shipped`, `ceiling: NOT shipped — follow-up`). The consumer confirms each part by reading the code / commit, not the announcement. If you can't enumerate the parts, you don't yet understand the spec well enough to call it shipped.
+
+**Banned:** a single "shipped ✅" for a multi-part spec; consuming a dependency off an announcement without per-part code verification.
+
+**Detection:** if a spec names ≥2 load-bearing parts and the ship note doesn't list each with a shipped/not marker, the note is incomplete — read the code for each part before depending on it. Pairs with Rule 73 (verify the decision, not the claim).
+
+### Rule 75 — Webhook delivery to a user claims delivery via atomic CAS before sending
+
+Any webhook (or job) that **delivers** an artifact to a user MUST claim the delivery via an atomic compare-and-swap keyed on the **render / request id** BEFORE the outbound send. Delivery dedup is a **separate concern** from settle / payment dedup — both are required, and one does not cover the other. A retry that re-enters the handler after a successful send must lose the CAS and skip the re-send.
+
+**The incident (2026-06-10):** double-deliveries because the only idempotency guard was on settlement, not on the user-visible delivery. A webhook retry re-sent the artifact even though the payment had already settled exactly once.
+
+**Mandatory pattern:** `CAS(delivered_at = now() WHERE render_id = ? AND delivered_at IS NULL)` — only send if the CAS won the row. Keep settle-dedup and delivery-dedup as distinct guards on distinct keys (settlement id vs render/request id). Claim before send, never after.
+
+**Banned:** relying on settle / payment idempotency to prevent double-delivery; sending before claiming; sharing one idempotency key across both concerns.
+
+**Detection:** any user-delivering webhook whose only dedup is on the settlement/payment key is a Rule 75 gap. The fail-open exception on the claim RPC itself is governed by Rule 77.
+
+### Rule 76 — Webhook delivery branches on model KIND from the registry; never assume the asset type
+
+A delivery path that handles outputs from multiple models MUST branch on the **model kind read from the registry** (image vs video vs audio) to choose the send method, container, and mime — never ship an asset under an assumed type.
+
+**The incident (2026-06-10):** an image asset was delivered as an `.mp4` because the delivery path assumed the lane's output was video. The registry knows each model's output kind; the code didn't consult it and mislabeled the artifact.
+
+**Mandatory pattern:** look up `model.kind` (or the registry's declared output type) and switch delivery (mime, container, send API, filename extension) on it. Default-deny / loud-error on an unknown kind — never guess.
+
+**Banned:** hardcoding the asset type or extension in a multi-model delivery path; "it's the video lane so it must be mp4"; inferring kind from the lane name instead of the registry.
+
+**Detection:** any delivery path that emits a fixed container/extension while serving more than one model is a Rule 76 candidate — confirm it reads kind from the registry.
+
+### Rule 77 — Fail loud over silent fallback; the ONE sanctioned fail-open is the delivery-claim RPC
+
+The default posture is **fail-loud**: when an operation can't do the right thing, surface the error — never silently fall back to a degraded path that hides the failure. (Companion to Rule 10's "no `|| true`" and Rule 39's critical-vs-optional classification.)
+
+**The one sanctioned exception — fail-OPEN on the delivery-claim CAS RPC (Rule 75):** if the delivery-claim RPC itself *errors* (an actual RPC/transport failure — NOT a clean "already claimed" result), proceed with the send. Rationale: a **rare duplicate clip beats a dropped clip** — the user-visible cost of an occasional double-send is far lower than silently swallowing a paid render when the dedup store is briefly unreachable. This is the only place fail-open is correct, and it MUST be documented inline with this exact reasoning wherever it appears.
+
+**Banned:** silent fallback anywhere else; fail-open without the documented reasoning; citing this exception as precedent for any other "just continue on error" path. A clean "already claimed" is still a hard skip — only RPC *failure* fails open.
+
+**Detection:** any `catch { /* continue */ }` (or equivalent swallow-and-proceed) that isn't the delivery-claim RPC — with the documented duplicate-beats-dropped reasoning — is a Rule 77 violation.
+
+### Rule 78 — Backend gateway calls pin their session explicitly; nonce harness at every OpenClaw upgrade
+
+Any backend code that POSTs to a VM gateway's OpenAI-compat endpoint (`/v1/chat/completions`, `/v1/responses`) and expects multi-turn memory MUST send an explicit, stable session identity — `body.user` (→ session key `agent:main:openai-user:<user>`) or header `x-openclaw-session-key` (used verbatim). Default / implicit session keying is **undefined, version-dependent gateway behavior** and MUST NOT be relied on.
+
+**The incident (INC-20260610, fix a993ce25):** `forwardInboundToVm` (the iMessage / telegram-shared-bot relay) sent only the new message with no `user`/session key. OpenClaw **2026.4.26** happened to route two sequential calls to one session (verified vm-1028, 2026-05-27), but the **2026.5.22** upgrade changed `resolveSessionKey` to mint `openai:${randomUUID()}` per request when no `user` is supplied → every inbound message became a fresh context-free session = total per-message amnesia (agent saw only "webchat" sessions; MEMORY.md never populated). The relay relied on undefined behavior and the upgrade changed it under us — a Rule-65-class regression. The web dashboard (`chat/send`) is exempt by a *different valid design*: it replays the full `messages[]` history every call, so the gateway session is irrelevant.
+
+**Mandatory patterns:**
+1. A stateful relay (sends only the new message, relies on the gateway to restore history) MUST pin `user` or `x-openclaw-session-key`. A history-replay path (full `messages[]` every call) is exempt. Also send `x-openclaw-message-channel: <channel>` so the session is labeled correctly, not the default "webchat."
+2. **Nonce harness is a required canary gate at every OpenClaw upgrade, before fleet rollout.** Against the canary gateway, in the relay's exact request shape (no body history): (a) call 1 plants a nonce, a *separate* call 2 must recall it; (b) confirm the session landed in `agent:main:openai-user:<user>`, not `openai:<uuid>`; (c) rapid-fire two concurrent same-session requests — both must 200 and serialize cleanly (no `EmbeddedAttemptSessionTakeoverError`, no interleave). Any failure HALTS the upgrade — session-keying or concurrency semantics changed upstream.
+
+**Banned:** a stateful relay with no `user` / `x-openclaw-session-key`; trusting default gateway session keying across versions; rolling an OpenClaw upgrade to fleet without running the nonce harness on the canary first.
+
+**Detection:** grep the backend for gateway `/v1/chat/completions` (and `/v1/responses`) fetches; each must carry `user` or `x-openclaw-session-key`, or replay full history like `chat/send`. Full incident: `instaclaw/docs/incidents/2026-06-10-imessage-session-amnesia-INC-20260610.md`.
+
+### Rule 79 — Consent-always categories are unforgeable by construction
+
+Session-grade / consent-always categories live in a fixed set (`SESSION_REQUIRED_CATEGORIES`) that **never honors the forgeable boolean**, independent of any global flag flip. The protection is structural — membership in the set — not a runtime check that a forged payload or a mis-set global flag can bypass.
+
+**The incident (red-team, 2026-06-10):** a high-value category's protection hinged on a forgeable bool / a global flag the red-team could flip. The fix made membership in `SESSION_REQUIRED_CATEGORIES` the gate, which by construction ignores the bool — so no flip, forge, or global flag can downgrade it.
+
+**Mandatory pattern:** any new high-value category joins `SESSION_REQUIRED_CATEGORIES` **at creation**, not after a red-team finds the gap. The set is the gate; the forgeable bool is, at most, advisory for non-session categories and is never the thing protecting a high-value path.
+
+**Banned:** gating a high-value category on a forgeable bool or a global flag; adding the category first and "hardening it later"; protection that any single flag flip can remove.
+
+**Detection:** for each high-value category, confirm it is a member of `SESSION_REQUIRED_CATEGORIES` and that its protection does not depend on a bool/flag an attacker could set. If it does, that's a Rule 79 violation.
+
+### Rule 80 — Quality / parity bars come from records, not memory
+
+When replacing or deprecating a lane (a model, a provider, a feature), the parity bar is **what the old lane ACTUALLY served — quoted from transaction / render records** — not what anyone remembers it serving. Memory inflates or deflates; the records are ground truth.
+
+**The incident (2026-06-10, kling-vs-seedance):** a lane replacement was sized against a *remembered* quality bar. The transaction records showed the old lane had actually been serving something different, so the parity target was wrong until the records were pulled and quoted.
+
+**Mandatory pattern:** before swapping a lane, query the records for what it actually delivered (model, resolution, duration, success rate, cost) and set parity against that quoted data. Put the quoted numbers in the PRD / decision so the bar is auditable.
+
+**Banned:** "the old lane did X" from memory as the parity bar; sizing a replacement without quoting the prior lane's real output from records.
+
+**Detection:** any lane-replacement decision whose parity target isn't backed by quoted record data is a Rule 80 gap — pull the records before committing the swap.
+
+### Rule 81 — Defaults are chosen, not inherited
+
+Every user-facing default (model, tier, quality, provider, route) gets an **explicit ruling with the cost table in front of you**. A default is a decision someone makes on purpose — not whatever the cheapest, first, or alphabetically-earliest option happens to be.
+
+**The incident (2026-06-10):** the cheapest model was the default because nobody had decided otherwise — an inherited default no one actually chose, with real cost / quality consequences on every user-facing turn.
+
+**Mandatory pattern:** when a default exists or is introduced, put the options plus a cost / quality table in front of you and make an explicit ruling, and record it (PRD, comment, or rule). "It defaulted to the cheapest / first" is not a decision.
+
+**Banned:** shipping a user-facing default by inheritance or accident; "that's just what it was set to" as justification for a default.
+
+**Detection:** for each user-facing default, there should be a recorded ruling with the cost/quality tradeoff. If the only reason it's the default is "inherited," revisit it with the cost table.
 
 ### Operational runbook: monthly freeze pipeline health audit
 
