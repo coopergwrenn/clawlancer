@@ -1,7 +1,7 @@
 # Model Picker → Multi-Provider Model Browser (Design PRD)
 
-**Status:** DESIGN / PROPOSAL; no code written. Stop-at-PRD per request.
-**Date:** 2026-06-09
+**Status:** ✅ SHIPPED TO PROD 2026-06-10 — merge `5868c10a`, prod deployment `7tHd3UDBBGNpkh5mSySQBy9W3i5G`. Build-order steps 1–3, the verified Fable@38 catalog, D1(A) (auto-flagship → Opus 4.8, Fable explicit-pick-only), and D1(B) (credit users' explicit pick honored + billed at model weight, via the `pinned_model` credit-pin) are all LIVE. Still unbuilt: step 4 (OpenAI population) and Fable→Pro+ tier gating. The design body below is preserved as the original record; status annotations added inline.
+**Date:** 2026-06-09 (design) · 2026-06-10 (shipped)
 **Author:** onboarding terminal (CC)
 **Scope of this doc:** the composer model picker (`app/(dashboard)/tasks/page.tsx`), its data model, the model catalog, and multi-provider readiness. Builds on the just-shipped picker (Raycast material + `ModelInfoButton` tooltip + Claude sunburst).
 
@@ -217,10 +217,10 @@ That's a separate build with its own verification. Designing-for-it now (so addi
 ## 5. Scope, sequence, MVP vs full
 
 **Build order (each shippable, deploy-confirmed):**
-1. **Registry refactor (foundation, no visible change).** Create `lib/model-registry.ts`; repoint the 3 `MODEL_OPTIONS`, `MODEL_INFO`, `ALLOWED_MODELS`, and `getCreditWeight` to it. Pure consolidation; picker looks identical, but now one source. Verify: tsc, all 4 surfaces render, `ALLOWED_MODEL_IDS` matches, weights unchanged. *This de-risks everything after.*
-2. **Add the new Anthropic models to the registry** (Opus 4.8/4.7); gated on D1 (what the picker controls) + D3 (verified ids). Until D1 is resolved, this is where the "credit users get 4.6 anyway" problem must be handled (see D1 options).
-3. **Layer-2 browser modal** (search + grouping) + the `Browse all →` row in the popover. Reuses shipped row material.
-4. **(Later, separate) OpenAI population**; registry entries + weights + router work.
+1. ✅ **SHIPPED** — **Registry refactor (foundation, no visible change).** `lib/model-registry.ts` is live; the 3 `MODEL_OPTIONS`, `MODEL_INFO`, `ALLOWED_MODELS`, `getCreditWeight`, and `toOpenClawModel` (the R2 7th seam) all repoint to it. (commit `d3a0ee1d`)
+2. ✅ **SHIPPED** — **New Anthropic models in the registry** (Fable@38, Opus 4.8/4.7, legacy) + Fable auto-route guard. (commit `bcd229c1`)
+3. ✅ **SHIPPED** — **Layer-2 browser modal** (`ModelBrowserModal`, search + grouping) + dev harness. (commit `b2dc164c`)
+4. **(Later, separate) OpenAI population**; registry entries + weights + router work. — **NOT BUILT.**
 
 **MVP** = steps 1-2 (registry + correct, honest model list, popover only; maybe just "Browse all" deferred if the list is still ≤6). **Full** = step 3 (the searchable modal). The modal earns its keep once the catalog exceeds ~6-7 rows or OpenAI lands; at 5 Anthropic models the popover alone is arguably fine; see D5.
 
@@ -319,7 +319,7 @@ Restating the proven mechanics: credit users are auto-routed to `TIER_MODELS[tie
 - Existing weights confirmed verbatim at `credit-constants.ts:38-42`: minimax 0.2, **haiku 1, sonnet 4, opus 19** (unchanged; carry into the registry as explicit values).
 - **Money guardrail honored:** the registry (explicit per-model weights) lands FIRST; no model enters on a substring-guessed weight. Fable's 38 is pending your lock (R3); until locked, Fable is not added (build order step 4 gates on the lock).
 
-### Open decisions now in front of you
+### Open decisions now in front of you  — [RESOLVED 2026-06-10: D7 locked 38 + shipped; D1(A) shipped; D1(B) shipped via credit-pin; D8 legacy ladder shipped in the registry catalog. Only Fable→Pro+ gating remains open. See LOCKED DECISIONS below + the headline status.]
 - **D7 (Fable weight): lock 38** (recommended, margin-equivalent) or 50 (premium headroom). HARD PAUSE.
 - **D1 (picker control): approve (A) auto-flagship → Opus 4.8 now**, and decide whether to greenlight **(B)** explicit-pick-honored-for-credit-users (separate canary). HARD PAUSE on any `TIER_MODELS` change + (B).
 - **D8 (legacy depth):** include legacy-available (Opus 4.7/4.6/4.5, Sonnet 4.5) collapsed under family. (All proven-available in R1.)
@@ -329,14 +329,14 @@ Restating the proven mechanics: credit users are auto-routed to `TIER_MODELS[tie
 
 ## LOCKED DECISIONS + BILLING CLARIFICATION (2026-06-09)
 
-**Locks:** Fable weight = **38** (margin-equivalent to Opus 19, explicit registry weight). D1(A) **approved**: bump auto-flagship `TIER_MODELS[3]` to `claude-opus-4-8`, keep `TIER_MODELS[2]` = `claude-sonnet-4-6`; **Fable is explicit-pick-only and MUST NEVER be auto-routed** (cost-safety line). D1(B) **HELD** (plumbing `default_model` into `respectExplicitModel` for credit users ships later as its own canary). Any tier-gating wiring HELD.
+**Locks:** Fable weight = **38** (margin-equivalent to Opus 19, explicit registry weight) — ✅ **SHIPPED 2026-06-10** (governor migration live; fable bills 38, sonnet 4, proven on prod). D1(A) **approved** + ✅ **SHIPPED**: auto-flagship `TIER_MODELS[3]` = `claude-opus-4-8`, `TIER_MODELS[2]` = `claude-sonnet-4-6`; **Fable is explicit-pick-only and MUST NEVER be auto-routed** — enforced by the `AUTO_ROUTE_FORBIDDEN` guard in `lib/model-router.ts`. D1(B) ✅ **SHIPPED 2026-06-10 via the credit-pin** (`pinned_model` column): a credit user's explicit pick is resolved PRE-governor and billed at the model weight, then served via a routing bypass that can't be re-classified or budget-downgraded. (Note: shipped mechanism is the `pinned_model` column + pre-governor resolution, NOT the originally-sketched "plumb `default_model` into `respectExplicitModel`" — same intent, cleaner seam that leaves the classifier byte-untouched.) **Tier-gating wiring still HELD** (Fable→Pro+, unbuilt).
 
-**Billing clarification (proven, corrects earlier framing):** the live billing weight is **tier-based**, computed at `proxy/route.ts:1762-1765` (usage_log) + `:1815` (tier-usage RPC) from `routingDecision.tier` mapped to {1,4,19} (minimax 0.2, tool-continuation x0.2). It does NOT call `getModelCostWeight`; the model string is only a substring fallback when `routingDecision` is null (and even then maps to tier 1/2/3, so a Fable string falls to tier 1). `getModelCostWeight` is used only by `cron-guard.ts:66` (cron cost projection). Consequence: the registry's explicit per-model `creditWeight` (Fable 38) governs (a) tooltip display, (b) cron projection if repointed, (c) FUTURE (B) per-model billing; it does NOT change live billing. **The registry refactor must NOT touch the proxy billing computation.** Fable@38 becomes a live charge only when (B) ships AND the billing path is made model/registry-aware (part of the (B) workstream).
+**Billing clarification (proven, corrects earlier framing):** the AUTO-ROUTE billing weight remains **tier-based**, computed in the proxy from `routingDecision.tier` mapped to {1,4,19} (minimax 0.2, tool-continuation x0.2) — unchanged for auto-routed (non-pinned) traffic. **UPDATE 2026-06-10 — the EXPLICIT-PICK path is now model-aware:** when a credit user has a `pinned_model`, the proxy resolves the pin PRE-governor (`requestedModel = pin`) so the governor (`instaclaw_check_and_increment`, fable-weight migration live) bills the pinned model's true weight — Fable@38 IS now a live charge for a credit user who pins Fable (proven on prod: fable→38, sonnet→4, opus→19, torn down clean). This is the "(B) made the billing path model-aware" outcome, scoped to the explicit-pin path only; auto-routed traffic is untouched, and the registry refactor itself did NOT touch the proxy billing computation (the pin feature did, deliberately and additively).
 
 **Honesty gap handling (step 2 plan):** with (B) held, a credit user picking Fable/a legacy version gets neither the model (router overrides) nor the 38-credit charge. Plan: the expanded catalog (Fable + version ladder) is **BYOK-gated**; credit users see the honest auto-tier set (Haiku 4.5 / Sonnet 4.6 / Opus 4.8) reflecting what the router serves. Revisit when (B) ships.
 
 ## NEAR-TERM FOLLOW-UPS (captured, not building now)
 
-1. **Token logging (the real margin fix; highest leverage).** `instaclaw_usage_log` has no token columns, so the entire cost side of the Fable/Opus margin analysis is an estimate (14k in / 2k out, no cache). Add `input_tokens`, `output_tokens`, `cache_read_tokens` to `instaclaw_usage_log` + write them in the proxy usage-log insert (`proxy/route.ts:~1786`). Turns margin from estimated into measured. ~1 migration + ~3 line proxy change + a coverage query. Do before any future flagship-weight decision.
+1. **Token logging (the real margin fix; highest leverage).** 🔨 **BUILDING NOW (2026-06-10)** — launch-week priority; the measurement plan behind the Fable@38 hypothesis. `instaclaw_usage_log` has no token columns, so the entire cost side of the Fable/Opus margin analysis is an estimate (14k in / 2k out, no cache). Add `input_tokens`, `output_tokens`, `cache_read_tokens` to `instaclaw_usage_log` + write them in the proxy usage-log insert. Turns margin from estimated into measured. Goal: in ~2 weeks answer "does 38 hold, or does Fable go Pro+" with real numbers. See the separate token-logging build note for the design + seam analysis.
 
 2. **Fable -> Pro+ tier gating (one-decision lever).** Proven: the max-utilization tail bleed concentrates on Starter (cheapest plan, $49.99, can max the priciest model: ~$114/mo cost vs $49.99 at Opus-19/Fable-38 weight, 2.3x underwater at the tail). Gating Fable to Pro+ removes essentially all of that exposure. Left ungated now (per decision); the registry data model SUPPORTS a tier flag (unwired). If flagship margin ever bites, flipping Fable to Pro+ is a one-field change. Numbers: at weight 38, Fable msgs/day = Starter 15 / Pro 26 / Power 65.
