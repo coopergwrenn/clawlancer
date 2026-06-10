@@ -1,18 +1,18 @@
 # Changelog — generated 2026-06-10
 
-Window: `c7cecc75511318706c7a59c9b85f90dc41c3cec6` → `HEAD` (HEAD = `14040544`)
+Window: `14040544f729025a738df99cba921226f597ea03` → `HEAD` (HEAD = `f3f51cf8`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 14040544f729025a738df99cba921226f597ea03 -->
+<!-- LAST_GENERATED_SHA: f3f51cf8952e8e3f2b75df1c3e2123755183c611 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `1a4d19e1` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `14040544` 2026-06-10 — docs(frontier): F9 buyer-side unwind reference design (red-team) [1 files] _(ai-assisted)_
+- `f3f51cf8` 2026-06-10 — feat(higgsfield): allowlist bytedance/seedance/v1/pro for frontier quality vet [1 files] _(ai-assisted)_
+- `82e9a787` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `f3f51cf8` 2026-06-10 — feat(higgsfield): allowlist bytedance/seedance/v1/pro for frontier quality vet [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -43,18 +43,17 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `1a4d19e1` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `14040544` 2026-06-10 — docs(frontier): F9 buyer-side unwind reference design (red-team) [1 files] _(ai-assisted)_
+- `82e9a787` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `14040544` 2026-06-10 — docs(frontier): F9 buyer-side unwind reference design (red-team)
+- `f3f51cf8` 2026-06-10 — feat(higgsfield): allowlist bytedance/seedance/v1/pro for frontier quality vet
 
 ## Appendix — every commit (chronological)
 
-- `1a4d19e1` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `14040544` 2026-06-10 — docs(frontier): F9 buyer-side unwind reference design (red-team) [1 files] _(ai-assisted)_
+- `82e9a787` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `f3f51cf8` 2026-06-10 — feat(higgsfield): allowlist bytedance/seedance/v1/pro for frontier quality vet [1 files] _(ai-assisted)_
