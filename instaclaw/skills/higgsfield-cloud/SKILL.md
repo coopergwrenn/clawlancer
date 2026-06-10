@@ -15,6 +15,23 @@ image deliver differently — read this carefully:**
 - **IMAGE is immediate.** The generator returns the image URL right away; **you**
   send the image (or use it as the first frame of a video).
 
+## Hard rules — do not violate
+
+1. **This skill is the ONLY path for new videos and images.** If a command here
+   returns `blocked`, `busy`, or `error`, you **MUST NOT** retry the request on
+   `higgsfield-video`, `sjinn-video`, or any other skill. Those are not
+   substitutes — `higgsfield-video` is exclusively for extending an EXISTING
+   video, never for making a new one.
+2. **On `blocked`, tell the user the exact reason — do not invent one.** If the
+   reason is `free_exhausted`, say the free videos for today are used up (they
+   reset at midnight UTC). If it's `insufficient_credits`, say video credits
+   aren't available yet. **Never** tell the user "the service is out / down /
+   broken" — a `blocked` is a quota answer, not an outage. Report what actually
+   happened, then stop.
+3. **Never silently route around a failure.** Surfacing a real `blocked`/`error`
+   to the user is correct behavior; quietly using a different skill to paper
+   over it is not.
+
 ## VIDEO — "make me a video / clip / animation / animate this"
 
 1. Figure out the prompt + (for a NEW idea with no source image) plan to make an image first (see "Video needs a source image").
