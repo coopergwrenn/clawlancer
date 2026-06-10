@@ -355,12 +355,17 @@ export async function isUserBillableForVmAssignment(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<{ billable: boolean; reason: string }> {
-  // 1. Partner gate (cheap, hits instaclaw_users only). Partner-tagged users
-  //    are sponsored; they're billable regardless of Stripe state.
+  // 0/1. Comp-exempt + partner gate (cheap, hits instaclaw_users only).
+  //    billing_exempt users (founder / family / partner-comp) are billable
+  //    regardless of Stripe state — Path 0, same as getBillingStatus.classify.
+  //    Partner-tagged users are sponsored; billable regardless of Stripe state.
+  //    Without the billing_exempt check here, vm-lifecycle's hibernating→suspended
+  //    transition (the only caller) would still suspend an exempt user whose
+  //    sub is canceled and who has no partner (the 2026-06-10 vm-1075 class).
   try {
     const { data: user, error: userErr } = await supabase
       .from("instaclaw_users")
-      .select("partner")
+      .select("partner, billing_exempt, billing_exempt_reason")
       .eq("id", userId)
       .maybeSingle();
     if (userErr) {
@@ -370,7 +375,15 @@ export async function isUserBillableForVmAssignment(
       });
       return { billable: false, reason: "user_lookup_error" };
     }
-    const partner = (user as { partner?: string | null } | null)?.partner ?? null;
+    const u = user as {
+      partner?: string | null;
+      billing_exempt?: boolean;
+      billing_exempt_reason?: string | null;
+    } | null;
+    if (u?.billing_exempt === true) {
+      return { billable: true, reason: `comp_exempt_${u.billing_exempt_reason ?? "unknown"}` };
+    }
+    const partner = u?.partner ?? null;
     if (partner) {
       return { billable: true, reason: `partner_${partner}` };
     }
