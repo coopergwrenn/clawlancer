@@ -1,19 +1,19 @@
 # Changelog — generated 2026-06-10
 
-Window: `5868c10aafaed362f342d056765d31273b510c34` → `HEAD` (HEAD = `5eda9c85`)
-Total commits: 2
+Window: `5eda9c85e4dc1251ec4f45184afc96400bd92372` → `HEAD` (HEAD = `61f02e80`)
+Total commits: 4
 
-<!-- LAST_GENERATED_SHA: 5eda9c85e4dc1251ec4f45184afc96400bd92372 -->
+<!-- LAST_GENERATED_SHA: 61f02e80ea45a2c9d8bef3e9387cd6717af3a91c -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 3
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
-- AI-assisted commits (co-authored): 1
+- **Docs / PRD only:** 1
+- AI-assisted commits (co-authored): 3
 - Merge commits: 0
 
 ## What changed for users
@@ -22,8 +22,10 @@ _None in this window._
 
 ## What changed under the hood
 
-- `a0e008fd` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `5eda9c85` 2026-06-10 — docs(model-browser-prd): flip status markers to SHIPPED [1 files] _(ai-assisted)_
+- `0dc3c1ce` 2026-06-10 — feat(usage-log): capture per-call token usage (margin measurement) [5 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `01ab3a3a` 2026-06-10 — test+doc(usage-log): empty-completion capture (output_tokens=0) + empty-rate query [2 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `61f02e80` 2026-06-10 — chore(migrations): promote usage_log token columns (applied to prod) [2 files] _(ai-assisted)_
+- `ab4b49dd` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +33,11 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (3)
 
-_(none)_
+- `0dc3c1ce` 2026-06-10 — feat(usage-log): capture per-call token usage (margin measurement) [5 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `01ab3a3a` 2026-06-10 — test+doc(usage-log): empty-completion capture (output_tokens=0) + empty-rate query [2 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `61f02e80` 2026-06-10 — chore(migrations): promote usage_log token columns (applied to prod) [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -43,18 +47,28 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `a0e008fd` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `5eda9c85` 2026-06-10 — docs(model-browser-prd): flip status markers to SHIPPED [1 files] _(ai-assisted)_
+- `ab4b49dd` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (1)
+## Multi-category commits (2)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `0dc3c1ce` 2026-06-10 — [infrastructure, docs] — feat(usage-log): capture per-call token usage (margin measurement)
+- `01ab3a3a` 2026-06-10 — [infrastructure, docs] — test+doc(usage-log): empty-completion capture (output_tokens=0) + empty-rate query
+
+## AI-assisted commits (3)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `5eda9c85` 2026-06-10 — docs(model-browser-prd): flip status markers to SHIPPED
+- `0dc3c1ce` 2026-06-10 — feat(usage-log): capture per-call token usage (margin measurement)
+- `01ab3a3a` 2026-06-10 — test+doc(usage-log): empty-completion capture (output_tokens=0) + empty-rate query
+- `61f02e80` 2026-06-10 — chore(migrations): promote usage_log token columns (applied to prod)
 
 ## Appendix — every commit (chronological)
 
-- `a0e008fd` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `5eda9c85` 2026-06-10 — docs(model-browser-prd): flip status markers to SHIPPED [1 files] _(ai-assisted)_
+- `ab4b49dd` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `0dc3c1ce` 2026-06-10 — feat(usage-log): capture per-call token usage (margin measurement) [5 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `01ab3a3a` 2026-06-10 — test+doc(usage-log): empty-completion capture (output_tokens=0) + empty-rate query [2 files] _(multi: [infrastructure, docs]; ai-assisted)_
+- `61f02e80` 2026-06-10 — chore(migrations): promote usage_log token columns (applied to prod) [2 files] _(ai-assisted)_
