@@ -39,11 +39,21 @@
  *
  * Why we don't maintain conversation history in the backend:
  *
- *   The VM's session.jsonl IS the conversation history. We confirmed (live
- *   on vm-1028, 2026-05-27) that two sequential /v1/chat/completions calls
- *   write to the same session and the agent remembered a nonce passed in
- *   call 1 when asked in call 2. Maintaining backend history would
- *   double-store and risk drift.
+ *   The VM's session.jsonl IS the conversation history — PROVIDED we pin a
+ *   stable gateway session. We send a stable `user` identity on every call
+ *   (see the fetch below) so all of one conversation's messages land in a
+ *   single persistent session (agent:main:openai-user:<channel>:<identity>).
+ *   Maintaining backend history instead would double-store and risk drift.
+ *
+ *   REGRESSION HISTORY (do not repeat): an earlier version of this file sent
+ *   NO `user` field and relied on the gateway defaulting to one session. That
+ *   was true on OpenClaw 2026.4.26 — two sequential calls shared a session,
+ *   verified live on vm-1028 2026-05-27. The 2026.5.22 upgrade CHANGED the
+ *   openai-endpoint keying (dist/http-utils resolveSessionKey) to mint a fresh
+ *   `openai:${randomUUID()}` session per request when no `user` is supplied —
+ *   so every inbound iMessage / shared-bot message became a context-free
+ *   one-shot (total per-message amnesia). Fixed 2026-06-10 by sending `user`.
+ *   Never rely on undefined gateway session behavior again.
  *
  * Idempotency:
  *
@@ -344,11 +354,23 @@ export async function forwardInboundToVm(
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${gatewayToken}`,
+        // Label the gateway session with the real channel. Without this the
+        // OpenAI-compat endpoint labels it the default "webchat" (per the
+        // gateway's resolveGatewayRequestContext defaultMessageChannel).
+        "x-openclaw-message-channel": channel,
       },
       body: JSON.stringify({
         model: "openclaw",
         max_tokens: 4096,
         stream: false,
+        // STABLE SESSION KEY — load-bearing. The gateway's resolveSessionKey
+        // (dist/http-utils) keys the OpenAI-compat session off `user`: with a
+        // value it builds agent:main:openai-user:<user> (one persistent
+        // session per conversation); WITHOUT it OpenClaw 2026.5.22 mints a
+        // fresh openai:${randomUUID()} session PER REQUEST → per-message
+        // amnesia. This single new message relies entirely on the gateway
+        // restoring prior turns from that session, so the key MUST be stable.
+        user: `${channel}:${channelIdentity}`,
         messages: [{ role: "user", content: userMessage }],
       }),
       signal: controller.signal,
