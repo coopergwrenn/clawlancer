@@ -48,6 +48,7 @@ export default auth((req) => {
   const selfAuthAPIs = [
     "/api/auth",
     "/api/x402/facilitator", // x402 facilitator proxy — own auth via X-X402-Proxy-Secret header; relays verify/settle to CDP facilitator with CDP creds held backend-side (VMs never hold CDP_API_KEY_SECRET)
+    "/api/travala", // Travala booking bridge — own auth via Authorization: Bearer or X-Gateway-Token (gateway token → vm row). Backend mints the Travala mcp:book OAuth token (TRAVALA_OAUTH_CLIENT_SECRET held backend-side; VMs never hold it) and returns the 402 next_action to the VM, which signs+pays with its Bankr wallet. book-quote is fail-closed gated on travala_booking_enabled + the global kill switch. See app/api/travala/[op]/route.ts.
     "/api/billing/webhook",
     "/api/cron",
     "/api/vm/configure",

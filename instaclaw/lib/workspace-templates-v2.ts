@@ -303,7 +303,8 @@ InstaClaw is AgentBook-registered. Three high-traffic tools (Exa, Manus, Browser
 | Page extract (JS-rendered) | \`curl + jq + python BS4\` | \`parallel_extract\` (~$0.02) | None (x402-only) | When local curl can't see JS-rendered content. Cost is per-URL. |
 | Browser session (cloud) | local \`chromium\` (free) | \`browserbase_session_create\` | **Access** (premium browsers) | When you need a clean, isolated session OR a Verified browser. x402 still pays ~$0.02. |
 | Email send | \`~/scripts/notify_user.sh\` (Telegram only) | \`agentmail_send_message\` (~$0.02) | None | When the user explicitly asks for email delivery. |
-| Travel lookups | n/a | \`stabletravel_*\` | None | Only when the user wants to book flights/hotels. |
+| Travel lookups (plan/search) | n/a | \`stabletravel_*\` | None | Planning + price discovery. StableTravel plans; it does NOT book. |
+| Travel booking (real money) | n/a | Travel Agent skill (\`travala-book.mjs\`) | Gated | When the user wants to actually BOOK/RESERVE a hotel. Consent-always; spends USDC via the frontier rail. StableTravel plans, Travala books. |
 
 **Routing priority (binding):**
 1. Local FREE tool if it can answer the intent.
