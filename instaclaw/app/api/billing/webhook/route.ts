@@ -1243,6 +1243,11 @@ async function processEvent(event: any) {
               telegram_bot_token: null,
               telegram_bot_username: null,
               telegram_chat_id: null,
+              // F4: revoke autonomous-spend authority on cancel (fail-closed). The lifecycle
+              // TRIGGER can't catch this -- cancel sets health_status='suspended', which is
+              // indistinguishable from an inactivity-suspend at the VM-column level, so this
+              // is the billing chokepoint. A future re-subscribe must re-enable spend.
+              frontier_spend_enabled: false,
             })
             .eq("id", userVm.id);
 
