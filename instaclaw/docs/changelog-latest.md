@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-10
 
-Window: `9adac7b7798401ece5a36c42a2153b42a2f697b3` → `HEAD` (HEAD = `f47ffa7b`)
+Window: `f47ffa7bed90ce91b8f9e35ecdf5cfb94676e82b` → `HEAD` (HEAD = `0e81ff8d`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: f47ffa7bed90ce91b8f9e35ecdf5cfb94676e82b -->
+<!-- LAST_GENERATED_SHA: 0e81ff8db706e0d20b7b7c7c878cbc020f037bd4 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `9ebe08e9` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `f47ffa7b` 2026-06-10 — docs(frontier): human_approved hardening design (STOP at the fork) [1 files] _(ai-assisted)_
+- `c829de9c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `0e81ff8d` 2026-06-10 — docs(frontier): Mastercard AP4M strategic memo (research-only) [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -45,16 +45,16 @@ _(none)_
 
 ### Docs / PRD only (2)
 
-- `9ebe08e9` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `f47ffa7b` 2026-06-10 — docs(frontier): human_approved hardening design (STOP at the fork) [1 files] _(ai-assisted)_
+- `c829de9c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `0e81ff8d` 2026-06-10 — docs(frontier): Mastercard AP4M strategic memo (research-only) [1 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `f47ffa7b` 2026-06-10 — docs(frontier): human_approved hardening design (STOP at the fork)
+- `0e81ff8d` 2026-06-10 — docs(frontier): Mastercard AP4M strategic memo (research-only)
 
 ## Appendix — every commit (chronological)
 
-- `9ebe08e9` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `f47ffa7b` 2026-06-10 — docs(frontier): human_approved hardening design (STOP at the fork) [1 files] _(ai-assisted)_
+- `c829de9c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `0e81ff8d` 2026-06-10 — docs(frontier): Mastercard AP4M strategic memo (research-only) [1 files] _(ai-assisted)_
