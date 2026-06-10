@@ -72,17 +72,35 @@ const CANCELED_GRACE_DAYS = 3;
 const PAST_DUE_GRACE_DAYS = 7;
 const NO_SUB_GRACE_DAYS = 3;
 
-// Cooper's accounts — NEVER delete
-const PROTECTED_USER_IDS = new Set([
-  "afb3ae69", // coop@instaclaw.io
-  "4e0213b3", // coopgwrenn@gmail.com
-  "24b0b73a", // coopergrantwrenn@gmail.com
-]);
+// Billing-exempt (comp/founder/family) accounts — NEVER freeze.
+//
+// 2026-06-10: replaced the hardcoded PROTECTED_USER_IDS prefix set (which had
+// drifted — its "coopergrantwrenn" entry pointed at jwrenn@me.com, the real
+// coopergrantwrenn account was missing, and coop@instaclaw.io had no live
+// account) with the first-class instaclaw_users.billing_exempt flag. The flag
+// is the single source of truth read by lib/billing-status.ts Path 0, so this
+// freeze pre-check and the billing classification can no longer disagree.
+// Fetched once per cron run into a Set; isProtectedUser is a pure membership
+// test. Fail-open to {} on lookup error so a DB hiccup can't make the freeze
+// pass treat a comp account as freezable (freezeVM also live-re-checks Stripe,
+// but skipping comp accounts here avoids the call entirely).
+async function fetchBillingExemptUserIds(
+  supabase: ReturnType<typeof getSupabase>,
+): Promise<Set<string>> {
+  try {
+    const { data, error } = await supabase
+      .from("instaclaw_users")
+      .select("id")
+      .eq("billing_exempt", true);
+    if (error || !data) return new Set();
+    return new Set((data as Array<{ id: string }>).map((u) => u.id));
+  } catch {
+    return new Set();
+  }
+}
 
-function isProtectedUser(userId: string): boolean {
-  return Array.from(PROTECTED_USER_IDS).some((prefix) =>
-    userId.startsWith(prefix)
-  );
+function isProtectedUser(userId: string, exemptUserIds: Set<string>): boolean {
+  return exemptUserIds.has(userId);
 }
 
 export async function GET(req: NextRequest) {
@@ -93,6 +111,11 @@ export async function GET(req: NextRequest) {
 
   const dryRun = req.nextUrl.searchParams.get("dry_run") === "true";
   const supabase = getSupabase();
+
+  // Billing-exempt accounts (founder/family/comp) — fetched once, used by the
+  // freeze pre-checks below via isProtectedUser. Single source of truth:
+  // instaclaw_users.billing_exempt (migration 20260610210000).
+  const exemptUserIds = await fetchBillingExemptUserIds(supabase);
 
   const report = {
     dry_run: dryRun,
@@ -743,7 +766,7 @@ export async function GET(req: NextRequest) {
 
         // Protected user — never freeze (defense in depth; freezeVM also
         // re-checks Stripe live, but skip the call entirely for these).
-        if (vm.assigned_to && isProtectedUser(vm.assigned_to)) {
+        if (vm.assigned_to && isProtectedUser(vm.assigned_to, exemptUserIds)) {
           report.pass1_v2_skipped_safety++;
           if (!dryRun) {
             await logLifecycleEvent(
@@ -961,7 +984,7 @@ export async function GET(req: NextRequest) {
         // ── Safety checks ──
 
         // 1. Protected user
-        if (userId && isProtectedUser(userId)) {
+        if (userId && isProtectedUser(userId, exemptUserIds)) {
           report.pass1_skipped_safety++;
           continue;
         }

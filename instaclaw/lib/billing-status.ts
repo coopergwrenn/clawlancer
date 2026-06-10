@@ -104,7 +104,37 @@ export async function getBillingStatus(
     return bT - aT;
   })[0] ?? null;
 
-  return classify(vm, sub, /* verified */ false, /* drift */ false);
+  // Path 0 input: comp/founder exemption on the owning account.
+  const { exempt, exemptReason } = await fetchBillingExempt(supabase, vm.assigned_to);
+
+  return classify(vm, sub, /* verified */ false, /* drift */ false, exempt, exemptReason);
+}
+
+/**
+ * Fetch the owning account's comp/founder exemption (instaclaw_users.billing_exempt).
+ * Never throws — a lookup failure returns {exempt:false} so a transient DB
+ * hiccup can't accidentally grant an exemption (fail-closed on the *grant*
+ * side; the worst case is a real comp account briefly classified non-exempt,
+ * which the freeze path's live Stripe re-check + grace windows still cushion).
+ */
+async function fetchBillingExempt(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ exempt: boolean; exemptReason: string | null }> {
+  try {
+    const { data, error } = await supabase
+      .from("instaclaw_users")
+      .select("billing_exempt, billing_exempt_reason")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error || !data) return { exempt: false, exemptReason: null };
+    return {
+      exempt: (data as { billing_exempt?: boolean }).billing_exempt === true,
+      exemptReason: (data as { billing_exempt_reason?: string | null }).billing_exempt_reason ?? null,
+    };
+  } catch {
+    return { exempt: false, exemptReason: null };
+  }
 }
 
 /**
@@ -132,6 +162,10 @@ export async function getBillingStatusVerified(
   if (vmErr || !vm) return null;
   if (!vm.assigned_to) return getBillingStatus(supabase, vmId);
 
+  // Path 0 input: comp/founder exemption on the owning account. Fetched once,
+  // threaded into every classify() branch below.
+  const { exempt, exemptReason } = await fetchBillingExempt(supabase, vm.assigned_to);
+
   const { data: subs } = await supabase
     .from("instaclaw_subscriptions")
     .select("*")
@@ -146,10 +180,10 @@ export async function getBillingStatusVerified(
     return bT - aT;
   })[0] ?? null;
 
-  // No local sub → just classify on credits/partner. Stripe verification
-  // doesn't apply (no sub_id to retrieve).
+  // No local sub → just classify on credits/partner/exemption. Stripe
+  // verification doesn't apply (no sub_id to retrieve).
   if (!localSub?.stripe_subscription_id) {
-    return classify(vm, localSub, /* verified */ false, /* drift */ false);
+    return classify(vm, localSub, /* verified */ false, /* drift */ false, exempt, exemptReason);
   }
 
   // Hit Stripe for ground truth.
@@ -171,7 +205,7 @@ export async function getBillingStatusVerified(
 
   if (!stripeSub) {
     // Verification failed. Classify on local DB but flag unverified.
-    return classify(vm, localSub, /* verified */ false, /* drift */ false);
+    return classify(vm, localSub, /* verified */ false, /* drift */ false, exempt, exemptReason);
   }
 
   // Detect DB drift: when Stripe says one thing and our DB says another.
@@ -199,11 +233,21 @@ export async function getBillingStatusVerified(
     canceled_at: stripeSub.canceled_at ? new Date(stripeSub.canceled_at * 1000).toISOString() : null,
   };
 
-  return classify(vm, synth, /* verified */ true, drift);
+  return classify(vm, synth, /* verified */ true, drift, exempt, exemptReason);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function classify(vm: any, sub: any, verified: boolean, drift: boolean): BillingStatus {
+function classify(
+  vm: any,
+  sub: any,
+  verified: boolean,
+  drift: boolean,
+  // billing_exempt lives on instaclaw_users (the owning account), NOT the vm
+  // row — the callers fetch it and thread it in. Defaults false so callers
+  // that haven't been updated (or the unassigned path) behave as before.
+  billingExempt = false,
+  billingExemptReason: string | null = null,
+): BillingStatus {
   const reasons: string[] = [];
   let isPaying = false;
 
@@ -214,6 +258,17 @@ function classify(vm: any, sub: any, verified: boolean, drift: boolean): Billing
   const partner = vm.partner ?? null;
   const apiMode = vm.api_mode ?? null;
   const tier = vm.tier ?? null;
+
+  // Path 0: comp/founder exemption (instaclaw_users.billing_exempt). Replaces
+  // the hardcoded PROTECTED_USER_IDS set in vm-lifecycle. Checked FIRST so a
+  // comp account is paying regardless of sub/credit state — and so every
+  // billing-gated path (guard, freeze, reaper, suspend-check) honors it
+  // through this single source of truth. See migration
+  // 20260610210000_user_billing_exempt.sql.
+  if (billingExempt) {
+    isPaying = true;
+    reasons.push(billingExemptReason ? `comp_exempt_${billingExemptReason}` : "comp_exempt");
+  }
 
   // Path 1: active or trialing Stripe sub, payment current
   if (subStatus && ["active", "trialing"].includes(subStatus) && !canceledAt && paymentStatus !== "past_due") {
