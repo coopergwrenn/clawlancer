@@ -422,6 +422,51 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = getSupabase();
 
+    // ─── Durable manifest-version sync (component-2 fix, 2026-06-10) ───
+    // The fleet-health pg_cron detector (public.check_fleet_health) needs
+    // the current manifest version to count VMs below it, but Postgres
+    // cannot import VM_MANIFEST. Before 2026-06-10 the threshold was a
+    // hardcoded literal `95` in the cron command and silently drifted to a
+    // 33-version blind spot as the manifest bumped to 128 — recreating the
+    // exact May 11 failure the detector was built to close.
+    //
+    // The fix: write VM_MANIFEST.version into instaclaw_app_settings HERE,
+    // at the SAME read-site that drives the candidate filter below
+    // (`config_version.lt.${VM_MANIFEST.version}` at the .or() clause). One
+    // read of VM_MANIFEST.version feeds BOTH the reconciler's filter and the
+    // detector's threshold, in one function execution — so "manifest bumped
+    // but detector threshold stale" is unrepresentable: there is no second
+    // source for the two to diverge from. Propagation lag is ≤1 cron tick
+    // (~3 min) after a deploy. The confirmed-stale-bundle case already
+    // returned at the integrity gate above, so whatever VM_MANIFEST.version
+    // is in this bundle is the operative version the reconciler is using.
+    //
+    // Best-effort (Rule 39): a settings-write hiccup must never break the
+    // reconcile. Its own try/catch keeps it off the outer reconcile path.
+    try {
+      const { error: settingsErr } = await supabase
+        .from("instaclaw_app_settings")
+        .upsert(
+          {
+            key: "manifest_version",
+            value: String(VM_MANIFEST.version),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "key" },
+        );
+      if (settingsErr) {
+        logger.warn("reconcile-fleet: manifest_version settings sync failed (non-fatal)", {
+          route: "cron/reconcile-fleet",
+          error: settingsErr.message,
+        });
+      }
+    } catch (e) {
+      logger.warn("reconcile-fleet: manifest_version settings sync threw (non-fatal)", {
+        route: "cron/reconcile-fleet",
+        error: String(e).slice(0, 200),
+      });
+    }
+
     // 3. Pull stale assigned VMs.
     //
     // Filters:
