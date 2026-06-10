@@ -27,12 +27,13 @@
  */
 
 import { redirect } from "next/navigation";
-import { after } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import { assignOrProvisionUserVm } from "@/lib/createUserVM";
+import { getStripe } from "@/lib/stripe";
+import { getBillingStatusVerified } from "@/lib/billing-status";
 import { logger } from "@/lib/logger";
 import { AuthClient } from "./auth-client";
+import { ContinuingAsClient } from "./continuing-as-client";
 
 interface AuthPageProps {
   searchParams: Promise<{ session?: string }>;
@@ -96,74 +97,73 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
       redirect("/dashboard");
     }
 
-    // Bind pending row → user. Idempotent if user_id was already set
-    // to this user (re-render after refresh, etc.).
-    if (pending.user_id !== authSession.user.id) {
-      const { error: bindErr } = await supabase
-        .from("instaclaw_pending_users")
-        .update({ user_id: authSession.user.id })
-        .eq("id", safeSessionId)
-        // Race-safety: only bind if the row is still unconsumed AND
-        // either unbound or bound to this same user. Prevents Pass 6
-        // from racing with this UPDATE.
-        .is("consumed_at", null);
+    // Fetch the authed user — needed for the re-onboarding guard AND the
+    // "continuing as <email>" confirmation below.
+    const { data: user } = await supabase
+      .from("instaclaw_users")
+      .select("email, partner, onboarding_complete")
+      .eq("id", authSession.user.id)
+      .maybeSingle();
 
-      if (bindErr) {
-        logger.error("[/auth] pending row bind failed", {
+    // ── Re-onboarding guard (2026-06-10 identity-hardening pass) ──
+    // A fully-onboarded, paying user who re-enters the channel flow must NOT
+    // re-run /plan — that re-checkout is what created the duplicate-Stripe-sub
+    // class (launchanon01's 8 subs; Cooper's walkthrough sub). Short-circuit
+    // to /dashboard BEFORE any bind or checkout. `isPaying` is checked
+    // Stripe-truth via getBillingStatusVerified (Rule 14 single source of
+    // truth) — NOT the drifted local DB status column (Cooper's row showed
+    // "active" while Stripe said "trialing"). Once the billing_exempt Path 0
+    // ships, this guard honors comp/founder accounts automatically (the check
+    // flows through the same classify()).
+    if (user?.onboarding_complete) {
+      const { data: vmRow } = await supabase
+        .from("instaclaw_vms")
+        .select("id")
+        .eq("assigned_to", authSession.user.id)
+        .eq("status", "assigned")
+        .maybeSingle();
+      let paying = false;
+      if (vmRow?.id) {
+        try {
+          const billing = await getBillingStatusVerified(supabase, getStripe(), vmRow.id);
+          paying = billing?.isPaying ?? false;
+        } catch (err) {
+          // Stripe unreachable → do NOT short-circuit (fall through to the
+          // confirmation). A failed billing check must never strand a real
+          // returning customer, but it also must not wrongly skip the guard
+          // for a paying one — so we let them confirm rather than re-checkout
+          // silently. The confirm route + /plan's own existing-sub branch are
+          // the backstops.
+          logger.warn("[/auth] re-onboarding guard billing check threw — not short-circuiting", {
+            route: "auth",
+            userId: authSession.user.id,
+            vmId: vmRow.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } else if (user.partner) {
+        // onboarding_complete + partner but no current assigned VM → still a
+        // set-up sponsored account; /dashboard is the right home (and there's
+        // no /plan re-checkout risk for partner users anyway).
+        paying = true;
+      }
+      if (paying) {
+        logger.info("[/auth] re-onboarding guard: onboarding_complete + paying → /dashboard (no re-bind, no checkout)", {
           route: "auth",
-          sessionId: safeSessionId,
           userId: authSession.user.id,
-          error: bindErr.message,
+          sessionId: safeSessionId,
         });
-        // Don't block the user — they're authed; send to dashboard.
         redirect("/dashboard");
       }
     }
 
-    // §6.5.2 architectural shift: fire VM assignment AT OAUTH COMPLETE,
-    // not at card capture. The 30-60s of card-entry time will overlap
-    // with configureOpenClaw — by the time the user lands on
-    // /onboarding/done, gateway_url is populated.
-    //
-    // Wrapped in after() so this redirect isn't blocked. If
-    // assignOrProvisionUserVm throws, the existing process-pending
-    // Pass 0 will recover (catches paid users with no VM); for
-    // pre-payment users, Pass 6 will eventually reclaim the pending
-    // row if VM never arrives.
-    const userIdForAssignment = authSession.user.id;
-    after(async () => {
-      try {
-        await assignOrProvisionUserVm(userIdForAssignment, { supabase });
-        logger.info("[/auth] VM assignment fired via after() on OAuth complete", {
-          route: "auth",
-          userId: userIdForAssignment,
-          sessionId: safeSessionId,
-        });
-      } catch (err) {
-        logger.error("[/auth] assignOrProvisionUserVm threw in after()", {
-          route: "auth",
-          userId: userIdForAssignment,
-          sessionId: safeSessionId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    });
-
-    // Decide next route: Edge users skip /plan (sponsored trial, no card).
-    const { data: user } = await supabase
-      .from("instaclaw_users")
-      .select("partner")
-      .eq("id", authSession.user.id)
-      .maybeSingle();
-
-    if (user?.partner === "edge_city") {
-      redirect(`/onboarding/done?session=${safeSessionId}`);
-    }
-
-    // Standard paid flow → /plan with the session id preserved so
-    // /plan can show channel-aware Stripe success redirect to
-    // /onboarding/done (rather than the legacy /deploying).
-    redirect(`/plan?channel=1&session=${safeSessionId}`);
+    // ── "continuing as <email>" confirmation (2026-06-10) ──
+    // The binding + VM provisioning do NOT fire here anymore. We render the
+    // confirmation; the user must explicitly confirm the account before we
+    // bind the pending row to it (POST /api/auth/channel-confirm). This closes
+    // the shared/stale-session wrong-account-binding hazard — the front door
+    // ~1,000 Edge attendees touch first. "not you?" forces the OAuth picker.
+    return <ContinuingAsClient email={user?.email ?? null} sessionId={safeSessionId} />;
   }
 
   // Branch 2: authenticated user, no session param. They reached /auth

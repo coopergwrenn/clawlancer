@@ -316,14 +316,57 @@ async function processEvent(event: any) {
 
       if (!userId || !tier) break;
 
-      // Create or update subscription record
+      // 2026-06-10 fix: retrieve the Stripe subscription so we write the REAL
+      // status + period fields. The pre-fix upsert hardcoded status="active"
+      // with null current_period_start/end. Same root behind two bugs found
+      // 2026-06-10: (a) a trialing sub showed "active" in our DB (status
+      // drift vs Stripe), and (b) null period fields can mislead Rule-14
+      // grace-window classification (lib/billing-status.ts). subscription.created
+      // usually backfills these, but Stripe event ordering/delivery isn't
+      // guaranteed, so we populate authoritatively at the source. Mirrors the
+      // resolution in the customer.subscription.created handler below.
+      const subId = session.subscription as string | null;
+      let subStatus = "active";
+      let periodStartIso: string | null = null;
+      let periodEndIso: string | null = null;
+      let trialEndIso: string | null = null;
+      if (subId) {
+        try {
+          const sub = await getStripe().subscriptions.retrieve(subId);
+          subStatus = sub.status ?? "active";
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ps = (sub as any).current_period_start as number | undefined;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const pe = (sub as any).current_period_end as number | undefined;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const te = (sub as any).trial_end as number | undefined;
+          if (ps) periodStartIso = new Date(ps * 1000).toISOString();
+          if (pe) periodEndIso = new Date(pe * 1000).toISOString();
+          else if (te) periodEndIso = new Date(te * 1000).toISOString();
+          if (te) trialEndIso = new Date(te * 1000).toISOString();
+        } catch (err) {
+          logger.error("checkout.session.completed: failed to retrieve subscription for period fields — falling back to active+null", {
+            route: "billing/webhook",
+            subscriptionId: subId,
+            error: String(err),
+          });
+          // Fall through with active + null periods (prior behavior).
+          // customer.subscription.created will backfill the period fields.
+        }
+      }
+
+      // Create or update subscription record. Real status + periods when the
+      // retrieve succeeded; graceful active+null fallback otherwise.
       await supabase.from("instaclaw_subscriptions").upsert(
         {
           user_id: userId,
           tier,
-          stripe_subscription_id: session.subscription as string,
+          stripe_subscription_id: subId,
           stripe_customer_id: session.customer as string,
-          status: "active",
+          status: subStatus,
+          ...(periodStartIso ? { current_period_start: periodStartIso } : {}),
+          ...(periodEndIso ? { current_period_end: periodEndIso } : {}),
+          ...(trialEndIso ? { trial_ends_at: trialEndIso } : {}),
           payment_status: "current",
         },
         { onConflict: "user_id" }
