@@ -21,6 +21,18 @@ cost_usd = (input_tokens          × input_rate)
 
 The R3 estimate assumed **zero cache** (conservative worst case). Our ~32K system prompt is cached, so in reality `cache_read_tokens` should dominate the input leg and `input_tokens` (fresh) should be small — meaning **real cost/msg is materially below R3's $0.12 (Opus) / $0.24 (Fable)**, and the "tail underwater" picture is softer than R3 painted. The readout must compute effective cost WITH cache, not the no-cache estimate.
 
+## Refunds — exclude empties from billed revenue (added 2026-06-10, Guard 2)
+
+The empty-completion guards add `instaclaw_usage_log.billing_refunded BOOLEAN`. An empty turn keeps its row (`output_tokens=0`, original `cost_weight` intact for forensics) but is marked `billing_refunded=true` — the governor charge was reversed, the user wasn't billed. **The readout's "what we actually billed" must filter these out:**
+
+```
+true_billed_credits = SUM(cost_weight) FILTER (WHERE NOT billing_refunded)
+```
+
+Every per-model / per-tier credit aggregation below should carry `FILTER (WHERE NOT billing_refunded)` (or `WHERE NOT billing_refunded` in the WHERE clause) — otherwise refunded empties inflate the billed total and understate margin. The token-cost side (input/output/cache) is unaffected: refunded or not, Anthropic billed us for the input the empty consumed, so cost SUMs include all rows; only the *revenue* (credits) side filters on `NOT billing_refunded`.
+
+- **Refund-rate query:** `SELECT model, COUNT(*) FILTER (WHERE billing_refunded) AS refunded, COUNT(*) AS total, ROUND(100.0*COUNT(*) FILTER (WHERE billing_refunded)/COUNT(*),2) AS refund_pct FROM instaclaw_usage_log WHERE call_type='user' AND created_at > now()-interval '14 days' GROUP BY model`. Should track the empty-rate query closely (a refund ≈ an empty); a divergence means an empty slipped past Guard 2 (got billed) or a non-empty got refunded (bug).
+
 ## The "does 38 hold?" calculation
 
 R3's lock rests on one hypothesis: **Fable costs exactly 2× Opus per message**, so Fable@38 is margin-identical to Opus@19. With real tokens:
