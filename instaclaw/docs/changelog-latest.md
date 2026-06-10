@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-10
 
-Window: `2cc0990284724ca58a995b17a057a727561ee87b` → `HEAD` (HEAD = `a8110793`)
+Window: `a8110793111b315a32f7397faaa3b9488d15a627` → `HEAD` (HEAD = `40b248ed`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: a8110793111b315a32f7397faaa3b9488d15a627 -->
+<!-- LAST_GENERATED_SHA: 40b248ed65bc00e5c18a35c0b83c215b9c7c1790 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `a8110793` 2026-06-10 — chore(frontier): promote frontier_spend_approvals migration to migrations/ (Rule 56) [2 files] _(ai-assisted)_
-- `887f621f` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `40b248ed` 2026-06-10 — feat(frontier): add travel spend category (§6, ToolRouter StableTravel) [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `1c3afce3` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `a8110793` 2026-06-10 — chore(frontier): promote frontier_spend_approvals migration to migrations/ (Rule 56) [2 files] _(ai-assisted)_
+- `40b248ed` 2026-06-10 — feat(frontier): add travel spend category (§6, ToolRouter StableTravel) [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `887f621f` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `1c3afce3` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `40b248ed` 2026-06-10 — [infrastructure, feature] — feat(frontier): add travel spend category (§6, ToolRouter StableTravel)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `a8110793` 2026-06-10 — chore(frontier): promote frontier_spend_approvals migration to migrations/ (Rule 56)
+- `40b248ed` 2026-06-10 — feat(frontier): add travel spend category (§6, ToolRouter StableTravel)
 
 ## Appendix — every commit (chronological)
 
-- `887f621f` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `a8110793` 2026-06-10 — chore(frontier): promote frontier_spend_approvals migration to migrations/ (Rule 56) [2 files] _(ai-assisted)_
+- `1c3afce3` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `40b248ed` 2026-06-10 — feat(frontier): add travel spend category (§6, ToolRouter StableTravel) [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
