@@ -145,6 +145,31 @@ async function verifyTable(supabase: ReturnType<typeof createClient>, name: stri
 // ── Main ──
 
 async function main() {
+  // Structural guard (2026-06-10): the frontier safety suites run via the
+  // `test:frontier` npm script (frontier-safety GitHub Action). A stale-branch
+  // merge once clobbered that script out of package.json (commit 114d1db4),
+  // silently disabling the suites in CI. The frontier-safety workflow is
+  // path-filtered, so it would not even run on such a clobber. This build-time
+  // check fails the BUILD on every deploy if the script goes missing -- the one
+  // place that always runs. Cheap insurance against that exact regression.
+  try {
+    const pkg = readFileSync(join(__dirname, "..", "package.json"), "utf-8");
+    if (!JSON.parse(pkg).scripts?.["test:frontier"]) {
+      console.error("");
+      console.error("=".repeat(70));
+      console.error("  BUILD BLOCKED -- package.json is missing the `test:frontier` script");
+      console.error("=".repeat(70));
+      console.error("  The frontier safety suites are wired through this script. If it is");
+      console.error("  gone, a stale-branch merge likely clobbered package.json scripts.");
+      console.error("  Restore the `test:frontier` chain (see git history) and rebuild.");
+      console.error("");
+      process.exit(1);
+    }
+  } catch (e) {
+    console.error("[verify-migrations] could not read/parse package.json for the test:frontier guard:", e);
+    process.exit(1);
+  }
+
   const migrationsDir = join(__dirname, "..", "supabase", "migrations");
 
   let files: string[];
