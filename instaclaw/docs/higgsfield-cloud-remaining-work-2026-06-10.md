@@ -154,3 +154,26 @@ fleet.** vm-050 torn down to canonical. Free-only path; commerce stack deferred.
 ### Canary teardown ledger (reverse/account at e2e close)
 - vm-050 `video_credit_balance`: granted 0 → **40** (2026-06-10, for the kling parity (a) run). Reverse to 0 at close, accounting for the ~18 credits one kling render consumes (≈ $0.9375 real Higgsfield spend).
 - Synthetic rows: claim-RPC verify test row inserted + deleted (count baseline 4 → 4, clean). Scenario (d) will insert + delete a synthetic orphan — account for it at close.
+
+---
+
+## 2026-06-10 — CORRECTED quality/cost table (real parity bar = kling-3.0, NOT our v2.1)
+
+**Premise correction (evidence, not memory):** the crab clip users loved rendered on **`kling-3.0`** via muapi — proven from vm-050 `~/.openclaw/workspace/higgsfield/jobs.json` (request_id ab520b9d, model "kling-3.0", output cdn.muapi.ai), NOT the agent's narration. Our rail's current premium is **`kling-video/v2.1/pro`** — a *different, older* Kling. That version gap (v2.1 < 3.0) is the most likely reason the surfer kling clip didn't match the crab. **The parity bar is kling-3.0-class frontier, and our v2.1 may itself be below it.**
+
+**Higgsfield catalog (from `higgsfield-catalog-capabilities-sweep`):** documented Cloud image→video = house **DoP lite/turbo/standard** (short-clip only, no duration — NOT the product), **Kling v2.1 pro**, **`bytedance/seedance/v1/pro`**. Auth-gated Gallery reference lineup names **Veo 3.1, Kling v3.0/2.6, Seedance 2.0/1.5, Wan 2.7/2.6, Hailuo**. Per-model pricing is dashboard-gated — Cooper should export the Models Gallery for the 100% picture. Cost anchor (validated on 3 models): **Higgsfield credits ≈ fal.ai $ × 16**.
+
+**Corrected cost table** (HF credit = $0.0625; "/mo per VM" = HF cost × free-cap × 30):
+
+| Model | Class | HF $/render | starter (2/day) | pro (5/day) | power (15/day) | status |
+|---|---|---|---|---|---|---|
+| dop/lite | house fast-draft | $0.125 | $7.50 | $18.75 | $56 | current free default (the downgrade) |
+| dop/standard | house HQ | $0.5625 | $34 | $84 | $253 | measured |
+| **seedance v1 pro** | **frontier** | **~$0.625** (pred, 5s/1080p) | **~$38** | **~$94** | **~$281** | **UNVETTED — pivotal** |
+| kling v2.1 pro | frontier (older) | $0.9375 | $56 | $141 | $422 | measured; our premium; < legacy 3.0 |
+| kling v3.0/2.6 | frontier (= legacy bar) | ~$0.94–1.25 (pred) | ~$56–75 | ~$141–188 | ~$422–563 | UNVETTED; Gallery slug unconfirmed |
+| veo 3.1 | premium hero | ~$1.19–3.19 (pred) | ~$71–191 | ~$179–478 | ~$536–1434 | UNVETTED; Cloud membership unconfirmed |
+
+**Direction (Cooper, → G9):** frontier models as defaults; DoP relegated to fast-draft at most; costs priced honestly into tiers. The honest read: a frontier free default is **4.5–7.5× the current lite cost** ($34–56/mo/VM at starter, up to $250–420/mo at power). Tiers must price this in, or cap free frontier renders below the current allowance.
+
+**Vetting path (what enabling seedance/newer-kling takes):** the gate only allows MEASURED-cost models (allowlist discipline). To enable a frontier default: (1) confirm Cloud Gallery membership (read-only dashboard, or one spot-submit); (2) **one funded spot-test render to MEASURE actual HF credit cost + confirm whether it honors `duration`** (the open question — real long clips vs DoP-style pin); (3) add to `HF_MODELS` with measured cost + `freeEligible` flag + (if duration-variable) a small 5s/10s lookup; (4) set as `resolve_model` default. Cost to vet: ~a few credits per model. **Seedance is the pivotal vet** (frontier, cheapest, likely the best quality/cost). Recommend vetting seedance v1 pro + confirming a kling v3.0/2.6 slug at G9 before picking the free default.
