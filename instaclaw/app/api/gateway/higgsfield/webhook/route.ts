@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { getSupabase } from "@/lib/supabase";
 import { sendTelegramVideo, sendTelegramNotification } from "@/lib/telegram";
+import { HF_MODELS } from "@/lib/higgsfield-models";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -214,6 +215,29 @@ export async function POST(req: NextRequest) {
       return ack();
     }
 
+    // --- Guard 1: registry-kind branch — never webhook-deliver an image. ---
+    // (2026-06-10) The gate now suppresses `c` for kind:image, so this is defense
+    // in depth: look up the render's endpoint and refuse to ship anything but a
+    // video. An image (the intermediate source frame of text->image->video, or a
+    // standalone image the agent delivers inline) shipped via sendTelegramVideo
+    // as higgsfield.mp4 renders as a 00:00 unplayable "video".
+    const { data: kindRow } = await supabase
+      .from("instaclaw_video_transactions")
+      .select("endpoint")
+      .eq("vm_id", target.v)
+      .eq("request_id", target.r)
+      .single();
+    const modelKind = kindRow?.endpoint ? HF_MODELS[kindRow.endpoint]?.kind : undefined;
+    if (modelKind === "image") {
+      logger.info("video webhook: image render — delivery suppressed", {
+        route: "gateway/higgsfield/webhook",
+        vmId: target.v,
+        requestId,
+        endpoint: kindRow?.endpoint,
+      });
+      return ack();
+    }
+
     // --- Resolve the delivery bot for this VM (v2 async-delivery path) ---
     const { data: vm } = await supabase
       .from("instaclaw_vms")
@@ -225,6 +249,40 @@ export async function POST(req: NextRequest) {
       logger.error("Higgsfield webhook: no bot token for VM", {
         route: "gateway/higgsfield/webhook",
         vmId: target.v,
+        status,
+      });
+      return ack();
+    }
+
+    // --- Guard 2: delivery idempotency, keyed on OUR request_id (1:1 render). ---
+    // (2026-06-10) Higgsfield retries the webhook until 2xx, and this handler is
+    // slow (fetch asset + upload to Telegram inline before returning), so a retry
+    // can land mid-flight and deliver twice — observed: soul/standard's webhook
+    // double-fired at 3:57 + 3:58. Atomic CAS a delivered marker on the
+    // transaction row; only the winner proceeds. This is a DELIVERY-specific
+    // dedup (separate from the settle CAS, per the fix ruling: keyed on the
+    // render id, not just the hold) and covers BOTH the completed and the
+    // non-completed message below.
+    const { data: claimed, error: claimErr } = await supabase.rpc(
+      "instaclaw_video_claim_delivery",
+      { p_vm_id: target.v, p_request_id: target.r },
+    );
+    if (claimErr) {
+      // FAIL OPEN: if the claim RPC is unavailable (not yet applied to prod, or a
+      // transient DB error), deliver anyway. A rare duplicate is far better than
+      // dropping the clip entirely. (Makes deploy order RPC-vs-code irrelevant.)
+      logger.error("video webhook: claim rpc error — failing open (will deliver)", {
+        route: "gateway/higgsfield/webhook",
+        vmId: target.v,
+        requestId,
+        error: claimErr.message,
+      });
+    } else if (claimed === false) {
+      // Definitively already claimed by a prior webhook → skip the duplicate.
+      logger.info("video webhook: delivery already claimed — duplicate suppressed", {
+        route: "gateway/higgsfield/webhook",
+        vmId: target.v,
+        requestId,
         status,
       });
       return ack();
@@ -247,7 +305,11 @@ export async function POST(req: NextRequest) {
     }
 
     // --- Completed: deliver the video ---
-    const videoUrl = authoritative?.video?.url || authoritative?.images?.[0]?.url;
+    // video.url ONLY — never fall back to images[].url (that was the 00:00 bug:
+    // an image asset shipped as higgsfield.mp4). A completed video render that
+    // returns no video asset is a real failure → the !videoUrl branch tells the
+    // user, and never ships an image as a "video".
+    const videoUrl = authoritative?.video?.url;
     if (!videoUrl) {
       logger.error("Higgsfield completed but no media url", {
         route: "gateway/higgsfield/webhook",
