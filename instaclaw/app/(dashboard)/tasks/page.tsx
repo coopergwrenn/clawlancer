@@ -6,8 +6,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { SESSIONS_CHANGED_EVENT } from "@/components/dashboard/use-sessions";
 import { useNavMode } from "@/components/dashboard/use-nav-mode";
 import { ClaudeLogo } from "@/components/icons/claude-logo";
-import { ModelInfoButton } from "@/components/model-info-tooltip";
-import { MODEL_OPTIONS } from "@/lib/model-registry";
+import { ModelBrowserModal } from "@/components/model-browser-modal";
+import { getModelEntry } from "@/lib/model-registry";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronLeft,
@@ -2164,15 +2164,12 @@ function CommandCenterInner() {
   // Model state
   const [currentModel, setCurrentModel] = useState("claude-sonnet-4-6");
   const [showModelPicker, setShowModelPicker] = useState(false);
-  // Which model row's info tooltip is open (null = none). Shared by both pickers
-  // (only one is mounted at a time, tab-gated). Cleared whenever the picker closes.
-  const [infoTooltip, setInfoTooltip] = useState<string | null>(null);
-  useEffect(() => {
-    if (!showModelPicker) setInfoTooltip(null);
-  }, [showModelPicker]);
   const [updatingModel, setUpdatingModel] = useState(false);
-  const modelPickerRef = useRef<HTMLDivElement>(null);
-  const modelPickerRef2 = useRef<HTMLDivElement>(null);
+  // BYOK vs all-inclusive gates the model browser's content (fail-closed to
+  // credit). Read from the /api/vm/status payload below; stays null + loading
+  // until it resolves, so the modal shows only models a credit user can get.
+  const [apiMode, setApiMode] = useState<"byok" | "all_inclusive" | null>(null);
+  const [apiModeLoading, setApiModeLoading] = useState(true);
 
   // Plus menu
   const [showPlusMenu, setShowPlusMenu] = useState(false);
@@ -2305,9 +2302,17 @@ function CommandCenterInner() {
         const res = await fetch("/api/vm/status");
         if (res.ok) {
           const data = await res.json();
-          if (data.vm?.model) setCurrentModel(data.vm.model);
-          else if (data.model) setCurrentModel(data.model);
           if (data.vm) {
+            const vmApiMode = data.vm.apiMode ?? null;
+            // Credit (all_inclusive): the picker selects on the pinned model, or
+            // "automatic" when nothing is pinned. BYOK: the on-disk model IS the
+            // served model. (pinned_model is never written on all-inclusive's
+            // default_model, so it's the only source of truth for the pin.)
+            setCurrentModel(
+              vmApiMode === "all_inclusive"
+                ? (data.vm.pinnedModel ?? "automatic")
+                : (data.vm.model ?? "claude-sonnet-4-6")
+            );
             setConnectorInfo({
               channelsEnabled: data.vm.channelsEnabled ?? [],
               hasDiscord: data.vm.hasDiscord ?? false,
@@ -2315,29 +2320,25 @@ function CommandCenterInner() {
               gmailConnected: data.vm.gmailConnected ?? false,
               telegramBotUsername: data.vm.telegramBotUsername ?? null,
             });
+            setApiMode(vmApiMode);
+          } else if (data.model) {
+            setCurrentModel(data.model);
           }
         }
       } catch {
         // Non-fatal
+      } finally {
+        // Resolve the gate either way: on success apiMode is set; on error/absent
+        // it stays null, and the modal fail-closes to the credit choices.
+        setApiModeLoading(false);
       }
     })();
   }, []);
 
-  // Close model picker on outside click
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node) &&
-        (!modelPickerRef2.current || !modelPickerRef2.current.contains(e.target as Node))
-      ) {
-        setShowModelPicker(false);
-      }
-    }
-    if (showModelPicker) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [showModelPicker]);
+  // (Model picker outside-click handler removed: the ModelBrowserModal owns its
+  // own dismissal via its backdrop onClose. A document-level outside-click here
+  // would fire on clicks INSIDE the modal, since the modal renders outside the
+  // trigger's wrapper, and close it the instant a row is tapped.)
 
   // Close plus menu on outside click
   useEffect(() => {
@@ -2438,6 +2439,17 @@ function CommandCenterInner() {
       setUpdatingModel(false);
     }
   }
+
+  // Trigger-pill label. Credit users: "Automatic" when nothing is pinned, else
+  // the pinned model's display name (the picker honors any pin now). BYOK: the
+  // picked model's display name. Mirrors the modal's selection source so the
+  // pill always names exactly what the agent will run.
+  const triggerLabel =
+    apiMode === "byok"
+      ? getModelEntry(currentModel)?.displayName ?? "Sonnet 4.6"
+      : currentModel === "automatic"
+        ? "Automatic"
+        : getModelEntry(currentModel)?.displayName ?? "Automatic";
 
   // ─── Task polling ─────────────────────────────────────
 
@@ -3812,87 +3824,40 @@ function CommandCenterInner() {
                         disabled={isSending}
                       />
                       <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-                        <div className="relative" ref={modelPickerRef}>
+                        <div className="relative">
+                          {/* Desktop: considered glass-pill trigger (shipped
+                              .glass-filter-pill material, same family as the "+" and
+                              suggestion chips in this toolbar). Opens the model browser;
+                              the label crossfades on change. */}
                           <button
-                            onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
-                            // pr trimmed 2.5→1 (spacing only — mirrors tasks composer) so
-                            // model-picker · mic · send read as one even, deliberate cluster.
-                            className="hidden sm:flex items-center gap-1 pl-2.5 pr-1 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
-                            style={{ color: "var(--muted)" }}
+                            onClick={() => { setShowModelPicker(true); setShowPlusMenu(false); }}
+                            className="glass-filter-pill hidden sm:inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-full text-[11px] font-medium cursor-pointer active:scale-[0.98]"
+                            style={{ color: "var(--foreground)" }}
+                            title="Choose model"
                           >
                             <AnimatePresence mode="wait" initial={false}>
                               <motion.span
-                                key={currentModel}
+                                key={triggerLabel}
                                 initial={{ opacity: 0, y: 5 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -5 }}
                                 transition={{ duration: 0.15, ease: "easeOut" }}
                                 className="inline-block"
                               >
-                                {MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}
+                                {triggerLabel}
                               </motion.span>
                             </AnimatePresence>
-                            <ChevronDown className="w-3 h-3" />
+                            <ChevronDown className="w-3 h-3" style={{ color: "var(--muted)" }} />
                           </button>
+                          {/* Mobile: compact glass circle, same material. */}
                           <button
-                            onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
-                            className="flex sm:hidden items-center justify-center w-7 h-7 rounded-lg cursor-pointer transition-colors hover:opacity-70"
+                            onClick={() => { setShowModelPicker(true); setShowPlusMenu(false); }}
+                            className="glass-filter-pill flex sm:hidden items-center justify-center w-7 h-7 rounded-full cursor-pointer active:scale-95"
                             style={{ color: "var(--muted)" }}
-                            title={MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}
+                            title={triggerLabel}
                           >
                             <ChevronDown className="w-3.5 h-3.5" />
                           </button>
-                          <AnimatePresence>
-                          {showModelPicker && (
-                            <motion.div
-                              initial={{ opacity: 0, scale: 0.96, y: 4 }}
-                              animate={{ opacity: 1, scale: 1, y: 0 }}
-                              exit={{ opacity: 0, scale: 0.96, y: 4, transition: { duration: 0.13, ease: "easeIn" } }}
-                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                              className="absolute bottom-full right-0 mb-1.5 rounded-2xl p-1.5 min-w-[200px] z-50"
-                              style={{
-                                background: "var(--card)",
-                                boxShadow:
-                                  "0 1px 2px rgba(0,0,0,0.04), " +
-                                  "0 12px 32px -8px rgba(0,0,0,0.18), " +
-                                  "0 0 0 1px rgba(0,0,0,0.05)",
-                              }}
-                            >
-                              {MODEL_OPTIONS.map((m) => (
-                                <motion.button
-                                  key={m.id}
-                                  onClick={() => handleModelChange(m.id)}
-                                  whileTap={{ scale: 0.96 }}
-                                  transition={{ type: "spring", stiffness: 500, damping: 18, mass: 0.85 }}
-                                  className="w-full rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
-                                  style={{
-                                    color: m.id === currentModel ? "var(--accent)" : "var(--foreground)",
-                                    background: m.id === currentModel ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent",
-                                    boxShadow: m.id === currentModel ? "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -1px 0 rgba(220,103,67,0.12), 0 1px 3px -1px rgba(220,103,67,0.20)" : "none",
-                                  }}
-                                  onMouseEnter={(e) => { if (m.id !== currentModel) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.background = m.id === currentModel ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent"; }}
-                                >
-                                  <span className="flex items-center gap-2.5">
-                                    <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors" style={{ background: m.id === currentModel ? "rgba(220,103,67,0.14)" : "rgba(0,0,0,0.05)" }}>
-                                      {/* #D97757 = Claude brand orange — intentionally NOT var(--accent)
-                                          (#DC6743). The logo carries Claude's OWN color; the pill/text/check
-                                          carry our coral selection accent. Do NOT snap this to the token —
-                                          that kills the "selected model's mark comes alive in Claude orange"
-                                          effect. Unselected rows gray out (var(--muted)). */}
-                                      <ClaudeLogo className="w-4 h-4" style={{ color: m.id === currentModel ? "#D97757" : "var(--muted)" }} />
-                                    </span>
-                                    {m.label}
-                                  </span>
-                                  <span className="flex items-center gap-1.5 shrink-0">
-                                    {m.id === currentModel && <Check className="w-3.5 h-3.5" />}
-                                    <ModelInfoButton modelId={m.id} isOpen={infoTooltip === m.id} onOpenChange={setInfoTooltip} />
-                                  </span>
-                                </motion.button>
-                              ))}
-                            </motion.div>
-                          )}
-                          </AnimatePresence>
                         </div>
                         <button
                           className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 active:scale-95"
@@ -4041,89 +4006,39 @@ function CommandCenterInner() {
               style={{ color: "var(--foreground)" }}
             />
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-              <div className="relative" ref={modelPickerRef2}>
+              <div className="relative">
+                {/* Desktop: considered glass-pill trigger (shipped .glass-filter-pill
+                    material, same family as the "+" and suggestion chips). Opens the
+                    model browser; the label crossfades on change. */}
                 <button
-                  onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
-                  // pr trimmed 2.5→1 (spacing only, behavior untouched): the model picker's
-                  // right padding made the model→mic gap read ~16px vs the mic→send ~6px, so
-                  // the trio looked loose. Evening it lets model-picker · mic · send read as
-                  // one deliberate cluster.
-                  className="hidden sm:flex items-center gap-1 pl-2.5 pr-1 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
-                  style={{ color: "var(--muted)" }}
+                  onClick={() => { setShowModelPicker(true); setShowPlusMenu(false); }}
+                  className="glass-filter-pill hidden sm:inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-full text-[11px] font-medium cursor-pointer active:scale-[0.98]"
+                  style={{ color: "var(--foreground)" }}
+                  title="Choose model"
                 >
                   <AnimatePresence mode="wait" initial={false}>
                     <motion.span
-                      key={currentModel}
+                      key={triggerLabel}
                       initial={{ opacity: 0, y: 5 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -5 }}
                       transition={{ duration: 0.15, ease: "easeOut" }}
                       className="inline-block"
                     >
-                      {MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}
+                      {triggerLabel}
                     </motion.span>
                   </AnimatePresence>
-                  <ChevronDown className="w-3 h-3" />
+                  <ChevronDown className="w-3 h-3" style={{ color: "var(--muted)" }} />
                 </button>
+                {/* Mobile: compact glass circle, same material. */}
                 <button
-                  onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
-                  className="flex sm:hidden items-center justify-center w-7 h-7 rounded-lg cursor-pointer transition-colors hover:opacity-70"
+                  onClick={() => { setShowModelPicker(true); setShowPlusMenu(false); }}
+                  className="glass-filter-pill flex sm:hidden items-center justify-center w-7 h-7 rounded-full cursor-pointer active:scale-95"
                   style={{ color: "var(--muted)" }}
-                  title={MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}
+                  title={triggerLabel}
                 >
                   <ChevronDown className="w-3.5 h-3.5" />
                 </button>
-                <AnimatePresence>
-                {showModelPicker && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.96, y: 4 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.96, y: 4, transition: { duration: 0.13, ease: "easeIn" } }}
-                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                    className="absolute bottom-full right-0 mb-1.5 rounded-2xl p-1.5 min-w-[200px] z-50"
-                    style={{
-                      background: "var(--card)",
-                      boxShadow:
-                        "0 1px 2px rgba(0,0,0,0.04), " +
-                        "0 12px 32px -8px rgba(0,0,0,0.18), " +
-                        "0 0 0 1px rgba(0,0,0,0.05)",
-                    }}
-                  >
-                    {MODEL_OPTIONS.map((m) => (
-                      <motion.button
-                        key={m.id}
-                        onClick={() => handleModelChange(m.id)}
-                        whileTap={{ scale: 0.96 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 18, mass: 0.85 }}
-                        className="w-full rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
-                        style={{
-                          color: m.id === currentModel ? "var(--accent)" : "var(--foreground)",
-                          background: m.id === currentModel ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent",
-                          boxShadow: m.id === currentModel ? "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -1px 0 rgba(220,103,67,0.12), 0 1px 3px -1px rgba(220,103,67,0.20)" : "none",
-                        }}
-                        onMouseEnter={(e) => { if (m.id !== currentModel) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = m.id === currentModel ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent"; }}
-                      >
-                        <span className="flex items-center gap-2.5">
-                          <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors" style={{ background: m.id === currentModel ? "rgba(220,103,67,0.14)" : "rgba(0,0,0,0.05)" }}>
-                            {/* #D97757 = Claude brand orange — intentionally NOT var(--accent)
-                                (#DC6743). The logo carries Claude's OWN color; the pill/text/check
-                                carry our coral selection accent. Do NOT snap this to the token —
-                                that kills the "selected model's mark comes alive in Claude orange"
-                                effect. Unselected rows gray out (var(--muted)). */}
-                            <ClaudeLogo className="w-4 h-4" style={{ color: m.id === currentModel ? "#D97757" : "var(--muted)" }} />
-                          </span>
-                          {m.label}
-                        </span>
-                        <span className="flex items-center gap-1.5 shrink-0">
-                          {m.id === currentModel && <Check className="w-3.5 h-3.5" />}
-                          <ModelInfoButton modelId={m.id} isOpen={infoTooltip === m.id} onOpenChange={setInfoTooltip} />
-                        </span>
-                      </motion.button>
-                    ))}
-                  </motion.div>
-                )}
-                </AnimatePresence>
               </div>
               <button
                 className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 active:scale-95"
@@ -4153,6 +4068,19 @@ function CommandCenterInner() {
       )}
 
       {/* Chat input is now inside the two-panel layout */}
+
+      {/* Model browser - one shared instance for both composers (chat + tasks),
+          a fixed overlay so placement here is purely structural. apiMode gates
+          credit vs BYOK (fail-closed to credit while loading); onSelect reuses
+          the proven handleModelChange persist path verbatim. */}
+      <ModelBrowserModal
+        open={showModelPicker}
+        onClose={() => setShowModelPicker(false)}
+        apiMode={apiMode}
+        loading={apiModeLoading}
+        currentModel={currentModel}
+        onSelect={handleModelChange}
+      />
     </div>
   );
 }

@@ -14,7 +14,7 @@ import { sendPerVmAlertDeduped } from "@/lib/admin-alert";
 import { trackProxy401, resetProxy401Count } from "@/lib/proxy-alert";
 import { repairCorruptedSession, type VMRecord } from "@/lib/ssh";
 import { routeModel, extractLastUserMessage, computeTierBudget, type RoutingContext, type RoutingDecision } from "@/lib/model-router";
-import { getRegistryCreditWeight } from "@/lib/model-registry";
+import { getRegistryCreditWeight, MODEL_TIER_BY_ID, getModelEntry } from "@/lib/model-registry";
 import { TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
 import { shouldFireCircuitBreaker, sendCircuitBreakerAlert, sendCronResumedNotification, resolveTelegramTarget } from "@/lib/cron-guard";
 import {
@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
       // `assigned_to` added 2026-06-01 for The Floor: the proxy is the universal
       // perk-up trigger (most agents use their own bot and never hit our inbound
       // webhooks). recordMessageIn needs the owner user_id. (PRD §35.)
-      "id, assigned_to, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls, user_timezone, cron_breaker_active, telegram_bot_token, telegram_chat_id"
+      "id, assigned_to, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, pinned_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls, user_timezone, cron_breaker_active, telegram_bot_token, telegram_chat_id"
     );
     profile.vm_lookup_ms = Date.now() - lookupStart;
 
@@ -728,6 +728,29 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // --- Credit model pinning: honor a deliberate pin (grant-governed) ---
+    // A pinned model is served + billed EXACTLY as chosen, every message — no
+    // content-classification, no tier-budget downgrade. Resolved HERE: AFTER the
+    // heartbeat/virtuals/infra classification (so a pin never hijacks a
+    // background call) and BEFORE the governor (~line 858) so the grant bills the
+    // pin's true weight. The proxy is authoritative — setting parsedBody.model
+    // means the upstream Anthropic call (providerBody at ~1234, sent at ~1267)
+    // gets the pinned model regardless of the gateway's on-disk primary, so a pin
+    // needs NO SSH and NO gateway restart. NULL pinned_model = Automatic
+    // (today's content-routing, byte-identical). Set only for all-inclusive VMs;
+    // BYOK never reaches this proxy (403 above).
+    let pinnedModel: string | null = null;
+    {
+      const pin = (vm as VMRecord & { pinned_model?: string | null }).pinned_model;
+      if (pin && !isHeartbeat && !isVirtuals && !isInfrastructureCall) {
+        pinnedModel = pin;
+        requestedModel = pin;
+        if (parsedBody) {
+          parsedBody.model = pin;
+        }
+      }
+    }
+
     // --- THE FLOOR: perk-up trigger (PRD §35, 2026-06-01 proxy-coverage fix) ---
     // The proxy is the UNIVERSAL message-arrival signal: most agents use their
     // own Telegram bot / web / mini-app, whose messages never touch our inbound
@@ -932,6 +955,19 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      // Pin-aware exhaustion: a user who pinned a model and hit their limit should
+      // see WHY (the pin's per-message cost), not a generic wall. No "credits left"
+      // number — the governor's exhausted branch doesn't return the running count,
+      // so it can't be computed accurately here.
+      if (pinnedModel) {
+        const pinWeight = getRegistryCreditWeight(pinnedModel);
+        const pinName = getModelEntry(pinnedModel)?.displayName ?? pinnedModel;
+        return friendlyAssistantResponse(
+          `${pinName} costs ${pinWeight} credits per message and you've reached today's limit. switch to Automatic to keep chatting, or pin a lighter model.`,
+          requestedModel,
+          isStreaming
+        );
+      }
       return friendlyAssistantResponse(
         `You've hit your daily message limit (${displayLimit}/${displayLimit}). Want to keep going? Grab more credits or upgrade your plan here:\n\nhttps://instaclaw.io/dashboard/billing`,
         requestedModel,
@@ -958,6 +994,19 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      // Pin-aware exhaustion: a user who pinned a model and hit their limit should
+      // see WHY (the pin's per-message cost), not a generic wall. No "credits left"
+      // number — the governor's exhausted branch doesn't return the running count,
+      // so it can't be computed accurately here.
+      if (pinnedModel) {
+        const pinWeight = getRegistryCreditWeight(pinnedModel);
+        const pinName = getModelEntry(pinnedModel)?.displayName ?? pinnedModel;
+        return friendlyAssistantResponse(
+          `${pinName} costs ${pinWeight} credits per message and you've reached today's limit. switch to Automatic to keep chatting, or pin a lighter model.`,
+          requestedModel,
+          isStreaming
+        );
+      }
       return friendlyAssistantResponse(
         `You've hit your daily message limit (${displayLimit}/${displayLimit}). Want to keep going? Grab more credits or upgrade your plan here:\n\nhttps://instaclaw.io/dashboard/billing`,
         requestedModel,
@@ -986,7 +1035,21 @@ export async function POST(req: NextRequest) {
     // toggles, and per-tier budget (returned by the merged limit check RPC).
     // Advisory only — if routing throws, we proceed with the original model.
     let routingDecision: RoutingDecision | null = null;
-    if (!isHeartbeat && !isVirtuals && !isInfrastructureCall) {
+    if (pinnedModel) {
+      // Pinned model: bypass the content classifier ENTIRELY. A pin cannot be
+      // content-routed or budget-downgraded because it never enters routeModel —
+      // honest by construction (model-router.ts is byte-untouched). requestedModel
+      // + parsedBody.model are already the pin (set in the pre-governor block);
+      // routingDecision is set here only for usage telemetry + the tier-counter
+      // skip below. pinnedModel is non-null only when !isHeartbeat && !isVirtuals
+      // && !isInfrastructureCall (gated at the pre-governor block), so this branch
+      // never steals a background call.
+      routingDecision = {
+        model: pinnedModel,
+        tier: MODEL_TIER_BY_ID[pinnedModel] ?? 2,
+        reason: "pinned model (grant-governed)",
+      };
+    } else if (!isHeartbeat && !isVirtuals && !isInfrastructureCall) {
       try {
         // Read tier budget from the merged limit check result
         const tierBudget = computeTierBudget(tier, limitResult ? {
@@ -1830,7 +1893,12 @@ export async function POST(req: NextRequest) {
     // governor. This leaves a credit user's opus auto-budget untouched by their
     // Fable usage.
     const servedFable = (routingDecision?.model ?? "").toLowerCase().includes("fable");
-    if (routingDecision && !isHeartbeat && !isInfrastructureCall && !servedFable) {
+    // A pinned model is grant-governed (the daily grant bills its true weight),
+    // NOT tier-budget-governed — so it must skip the tier-2/tier-3 call counter,
+    // exactly like Fable. Otherwise a pinned-Opus session would burn the user's
+    // Automatic opus call-budget and cross-contaminate later Automatic sessions.
+    const servedPinned = !!pinnedModel;
+    if (routingDecision && !isHeartbeat && !isInfrastructureCall && !servedFable && !servedPinned) {
       const baseCostWeight = routingDecision.tier === 1 ? 1 : routingDecision.tier === 2 ? 4 : 19;
       const costWeight = isToolContinuation ? baseCostWeight * 0.2 : baseCostWeight;
       supabase

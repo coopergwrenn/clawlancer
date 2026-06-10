@@ -10,26 +10,35 @@
  * Empty-search is captured by typing into the BYOK search in the harness.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ModelBrowserModal } from "@/components/model-browser-modal";
+
+const CFG: Record<string, { apiMode: "byok" | "all_inclusive" | null; currentModel: string; loading?: boolean }> = {
+  credit: { apiMode: "all_inclusive", currentModel: "automatic" },
+  "credit-pin": { apiMode: "all_inclusive", currentModel: "claude-opus-4-8" },
+  "credit-fable": { apiMode: "all_inclusive", currentModel: "claude-fable-5" },
+  byok: { apiMode: "byok", currentModel: "claude-opus-4-8" },
+  loading: { apiMode: null, currentModel: "automatic", loading: true },
+};
 
 export default function ModelPickerPreviewPage() {
   // Dev-only harness: never reachable in production (matches the sibling
   // app/dev/* preview pages' prod self-gate).
-  if (process.env.NODE_ENV === "production") return null;
+  const isProd = process.env.NODE_ENV === "production";
 
-  const search = typeof window !== "undefined" ? window.location.search : "";
-  const state = new URLSearchParams(search).get("state") || "credit";
+  // Read ?state= AFTER mount (useEffect) so server and client render the same
+  // initial markup — reading window.location during render is a hydration
+  // mismatch (the prior "1 Issue" in the dev overlay).
+  const [c, setC] = useState(CFG.credit);
+  const [selected, setSelected] = useState(CFG.credit.currentModel);
+  useEffect(() => {
+    const state = new URLSearchParams(window.location.search).get("state") || "credit";
+    const next = CFG[state] ?? CFG.credit;
+    setC(next);
+    setSelected(next.currentModel);
+  }, []);
 
-  const cfg: Record<string, { apiMode: "byok" | "all_inclusive" | null; currentModel: string; loading?: boolean }> = {
-    credit: { apiMode: "all_inclusive", currentModel: "claude-sonnet-4-6" },
-    "credit-fable": { apiMode: "all_inclusive", currentModel: "claude-fable-5" },
-    byok: { apiMode: "byok", currentModel: "claude-opus-4-8" },
-    loading: { apiMode: null, currentModel: "claude-sonnet-4-6", loading: true },
-  };
-  const c = cfg[state] ?? cfg.credit;
-
-  const [selected, setSelected] = useState(c.currentModel);
+  if (isProd) return null;
 
   return (
     <div

@@ -22,7 +22,7 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Search, Check, X, ChevronDown, Zap, Scale, Gem, Sparkles } from "lucide-react";
 import { ClaudeLogo } from "@/components/icons/claude-logo";
-import { SELECTABLE_MODELS, type ModelEntry } from "@/lib/model-registry";
+import { SELECTABLE_MODELS, getRegistryCreditWeight, type ModelEntry } from "@/lib/model-registry";
 
 type ApiMode = "byok" | "all_inclusive" | null;
 
@@ -39,7 +39,7 @@ const FAMILY_META: Record<
   haiku: { tier: "Fast", glyph: Zap, blurb: "Quick questions and rapid back-and-forth" },
   sonnet: { tier: "Balanced", glyph: Scale, blurb: "The everyday default for writing, coding, and analysis" },
   opus: { tier: "Most capable", glyph: Gem, blurb: "Hardest reasoning and complex multi-step work" },
-  fable: { tier: "Most powerful", glyph: Sparkles, blurb: "The most powerful model, for your hardest work" },
+  fable: { tier: "Premium", glyph: Sparkles, blurb: "The most powerful model, for your hardest work" },
 };
 
 const FAMILY_ORDER: ModelEntry["family"][] = ["haiku", "sonnet", "opus", "fable"];
@@ -60,7 +60,8 @@ export interface ModelBrowserModalProps {
   open: boolean;
   onClose: () => void;
   apiMode: ApiMode;
-  /** Current default_model. "Automatic" is shown selected when this is a non-Fable model. */
+  /** The current selection. For credit (all_inclusive): the pinned model id, or
+   *  "automatic" when nothing is pinned. For BYOK: the default_model id. */
   currentModel: string;
   /** apiMode still resolving from /api/vm/status - fail closed to the credit choices. */
   loading?: boolean;
@@ -79,9 +80,9 @@ export function ModelBrowserModal({
   const [query, setQuery] = useState("");
   const [showLegacy, setShowLegacy] = useState<Record<string, boolean>>({});
 
-  const fableSelected = currentModel.toLowerCase().includes("fable");
-
-  // BYOK groups: current models per family + legacy collapsed.
+  // Family groups: current models per family + legacy collapsed. Shared by the
+  // BYOK ladder and the credit pinnable ladder (same data, different row chrome).
+  // For credit the search box never renders, so `query` stays "" = the full set.
   const byokGroups = useMemo(() => {
     const q = query.trim().toLowerCase();
     return FAMILY_ORDER.map((family) => {
@@ -168,7 +169,15 @@ export function ModelBrowserModal({
             {/* Body */}
             <div className="overflow-y-auto px-3 pb-3 flex flex-col gap-1">
               {!isByok ? (
-                <CreditBody loading={loading} fableSelected={fableSelected} onSelect={onSelect} onClose={onClose} />
+                <CreditBody
+                  loading={loading}
+                  groups={byokGroups}
+                  currentModel={currentModel}
+                  showLegacy={showLegacy}
+                  setShowLegacy={setShowLegacy}
+                  onSelect={onSelect}
+                  onClose={onClose}
+                />
               ) : byokHasResults ? (
                 <ByokBody
                   groups={byokGroups}
@@ -190,29 +199,36 @@ export function ModelBrowserModal({
   );
 }
 
-/* ── Credit state: Automatic + Fable ─────────────────────────────────────── */
+/* ── Credit state: Automatic + the pinnable ladder ───────────────────────── */
 
 function CreditBody({
   loading,
-  fableSelected,
+  groups,
+  currentModel,
+  showLegacy,
+  setShowLegacy,
   onSelect,
   onClose,
 }: {
   loading: boolean;
-  fableSelected: boolean;
+  groups: { family: ModelEntry["family"]; current: ModelEntry[]; legacy: ModelEntry[] }[];
+  currentModel: string;
+  showLegacy: Record<string, boolean>;
+  setShowLegacy: (v: Record<string, boolean>) => void;
   onSelect: (id: string) => void;
   onClose: () => void;
 }) {
   const pick = (id: string) => { onSelect(id); onClose(); };
-  const autoSelected = !fableSelected;
+  const autoSelected = currentModel === "automatic";
 
   return (
     <>
-      {/* Automatic card - selected when not on Fable */}
+      {/* Automatic — the recommended default, on top with dignity. The one row
+          that chooses per message; everything below is a flat lock. */}
       <motion.button
         whileTap={{ scale: 0.985 }}
         transition={{ type: "spring", stiffness: 500, damping: 20, mass: 0.85 }}
-        onClick={() => pick("claude-sonnet-4-6")}
+        onClick={() => pick("automatic")}
         className="text-left rounded-2xl p-3.5 cursor-pointer transition-colors"
         style={{
           background: autoSelected ? SELECTED_BG : "rgba(0,0,0,0.025)",
@@ -233,59 +249,90 @@ function CreditBody({
           {autoSelected && <Check className="w-4 h-4" style={{ color: "var(--accent)" }} />}
         </div>
         <p className="text-[12px] mt-2 leading-relaxed" style={{ color: "var(--foreground)", opacity: 0.78 }}>
-          Your agent picks the best model for each task.
+          We pick the best model for each message.
         </p>
-        {/* "Spans" line: a DESCRIPTION of what Automatic covers, not selectable
-            chips. Load-bearing honesty (contained D1(B)): picking a tier doesn't
-            stick, so these must never read as tappable. Lead-in word + middot
-            separators + uniform muted weight + no chip backgrounds = prose, not a
-            button row. */}
-        <p className="flex items-center gap-1.5 flex-wrap mt-2 text-[11px]" style={{ color: "var(--muted)" }}>
-          <span style={{ opacity: 0.7 }}>Spans</span>
-          <span className="inline-flex items-center gap-1"><Zap className="w-3 h-3" />Fast</span>
-          <span style={{ opacity: 0.4 }}>·</span>
-          <span className="inline-flex items-center gap-1"><Scale className="w-3 h-3" />Balanced</span>
-          <span style={{ opacity: 0.4 }}>·</span>
-          <span className="inline-flex items-center gap-1"><Gem className="w-3 h-3" />Most capable</span>
-        </p>
-        <p className="text-[11px] mt-2.5" style={{ color: "var(--muted)" }}>
-          Uses 1 to 19 credits per message, matched to the task.
+        <p className="text-[11px] mt-2" style={{ color: "var(--muted)" }}>
+          1 to 19 credits per message, matched to what you ask.
         </p>
       </motion.button>
 
-      {/* Most powerful header */}
-      <p className="text-[10px] font-semibold tracking-wide uppercase px-1.5 pt-2 pb-1" style={{ color: "var(--muted)" }}>
-        Most powerful
-      </p>
+      {/* Lock-one-model section. The flat / every-message / no-switching framing
+          lives HERE once — the honest counterpoint to Automatic — so each row
+          below stays a clean name + price. */}
+      <div className="px-1.5 pt-3.5 pb-0.5">
+        <p className="text-[10px] font-semibold tracking-wide uppercase" style={{ color: "var(--muted)" }}>
+          Or lock one model
+        </p>
+        <p className="text-[11px] mt-1 leading-relaxed" style={{ color: "var(--muted)", opacity: 0.85 }}>
+          Runs every message at a flat rate. No automatic switching.
+        </p>
+      </div>
 
-      {/* Fable - the one sticky override, framed as reaching for the best */}
-      <motion.button
-        whileTap={{ scale: 0.985 }}
-        transition={{ type: "spring", stiffness: 500, damping: 20, mass: 0.85 }}
-        onClick={() => pick("claude-fable-5")}
-        className="text-left rounded-2xl p-3.5 cursor-pointer transition-colors relative overflow-hidden"
-        style={{
-          background: fableSelected ? SELECTED_BG : "rgba(0,0,0,0.025)",
-          boxShadow: fableSelected ? SELECTED_SHADOW : "inset 0 0 0 1px rgba(0,0,0,0.05)",
-        }}
-      >
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: fableSelected ? "rgba(220,103,67,0.14)" : "rgba(0,0,0,0.05)" }}>
-              <ClaudeLogo className="w-4 h-4" style={{ color: fableSelected ? "#D97757" : "var(--muted)" }} />
-            </span>
-            <span className="text-[14px] font-semibold" style={{ color: fableSelected ? "var(--accent)" : "var(--foreground)" }}>Fable 5</span>
-          </span>
-          {fableSelected && <Check className="w-4 h-4" style={{ color: "var(--accent)" }} />}
-        </div>
-        <p className="text-[12px] mt-2 leading-relaxed" style={{ color: "var(--foreground)", opacity: 0.78 }}>
-          Use the most powerful model for every message.
-        </p>
-        <p className="text-[11px] mt-2.5 font-medium" style={{ color: "var(--accent)" }}>
-          38 credits per message
-        </p>
-      </motion.button>
+      {/* Capability-first groups: one headline model per tier, older versions
+          tucked under disclosure (curate-and-disclose — stays clean as more
+          models land). */}
+      {groups.map(({ family, current, legacy }) => {
+        const headline = current[0];
+        const older = [...current.slice(1), ...legacy];
+        if (!headline) return null;
+        return (
+          <div key={family} className="flex flex-col">
+            <p className="text-[10px] font-semibold tracking-wide uppercase px-1.5 pt-2 pb-1" style={{ color: "var(--muted)" }}>
+              {FAMILY_META[family].tier}
+            </p>
+            <CreditTierRow m={headline} selected={headline.id === currentModel} onPick={pick} />
+            {older.length > 0 && (
+              <>
+                <button
+                  onClick={() => setShowLegacy({ ...showLegacy, [family]: !showLegacy[family] })}
+                  className="flex items-center gap-1 px-2 py-1.5 text-[11px] cursor-pointer transition-opacity hover:opacity-70"
+                  style={{ color: "var(--muted)" }}
+                >
+                  <ChevronDown className="w-3 h-3 transition-transform" style={{ transform: showLegacy[family] ? "rotate(180deg)" : "none" }} />
+                  older versions
+                </button>
+                {showLegacy[family] && older.map((m) => (
+                  <CreditTierRow key={m.id} m={m} selected={m.id === currentModel} onPick={pick} />
+                ))}
+              </>
+            )}
+          </div>
+        );
+      })}
     </>
+  );
+}
+
+function CreditTierRow({ m, selected, onPick }: { m: ModelEntry; selected: boolean; onPick: (id: string) => void }) {
+  const weight = getRegistryCreditWeight(m.id);
+  return (
+    <motion.button
+      whileTap={{ scale: 0.97 }}
+      transition={{ type: "spring", stiffness: 500, damping: 18, mass: 0.85 }}
+      onClick={() => onPick(m.id)}
+      className="w-full rounded-xl px-2 py-2 cursor-pointer transition-colors flex items-center justify-between text-left"
+      style={{
+        background: selected ? SELECTED_BG : "transparent",
+        boxShadow: selected ? SELECTED_SHADOW : "none",
+        color: selected ? "var(--accent)" : "var(--foreground)",
+      }}
+      onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = selected ? SELECTED_BG : "transparent"; }}
+    >
+      <span className="flex items-center gap-2.5 min-w-0">
+        <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: selected ? "rgba(220,103,67,0.14)" : "rgba(0,0,0,0.05)" }}>
+          <ClaudeLogo className="w-4 h-4" style={{ color: selected ? "#D97757" : "var(--muted)" }} />
+        </span>
+        <span className="text-[13px] font-medium truncate">{m.displayName}</span>
+      </span>
+      <span className="flex items-center gap-2 shrink-0 pl-2">
+        <span className="text-[12px] tabular-nums" style={{ color: selected ? "var(--accent)" : "var(--muted)" }}>
+          <span className="font-semibold">{weight}</span>
+          <span style={{ opacity: 0.7 }}> {weight === 1 ? "credit" : "credits"}/msg</span>
+        </span>
+        {selected && <Check className="w-3.5 h-3.5" />}
+      </span>
+    </motion.button>
   );
 }
 
