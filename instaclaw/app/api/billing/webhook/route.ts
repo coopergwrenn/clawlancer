@@ -12,6 +12,7 @@ import { thawVM } from "@/lib/vm-freeze-thaw";
 import { markThawPendingForV2User } from "@/lib/freeze-v2-thaw-entry";
 import { wakeIfHibernating } from "@/lib/wake-vm";
 import { clearStaleAuthCacheForUser } from "@/lib/auth-cache";
+import { fetchBillingExempt } from "@/lib/billing-status";
 import { randomUUID } from "node:crypto";
 
 // Give the function enough time for background processing via after().
@@ -1206,6 +1207,15 @@ async function processEvent(event: any) {
           })
           .eq("user_id", sub.user_id);
 
+        // Rule 67 / billing_exempt guard: a comp-exempt user (founder, family,
+        // partner-comp) whose Stripe sub is canceled MUST keep their VM running.
+        // The sub-row update above is accounting truth; the VM-mutation block
+        // below (telegram clear + gateway stop + suspend) is destructive and is
+        // skipped for exempt users. Without this, canceling an exempt user's sub
+        // suspends their agent within ~3s (the 2026-06-10 vm-1075 incident — this
+        // handler is the inline suspend path that never consulted billing_exempt).
+        const cancelExempt = await fetchBillingExempt(supabase, sub.user_id);
+
         // Stamp the VM with last_assigned_to so we can find it for future migration
         // if the user re-subscribes and gets a different VM
         const { data: userVm } = await supabase
@@ -1214,7 +1224,16 @@ async function processEvent(event: any) {
           .eq("assigned_to", sub.user_id)
           .single();
 
-        if (userVm) {
+        if (userVm && cancelExempt.exempt) {
+          logger.info("subscription.deleted: VM suspend SKIPPED — billing_exempt", {
+            route: "billing/webhook",
+            vmId: userVm.id,
+            userId: sub.user_id,
+            exemptReason: cancelExempt.exemptReason,
+          });
+        }
+
+        if (userVm && !cancelExempt.exempt) {
           // Stamp last_assigned_to and clear telegram fields
           // (releases unique constraint so a future VM can reuse the token)
           await supabase
@@ -1274,7 +1293,7 @@ async function processEvent(event: any) {
           .eq("id", sub.user_id)
           .single();
 
-        if (user?.email) {
+        if (user?.email && !cancelExempt.exempt) {
           try {
             await sendCanceledEmail(user.email);
           } catch (emailErr) {

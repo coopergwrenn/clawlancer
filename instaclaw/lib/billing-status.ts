@@ -117,7 +117,7 @@ export async function getBillingStatus(
  * side; the worst case is a real comp account briefly classified non-exempt,
  * which the freeze path's live Stripe re-check + grace windows still cushion).
  */
-async function fetchBillingExempt(
+export async function fetchBillingExempt(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<{ exempt: boolean; exemptReason: string | null }> {
