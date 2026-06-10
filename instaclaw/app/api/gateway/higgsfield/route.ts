@@ -113,7 +113,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing authentication" }, { status: 401 });
     }
 
-    const vm = await lookupVMByGatewayToken(gatewayToken, "id, tier");
+    // telegram_chat_id pulled for the A2 server-side delivery fallback (below).
+    const vm = await lookupVMByGatewayToken(gatewayToken, "id, tier, telegram_chat_id");
     if (!vm) {
       return NextResponse.json({ error: "Invalid gateway token" }, { status: 401 });
     }
@@ -184,12 +185,21 @@ export async function POST(req: NextRequest) {
       chat_id?: string | number;
     };
 
-    // chat_id is OPTIONAL (G1 Option B = agent-poll delivery: the agent replies
-    // in-conversation, so neither the gate nor the webhook needs a chat_id). If
-    // supplied (the v2 async path, once reliable chat_id capture exists), it's
-    // signed into the webhook payload and the webhook delivers directly; absent
-    // → the webhook settles only and the agent delivers from its poll loop.
-    const chatId = body.chat_id != null ? String(body.chat_id) : undefined;
+    // chat_id resolution — A1 primary, A2 fallback, then settle-only:
+    //   A1 (agent): the skill passes --chat-id from the conversation metadata.
+    //   A2 (fallback): if the agent omits it, use the VM's stored
+    //       telegram_chat_id (populated by the passive backfill on telegram
+    //       inbound traffic). Survives across VM restart — server-side state,
+    //       not conversation-bound — which is why webhook delivery beats the
+    //       agent-poll sketch for the async case.
+    // Either source signs `c` into the webhook payload → the webhook delivers
+    // the finished clip directly. Absent BOTH → webhook settles only and the
+    // agent delivers from its poll loop (v1). No chat_id is ever fabricated.
+    const chatIdFromAgent = body.chat_id != null ? String(body.chat_id) : undefined;
+    const chatId =
+      chatIdFromAgent ??
+      (vm.telegram_chat_id ? String(vm.telegram_chat_id) : undefined);
+    const chatIdSource = chatIdFromAgent ? "agent" : chatId ? "vm_fallback" : "none";
 
     // --- 1. VALIDATE model (allowlist) — NO arbitrary endpoint passthrough. ---
     const endpoint = (typeof body.endpoint === "string" && body.endpoint) || DEFAULT_MODEL;
@@ -343,6 +353,8 @@ export async function POST(req: NextRequest) {
       endpoint,
       held: usedFree ? 0 : est,
       free: usedFree,
+      delivery: chatId ? "webhook" : "agent_poll",
+      chatIdSource, // "agent" (A1) | "vm_fallback" (A2) | "none" — proves the delivery leg
     });
 
     return NextResponse.json({
@@ -350,6 +362,10 @@ export async function POST(req: NextRequest) {
       status: submit?.status ?? "queued",
       held: usedFree ? 0 : est,
       free: usedFree,
+      // "webhook" → the gate will deliver the finished clip itself (chat_id
+      // resolved via A1 or A2); "agent_poll" → the agent delivers from its poll
+      // loop. The skill keys its hands-off behavior on this.
+      delivery: chatId ? "webhook" : "agent_poll",
     });
   } catch (err) {
     logger.error("Higgsfield proxy error", {
