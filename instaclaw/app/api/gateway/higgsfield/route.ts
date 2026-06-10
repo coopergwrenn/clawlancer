@@ -89,6 +89,21 @@ function denialResponse(reason: string, info: Record<string, unknown>) {
 
 export async function POST(req: NextRequest) {
   try {
+    // --- HIGGSFIELD_GATE_ENABLED: emergency kill-switch (fail-closed; unset = OFF). ---
+    // Tourniquet ahead of full G9 (per-VM granularity / dashboard / alerts). Gates
+    // BOTH create AND status before any auth or spend path runs. A live
+    // HIGGSFIELD_CLOUD_KEY-spending endpoint never exists on prod without an off button.
+    if (process.env.HIGGSFIELD_GATE_ENABLED !== "true") {
+      logger.warn("Higgsfield gate disabled (kill-switch)", {
+        route: "gateway/higgsfield",
+        enabledRaw: process.env.HIGGSFIELD_GATE_ENABLED ?? "(unset)",
+      });
+      return NextResponse.json(
+        { error: "video_disabled", message: "Video generation is temporarily unavailable." },
+        { status: 503 },
+      );
+    }
+
     // --- Authenticate via gateway token; pull tier for the free allowance. ---
     const authHeader = req.headers.get("authorization");
     const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;

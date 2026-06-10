@@ -56,6 +56,18 @@ function verifySig(data: string, sig: string, secret: string): boolean {
 
 export async function POST(req: NextRequest) {
   try {
+    // --- HIGGSFIELD_GATE_ENABLED: emergency kill-switch (fail-closed; unset = OFF). ---
+    // When off, the whole gate is dark — settle/deliver pause too. Higgsfield retries
+    // for ~2h, so re-enabling within that window still settles + delivers in-flight
+    // renders (deliberately a 503 here, not the usual 200-ack, to keep them retryable).
+    if (process.env.HIGGSFIELD_GATE_ENABLED !== "true") {
+      logger.warn("Higgsfield webhook disabled (kill-switch)", {
+        route: "gateway/higgsfield/webhook",
+        enabledRaw: process.env.HIGGSFIELD_GATE_ENABLED ?? "(unset)",
+      });
+      return NextResponse.json({ error: "video_disabled" }, { status: 503 });
+    }
+
     const secret = process.env.HIGGSFIELD_WEBHOOK_SECRET;
     const cloudKey = process.env.HIGGSFIELD_CLOUD_KEY;
     if (!secret || !cloudKey) {
