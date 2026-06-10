@@ -228,6 +228,10 @@
     {
       "path": "/api/cron/auth-abandon-reaper",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/frontier-spend-anomaly",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

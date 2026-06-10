@@ -499,6 +499,16 @@ export async function POST(req: NextRequest) {
   const holdMeta = {
     hold: true,
     mode: decision.mode,
+    // Consent grade (F5 anomaly): how this spend was authorized, so the spend-anomaly
+    // monitor can EXCLUDE genuinely human-consented spends (session) and alarm only on
+    // UNCONSENTED ones (autonomous = agent alone; forgeable = the raw human_approved bool,
+    // which a compromised agent can set). session = the human approved it in-browser.
+    consent_grade:
+      decision.mode === "autonomous"
+        ? "autonomous"
+        : decision.reason === "human_approved_session"
+          ? "session"
+          : "forgeable",
     endpoint: v.endpoint,
     category: v.category,
     tags: v.tags,
