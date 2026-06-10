@@ -796,6 +796,60 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // --- Passive telegram_chat_id backfill (enables the video gate's A2 fallback) ---
+    // The Higgsfield video gate's A2 delivery path (app/api/gateway/higgsfield)
+    // delivers a finished clip server-side using vm.telegram_chat_id when the
+    // agent didn't pass a chat_id. That column is NULL until something populates
+    // it. The proxy is the universal message-arrival signal, and OpenClaw injects
+    // the inbound chat_id into the conversation metadata as
+    // "chat_id":"telegram:<digits>" (observed in trace 87303c11) — so we harvest
+    // it here, passively, the first time we see it.
+    //
+    // ZERO effect on non-video traffic, by construction:
+    //   - Guarded on !vm.telegram_chat_id → runs at most ONCE per VM lifetime;
+    //     after the first hit every future request short-circuits this block.
+    //   - Runs entirely inside after() → executes AFTER the response is sent, so
+    //     it can add no latency to and cannot fail the chat completion.
+    //   - Reads only lastUserText (already extracted above) — no new body parse.
+    //   - Writes ONLY the telegram_chat_id column, guarded .is(null) so a
+    //     concurrent write can't be clobbered — touches nothing in the routing,
+    //     billing, model-selection, request, or response path.
+    //
+    // PRE-FLEET HARDENING (G9): a user could type the literal
+    // "chat_id":"telegram:N" to seed a chosen value. Practical risk is near-zero
+    // (the VM's bot only delivers via its own token to chats it already shares
+    // with the user, so a 1:1 agent can't be made to leak to a third party), and
+    // A2 is only a FALLBACK. Before fleet rollout, anchor extraction to the
+    // OpenClaw runtime-context block specifically (not arbitrary user text).
+    // Canary scope is vm-050 (Cooper, single trusted user) → simple match is fine.
+    if (!vm.telegram_chat_id && lastUserText) {
+      const chatIdSnapshot = lastUserText; // capture for the deferred closure
+      const backfillVmId = vm.id;
+      after(async () => {
+        try {
+          const m = chatIdSnapshot.match(/"chat_id"\s*:\s*"telegram:(-?\d{4,})"/);
+          if (!m) return;
+          const discovered = m[1];
+          await getSupabase()
+            .from("instaclaw_vms")
+            .update({ telegram_chat_id: discovered })
+            .eq("id", backfillVmId)
+            .is("telegram_chat_id", null); // race-safe: only set if still NULL
+          logger.info("passive telegram_chat_id backfill", {
+            route: "gateway/proxy",
+            vmId: backfillVmId,
+          });
+        } catch (err) {
+          // Never let the backfill surface — it is pure best-effort.
+          logger.info("passive telegram_chat_id backfill failed (non-blocking)", {
+            route: "gateway/proxy",
+            vmId: backfillVmId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+    }
+
     // --- Bug A fix: advance heartbeat_next_at UNCONDITIONALLY before upstream ---
     // The post-success block below (was lines ~1564-1589) only fires after a 2xx
     // upstream response. When upstream errors (MiniMax 1008, Anthropic outage,
