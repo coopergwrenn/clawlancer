@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-10
 
-Window: `ede82a9d9e78f054607a866f81c4a7f51143f70d` → `HEAD` (HEAD = `59672546`)
+Window: `59672546b73158ba219575613e6ced8f22f5e06c` → `HEAD` (HEAD = `d1577583`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 59672546b73158ba219575613e6ced8f22f5e06c -->
+<!-- LAST_GENERATED_SHA: d1577583d47fb7d459b18b60bd303fa0bb333ce5 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `59672546` 2026-06-10 — fix(billing): extend billing_exempt guard to the 3 remaining suspend paths (P0 vm-1075) [2 files] _(ai-assisted)_
-- `6e6ac75c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `d1577583` 2026-06-10 — fix(frontier): travel requires SESSION approval unconditionally (red-team F2) [4 files] _(ai-assisted)_
+- `da80ca09` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `59672546` 2026-06-10 — fix(billing): extend billing_exempt guard to the 3 remaining suspend paths (P0 vm-1075) [2 files] _(ai-assisted)_
+- `d1577583` 2026-06-10 — fix(frontier): travel requires SESSION approval unconditionally (red-team F2) [4 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `6e6ac75c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `da80ca09` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `59672546` 2026-06-10 — fix(billing): extend billing_exempt guard to the 3 remaining suspend paths (P0 vm-1075)
+- `d1577583` 2026-06-10 — fix(frontier): travel requires SESSION approval unconditionally (red-team F2)
 
 ## Appendix — every commit (chronological)
 
-- `6e6ac75c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `59672546` 2026-06-10 — fix(billing): extend billing_exempt guard to the 3 remaining suspend paths (P0 vm-1075) [2 files] _(ai-assisted)_
+- `da80ca09` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `d1577583` 2026-06-10 — fix(frontier): travel requires SESSION approval unconditionally (red-team F2) [4 files] _(ai-assisted)_
