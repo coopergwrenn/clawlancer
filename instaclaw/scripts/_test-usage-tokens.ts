@@ -102,6 +102,25 @@ eq("no usage anywhere → all null", extractStreamingUsage(`event: ping\ndata: {
   output_tokens: null,
 });
 
+console.log("\n== empty completion (200 + stop + no content): output_tokens=0 must be captured as 0, NOT dropped ==");
+// This is the fleet-wide empty-rate detector shape (vm-050 fable empties,
+// 2026-06-10). Real input, output_tokens:0 — must survive as 0, not null.
+eq("non-streaming empty completion", parseUsageFromJson({ stop_reason: "stop", content: [], usage: { input_tokens: 31000, output_tokens: 0 } }), {
+  input_tokens: 31000,
+  output_tokens: 0,
+  cache_read_tokens: null,
+  cache_creation_tokens: null,
+});
+ok("non-streaming empty → hasAnyToken true (input present) → UPDATE fires", hasAnyToken(parseUsageFromJson({ usage: { input_tokens: 31000, output_tokens: 0 } })) === true);
+eq(
+  "streaming empty completion (message_start input, message_delta output:0)",
+  extractStreamingUsage(
+    `event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":31000,"cache_read_input_tokens":30000,"output_tokens":0}}}\n\n` +
+      `event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"stop"},"usage":{"output_tokens":0}}\n\n`,
+  ),
+  { input_tokens: 31000, cache_read_tokens: 30000, cache_creation_tokens: null, output_tokens: 0 },
+);
+
 console.log("\n== hasAnyToken ==");
 ok("all-null → false", hasAnyToken({ input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_creation_tokens: null }) === false);
 ok("null arg → false", hasAnyToken(null) === false);
