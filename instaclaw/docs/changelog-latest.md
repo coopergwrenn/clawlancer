@@ -1,18 +1,18 @@
 # Changelog — generated 2026-06-10
 
-Window: `f47ffa7bed90ce91b8f9e35ecdf5cfb94676e82b` → `HEAD` (HEAD = `0e81ff8d`)
+Window: `0e81ff8db706e0d20b7b7c7c878cbc020f037bd4` → `HEAD` (HEAD = `a993ce25`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 0e81ff8db706e0d20b7b7c7c878cbc020f037bd4 -->
+<!-- LAST_GENERATED_SHA: a993ce254fb516750029a3a5baf19f88e96ae75c -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `c829de9c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `0e81ff8d` 2026-06-10 — docs(frontier): Mastercard AP4M strategic memo (research-only) [1 files] _(ai-assisted)_
+- `a993ce25` 2026-06-10 — fix(channel-routing): pin stable gateway session for iMessage/shared-bot relay [1 files] _(ai-assisted)_
+- `4086c729` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `a993ce25` 2026-06-10 — fix(channel-routing): pin stable gateway session for iMessage/shared-bot relay [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -43,18 +43,17 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `c829de9c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `0e81ff8d` 2026-06-10 — docs(frontier): Mastercard AP4M strategic memo (research-only) [1 files] _(ai-assisted)_
+- `4086c729` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `0e81ff8d` 2026-06-10 — docs(frontier): Mastercard AP4M strategic memo (research-only)
+- `a993ce25` 2026-06-10 — fix(channel-routing): pin stable gateway session for iMessage/shared-bot relay
 
 ## Appendix — every commit (chronological)
 
-- `c829de9c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `0e81ff8d` 2026-06-10 — docs(frontier): Mastercard AP4M strategic memo (research-only) [1 files] _(ai-assisted)_
+- `4086c729` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `a993ce25` 2026-06-10 — fix(channel-routing): pin stable gateway session for iMessage/shared-bot relay [1 files] _(ai-assisted)_
