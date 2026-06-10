@@ -6,13 +6,13 @@
     "dev": "next dev --port 3001",
     "build": "npx tsx scripts/verify-migrations.ts && npx tsx scripts/_generate-matchpool-content.ts && npx tsx scripts/_generate-gbrain-content.ts && rm -rf .next/cache/.tsbuildinfo && next build",
     "start": "next start",
-    "lint": "eslint",
-    "test:frontier": "npx tsx scripts/_test-frontier-authz.ts && npx tsx scripts/_test-frontier-policy.ts && npx tsx scripts/_test-frontier-standing.ts && npx tsx scripts/_test-frontier-headroom.ts && npx tsx scripts/_test-frontier-ceiling-reversal.ts && npx tsx scripts/_test-frontier-anomaly-ask.ts && npx tsx scripts/_test-frontier-floor-reversal.ts"
+    "lint": "eslint"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1048.0",
     "@coinbase/cdp-sdk": "^1.44.0",
     "@coinbase/x402": "^2.1.0",
+    "@higgsfield/client": "0.2.1",
     "@novnc/novnc": "^1.6.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
