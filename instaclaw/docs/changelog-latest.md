@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-10
 
-Window: `4b34d917c55d08e82c498eab684cff31e2362883` → `HEAD` (HEAD = `2cc09902`)
+Window: `2cc0990284724ca58a995b17a057a727561ee87b` → `HEAD` (HEAD = `a8110793`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 2cc0990284724ca58a995b17a057a727561ee87b -->
+<!-- LAST_GENERATED_SHA: a8110793111b315a32f7397faaa3b9488d15a627 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `2cc09902` 2026-06-10 — feat(billing): billing_exempt Path-0 exemption — replaces drifted PROTECTED_USER_IDS [4 files] _(ai-assisted)_
-- `0166f8ab` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `a8110793` 2026-06-10 — chore(frontier): promote frontier_spend_approvals migration to migrations/ (Rule 56) [2 files] _(ai-assisted)_
+- `887f621f` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `2cc09902` 2026-06-10 — feat(billing): billing_exempt Path-0 exemption — replaces drifted PROTECTED_USER_IDS [4 files] _(ai-assisted)_
+- `a8110793` 2026-06-10 — chore(frontier): promote frontier_spend_approvals migration to migrations/ (Rule 56) [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `0166f8ab` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `887f621f` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `2cc09902` 2026-06-10 — feat(billing): billing_exempt Path-0 exemption — replaces drifted PROTECTED_USER_IDS
+- `a8110793` 2026-06-10 — chore(frontier): promote frontier_spend_approvals migration to migrations/ (Rule 56)
 
 ## Appendix — every commit (chronological)
 
-- `0166f8ab` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `2cc09902` 2026-06-10 — feat(billing): billing_exempt Path-0 exemption — replaces drifted PROTECTED_USER_IDS [4 files] _(ai-assisted)_
+- `887f621f` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `a8110793` 2026-06-10 — chore(frontier): promote frontier_spend_approvals migration to migrations/ (Rule 56) [2 files] _(ai-assisted)_
