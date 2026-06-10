@@ -109,7 +109,11 @@ def _load_env_var(name):
 
 
 def _gate_base():
-    base = (os.environ.get("INSTACLAW_GATEWAY_BASE") or "https://instaclaw.io").rstrip("/")
+    # _load_env_var reads ~/.openclaw/.env first, then falls back to os.environ —
+    # so the canary's branch-alias base (set in .env) is honored even if the skill
+    # subprocess doesn't inherit it from the gateway's process env. Prod default
+    # stays instaclaw.io when neither is set.
+    base = (_load_env_var("INSTACLAW_GATEWAY_BASE") or "https://instaclaw.io").rstrip("/")
     return base + "/api/gateway/higgsfield"
 
 
