@@ -7,7 +7,7 @@
     "build": "npx tsx scripts/verify-migrations.ts && npx tsx scripts/_generate-matchpool-content.ts && npx tsx scripts/_generate-gbrain-content.ts && rm -rf .next/cache/.tsbuildinfo && next build",
     "start": "next start",
     "lint": "eslint",
-    "test:frontier": "npx tsx scripts/_test-frontier-authz.ts && npx tsx scripts/_test-frontier-policy.ts && npx tsx scripts/_test-frontier-standing.ts && npx tsx scripts/_test-frontier-headroom.ts && npx tsx scripts/_test-frontier-ceiling-reversal.ts && npx tsx scripts/_test-frontier-anomaly-ask.ts && npx tsx scripts/_test-frontier-floor-reversal.ts && npx tsx scripts/_test-frontier-settings-monotonic.ts"
+    "test:frontier": "npx tsx scripts/_test-frontier-authz.ts && npx tsx scripts/_test-frontier-policy.ts && npx tsx scripts/_test-frontier-standing.ts && npx tsx scripts/_test-frontier-headroom.ts && npx tsx scripts/_test-frontier-ceiling-reversal.ts && npx tsx scripts/_test-frontier-anomaly-ask.ts && npx tsx scripts/_test-frontier-floor-reversal.ts && npx tsx scripts/_test-frontier-settings-monotonic.ts && npx tsx scripts/_test-frontier-approvals.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1048.0",

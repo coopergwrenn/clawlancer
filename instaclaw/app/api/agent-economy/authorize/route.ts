@@ -85,6 +85,14 @@ import { HOLD_TTL_MS, SPEND_WINDOW_MS } from "@/lib/frontier-ledger-db";
 import { decideAuthorization } from "@/lib/frontier-authz";
 import { isFrontierSpendKilled } from "@/lib/frontier-kill-switch";
 import { isFrontierSpendEnabled } from "@/lib/frontier-spend-optin";
+import { evaluateApproval } from "@/lib/frontier-approvals";
+import {
+  lookupApproval,
+  mintPendingApproval,
+  consumeApproval,
+  sendForgeableSpendNotification,
+  requireSessionApprovalAboveThreshold,
+} from "@/lib/frontier-approval-io";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30; // DB reads + one insert, no LLM (Rule 11 short tier)
@@ -398,12 +406,38 @@ export async function POST(req: NextRequest) {
     allowedCategories,
   });
 
+  // ── Human-approval tier (Model C): the session-rooted approval row (unforgeable)
+  //    vs the raw body bool (forgeable). Look up any approval the human minted for
+  //    THIS spend and bind it to the EXACT spend identity (anti-amount-swap: a $1
+  //    approval cannot authorize a $100 spend reusing the same request_id). ──
+  const counterpartyLabel = v.counterparty_vm_id ?? v.counterparty_address ?? v.endpoint ?? null;
+  const approvalRow = await lookupApproval(supabase, vmId, v.request_id);
+  const approvalVerdict = evaluateApproval(
+    approvalRow,
+    { amountUsd: v.amount_usd, category: v.category, counterparty: counterpartyLabel },
+    nowMs,
+  );
+  if (approvalVerdict === "identity_mismatch") {
+    return NextResponse.json(
+      {
+        authorized: false, mode: null, outcome: "ask_first", reason: "approval_identity_mismatch",
+        standing: standingSummary(standing), spent_today_usd: reserveAwareSpent,
+        policy_bands: evaluation.effectiveBands, standing_truncated: standingTruncated,
+      },
+      { status: 200 },
+    );
+  }
+  const sessionApproved = approvalVerdict === "approved";
+
   const decision = decideAuthorization({
     evaluation,
     standing,
     reserveAwareSpentTodayUsd: reserveAwareSpent,
     amountUsd: v.amount_usd,
-    humanApproved: v.human_approved,
+    humanApprovedForgeable: v.human_approved,
+    sessionApproved,
+    justDoItPerTxUsd: evaluation.effectiveBands.justDoItPerTx,
+    requireSessionAboveThreshold: requireSessionApprovalAboveThreshold(),
     categoryKnown: v.category !== null,
   });
 
@@ -420,8 +454,42 @@ export async function POST(req: NextRequest) {
 
   // ── Not authorized: a valid business answer (ask the human / hard no). No hold. ──
   if (!decision.authorized) {
-    return NextResponse.json({ authorized: false, mode: null, ...commonBody }, { status: 200 });
+    // On ask_first (human-resolvable — a session approval converts ANY ask_first to
+    // authorized at Gate 3), mint/reuse a pending approval capturing this exact spend
+    // and return the session-authed confirm URL for the agent to relay to its human.
+    // Hard denies (outcome "deny": ceiling / ban / drain / privacy) get NO URL — a
+    // human cannot per-spend-override a configured hard limit (Gate 1 is absolute).
+    let approval: { approvalId: string; approvalUrl: string } | null = null;
+    if (decision.outcome === "ask_first") {
+      approval = await mintPendingApproval(supabase, {
+        vmId, ownerId, requestId: v.request_id,
+        amountUsd: v.amount_usd, category: v.category, counterparty: counterpartyLabel, nowMs,
+      });
+    }
+    return NextResponse.json(
+      {
+        authorized: false, mode: null, ...commonBody,
+        ...(approval ? { approval_url: approval.approvalUrl, approval_id: approval.approvalId } : {}),
+      },
+      { status: 200 },
+    );
   }
+
+  // Post-authorize side effects on a FRESH reserve (not idempotent retries — those
+  // already ran on the original authorize): consume a session approval (single-use)
+  // OR fire the out-of-band detection notification for a forgeable-honored spend.
+  // Both best-effort; neither blocks or reverses the authorized hold.
+  const afterFreshAuthorize = async (): Promise<void> => {
+    if (decision.reason === "human_approved_session") {
+      await consumeApproval(supabase, vmId, v.request_id);
+    } else if (decision.reason === "human_approved") {
+      await sendForgeableSpendNotification(
+        supabase,
+        { id: vmId, telegram_bot_token: vm.telegram_bot_token as string | null, telegram_chat_id: vm.telegram_chat_id as string | null },
+        { amountUsd: v.amount_usd, counterparty: counterpartyLabel, category: v.category, nowMs },
+      );
+    }
+  };
 
   // ── Authorized: atomically reserve the spend as a pending hold (P1-4). ──
   const holdMeta = {
@@ -476,7 +544,10 @@ export async function POST(req: NextRequest) {
     p_metadata: holdMeta,
     p_cap_daily: evaluation.effectiveBands.neverPerDay,
     p_cap_earned: decision.earnedDailyBudgetUsd,
-    p_human_approved: v.human_approved,
+    // The earned-budget lift is tied to the DECISION (session OR forgeable), not the
+    // raw body bool — a session-approved spend has human_approved=false in the body
+    // yet must lift the earned ceiling. mode==="human_approved" iff either tier honored.
+    p_human_approved: decision.mode === "human_approved",
     p_window_start: new Date(nowMs - SPEND_WINDOW_MS).toISOString(),
     p_fresh_pending_cutoff: new Date(nowMs - HOLD_TTL_MS).toISOString(),
   });
@@ -489,7 +560,10 @@ export async function POST(req: NextRequest) {
 
   if (!rpcErr && rpcData) {
     const r = rpcData as { reserved?: boolean; id?: string; conflict?: boolean; reason?: string };
-    if (r.reserved && r.id) return authorizedResponse(r.id, false);
+    if (r.reserved && r.id) {
+      await afterFreshAuthorize();
+      return authorizedResponse(r.id, false);
+    }
     if (r.conflict) return idempotentReplyForExisting();
     if (r.reason === "invalid_counterparty") {
       return NextResponse.json({ error: "counterparty_vm_id does not exist" }, { status: 400 });
@@ -518,7 +592,10 @@ export async function POST(req: NextRequest) {
   };
   const { data: inserted, error: insertErr } = await supabase
     .from("frontier_transactions").insert(holdRow).select("id").single();
-  if (!insertErr && inserted) return authorizedResponse(inserted.id, false);
+  if (!insertErr && inserted) {
+    await afterFreshAuthorize();
+    return authorizedResponse(inserted.id, false);
+  }
   if (insertErr?.code === "23505") return idempotentReplyForExisting();
   if (insertErr?.code === "23503") return NextResponse.json({ error: "counterparty_vm_id does not exist" }, { status: 400 });
   if (insertErr?.code === "23514") return NextResponse.json({ error: "value failed a database constraint" }, { status: 400 });
