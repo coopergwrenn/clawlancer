@@ -1,18 +1,18 @@
 # Changelog — generated 2026-06-10
 
-Window: `77d0878fe759c1e73224ffeafde90015f4e35118` → `HEAD` (HEAD = `ede82a9d`)
+Window: `ede82a9d9e78f054607a866f81c4a7f51143f70d` → `HEAD` (HEAD = `59672546`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: ede82a9d9e78f054607a866f81c4a7f51143f70d -->
+<!-- LAST_GENERATED_SHA: 59672546b73158ba219575613e6ced8f22f5e06c -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `adced1ed` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `ede82a9d` 2026-06-10 — docs(frontier): adversarial red-team of the spend surface (2026-06-10) [1 files] _(ai-assisted)_
+- `59672546` 2026-06-10 — fix(billing): extend billing_exempt guard to the 3 remaining suspend paths (P0 vm-1075) [2 files] _(ai-assisted)_
+- `6e6ac75c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `59672546` 2026-06-10 — fix(billing): extend billing_exempt guard to the 3 remaining suspend paths (P0 vm-1075) [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -43,18 +43,17 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `adced1ed` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `ede82a9d` 2026-06-10 — docs(frontier): adversarial red-team of the spend surface (2026-06-10) [1 files] _(ai-assisted)_
+- `6e6ac75c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `ede82a9d` 2026-06-10 — docs(frontier): adversarial red-team of the spend surface (2026-06-10)
+- `59672546` 2026-06-10 — fix(billing): extend billing_exempt guard to the 3 remaining suspend paths (P0 vm-1075)
 
 ## Appendix — every commit (chronological)
 
-- `adced1ed` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `ede82a9d` 2026-06-10 — docs(frontier): adversarial red-team of the spend surface (2026-06-10) [1 files] _(ai-assisted)_
+- `6e6ac75c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `59672546` 2026-06-10 — fix(billing): extend billing_exempt guard to the 3 remaining suspend paths (P0 vm-1075) [2 files] _(ai-assisted)_
