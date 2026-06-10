@@ -128,3 +128,29 @@ fleet.** vm-050 torn down to canonical. Free-only path; commerce stack deferred.
 - "~1 day" items assume no new surprises; the canary's whole lesson is that surprises hide in the tool-timeout/settle/routing seams — budget slack.
 - Nothing here is "documented = done." Every DONE above cites a probe/commit/DB row; every NOT DONE is either never-attempted or attempted-and-blocked with the blocker named.
 - The single highest-leverage item is **#1 (M5)** — it's the proven blocker to a working video, and it's the upstream trigger of the session poison that the whole incident cascaded from.
+
+---
+
+## 2026-06-10 e2e canary — delivery-tail findings, fixes, ledger, G-list
+
+### Defects found + fixed (deployed to prod, main 4db1a85b)
+- **Free-cap counted released holds** (Rule 25): G11 swept 2 orphans to `failed`; the all-statuses free count consumed vm-050's starter cap → image submit denied `insufficient_credits` → silent legacy fallback. Fix: `instaclaw_video_reserve_spend` counts only `status IN ('pending','settled')` (migration `20260610193000`, applied to prod).
+- **Image delivered as video** (00:00 unplayable): `soul/standard` (kind:image) webhook-delivered as `higgsfield.mp4` via the `images[].url` fallback; A2 signed its chat_id. Fix: gate forces no chat_id for `kind:image`; webhook branches on registry kind + delivers `video.url` only.
+- **Duplicate delivery**: image webhook double-fired (3:57+3:58; video once at 4:03) — handler is slow (inline asset fetch+upload) so Higgsfield retried. Fix: `instaclaw_video_claim_delivery` per-render CAS (migration `20260610203000`, applied to prod); webhook fails open if absent.
+
+### G-list (rollout gates — G9 review, DO NOT build yet)
+- **Quality default (Cooper: option A leaning).** dop/lite as free default is a downgrade vs legacy muapi (kling-class, effectively free in-plan). Cost-per-render (HF credit = $0.0625):
+
+  | Model | Cost/render | vs lite | Tier |
+  |---|---|---|---|
+  | dop/lite | $0.125 | — | current free default |
+  | dop/standard | $0.5625 | 4.5× | **option A: new free default** |
+  | kling v2.1 pro (10s) | $0.9375 | 7.5× | paid premium (= legacy kling-3.0) |
+
+  Option A (dop/standard free, kling paid premium): starter 2/day ≈ $34/mo/VM (vs lite $7.5). Final call at G9. Change touches `resolve_model` default + the model's `freeEligible` flag + SKILL.md expectation-setting + upsell path.
+- **Guard 3b (narrow legacy higgsfield-video to extend-only).** Can't be canary-scoped — higgsfield-video is reconciler-managed from main (file-drift reverts a vm-050 SCP). Ships WITH the fleet rollout (when higgsfield-cloud replaces it), not before. Canary relies on guard 3a (higgsfield-cloud hard-rule, Rule 28).
+- **Gate-side structural fallback guard.** Legacy muapi lane server-side-rejects new-video requests (belt beyond SKILL.md). Rollout item.
+
+### Canary teardown ledger (reverse/account at e2e close)
+- vm-050 `video_credit_balance`: granted 0 → **40** (2026-06-10, for the kling parity (a) run). Reverse to 0 at close, accounting for the ~18 credits one kling render consumes (≈ $0.9375 real Higgsfield spend).
+- Synthetic rows: claim-RPC verify test row inserted + deleted (count baseline 4 → 4, clean). Scenario (d) will insert + delete a synthetic orphan — account for it at close.
