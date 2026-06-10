@@ -165,6 +165,44 @@ export function effectiveBands(
   return overrides ? clampOverrides(staked, overrides) : staked;
 }
 
+// ── Category-scoped band layer: travel (ToolRouter StableTravel — §6) ──────────
+//
+// Real travel bookings (hotels, flights) exceed every tier's neverPerTx ($50 pro /
+// $200 power), which is a Gate-1 HARD DENY that human approval cannot override. So
+// the travel category needs its OWN ceiling, RAISED over the tier:
+//   - neverPerTx  $1200,  neverPerDay  $3000   (the raise — real bookings fit)
+//   - justDoItPerTx = justDoItPerDay = 0       (LOAD-BEARING: every travel booking
+//     goes through ask_first → human approval, NEVER autonomous; consent-always)
+//
+// Safety invariants (proven in scripts/_test-frontier-categories.ts):
+//   (a) RAISE layered over tier, NOT a loosening of tier bands — non-travel spends
+//       use the tier effectiveBands unchanged (the selection below keys on category).
+//   (b) Tighten-only with a hard cap: a user's neverPerTx/neverPerDay override clamps
+//       travel DOWN (a user's explicit per-tx hard ceiling binds travel too — no
+//       surprising allow), and min(TRAVEL_MAX, …) means an override can NEVER raise
+//       travel above $1200/$3000.
+//   (c) justDoItPerTx is hardcoded 0 and NEVER read from the override — justDoItPerTx
+//       is the one user-RAISABLE band (clampOverrides), so reading it here would let a
+//       raised-jdt override re-enable autonomous travel. It must not.
+// The wallet reserve floor (minWalletBalance) is inherited from the tier bands so the
+// drain guard + any reserve override still apply. The staker 2x multiplier is NOT
+// applied — the travel caps are absolute.
+export const TRAVEL_MAX_PER_TX = 1200;
+export const TRAVEL_MAX_PER_DAY = 3000;
+
+function travelBands(tierBands: TierBands, overrides?: PolicyOverrides | null): TierBands {
+  const at = (v: number | undefined, fallback: number): number =>
+    typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : fallback;
+  const ov = overrides ?? {};
+  return {
+    justDoItPerTx: 0, // (c) load-bearing — every travel spend → ask_first, never autonomous
+    justDoItPerDay: 0,
+    neverPerTx: Math.min(TRAVEL_MAX_PER_TX, at(ov.neverPerTx, TRAVEL_MAX_PER_TX)),
+    neverPerDay: Math.min(TRAVEL_MAX_PER_DAY, at(ov.neverPerDay, TRAVEL_MAX_PER_DAY)),
+    minWalletBalance: tierBands.minWalletBalance, // reserve floor unchanged (incl. user override)
+  };
+}
+
 /**
  * Evaluate a proposed spend against the tier's autonomy bands.
  *
@@ -172,15 +210,23 @@ export function effectiveBands(
  *   1. amount must be a positive finite number          → else deny(invalid_amount)
  *   2. privacy mode on                                  → deny(privacy_mode)
  *   3. counterparty required-but-unverified             → deny(unverified_counterparty)
+ *   3.5 category not in allowlist                       → deny(category_not_allowed)
  *   4. amount > neverPerTx                              → deny(exceeds_per_tx_ceiling)
  *   5. spentToday + amount > neverPerDay                → deny(exceeds_daily_ceiling)
  *   6. known balance and (balance - amount < minBal)   → deny(would_drain_wallet)
  *   7. amount < justDoItPerTx AND agg < justDoItPerDay  → just_do_it
  *      (but if balance is UNKNOWN, downgrade to ask_first — never auto-spend blind)
  *   8. otherwise                                        → ask_first
+ *
+ * The bands are CATEGORY-SCOPED: a category==="travel" spend uses the travelBands
+ * layer ($1200/$3000 ceiling, $0 just-do-it) above; every other category uses the
+ * tier effectiveBands exactly as before (no behavior change for non-travel spends).
  */
 export function evaluateSpend(tier: FrontierTier, ctx: SpendContext): SpendEvaluation {
-  const bands = effectiveBands(tier, ctx.isStaker ?? false, ctx.overrides);
+  const tierBands = effectiveBands(tier, ctx.isStaker ?? false, ctx.overrides);
+  // Category-scoped raise: travel gets its own ceiling + $0 just-do-it; all other
+  // categories keep the tier bands byte-for-byte.
+  const bands = ctx.category === "travel" ? travelBands(tierBands, ctx.overrides) : tierBands;
   const requireVerified = ctx.requireVerifiedCounterparty ?? true;
   const amount = ctx.amountUsd;
   const spentToday = ctx.spentTodayUsd;

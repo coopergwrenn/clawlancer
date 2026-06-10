@@ -18,6 +18,8 @@ import {
   mapTagsToCategory,
   ALL_CATEGORIES,
   DEFAULT_ALLOWED_CATEGORIES_BY_TIER,
+  TRAVEL_MAX_PER_TX,
+  TRAVEL_MAX_PER_DAY,
   type FrontierTier,
   type SpendCategory,
   type SpendContext,
@@ -146,22 +148,65 @@ expectDecision(
   { ...ok(), category: "travel", allowedCategories: DEFAULT_ALLOWED_CATEGORIES_BY_TIER.starter },
   "category_not_allowed",
 );
-// (b) pro small travel spend → autonomous (category allowed, under just_do_it).
-expectDecision(
-  "pro small travel spend → within_just_do_it_band",
-  "pro",
-  { ...ok(), category: "travel", allowedCategories: DEFAULT_ALLOWED_CATEGORIES_BY_TIER.pro },
-  "within_just_do_it_band",
-);
-// (c) pro LARGE travel spend (over justDoItPerTx $5, under neverPerTx $50) → ask_first,
-//     NOT hard-denied. This is the whole layering: travel is categorically allowed, and
-//     the AMOUNT gate sends a big booking to human approval (the human_approved flow).
-expectDecision(
-  "pro $6 travel spend → ask_first (amount gate, not category deny)",
-  "pro",
-  { ...ok(), amountUsd: 6, category: "travel", allowedCategories: DEFAULT_ALLOWED_CATEGORIES_BY_TIER.pro },
-  "within_ask_first_band",
-);
+// ── travel CEILING matrix (§6 — the category-scoped raise; the half that completes
+//    the category so real-priced bookings reach ask_first instead of hard-denying) ──
+const proCats = DEFAULT_ALLOWED_CATEGORIES_BY_TIER.pro;
+const powerCats = DEFAULT_ALLOWED_CATEGORIES_BY_TIER.power;
+
+check("TRAVEL_MAX_PER_TX is 1200", TRAVEL_MAX_PER_TX === 1200);
+check("TRAVEL_MAX_PER_DAY is 3000", TRAVEL_MAX_PER_DAY === 3000);
+
+// real bookings now REACH ask_first (were hard-denying at the tier neverPerTx $50/$200).
+expectDecision("pro $100 travel → ask_first (was hard-deny at $50)", "pro",
+  { ...ok(), amountUsd: 100, category: "travel", allowedCategories: proCats }, "within_ask_first_band");
+expectDecision("pro $370 travel → ask_first", "pro",
+  { ...ok(), amountUsd: 370, category: "travel", allowedCategories: proCats }, "within_ask_first_band");
+expectDecision("pro $1200 travel (== cap, not strictly above) → ask_first", "pro",
+  { ...ok(), amountUsd: 1200, category: "travel", allowedCategories: proCats }, "within_ask_first_band");
+expectDecision("pro $1300 travel → hard deny (over $1200 cap)", "pro",
+  { ...ok(), amountUsd: 1300, category: "travel", allowedCategories: proCats }, "exceeds_per_tx_ceiling");
+
+// LOAD-BEARING (c): $0 just-do-it → NO travel spend is ever autonomous. Consent-always.
+expectDecision("pro $5 travel → ask_first NOT just_do_it (consent-always)", "pro",
+  { ...ok(), amountUsd: 5, category: "travel", allowedCategories: proCats }, "within_ask_first_band");
+expectDecision("pro $0.50 travel → ask_first NOT just_do_it", "pro",
+  { ...ok(), amountUsd: 0.5, category: "travel", allowedCategories: proCats }, "within_ask_first_band");
+
+// daily cap $3000 (total-when-travel; non-travel is tier-capped low, so this is the travel ceiling).
+expectDecision("pro travel pushing total over $3000/day → deny", "pro",
+  { ...ok(), amountUsd: 200, spentTodayUsd: 2900, category: "travel", allowedCategories: proCats }, "exceeds_daily_ceiling");
+expectDecision("pro travel exactly at $3000 boundary → ask_first (not >)", "pro",
+  { ...ok(), amountUsd: 100, spentTodayUsd: 2900, category: "travel", allowedCategories: proCats }, "within_ask_first_band");
+
+// power: travel cap is FLAT $1200/$3000 (not tier-scaled; staker 2x not applied).
+expectDecision("power $1000 travel → ask_first", "power",
+  { ...ok(), amountUsd: 1000, category: "travel", allowedCategories: powerCats }, "within_ask_first_band");
+expectDecision("power $1300 travel → hard deny (flat $1200 cap, not tier-scaled)", "power",
+  { ...ok(), amountUsd: 1300, category: "travel", allowedCategories: powerCats }, "exceeds_per_tx_ceiling");
+
+// (a) NON-TRAVEL UNCHANGED — the raise must not leak into any other category.
+expectDecision("pro $6 DATA → within_ask_first_band (UNCHANGED)", "pro",
+  { ...ok(), amountUsd: 6, category: "data", allowedCategories: proCats }, "within_ask_first_band");
+expectDecision("pro $60 DATA → deny exceeds_per_tx_ceiling (tier $50, NOT travel $1200)", "pro",
+  { ...ok(), amountUsd: 60, category: "data", allowedCategories: proCats }, "exceeds_per_tx_ceiling");
+expectDecision("pro $4 DATA → just_do_it (UNCHANGED — non-travel still autonomous under jdt)", "pro",
+  { ...ok(), amountUsd: 4, category: "data", allowedCategories: proCats }, "within_just_do_it_band");
+
+// (b) tighten-only: a user neverPerTx override clamps travel DOWN (no surprising allow).
+expectDecision("travel + neverPerTx override $400 → $500 denies (clamped down)", "pro",
+  { ...ok(), amountUsd: 500, category: "travel", allowedCategories: proCats, overrides: { neverPerTx: 400 } }, "exceeds_per_tx_ceiling");
+expectDecision("travel + neverPerTx override $400 → $300 still ask_first", "pro",
+  { ...ok(), amountUsd: 300, category: "travel", allowedCategories: proCats, overrides: { neverPerTx: 400 } }, "within_ask_first_band");
+// (b) cap: an override can NEVER raise travel above $1200.
+expectDecision("travel + neverPerTx override $5000 → $1300 STILL denies (capped at $1200)", "pro",
+  { ...ok(), amountUsd: 1300, category: "travel", allowedCategories: proCats, overrides: { neverPerTx: 5000 } }, "exceeds_per_tx_ceiling");
+
+// (c) THE load-bearing hole: a RAISED justDoItPerTx override must NOT make travel autonomous.
+expectDecision("travel + justDoItPerTx override $50 → $5 travel STILL ask_first (jdt pinned 0)", "pro",
+  { ...ok(), amountUsd: 5, category: "travel", allowedCategories: proCats, overrides: { justDoItPerTx: 50 } }, "within_ask_first_band");
+// proof the override is real (it raises jdt for non-travel; only travel pins it to 0).
+expectDecision("data + justDoItPerTx override $50 → $20 data → just_do_it (override works for non-travel)", "pro",
+  { ...ok(), amountUsd: 20, category: "data", allowedCategories: proCats, overrides: { justDoItPerTx: 50 } }, "within_just_do_it_band");
 
 console.log(`\nfrontier-categories: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
