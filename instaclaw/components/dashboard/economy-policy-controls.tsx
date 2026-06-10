@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Check, RotateCw, Tag, Lock, Sparkles, Hand, Wallet, TrendingUp, AlertTriangle } from "lucide-react";
 
 /**
@@ -130,6 +130,84 @@ export function EconomyPolicyControls() {
     if (!Number.isFinite(v) || v < 0) return 0;
     return Math.min(v, max);
   }, []);
+
+  // ── Pre-fill from an agent's /settings suggest deep link (?suggest=field:value).
+  //    The agent can only SUGGEST; this pre-fills the control in the UNSAVED state so
+  //    the human's explicit Save (session-authed) is the consent. The ?suggest value
+  //    is a public identifier, never a capability. FAIL QUIET: an unknown field, a
+  //    malformed value, or a change the page can't fulfil (a daily-line raise, which
+  //    is lower-only until the perDay-raisable change ships) is ignored silently --
+  //    no banner, no error, normal page. Never promise an action the page can't do. ──
+  const suggestRef = useRef<{ field: string; value: string } | null | undefined>(undefined);
+  const [suggestBanner, setSuggestBanner] = useState<{ field: string; value: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = new URLSearchParams(window.location.search).get("suggest");
+      const idx = raw ? raw.indexOf(":") : -1;
+      suggestRef.current = raw && idx > 0 ? { field: raw.slice(0, idx), value: raw.slice(idx + 1) } : null;
+    } catch {
+      suggestRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!data || !suggestRef.current) return;
+    const s = suggestRef.current;
+    suggestRef.current = null; // consume: apply at most once
+    const num = parseFloat(s.value);
+    let ok = false;
+    if (s.field === "minWalletBalance" && Number.isFinite(num) && num >= 0 && num < data.bands.minWalletBalance) {
+      setReserve(Math.max(0, num)); // a genuine reserve LOWER
+      ok = true;
+    } else if (
+      s.field === "justDoItPerTx" &&
+      Number.isFinite(num) &&
+      num > data.bands.justDoItPerTx &&
+      num <= data.bands.neverPerTx
+    ) {
+      setPerTx(clampBand(num, data.bands.neverPerTx)); // a genuine no-ask RAISE within the hard cap
+      ok = true;
+    } else if (s.field === "allowedCategories") {
+      const want = s.value.split(",").map((x) => x.trim());
+      const next = data.tier_default_categories.filter((c) => want.includes(c));
+      if (next.length > 0 && next.some((c) => !selected.has(c))) {
+        setSelected(new Set(next)); // re-enabling at least one category (an ADD)
+        ok = true;
+      }
+    }
+    if (ok) {
+      setSaved(false);
+      setSuggestBanner(s); // banner shows ONLY on a fulfilled suggestion
+    }
+    // else: fail quiet
+  }, [data, clampBand, selected]);
+
+  // The agent-suggestion banner copy (null = nothing to show). Reads the SAVED
+  // current values from `data`, so it states the real before/after.
+  const suggestMsg = useMemo<string | null>(() => {
+    if (!suggestBanner || !data) return null;
+    const b = suggestBanner;
+    const num = parseFloat(b.value);
+    if (b.field === "minWalletBalance") {
+      return num === 0
+        ? `Your agent suggested lowering your reserve to $0. At $0 it can spend the wallet all the way down to empty. Review and Save below to apply, or ignore to keep your current ${usd(data.bands.minWalletBalance)}.`
+        : `Your agent suggested lowering your reserve to ${usd(num)}. Review and Save below to apply, or ignore to keep your current ${usd(data.bands.minWalletBalance)}.`;
+    }
+    if (b.field === "justDoItPerTx") {
+      return `Your agent suggested raising its no-ask line to ${usd(num)} per purchase. It could then spend up to ${usd(num)} on a single purchase without checking with you. Review and Save to apply.`;
+    }
+    if (b.field === "allowedCategories") {
+      const labels = b.value
+        .split(",")
+        .map((x) => x.trim())
+        .filter((c) => data.tier_default_categories.includes(c))
+        .map((c) => CATEGORY_LABELS[c] ?? c)
+        .join(", ");
+      return `Your agent suggested re-enabling autonomous spending on: ${labels}. Review and Save to apply.`;
+    }
+    return null;
+  }, [suggestBanner, data]);
 
   const save = useCallback(async () => {
     if (!data) return;
@@ -272,6 +350,20 @@ export function EconomyPolicyControls() {
           )}
         </p>
       </div>
+
+      {/* ── Agent suggestion (from a /settings deep link). Pre-filled below, UNSAVED;
+          your Save is the consent. Shown only when the page could pre-fill it. ── */}
+      {suggestMsg && !saved && (
+        <div
+          className="rounded-xl p-3 mb-5 flex items-start gap-2"
+          style={{ background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)" }}
+        >
+          <Sparkles className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: "rgb(234,179,8)" }} />
+          <p className="text-[12px] leading-snug" style={{ color: "var(--foreground)" }}>
+            {suggestMsg}
+          </p>
+        </div>
+      )}
 
       {/* ── Low-balance soft warning (§16.5): fires with runway (< ~1 day of the
           earned budget left), above the hard floor. A nudge, not a block. ── */}

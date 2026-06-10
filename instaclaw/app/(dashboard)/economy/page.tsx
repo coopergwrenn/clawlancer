@@ -65,6 +65,17 @@ export default function EconomyPage() {
   const [pendingSetup, setPendingSetup] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Agent /settings deep-link suggestion to turn spending ON. Banner only; never
+  // auto-flips (turning ON is a deliberate, session-authed human act). Fail quiet on
+  // any other / malformed suggest value.
+  const [suggestOn, setSuggestOn] = useState(false);
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get("suggest") === "spendEnabled:on") setSuggestOn(true);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -222,6 +233,21 @@ export default function EconomyPage() {
           walletAddress={settings?.wallet_address ?? null}
           walletBalanceUsd={settings?.wallet_balance_usd ?? null}
         />
+      )}
+
+      {/* ── Agent suggestion to turn spending ON (from a /settings deep link). Banner
+             only; the toggle below stays the deliberate, session-authed act. ── */}
+      {suggestOn && !enabled && (
+        <div
+          className="rounded-2xl p-3 mb-3 flex items-start gap-2"
+          style={{ background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)" }}
+        >
+          <Sparkles className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: "rgb(234,179,8)" }} />
+          <p className="text-[12px] leading-snug" style={{ color: "var(--foreground)" }}>
+            Your agent suggested turning autonomous spending ON. This lets it spend on its own within your
+            limits, without asking first each time. Turn it on below only if you want to.
+          </p>
+        </div>
       )}
 
       {/* ── CONTROL: Autonomous spending (the real, wired control — secondary to the
