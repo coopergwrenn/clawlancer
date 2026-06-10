@@ -177,3 +177,8 @@ fleet.** vm-050 torn down to canonical. Free-only path; commerce stack deferred.
 **Direction (Cooper, → G9):** frontier models as defaults; DoP relegated to fast-draft at most; costs priced honestly into tiers. The honest read: a frontier free default is **4.5–7.5× the current lite cost** ($34–56/mo/VM at starter, up to $250–420/mo at power). Tiers must price this in, or cap free frontier renders below the current allowance.
 
 **Vetting path (what enabling seedance/newer-kling takes):** the gate only allows MEASURED-cost models (allowlist discipline). To enable a frontier default: (1) confirm Cloud Gallery membership (read-only dashboard, or one spot-submit); (2) **one funded spot-test render to MEASURE actual HF credit cost + confirm whether it honors `duration`** (the open question — real long clips vs DoP-style pin); (3) add to `HF_MODELS` with measured cost + `freeEligible` flag + (if duration-variable) a small 5s/10s lookup; (4) set as `resolve_model` default. Cost to vet: ~a few credits per model. **Seedance is the pivotal vet** (frontier, cheapest, likely the best quality/cost). Recommend vetting seedance v1 pro + confirming a kling v3.0/2.6 slug at G9 before picking the free default.
+
+### Grant ledger — FINAL (e2e close 2026-06-10)
+- vm-050 (id 4922f655-f0c1-4161-b8ff-79b24e1a3166) `video_credit_balance`: granted 40 → **17 remaining** (23 charged: kling 18 + image 2 + b-lite 3; ≈ $1.13 real HF cost).
+- **EARMARK (Cooper ruling ii):** the 17 are HELD for the **seedance vetting spot-test** (pivotal G9 input). Do NOT reverse to 0 yet. After the seedance vet runs (on Cooper's greenlight), **reverse whatever remains** to 0.
+- Synthetic rows (claim-verify, orphan-d): inserted + deleted, counts returned to baseline (clean).
