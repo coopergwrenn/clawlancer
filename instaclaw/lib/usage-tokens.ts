@@ -42,6 +42,18 @@ export function hasAnyToken(u: TokenUsage | null | undefined): boolean {
 }
 
 /**
+ * Pure: is this a parsed non-streaming Anthropic response an EMPTY completion?
+ * Empty = a (terminal) 200 with zero content blocks — the 2026-06-10 incident
+ * shape (HTTP 200, stop_reason=stop, content:[]). Conservative: only true when
+ * `content` is an array of length 0. Anything unparseable / shape-unexpected
+ * returns false (fail-safe: treat as NON-empty → serve + bill as today).
+ */
+export function isEmptyCompletionJson(obj: unknown): boolean {
+  const content = (obj as { content?: unknown } | null)?.content;
+  return Array.isArray(content) && content.length === 0;
+}
+
+/**
  * Pure: pull the usage block out of a parsed non-streaming Anthropic response.
  * Returns nulls for anything missing; never throws.
  */
@@ -100,20 +112,28 @@ export function extractStreamingUsage(text: string): TokenUsage {
  *
  * onUsage fires once, in flush(), with whatever was latched (possibly all-null
  * if the stream was malformed/empty — the caller treats null as "no update").
+ * `sawContent` is true iff at least one `content_block_start` appeared — the
+ * streaming empty-completion signal (no content block ⇒ empty, Guard 2).
  */
 export function attachUsageScanner<T extends Uint8Array>(
   body: ReadableStream<T>,
-  onUsage: (usage: TokenUsage) => void,
+  onUsage: (usage: TokenUsage, sawContent: boolean) => void,
 ): ReadableStream<T> {
   const decoder = new TextDecoder();
   let buf = "";
   const latched: TokenUsage = { ...EMPTY_USAGE };
+  let sawContent = false;
   let fired = false;
   const ts = new TransformStream<T, T>({
     transform(chunk, controller) {
       controller.enqueue(chunk); // PASSTHROUGH — always, first, unconditional.
       try {
         buf += decoder.decode(chunk, { stream: true });
+        // content-block sighting latches before the buffer can scroll it off.
+        // Match start OR delta: a real non-empty completion always emits
+        // content_block_start, but matching either is strictly safer — an empty
+        // completion emits neither (message_start → message_delta(stop) only).
+        if (!sawContent && (buf.includes('"type":"content_block_start"') || buf.includes('"type":"content_block_delta"'))) sawContent = true;
         if (buf.length > 16384) buf = buf.slice(-16384);
         const partial = extractStreamingUsage(buf);
         // latch-first for the input-side (set once, never overwrite)
@@ -130,7 +150,7 @@ export function attachUsageScanner<T extends Uint8Array>(
       if (fired) return;
       fired = true;
       try {
-        onUsage(latched);
+        onUsage(latched, sawContent);
       } catch {
         // onUsage is fire-and-forget telemetry; never disturb stream close.
       }

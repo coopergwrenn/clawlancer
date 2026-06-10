@@ -15,7 +15,7 @@ import { trackProxy401, resetProxy401Count } from "@/lib/proxy-alert";
 import { repairCorruptedSession, type VMRecord } from "@/lib/ssh";
 import { routeModel, extractLastUserMessage, computeTierBudget, type RoutingContext, type RoutingDecision } from "@/lib/model-router";
 import { getRegistryCreditWeight, MODEL_TIER_BY_ID, getModelEntry } from "@/lib/model-registry";
-import { attachUsageScanner, parseUsageFromJson, hasAnyToken, type TokenUsage } from "@/lib/usage-tokens";
+import { attachUsageScanner, parseUsageFromJson, hasAnyToken, isEmptyCompletionJson, type TokenUsage } from "@/lib/usage-tokens";
 import { TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
 import { shouldFireCircuitBreaker, sendCircuitBreakerAlert, sendCronResumedNotification, resolveTelegramTarget } from "@/lib/cron-guard";
 import {
@@ -33,6 +33,13 @@ export const maxDuration = 300;
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages";
+
+// Empty-completion fallback (Guard 1, non-streaming). On an empty completion the
+// proxy retries ONCE on this model — but only when it's a strict DOWN-step in
+// cost from the requested model (enforced at the callsite), so the fallback is
+// never more expensive than what the user asked for. sonnet is the reliable
+// workhorse below fable/opus.
+const EMPTY_FALLBACK_MODEL = "claude-sonnet-4-6";
 
 /**
  * In-memory cache for the global daily-spend SELECT. Module-scoped so it
@@ -1316,6 +1323,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // DEV-ONLY test seam (empty-completion-guards discrimination proof). NEVER
+    // active in production — gated on NODE_ENV — and restricted to localhost so
+    // it can't redirect the upstream anywhere real. Lets the proof point the
+    // upstream at a local mock that returns controlled empty/non-empty Anthropic
+    // responses (real Anthropic won't reliably emit an empty completion). The
+    // override applies to the original fetch, the 5xx retry, AND the empty
+    // fallback, since they all reference providerUrl.
+    if (process.env.NODE_ENV !== "production") {
+      const mockUrl = req.headers.get("x-proxy-upstream-override");
+      if (mockUrl && mockUrl.startsWith("http://localhost")) {
+        providerUrl = mockUrl;
+      }
+    }
+
     // 90-second timeout prevents infinite hang on large image payloads
     const abortController = new AbortController();
     const apiTimeout = setTimeout(() => abortController.abort(), 90000);
@@ -1746,6 +1767,80 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // ── Empty-completion guards (incident 2026-06-10) ───────────────────────
+    // Shared state consumed by the usage-log insert + refund wiring + returns
+    // below. Declared at the success-path entry (finalProviderRes is 2xx).
+    let nonStreamingBufferedText: string | null = null; // non-streaming body, read once
+    let finalServedEmpty = false;          // FINAL outcome empty → full refund + friendly error
+    let pendingRefundWeight = 0;           // governor refund: partial on served-fallback, full on total-empty
+    const forensicEmptyAttempts: Array<{ model: string; weight: number }> = []; // empty attempts NOT captured by the served (1872) row — logged as output_tokens=0 / refunded so the empty-rate detector survives
+
+    // GUARD 1 (non-streaming only): empty → straight-to-fallback (down-only).
+    // Streaming gets Guard 2 (no-bill) but no transparent retry (deferred — see
+    // docs/streaming-empty-retry-canary). FAIL-OPEN: buffer the body FIRST, then
+    // run the empty/fallback logic in try/catch; any throw falls through to
+    // today's behavior (serve the buffered body, no refund) — never a new failure.
+    if (!isStreaming && finalProviderRes.status >= 200 && finalProviderRes.status < 300) {
+      try {
+        nonStreamingBufferedText = await finalProviderRes.text();
+        let parsed: unknown = null;
+        try { parsed = JSON.parse(nonStreamingBufferedText); } catch { parsed = null; }
+        if (parsed && isEmptyCompletionJson(parsed)) {
+          const chargedWeight = typeof limitResult?.cost_weight === "number" ? limitResult.cost_weight : getRegistryCreditWeight(finalModel);
+          const origModel = finalModel;
+          const origWeight = getRegistryCreditWeight(origModel);
+          const fbWeight = getRegistryCreditWeight(EMPTY_FALLBACK_MODEL);
+          // DOWN-ONLY gate: fall back ONLY when the requested model is strictly
+          // more expensive than sonnet, so the fallback is never an up-step
+          // (haiku/minimax/sonnet empties get no fallback → error + full refund).
+          if (origWeight > fbWeight) {
+            if (parsedBody) parsedBody.model = EMPTY_FALLBACK_MODEL;
+            const fbBody = parsedBody ? JSON.stringify(parsedBody) : body;
+            const fbAbort = new AbortController();
+            const fbTimeout = setTimeout(() => fbAbort.abort(), 90000);
+            let fbServed = false;
+            try {
+              const fbRes = await fetch(providerUrl, { method: "POST", headers: providerHeaders, body: fbBody, signal: fbAbort.signal });
+              clearTimeout(fbTimeout);
+              if (fbRes.ok) {
+                const fbText = await fbRes.text();
+                let fbParsed: unknown = null;
+                try { fbParsed = JSON.parse(fbText); } catch { fbParsed = null; }
+                if (fbParsed && !isEmptyCompletionJson(fbParsed)) {
+                  // fallback SERVED → reassign so the served (1872) row + token
+                  // capture attribute to sonnet; the orig empty gets a forensic row.
+                  nonStreamingBufferedText = fbText;
+                  finalProviderRes = fbRes;
+                  finalModel = EMPTY_FALLBACK_MODEL;
+                  fbServed = true;
+                  const sonnetCharge = fbWeight * (isToolContinuation ? 0.2 : 1);
+                  pendingRefundWeight = Math.max(0, chargedWeight - sonnetCharge); // bill once at sonnet weight
+                  forensicEmptyAttempts.push({ model: origModel, weight: origWeight });
+                  logger.warn("Empty completion → fallback served sonnet", { route: "gateway/proxy", vmId: vm.id, origModel, partialRefund: pendingRefundWeight });
+                }
+              }
+            } catch { clearTimeout(fbTimeout); }
+            if (!fbServed) {
+              // fallback also empty (or errored) → total failure. The served
+              // (1872) row stays the ORIG empty; the sonnet empty gets a forensic row.
+              forensicEmptyAttempts.push({ model: EMPTY_FALLBACK_MODEL, weight: fbWeight });
+              finalServedEmpty = true;
+              pendingRefundWeight = chargedWeight; // full refund
+              logger.warn("Empty completion → fallback also empty/failed", { route: "gateway/proxy", vmId: vm.id, origModel });
+            }
+          } else {
+            // down-only gate BLOCKS → no fallback; the 1872 row IS the orig empty.
+            finalServedEmpty = true;
+            pendingRefundWeight = chargedWeight; // full refund
+            logger.warn("Empty completion, fallback blocked (down-only gate) → refund + error", { route: "gateway/proxy", vmId: vm.id, origModel, origWeight, fbWeight });
+          }
+        }
+      } catch (guardErr) {
+        // FAIL-OPEN: serve the buffered body as today, no refund.
+        logger.error("Empty-completion guard error (failing open)", { route: "gateway/proxy", vmId: vm.id, error: String(guardErr) });
+      }
+    }
+
     // --- Usage already incremented atomically in instaclaw_check_and_increment above ---
     // No separate increment needed. The atomic RPC handled check + increment
     // in a single transaction with row lock (C5 fix).
@@ -1838,6 +1933,11 @@ export async function POST(req: NextRequest) {
     // UPDATE no-ops cleanly before the migration columns exist. Logging is
     // observability, NEVER a gate — nothing here can fail the user's response.
     let recordTokenUsage: (u: TokenUsage | null) => Promise<void> | void = () => {};
+    // Guard 2 plumbing — hoisted so the streaming tee (below) can call them too.
+    // refundEmptyCharge: reverse the governor charge on an empty completion.
+    // flagServedRowRefunded: set billing_refunded=true on the served (1872) row.
+    let refundEmptyCharge: (weight: number) => void = () => {};
+    let flagServedRowRefunded: () => Promise<void> | void = () => {};
     {
       const logModel = finalModel || requestedModel || "unknown";
       const logTier = routingDecision?.tier ?? (logModel.includes("haiku") ? 1 : logModel.includes("sonnet") ? 2 : logModel.includes("opus") ? 3 : 1);
@@ -1935,6 +2035,70 @@ export async function POST(req: NextRequest) {
             // never disturb serving
           });
       };
+
+      // --- Guard 2: never bill an empty completion (refund + audit) ---------
+      // Assign the hoisted helpers (close over usageLogIdP / source / vm).
+      refundEmptyCharge = (weight: number) => {
+        if (!(weight > 0) || !source) return;
+        Promise.resolve(
+          supabase.rpc("instaclaw_refund_empty", {
+            p_vm_id: vm.id,
+            p_cost_weight: weight,
+            p_source: source,
+            p_timezone: userTz,
+          }).then(({ error }) => {
+            if (error) logger.error("Empty-refund RPC failed", { route: "gateway/proxy", vmId: vm.id, error: String(error) });
+          }),
+        ).catch(() => {});
+      };
+      flagServedRowRefunded = () => {
+        return usageLogIdP
+          .then((id) => {
+            if (!id) return;
+            return supabase
+              .from("instaclaw_usage_log")
+              .update({ billing_refunded: true })
+              .eq("id", id)
+              .then(({ error: flagErr }) => {
+                if (flagErr && !flagErr.message.includes("does not exist")) {
+                  logger.error("Failed to set billing_refunded", { route: "gateway/proxy", vmId: vm.id, error: String(flagErr) });
+                }
+              });
+          })
+          .catch(() => {});
+      };
+
+      // Forensic rows for empty attempts NOT captured by the served (1872) row
+      // (the orig empty when a fallback served; the sonnet empty on total-fail),
+      // so the output_tokens=0 empty-rate detector counts every empty. Refunded.
+      for (const att of forensicEmptyAttempts) {
+        supabase
+          .from("instaclaw_usage_log")
+          .insert({
+            vm_id: vm.id,
+            model: att.model,
+            cost_weight: att.weight,
+            call_type: callType,
+            is_tool_continuation: isToolContinuation,
+            routing_tier: logTier,
+            routing_reason: "empty-completion (forensic)",
+            prompt_hint: promptHint,
+            input_tokens: null,
+            output_tokens: 0,
+            billing_refunded: true,
+          })
+          .then(({ error: fe }) => {
+            if (fe && !fe.message.includes("does not exist")) {
+              logger.error("Failed to insert forensic empty row", { route: "gateway/proxy", vmId: vm.id, error: String(fe) });
+            }
+          });
+      }
+
+      // Non-streaming refund wiring (streaming fires from its tee, below).
+      //   served-fallback → partial refund (charged − sonnet); served row billed.
+      //   total-empty     → full refund + flag the served (orig-empty) row.
+      if (pendingRefundWeight > 0) refundEmptyCharge(pendingRefundWeight);
+      if (finalServedEmpty) flagServedRowRefunded();
     }
 
     // --- Increment tier usage (fire-and-forget) ---
@@ -2065,14 +2229,24 @@ export async function POST(req: NextRequest) {
         // virtuals / infra calls are captured too (those rows already exist;
         // this adds the token columns, not new rows).
         let usageWriteP: Promise<void> | void;
-        outBody = attachUsageScanner(outBody, (usage) => {
+        let refundP: Promise<void> | void;
+        outBody = attachUsageScanner(outBody, (usage, sawContent) => {
           usageWriteP = recordTokenUsage(usage);
+          // GUARD 2 (streaming): no content block ⇒ empty completion. Streaming
+          // can't retry transparently (deferred — see streaming-empty-retry-canary),
+          // but it must NOT bill: refund the full charge + flag the served row.
+          // The user already saw the empty stream; this stops the over-bill.
+          if (!sawContent && typeof limitResult?.cost_weight === "number") {
+            refundEmptyCharge(limitResult.cost_weight);
+            refundP = flagServedRowRefunded() || undefined;
+          }
         });
         // after() runs once the stream is fully flushed (both scanners have by
         // then fired) — keep the function alive until the deferred writes settle.
         after(async () => {
           if (completeP) await completeP;
           if (usageWriteP) await usageWriteP;
+          if (refundP) await refundP;
         });
       }
       return new NextResponse(outBody, {
@@ -2092,8 +2266,11 @@ export async function POST(req: NextRequest) {
 
     // Non-streaming: buffer + parse (a single JSON; safe to buffer). Captures
     // token usage from the parsed body and appends the usage warning if any
-    // (appending "" is a no-op when there's no warning).
-    const resText = await finalProviderRes.text();
+    // (appending "" is a no-op when there's no warning). The empty-completion
+    // guard above already consumed the body into nonStreamingBufferedText (and
+    // may have swapped it for the fallback's body) — reuse it; the `!== null`
+    // fallback covers the (unreached) case where the guard didn't run.
+    const resText = nonStreamingBufferedText !== null ? nonStreamingBufferedText : await finalProviderRes.text();
     // Same turn-end → `complete` detection, read straight from the JSON body
     // (extractStopReason matches "stop_reason"/"finish_reason" in JSON too).
     if (trackFloorComplete && isTurnEndStopReason(extractStopReason(resText))) {
@@ -2106,6 +2283,19 @@ export async function POST(req: NextRequest) {
         await completeP;
       });
     }
+    // Total-empty outcome (Guard 1 fallback exhausted, or down-only gate
+    // blocked the fallback): the charge was refunded + the served row flagged
+    // billing_refunded above. Record the empty's tokens (output 0) on that row,
+    // then surface a clean error instead of returning the empty body.
+    if (finalServedEmpty) {
+      try { recordTokenUsage(parseUsageFromJson(JSON.parse(resText))); } catch { recordTokenUsage(null); }
+      return friendlyAssistantResponse(
+        "I couldn't generate a response to that. Mind trying again?",
+        finalModel,
+        false,
+      );
+    }
+
     try {
       const resBody = JSON.parse(resText);
       // Capture token usage from the parsed body (non-streaming = top-level

@@ -140,10 +140,12 @@ async function streamTest() {
     },
   });
   let captured: TokenUsage | null = null;
+  let capturedSawContent: boolean | null = null;
   let fireCount = 0;
-  const teed = attachUsageScanner(src, (u) => {
+  const teed = attachUsageScanner(src, (u, sawContent) => {
     fireCount++;
     captured = u;
+    capturedSawContent = sawContent;
   });
   // drain the teed stream, reassemble bytes — must be byte-identical (passthrough)
   const reader = teed.getReader();
@@ -160,6 +162,24 @@ async function streamTest() {
     cache_read_tokens: 30000,
     cache_creation_tokens: 1200,
     output_tokens: 2000,
+  });
+  ok("non-empty stream → sawContent true (has content_block_delta)", capturedSawContent === true);
+
+  // empty completion stream: message_start → message_delta(stop), NO content block
+  const emptySse =
+    `event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":31000,"output_tokens":0}}}\n\n` +
+    `event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"stop"},"usage":{"output_tokens":0}}\n\n`;
+  const emptySrc = new ReadableStream<Uint8Array>({
+    start(c) { c.enqueue(enc.encode(emptySse)); c.close(); },
+  });
+  let emptyUsage: TokenUsage | null = null;
+  let emptySaw: boolean | null = null;
+  const teed2 = attachUsageScanner(emptySrc, (u, s) => { emptyUsage = u; emptySaw = s; });
+  const r2 = teed2.getReader();
+  for (;;) { const { done } = await r2.read(); if (done) break; }
+  ok("empty stream → sawContent FALSE (Guard 2 streaming trigger)", emptySaw === false);
+  eq("empty stream → usage still latched (input real, output 0)", emptyUsage, {
+    input_tokens: 31000, cache_read_tokens: null, cache_creation_tokens: null, output_tokens: 0,
   });
 }
 
