@@ -15,6 +15,7 @@ import { trackProxy401, resetProxy401Count } from "@/lib/proxy-alert";
 import { repairCorruptedSession, type VMRecord } from "@/lib/ssh";
 import { routeModel, extractLastUserMessage, computeTierBudget, type RoutingContext, type RoutingDecision } from "@/lib/model-router";
 import { getRegistryCreditWeight, MODEL_TIER_BY_ID, getModelEntry } from "@/lib/model-registry";
+import { attachUsageScanner, parseUsageFromJson, hasAnyToken, type TokenUsage } from "@/lib/usage-tokens";
 import { TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
 import { shouldFireCircuitBreaker, sendCircuitBreakerAlert, sendCronResumedNotification, resolveTelegramTarget } from "@/lib/cron-guard";
 import {
@@ -1828,7 +1829,15 @@ export async function POST(req: NextRequest) {
         });
     }
 
-    // --- Per-call usage log (fire-and-forget) ---
+    // --- Per-call usage log (insert now; token columns filled by a deferred UPDATE) ---
+    // The row + attribution land immediately for EVERY call (unchanged
+    // behavior). Token columns are populated by recordTokenUsage() once the
+    // response body is consumed — streaming via the usage-scanner flush (in
+    // after()), non-streaming inline after parse. insert-then-update keeps the
+    // row guaranteed even if token capture fails, and is rollout-safe: the
+    // UPDATE no-ops cleanly before the migration columns exist. Logging is
+    // observability, NEVER a gate — nothing here can fail the user's response.
+    let recordTokenUsage: (u: TokenUsage | null) => Promise<void> | void = () => {};
     {
       const logModel = finalModel || requestedModel || "unknown";
       const logTier = routingDecision?.tier ?? (logModel.includes("haiku") ? 1 : logModel.includes("sonnet") ? 2 : logModel.includes("opus") ? 3 : 1);
@@ -1855,7 +1864,13 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      supabase
+      // Insert the attribution row immediately and capture its id (fire-and-
+      // forget — the promise is retained for the deferred token UPDATE, never
+      // awaited in the response path).
+      // Promise.resolve() upgrades supabase's PromiseLike to a real Promise so
+      // the deferred path can .then().catch() it safely.
+      const usageLogIdP: Promise<string | null> = Promise.resolve(
+        supabase
         .from("instaclaw_usage_log")
         .insert({
           vm_id: vm.id,
@@ -1867,7 +1882,9 @@ export async function POST(req: NextRequest) {
           routing_reason: routingDecision?.reason ?? null,
           prompt_hint: promptHint,
         })
-        .then(({ error: logErr }) => {
+        .select("id")
+        .single()
+        .then(({ data, error: logErr }) => {
           if (logErr) {
             // Don't log every insert failure — table might not exist yet during rollout
             if (!logErr.message.includes("does not exist")) {
@@ -1877,8 +1894,47 @@ export async function POST(req: NextRequest) {
                 error: String(logErr),
               });
             }
+            return null;
           }
-        });
+          return (data as { id: string } | null)?.id ?? null;
+        }),
+      );
+
+      // Deferred, idempotent, fail-safe token UPDATE keyed by the row id.
+      // Called once per call from the response path once tokens are known.
+      // Guards: skip if already written or no tokens captured; swallow every
+      // error (a failed token UPDATE leaves a valid NULL-token row — exactly
+      // today's behavior — and never affects serving).
+      let tokensWritten = false;
+      recordTokenUsage = (usage: TokenUsage | null) => {
+        if (tokensWritten || !hasAnyToken(usage)) return;
+        tokensWritten = true;
+        return usageLogIdP
+          .then((id) => {
+            if (!id) return;
+            return supabase
+              .from("instaclaw_usage_log")
+              .update({
+                input_tokens: usage!.input_tokens,
+                output_tokens: usage!.output_tokens,
+                cache_read_tokens: usage!.cache_read_tokens,
+                cache_creation_tokens: usage!.cache_creation_tokens,
+              })
+              .eq("id", id)
+              .then(({ error: updErr }) => {
+                if (updErr && !updErr.message.includes("does not exist")) {
+                  logger.error("Failed to update usage tokens", {
+                    route: "gateway/proxy",
+                    vmId: vm.id,
+                    error: String(updErr),
+                  });
+                }
+              });
+          })
+          .catch(() => {
+            // never disturb serving
+          });
+      };
     }
 
     // --- Increment tier usage (fire-and-forget) ---
@@ -1985,26 +2041,38 @@ export async function POST(req: NextRequest) {
     // Streaming responses are SSE text that can't be JSON-parsed, so we never
     // try to buffer/modify them — that was causing "request ended without sending
     // any chunks" when the buffered SSE was returned as a single JSON blob.
-    if (isStreaming || !usageWarning) {
+    if (isStreaming) {
       let outBody = finalProviderRes.body;
-      // Streaming user-turn response → tee it (passthrough, never disturbed) to
-      // detect the turn-ending stop_reason and write `complete`.
-      if (isStreaming && trackFloorComplete && outBody) {
+      if (outBody) {
+        // Floor completion tee (existing — only user turns that should
+        // celebrate). Passthrough, never disturbs the bytes.
         let completeP: Promise<void> | null = null;
-        outBody = attachCompletionScanner(outBody, (stopReason) => {
-          if (!completeP && isTurnEndStopReason(stopReason)) {
-            completeP = recordComplete({
-              vmId: floorCompleteVmId,
-              userId: floorCompleteUserId,
-              channel: "web",
-            }).catch(() => {});
-          }
+        if (trackFloorComplete) {
+          outBody = attachCompletionScanner(outBody, (stopReason) => {
+            if (!completeP && isTurnEndStopReason(stopReason)) {
+              completeP = recordComplete({
+                vmId: floorCompleteVmId,
+                userId: floorCompleteUserId,
+                channel: "web",
+              }).catch(() => {});
+            }
+          });
+        }
+        // Usage tee (EVERY streaming call — margin measurement). Same enqueue-
+        // first passthrough contract as the completion scanner; fires once on
+        // flush with the latched tokens, then the deferred id-keyed UPDATE
+        // fills the columns. Independent of trackFloorComplete so heartbeat /
+        // virtuals / infra calls are captured too (those rows already exist;
+        // this adds the token columns, not new rows).
+        let usageWriteP: Promise<void> | void;
+        outBody = attachUsageScanner(outBody, (usage) => {
+          usageWriteP = recordTokenUsage(usage);
         });
-        // after() runs once the stream is fully flushed (the scanner has by then
-        // seen the terminal event and started the write, if any) — keep the
-        // function alive until that fire-and-forget write settles.
+        // after() runs once the stream is fully flushed (both scanners have by
+        // then fired) — keep the function alive until the deferred writes settle.
         after(async () => {
           if (completeP) await completeP;
+          if (usageWriteP) await usageWriteP;
         });
       }
       return new NextResponse(outBody, {
@@ -2022,7 +2090,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Non-streaming: append usage warning to the AI response
+    // Non-streaming: buffer + parse (a single JSON; safe to buffer). Captures
+    // token usage from the parsed body and appends the usage warning if any
+    // (appending "" is a no-op when there's no warning).
     const resText = await finalProviderRes.text();
     // Same turn-end → `complete` detection, read straight from the JSON body
     // (extractStopReason matches "stop_reason"/"finish_reason" in JSON too).
@@ -2038,6 +2108,9 @@ export async function POST(req: NextRequest) {
     }
     try {
       const resBody = JSON.parse(resText);
+      // Capture token usage from the parsed body (non-streaming = top-level
+      // usage block). Deferred UPDATE; fire-and-forget; null-safe.
+      recordTokenUsage(parseUsageFromJson(resBody));
       if (resBody.content && Array.isArray(resBody.content)) {
         // Find last text block and append warning
         for (let i = resBody.content.length - 1; i >= 0; i--) {
