@@ -291,13 +291,15 @@ async function main() {
       resultBody = await payRes.text();
       const xpr = payRes.headers.get("payment-response") || payRes.headers.get("x-payment-response");
       if (xpr) { try { txHash = JSON.parse(Buffer.from(xpr, "base64").toString("utf8"))?.transaction ?? null; } catch { /* best-effort */ } }
-    } else if (payRes.status === 401) {
-      // CARRIED UNKNOWN (PRD §14-C wrinkle iii): does payment-mcp also require the
-      // OAuth Bearer? If this fires at the P3 canary, the fork is to route this POST
-      // through the backend (which holds the token) — a one-spot change here.
-      payErr = "payment_endpoint_requires_auth";
-      payErrBody = (await payRes.text().catch(() => "")).slice(0, 800);
     } else {
+      // The X-PAYMENT header is the SOLE authorization for the x402 pay leg — no
+      // Bearer (KNOWN, 2026-06-10 doc research): the x402 protocol authorizes the
+      // paid request by the signed payment header, "not an Authorization Bearer
+      // token or API key" (Stripe/Coinbase x402 docs), and Travala's own travel-mcp
+      // README delegates the 402 to @coinbase/payments-mcp (an X-PAYMENT-only
+      // client). The OAuth Bearer gates only the travala_book TOOL call (the quote
+      // step), never this pay POST. So a 401 here is an unexpected protocol
+      // violation, not a "needs a Bearer" signal — surface it as a normal pay error.
       payErr = `pay_http_${payRes.status}`;
       payErrBody = (await payRes.text().catch(() => "")).slice(0, 800);
     }
@@ -326,9 +328,7 @@ async function main() {
       narration: `Booked. $${amountUsd} paid in USDC on Base${txHash ? ` (tx ${String(txHash).slice(0, 12)}…)` : ""}.${ref ? ` Booking ref ${ref}.` : ""}` });
   }
   return out({ ok: false, paid: false, hold_id: holdId, reason: payErr, pay_error_body: payErrBody,
-    narration: payErr === "payment_endpoint_requires_auth"
-      ? "The payment was signed and authorized, but Travala's pay endpoint asked for extra auth. I didn't double-charge — re-run with --retry once we route this through the backend."
-      : `The booking payment failed (${payErr}). Your hold is recorded; re-run with --retry --request-id ${requestId} to resume safely.` });
+    narration: `The booking payment failed (${payErr}). Your hold is recorded; re-run with --retry --request-id ${requestId} to resume safely.` });
 }
 
 main().catch((e) => fail("unexpected_error", { detail: String(e?.stack ?? e) }));

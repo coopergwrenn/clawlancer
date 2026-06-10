@@ -36,8 +36,11 @@ reason; relay it to the user, don't improvise around it.
    spend); a re-authorize with the same `request_id` then returns authorized
    (`reason:"human_approved_session"`) and reserves the spend hold.
 3. **Pay** — the platform's Bankr wallet signs the EIP-3009 transfer (no key on
-   your VM) and POSTs the `X-PAYMENT` to Travala's pay endpoint. The settlement
-   transaction hash comes back in the `payment-response` header.
+   your VM) and POSTs the `X-PAYMENT` to Travala's pay endpoint
+   (`payment-mcp.travala.com/m2m-payment/book`). That `X-PAYMENT` header is the
+   SOLE authorization for the pay leg — no Bearer (the OAuth token gates only the
+   quote step, not the payment). The settlement transaction hash comes back in the
+   `payment-response` header.
 4. **Settle** — the spend hold is flipped and the outcome recorded.
 
 ## Recovery (never double-charge)
@@ -68,7 +71,7 @@ approval is bound to that exact spend.
 | `outcome:"deny"` | over the travel ceiling | "That's above your travel spending limit — raise it in your dashboard to book." |
 | `approval_identity_mismatch` | the quote changed since the last approval | "The price changed — let me re-quote and ask you to approve the new total." (search again, fresh request_id) |
 | `over_max:...` | quote exceeds `--max-usd` | Re-quote or raise the cap with the user's OK. |
-| `payment_endpoint_requires_auth` | Travala pay endpoint wanted extra auth | Don't retry blindly; this routes through the backend (platform fix). No charge happened. |
+| `pay_http_401` (or other `pay_http_NNN`) | Travala pay endpoint rejected the X-PAYMENT | The pay leg is X-PAYMENT-only (no Bearer — confirmed 2026-06-10). A 401 here is unexpected; re-run with `--retry --request-id` (book-status guards against a double charge). |
 | `bankr_not_configured` | wallet not set up | "Your wallet isn't set up yet — contact support." |
 
 ## Search arguments
