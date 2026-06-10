@@ -292,13 +292,22 @@ if (status.isPaying) { /* serve */ }
 
 **Companion lesson (DB drift from Stripe):** `getBillingStatusVerified` queries Stripe API directly. Local DB `instaclaw_subscriptions` can drift (webhook delivery hiccups, race conditions). Trust Stripe over local DB when about to take action a paying customer would notice. The `2026-05-02` Doug Rathell wake bug had a sub showing `current_period_end` 24 days in the past — local DB lied; Stripe said active.
 
-**"Import the SoT or it doesn't ship" — proven four times in one day (2026-06-10):** every billing-gated path consults the single classifier (`getBillingStatus*` / `classify()` / `billing_exempt`) — NEVER an inline sub / credit / partner / tier check. The discipline earned its place four separate times on 2026-06-10, each a different surface that would have mis-gated a paying-or-exempt user on its own hand-rolled logic:
+**"Import the SoT or it doesn't ship" — proven SEVEN times in one day (2026-06-10):** every billing-gated path consults the single classifier (`getBillingStatus*` / `classify()` / `billing_exempt`) — NEVER an inline sub / credit / partner / tier check. Across 2026-06-10 the discipline (and the cost of skipping it) surfaced on seven distinct paths, each one a surface that would have mis-gated a paying-or-exempt user on its own hand-rolled logic.
+
+Four where consulting the SoT was load-bearing:
 1. **Free-cap counter** — the daily-message cap reads exemption from the SoT, not a re-derived "is this user free."
 2. **Webhook `customer.subscription.deleted` suspend** — confirms non-paying via the SoT before suspending (credits / partner / all-inclusive can keep a deleted-sub user paying).
 3. **suspend-check Pass 2** — classify before suspend, never inline sub-status.
 4. **Frontier spend gate (red-team F4)** — agent-economy spend authorization gates on the SoT, not a local payment check.
 
-The rule going forward: **any new path that gates on payment/exemption status imports the SoT, or it doesn't ship.** If the classifier is missing a case, add it there (per the Detection note above), then call it — never branch inline. An inline check is the bug regardless of whether it happens to be correct today.
+Three MORE found bypassing the SoT by onboarding's parking audit (commits `82be994a` + `59672546`), all writers of the suspend/hibernate state:
+5. **health-check `past_due`→suspend** — suspended on raw payment_status, ignoring the SoT's 7-day grace + credits + partner + all-inclusive.
+6. **health-check no-sub→hibernate** — hibernated on "no active sub" without consulting the SoT; **ran every 2 minutes and re-suspended vm-1075 (the founder VM) ten minutes after a "recovered" report.**
+7. **vm-lifecycle's shared `isUserBillableForVmAssignment` helper** — a second, parallel billing classifier that drifted from the SoT (the exact "reinvented per-call" failure Rule 14 exists to kill).
+
+**The method rule this incident proved (grep the whole class, fix in one pass):** a SoT-bypass fix is NOT complete until **every writer of that state has been grepped and the whole class guarded in one pass.** Patching only the named paths is how a founder VM went down twice in one night — the first fix named 2 suspend/hibernate writers; **5 existed.** When you find one inline billing check, `grep` for every site that writes the same state (suspend / hibernate / freeze / cap) and guard all of them together; a partial fix leaves a 2-minute cron to re-break the customer you just "recovered."
+
+The rule going forward: **any new path that gates on payment/exemption status imports the SoT, or it doesn't ship.** If the classifier is missing a case, add it there (per the Detection note above), then call it — never branch inline, and never stand up a second classifier (item 7). An inline check is the bug regardless of whether it happens to be correct today.
 
 ### 15. Three Sleep States — All Wake Paths Must Handle BOTH `hibernating` AND `suspended`
 
