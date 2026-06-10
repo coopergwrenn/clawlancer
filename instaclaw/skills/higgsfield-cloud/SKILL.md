@@ -1,73 +1,77 @@
 ---
 name: higgsfield-cloud
-description: Generate AI videos and images (Higgsfield Cloud). Use when the user asks to make/create a video, clip, animation, or image, or to animate a photo.
+description: Make videos and images — the default path for ANY new video or image on this agent. Use whenever the user asks to make/create a video, clip, animation, or image, or to animate a photo. (For extending an EXISTING video, use higgsfield-video instead.)
 ---
 
 # AI Video & Image Studio
 
-Create videos and images for the user through the InstaClaw video gate. You
-**submit, wait, then deliver the finished clip as native inline media in this
-chat** (attach it so it plays directly; never a plain text link). There's no
-separate inbox; you send the media yourself when it's ready.
+Create videos and images for the user through the InstaClaw video gate. **Video and
+image deliver differently — read this carefully:**
 
-## The flow (always)
+- **VIDEO is hands-off.** You **submit** it and tell the user it's rendering. The
+  system sends the finished clip to their chat **on its own** when it's ready
+  (1-5 min later) — **you do NOT wait for it, poll it, or send it yourself.** You
+  pass the chat id at submit so the system knows where to deliver.
+- **IMAGE is immediate.** The generator returns the image URL right away; **you**
+  send the image (or use it as the first frame of a video).
 
-1. Figure out **what** they want (image vs video) and **how** (see Model picking).
-2. Tell them it's starting: *"Creating that now. It usually takes 2 to 5 minutes, and I'll send it right here when it's ready."*
-3. Run the generator (it submits and waits for completion):
+## VIDEO — "make me a video / clip / animation / animate this"
+
+1. Figure out the prompt + (for a NEW idea with no source image) plan to make an image first (see "Video needs a source image").
+2. **Find the chat id.** It's in the conversation metadata of the user's message
+   (`"chat_id": "telegram:5918081163"`). You'll pass it as `--chat-id`.
+3. Tell them: *"Creating that now — usually 2 to 5 minutes. I'll send it right here when it's ready."*
+4. Submit (note `--chat-id` — REQUIRED for video so the system can deliver it):
    ```bash
    python3 ~/.openclaw/skills/higgsfield-cloud/scripts/higgsfield-cloud.py generate \
-     --kind video --quality fast --prompt "<vivid description>" --image-url "<url>" --json
+     --kind video --quality fast --prompt "<vivid description>" --image-url "<url>" \
+     --chat-id "<chat id from the conversation metadata>" --json
    ```
-4. Read the exit + JSON and act on the `status` field:
-   - **`completed`** → **deliver the clip as native inline media** (see "Delivering the clip" below): attach the returned `url` as a video/image so it plays directly in the chat. **Never** paste the `url` as a plain text link.
-   - **`failed` / `nsfw`** → *"That one didn't render this time. Want me to tweak the idea and try again?"* (nsfw: *"I couldn't make that one. Let's adjust it and retry."*)
-   - **`timeout`** → *"Still rendering, give me a moment."* then re-check with:
-     `... higgsfield-cloud.py status --request-id <id> --json` (if it's still rendering after a couple of re-checks over ~10 min, tell them it's taking unusually long and to try again later).
-   - **`busy`** → the service is at capacity: *"The video service is busy right now. Let's try again in a few minutes."*
-   - **`blocked` / `needs_image`** → read `message` and follow it (see below).
+5. Read the `status`:
+   - **`submitted`** → **you're done. Do NOT wait or poll.** The clip will arrive in the chat automatically. Just confirm it's rendering (you already told them in step 3). Move on / answer anything else.
+   - **`no_chat_id`** → you forgot `--chat-id`. Re-run with it (the chat id is in the conversation metadata).
+   - **`blocked`** (reason `free_exhausted` / `insufficient_credits`) → tell the user (see Free allowance).
+   - **`busy`** → *"The video service is busy right now — let's try again in a few minutes."*
+   - **`needs_image`** → make the image first (see below), then submit the video with that image URL.
+   - **`error`** → *"Couldn't start that one — want me to try again?"*
 
-## Delivering the clip (do this every time)
+**Never block waiting for a video, and never paste a raw status/request_id to the user.** The system delivers the finished video to the chat by itself.
 
-When `status` is `completed`, deliver the `url` as **native inline media**, never as a link:
-- Send the `url` as an **attached video** (clips) or **image** (images) so it **plays/shows directly in the chat**. Your message tool takes a media URL and renders it as real inline media. This is the **default and required** delivery here.
-- A short caption is fine ("Here's your clip."). The **media itself** is the deliverable.
-- **Never** post the raw `url` as plain text and consider it delivered. A link is not a delivery. The only time a link is acceptable is the explicit fallback message the script returns when native attachment is impossible (e.g. an oversized file), and even then prefer attaching.
+## IMAGE — "make me an image / picture"
 
-## Picking the model (G8)
+```bash
+python3 ~/.openclaw/skills/higgsfield-cloud/scripts/higgsfield-cloud.py generate \
+  --kind image --quality fast --prompt "<vivid description>" --json
+```
+Read the `status`:
+- **`completed`** → **deliver the returned `url` as native inline media** (attach it so it shows in the chat; never a plain text link). The image is the deliverable.
+- **`rendering`** → it's taking a few extra seconds; re-check once with `status --request-id <id> --json`, then deliver.
+- **`failed` / `busy`** → tell the user and offer a retry.
 
-Pass `--kind` + `--quality`; the script maps to the right Cloud model.
+## Video needs a source image (the text→image→video flow)
 
-- **Image** → `--kind image`. (Fast, effectively free.)
-- **Video, default** → `--kind video --quality fast`, the standard clip. **Use this unless they ask for more.** Free within the daily allowance.
-- **Video, higher quality (short)** → `--quality hq`.
-- **Video, premium / longer (~10s)** → `--quality premium`.
-- You can also pass `--model <name>` explicitly (`lite`, `hq`, `kling`, `soul`).
+Every video model animates an **image**. If the user gave you a photo URL, use it.
+If not ("make a video of a dragon"):
+1. Make the image first: `generate --kind image --prompt "a dragon ..."` → get the `url`.
+2. Animate it: `generate --kind video --image-url "<that url>" --chat-id "<id>" --prompt "the dragon breathes fire ..."`.
+This uses **two** free generations (image + video) — counts double against the daily allowance.
 
-**Not available yet:** if the user names **Seedance, Veo, Sora, Runway, Wan, lip-sync/talking-avatar**, or asks for **clips longer than ~10s**, say it's *not available yet* and offer a standard clip or image instead. Don't pretend it works, and don't promise a length we can't deliver.
+## Picking the model
 
-## Video needs a source image (important)
+Pass `--kind` + `--quality`:
+- **Image** → `--kind image` (fast, effectively free).
+- **Video, default** → `--kind video --quality fast`. Use this unless they ask for more. Free within the daily allowance.
+- **Video, higher quality** → `--quality hq`. **Premium / longer (~10s)** → `--quality premium`.
 
-Every video model animates an **image** (image to video). So:
-- They gave you a photo / image URL → animate it: `--kind video --image-url "<url>"`.
-- **No image** ("make a video of a dragon") → make the **image first**, then animate it:
-  1. *"I'll create the image first, then bring it to life."*
-  2. `generate --kind image --prompt "a dragon ..."` → get the image `url`.
-  3. `generate --kind video --image-url "<that url>" --prompt "the dragon breathes fire ..."`.
-  Note this uses **two** free generations (the image and the video), so it counts double against the daily free allowance.
+**Not available yet:** if the user names **Seedance, Veo, Sora, Runway, Wan, lip-sync/talking-avatar**, or asks for **clips longer than ~10s**, say it's *not available yet* and offer a standard clip or image instead.
 
 ## Free allowance (current phase)
 
-Today, **standard clips (fast) and images are free** within a daily allowance.
-Premium/HQ clips will need credits, which **aren't purchasable yet**.
-
-- **`blocked`, reason `free_exhausted`** → *"You've used today's free generations. They reset at midnight UTC. Want me to try again tomorrow, or tweak something now?"*
-- **`blocked`, reason `insufficient_credits`** (they asked for premium/HQ) → *"Premium clips need credits, which aren't available just yet. I can make you a standard clip right now for free. Want that?"* then run `--quality fast`.
-
-Default to the **free** options; mention premium only as *coming soon*. Don't promise paid generation.
+Standard clips (fast) and images are **free** within a daily allowance; premium/HQ need credits, which **aren't purchasable yet**.
+- **`free_exhausted`** → *"You've used today's free generations — they reset at midnight UTC. Want me to try again tomorrow?"*
+- **`insufficient_credits`** (they asked for premium/HQ) → *"Premium clips need credits, which aren't available just yet. I can make you a standard clip right now for free — want that?"* then run `--quality fast`.
 
 ## Notes
-
-- Be **specific** in prompts (subject, action, setting, lighting, style). It makes the output far better.
-- Don't expose raw `request_id`s, slugs, or JSON to the user. Just deliver the result or a clear, friendly status.
-- Auth + endpoint are automatic (the script reads `GATEWAY_TOKEN`; the gate meters everything). You don't manage keys.
+- Be **specific** in prompts (subject, action, setting, lighting, style).
+- Don't expose raw `request_id`s, slugs, or JSON to the user.
+- Auth + endpoint + delivery are automatic (the script reads `GATEWAY_TOKEN`; the gate meters everything and delivers video via webhook). You don't manage keys or chat plumbing beyond passing `--chat-id` for video.

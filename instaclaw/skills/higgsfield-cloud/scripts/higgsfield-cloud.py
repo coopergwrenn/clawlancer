@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
-"""Higgsfield Cloud — AI video & image generation (Cloud-rail, agent-poll).
+"""Higgsfield Cloud — AI video & image generation (Cloud-rail).
 
 The Cloud-rail successor to the Muapi `higgsfield-video` skill. Talks to OUR
 gateway (`/api/gateway/higgsfield`), which meters + gates spend in our own
-video-credits. The agent submits, the script polls to completion (Option B —
-agent-poll delivery: the agent is in the conversation, so it delivers the result
-by replying; no chat_id plumbing needed), then the agent sends the clip/image.
+video-credits.
+
+Delivery model (M5 fix — async video, sync image):
+  - VIDEO is SUBMIT-ONLY. The script submits and returns immediately ("rendering
+    ~2-5 min"); it does NOT block-poll (that loop was M5 — a multi-minute bash
+    call the tool backgrounds, poisoning the session). The gate's webhook delivers
+    the finished clip to the chat_id signed at submit, server-side — surviving the
+    turn ending and even a VM restart mid-render. Pass --chat-id for video.
+  - IMAGE is SYNCHRONOUS: a short, bounded poll returns the URL so the agent can
+    deliver it or chain it into a video. No long block; re-checkable if slow.
 
 Usage:
   higgsfield-cloud.py generate --kind video|image --prompt "..." \
        [--quality fast|hq|premium] [--image-url <url>] [--model <slug>] \
-       [--duration N] [--max-wait 480] [--json]
+       [--duration N] [--chat-id <id>] [--max-wait 60] [--json]
   higgsfield-cloud.py status --request-id <id> [--json]
 
-Exit codes: 0=completed (deliver it), 1=failed/nsfw, 2=timeout (still rendering),
-            3=blocked/unsupported/insufficient (tell the user), 4=error.
+Exit codes: 0=submitted/completed, 1=failed/nsfw, 2=image still rendering (re-check),
+            3=blocked/unsupported/insufficient/busy/no_chat_id, 4=error.
 
 Auth + endpoint:
   GATEWAY_TOKEN from ~/.openclaw/.env (same per-VM token the other proxies use).
@@ -182,6 +189,14 @@ def cmd_generate(args):
         body["image_url"] = args.image_url
     if args.duration is not None:
         body["duration"] = args.duration
+    # VIDEO is async (submit → webhook delivers). Sign the chat_id so the gate's
+    # webhook can push the finished clip server-side — this survives the turn
+    # ending and even a VM restart mid-render. The chat_id comes from the agent
+    # (the conversation metadata it sees, "telegram:<id>"); we strip the prefix.
+    # IMAGE stays synchronous (the agent needs the URL to deliver or chain into a
+    # video), carries no chat_id, and the webhook settles-only for it.
+    if not is_image and args.chat_id:
+        body["chat_id"] = str(args.chat_id).replace("telegram:", "").strip()
 
     status, resp = _gate_call("create", token, body=body)
     if status in (402, 400):
@@ -198,37 +213,53 @@ def cmd_generate(args):
         return 4
 
     request_id = resp["request_id"]
-    if args.submit_only:
-        _out({"status": "submitted", "request_id": request_id, "model": slug}, args.json)
+
+    # ── VIDEO: SUBMIT-ONLY. No block-poll (that loop was M5 — a multi-minute bash
+    #    call the tool backgrounds, leaving a stuck "still running" + a poisoned
+    #    session). The gate's webhook delivers the finished clip to the signed
+    #    chat_id server-side; the agent just tells the user it's rendering. ──
+    if not is_image:
+        # The gate may resolve a delivery target server-side (A2: vm.telegram_chat_id)
+        # even when the agent didn't pass one; trust resp.delivery if present.
+        has_target = bool(body.get("chat_id")) or resp.get("delivery") == "webhook"
+        if not has_target:
+            _out({"status": "no_chat_id", "request_id": request_id, "model": slug,
+                  "message": "Submitted, but I have no delivery target — pass --chat-id "
+                             "(the chat id from the conversation metadata) so I can send the video."}, args.json)
+            return 0
+        _out({"status": "submitted", "request_id": request_id, "model": slug,
+              "message": "Rendering now — usually 2 to 5 minutes. I'll send the video here the "
+                         "moment it's ready (you don't need to do anything)."}, args.json)
         return 0
 
-    # Block-poll to completion (Option B). The agent's single call returns the
-    # final result; it then delivers in-conversation.
-    deadline = time.time() + (args.max_wait or 480)
+    # ── IMAGE: short, bounded SYNC poll (images finish in seconds). Returns the
+    #    URL so the agent can deliver it or chain it into a video. Capped well
+    #    under any tool-background threshold — never a long block; if it's slow,
+    #    hand back a re-checkable handle instead of waiting. ──
+    deadline = time.time() + min(args.max_wait or 60, 90)
     err_streak = 0  # M2: distinguish a busy/rate-limited service from a slow job
     while time.time() < deadline:
-        time.sleep(15)
+        time.sleep(5)
         s, st = _gate_call("status", token, params={"request_id": request_id})
-        # An upstream error = our gate call wasn't 200, OR the gate proxied a
-        # non-ok Higgsfield response (it returns {http:<code>} then).
         upstream_err = s != 200 or bool(st.get("http"))
         if s == 200 and not st.get("http") and st.get("done"):
             if st.get("ok") and st.get("video_url"):
                 _out({"status": "completed", "request_id": request_id, "url": st["video_url"], "model": slug}, args.json)
                 return 0
             _out({"status": st.get("status", "failed"), "request_id": request_id,
-                  "message": "That one didn't render. Want to tweak it and try again?"}, args.json)
+                  "message": "That image didn't render. Want to tweak it and try again?"}, args.json)
             return 1
         if upstream_err:
             err_streak += 1
-            if err_streak >= 4:  # ~1 min of consecutive 429/5xx → not a slow job, the service is busy
+            if err_streak >= 4:
                 _out({"status": "busy", "request_id": request_id,
-                      "message": "The video service is busy right now. Please try again in a few minutes."}, args.json)
+                      "message": "The image service is busy right now. Please try again in a few moments."}, args.json)
                 return 3
         else:
-            err_streak = 0  # a clean in-progress poll resets the streak
-    _out({"status": "timeout", "request_id": request_id,
-          "message": "Still rendering. Check again in a moment with `status`."}, args.json)
+            err_streak = 0
+    _out({"status": "rendering", "request_id": request_id,
+          "message": "Still creating the image — re-check in a few seconds with: "
+                     "status --request-id " + request_id}, args.json)
     return 2
 
 
@@ -261,8 +292,12 @@ def main():
     g.add_argument("--image-url", help="source image for video (image→video)")
     g.add_argument("--model", help="explicit model/alias (overrides kind/quality)")
     g.add_argument("--duration", type=int, help="seconds (Kling only honors 10)")
-    g.add_argument("--max-wait", type=int, default=480, help="poll budget seconds")
-    g.add_argument("--submit-only", action="store_true", help="submit, don't block-poll")
+    g.add_argument("--chat-id", dest="chat_id",
+                   help="VIDEO delivery target — the chat id from the conversation "
+                        "metadata (e.g. 5918081163 or telegram:5918081163). REQUIRED for "
+                        "video so the gate's webhook can send the finished clip here.")
+    g.add_argument("--max-wait", type=int, default=60, help="IMAGE sync-poll cap seconds (video is submit-only)")
+    g.add_argument("--submit-only", action="store_true", help="(video is always submit-only now)")
     g.add_argument("--json", action="store_true")
 
     s = sub.add_parser("status", help="Check a request's status")
