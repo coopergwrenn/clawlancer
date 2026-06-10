@@ -102,6 +102,15 @@ export interface AuthorizationInput {
    */
   requireSessionAboveThreshold?: boolean;
   /**
+   * When true, the FORGEABLE approval (humanApprovedForgeable) must NEVER authorize
+   * this spend at any amount -- only a session approval can. Set for consent-always,
+   * session-grade categories (travel; lib/frontier-policy.isSessionRequiredCategory),
+   * INDEPENDENT of requireSessionAboveThreshold (the global flip). This makes the
+   * $0-just-do-it travel safety unforgeable today, not just post-flip. Default false
+   * (every other category keeps the flip-gated behavior). Red-team F2 (2026-06-10).
+   */
+  disallowForgeableApproval?: boolean;
+  /**
    * Could the purchase's capability category be identified? An unidentifiable
    * category is not auto-spendable (it isn't a known-safe kind) but isn't banned
    * either — so it bounces to the human rather than denying. A human-BANNED
@@ -139,6 +148,7 @@ export function decideAuthorization(input: AuthorizationInput): AuthorizationDec
   const forgeable = input.humanApprovedForgeable ?? input.humanApproved ?? false;
   const justDoItPerTxUsd = input.justDoItPerTxUsd ?? Infinity;
   const requireSessionAboveThreshold = input.requireSessionAboveThreshold ?? false;
+  const disallowForgeable = input.disallowForgeableApproval ?? false;
   const aboveThreshold = amountUsd >= justDoItPerTxUsd;
 
   const earned = standing.earnedDailyBudgetUsd;
@@ -170,9 +180,12 @@ export function decideAuthorization(input: AuthorizationInput): AuthorizationDec
     };
   }
   if (forgeable) {
-    if (aboveThreshold && requireSessionAboveThreshold) {
-      // Post-flip: at/above the calibrated autonomy line the agent's word is not
-      // enough -- only the human's browser session speaks. Bounce to session approval.
+    // F2: a session-grade category (travel) NEVER honors the forgeable bool -- only a
+    // session approval (handled above) can authorize it, at any amount, regardless of
+    // the global flip. Otherwise the phase-3 flip governs: post-flip, the forgeable bool
+    // no longer suffices at/above the calibrated autonomy line.
+    if (disallowForgeable || (aboveThreshold && requireSessionAboveThreshold)) {
+      // The agent's word is not enough -- only the human's browser session speaks.
       return { authorized: false, mode: null, outcome: "ask_first", reason: "needs_session_approval", ...base };
     }
     return {

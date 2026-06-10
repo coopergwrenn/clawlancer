@@ -123,6 +123,32 @@ check("legacy humanApproved → reason human_approved",
 check("no approval, over earned → ask_first exceeds_earned_budget",
   decide({ amountUsd: THRESH + 5 }).reason === "exceeds_earned_budget");
 
+// ── F2 (red-team): a session-grade category (travel) NEVER honors the forgeable bool ──
+// disallowForgeableApproval=true models a travel spend (justDoItPerTxUsd=0). The forgeable
+// bool must NOT authorize it — only a session approval — INDEPENDENT of the global flip.
+check("F2 forged bool + travel (flip OFF) → NOT authorized",
+  decide({ humanApprovedForgeable: true, disallowForgeableApproval: true, justDoItPerTxUsd: 0, requireSessionAboveThreshold: false }).authorized === false);
+check("F2 forged bool + travel → reason needs_session_approval",
+  decide({ humanApprovedForgeable: true, disallowForgeableApproval: true, justDoItPerTxUsd: 0 }).reason === "needs_session_approval");
+check("F2 forged bool + travel → outcome ask_first",
+  decide({ humanApprovedForgeable: true, disallowForgeableApproval: true, justDoItPerTxUsd: 0 }).outcome === "ask_first");
+// the point: refused even with the flip OFF (phase 1). Forgeable-travel is unforgeable NOW.
+check("F2 forged bool + travel, flip OFF → still refused (independent of the phase-3 flip)",
+  decide({ humanApprovedForgeable: true, disallowForgeableApproval: true, justDoItPerTxUsd: 0, requireSessionAboveThreshold: false }).authorized === false);
+// session approval STILL authorizes travel (the unforgeable path works at any amount).
+check("F2 session approval + travel → authorized",
+  decide({ sessionApproved: true, disallowForgeableApproval: true, justDoItPerTxUsd: 0, amountUsd: 1000 }).authorized === true);
+check("F2 session approval + travel → reason human_approved_session",
+  decide({ sessionApproved: true, disallowForgeableApproval: true, justDoItPerTxUsd: 0 }).reason === "human_approved_session");
+// hard deny (the $1200 ceiling) still beats Gate 3 — a $1300 travel + forged bool denies.
+check("F2 hard deny + travel forged → still deny (Gate 1 precedence)",
+  decide({ evaluation: ev("deny", "exceeds_per_tx_ceiling"), humanApprovedForgeable: true, disallowForgeableApproval: true, justDoItPerTxUsd: 0 }).outcome === "deny");
+// NON-TRAVEL phase-1 behavior UNCHANGED: forged bool, above threshold, flip OFF, NOT session-grade → authorized.
+check("F2 non-travel forged bool above threshold (flip OFF) → authorized (UNCHANGED)",
+  decide({ humanApprovedForgeable: true, disallowForgeableApproval: false, requireSessionAboveThreshold: false, amountUsd: THRESH + 50 }).authorized === true);
+check("F2 non-travel forged bool → reason human_approved (UNCHANGED)",
+  decide({ humanApprovedForgeable: true, disallowForgeableApproval: false, requireSessionAboveThreshold: false, amountUsd: THRESH + 50 }).reason === "human_approved");
+
 // ── evaluateApproval / approvalMatchesSpend / isApprovalExpired ──
 
 const NOW = 1_900_000_000_000; // fixed

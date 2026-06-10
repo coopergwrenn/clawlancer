@@ -75,6 +75,7 @@ import {
   evaluateSpend,
   mapTagsToCategory,
   ALL_CATEGORIES,
+  isSessionRequiredCategory,
   type FrontierTier,
   type SpendCategory,
 } from "@/lib/frontier-policy";
@@ -438,6 +439,9 @@ export async function POST(req: NextRequest) {
     sessionApproved,
     justDoItPerTxUsd: evaluation.effectiveBands.justDoItPerTx,
     requireSessionAboveThreshold: requireSessionApprovalAboveThreshold(),
+    // F2: travel (and any session-grade category) NEVER honors the forgeable bool --
+    // only a session approval authorizes it, independent of the global flip.
+    disallowForgeableApproval: isSessionRequiredCategory(v.category),
     categoryKnown: v.category !== null,
   });
 

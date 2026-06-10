@@ -317,6 +317,24 @@ export const ALL_CATEGORIES: readonly SpendCategory[] = [
   "data", "search", "inference", "compute", "market", "media", "travel", "agent", "other",
 ];
 
+/**
+ * Categories whose spends ALWAYS require UNFORGEABLE (session-rooted) human approval:
+ * the raw human_approved body bool must NEVER authorize them, independent of the global
+ * phase-3 flip (FRONTIER_REQUIRE_SESSION_APPROVAL_ABOVE_THRESHOLD). These are the
+ * consent-always, high-value categories — travel (StableTravel bookings to $1200/tx).
+ * Paired with travelBands' $0 just-do-it (every travel spend → ask_first), this closes
+ * red-team F2: without it, a prompt-injected / token-stolen agent could authorize a
+ * $1200 booking by setting one forgeable boolean, because phase-1 honors the forgeable
+ * bool above the threshold. With it, only a session approval converts a travel ask_first
+ * to authorized — the $0-just-do-it safety becomes unforgeable, today, not just post-flip.
+ */
+export const SESSION_REQUIRED_CATEGORIES: readonly SpendCategory[] = ["travel"];
+
+/** True iff this category's spends require session-rooted approval (forgeable never suffices). */
+export function isSessionRequiredCategory(category: SpendCategory | null | undefined): boolean {
+  return category != null && SESSION_REQUIRED_CATEGORIES.includes(category);
+}
+
 /** Bazaar tag → category. First match wins; unknown tags → null (caller defaults to "other"). */
 const TAG_CATEGORY_RULES: ReadonlyArray<[RegExp, SpendCategory]> = [
   // travel FIRST: ToolRouter endpoint ids like `flights_search` / `hotels_search`
