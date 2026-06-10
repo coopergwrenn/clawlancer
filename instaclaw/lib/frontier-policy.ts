@@ -263,15 +263,22 @@ export type SpendCategory =
   | "compute" // sandboxes, code execution, rendering
   | "market" // prediction markets, trading signals, on-chain market data
   | "media" // images, audio, video generation
+  | "travel" // flights, hotels, lodging, transport (ToolRouter StableTravel: stabletravel.*)
   | "agent" // hiring another agent's service (A2A)
   | "other";
 
 export const ALL_CATEGORIES: readonly SpendCategory[] = [
-  "data", "search", "inference", "compute", "market", "media", "agent", "other",
+  "data", "search", "inference", "compute", "market", "media", "travel", "agent", "other",
 ];
 
 /** Bazaar tag → category. First match wins; unknown tags → null (caller defaults to "other"). */
 const TAG_CATEGORY_RULES: ReadonlyArray<[RegExp, SpendCategory]> = [
+  // travel FIRST: ToolRouter endpoint ids like `flights_search` / `hotels_search`
+  // contain "search", so the search rule below would otherwise swallow them. Placing
+  // travel first makes any flight/hotel/lodging tag classify as travel regardless of
+  // co-occurring substrings. (Explicit category:"travel" from the caller still wins —
+  // this mapping is only the tags-fallback path.)
+  [/flight|hotel|airfare|airline|lodging|hostel|motel|itinerary|stabletravel|travel/i, "travel"],
   [/price|feed|market[_-]?cap|ticker|ohlc|telemetry|weather|dataset|data\b/i, "data"],
   [/search|scrape|crawl|serp|web[_-]?search|intelligence|lookup/i, "search"],
   [/inference|llm|gpt|llama|mistral|embedding|model|completion|gpu/i, "inference"],
@@ -296,12 +303,24 @@ export function mapTagsToCategory(tags: string[] | null | undefined): SpendCateg
  * adjacency) is OFF by default at every tier — buying trading signals/DeFi actions
  * is the category most likely to cause harm, so it requires deliberate opt-in.
  * The human can widen or narrow this from the dashboard (stored as an override).
+ *
+ * "travel" (ToolRouter StableTravel: flights/hotels/lodging) is allowed at pro + power,
+ * NOT starter. The reasoning: a category absent from the allowlist is a Gate-1 HARD
+ * DENY (category_not_allowed) that even a human approval cannot override per-spend AND
+ * the override is tighten-only (a missing category can never be re-added) — so to make
+ * travel usable AT ALL it must live in the default. The risk of a large autonomous
+ * travel spend is handled by the AMOUNT gates, not categorical exclusion: a booking
+ * over justDoItPerTx bounces to ask_first → session-rooted human approval (the
+ * human_approved hardening). Starter (the minimal tier — only data/search/agent, no
+ * inference/compute/media either) is kept travel-free to preserve its locked-down
+ * posture; moving travel into starter is a one-line change if desired.
  */
 export const DEFAULT_ALLOWED_CATEGORIES_BY_TIER: Record<FrontierTier, readonly SpendCategory[]> = {
   starter: ["data", "search", "agent"],
-  pro: ["data", "search", "inference", "compute", "media", "agent"],
-  power: ["data", "search", "inference", "compute", "media", "agent", "other"],
+  pro: ["data", "search", "inference", "compute", "media", "travel", "agent"],
+  power: ["data", "search", "inference", "compute", "media", "travel", "agent", "other"],
   // "market" intentionally excluded from all defaults — opt-in only.
+  // "travel" included at pro + power (see docblock); excluded from starter by design.
 };
 
 /**

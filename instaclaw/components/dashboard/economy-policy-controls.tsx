@@ -31,6 +31,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   compute: "Compute & sandboxes",
   market: "Trading & market data",
   media: "Image / audio / video",
+  travel: "Travel & lodging",
   agent: "Hiring other agents",
   other: "Other",
 };

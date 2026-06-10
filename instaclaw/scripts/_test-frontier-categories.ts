@@ -15,6 +15,8 @@
 import {
   effectiveAllowedCategories,
   evaluateSpend,
+  mapTagsToCategory,
+  ALL_CATEGORIES,
   DEFAULT_ALLOWED_CATEGORIES_BY_TIER,
   type FrontierTier,
   type SpendCategory,
@@ -105,6 +107,60 @@ expectDecision(
   "starter",
   { ...ok(), category: "data", allowedCategories: effectiveAllowedCategories("starter", ["data", "market"]) },
   "within_just_do_it_band",
+);
+
+// ── travel category (ToolRouter StableTravel; §6) ──
+function check(label: string, cond: boolean): void {
+  if (cond) passed++;
+  else { failed++; console.error(`FAIL: ${label}`); }
+}
+
+// enum + registry
+check("ALL_CATEGORIES includes travel", ALL_CATEGORIES.includes("travel"));
+check("ALL_CATEGORIES length is 9", ALL_CATEGORIES.length === 9);
+
+// tag mapping — the ordering fix: 'flights_search' contains 'search' but must map to
+// travel (travel rule is first), not search.
+check("['flight'] → travel", mapTagsToCategory(["flight"]) === "travel");
+check("['hotel'] → travel", mapTagsToCategory(["hotel"]) === "travel");
+check("['lodging'] → travel", mapTagsToCategory(["lodging"]) === "travel");
+check("['flights_search'] → travel (NOT search — ordering)", mapTagsToCategory(["flights_search"]) === "travel");
+check("['stabletravel.hotels_search'] → travel", mapTagsToCategory(["stabletravel.hotels_search"]) === "travel");
+check("['search'] still → search (no travel term)", mapTagsToCategory(["search"]) === "search");
+
+// tier defaults — pro + power allow travel; starter does NOT.
+check("pro default includes travel", DEFAULT_ALLOWED_CATEGORIES_BY_TIER.pro.includes("travel"));
+check("power default includes travel", DEFAULT_ALLOWED_CATEGORIES_BY_TIER.power.includes("travel"));
+check("starter default excludes travel", !DEFAULT_ALLOWED_CATEGORIES_BY_TIER.starter.includes("travel"));
+
+// tighten-only: starter can never ADD travel (not in its tier default).
+expectCats("starter cannot add 'travel' (above-tier)", "starter", ["data", "travel"], ["data"]);
+// pro keeps travel through a tightening that includes it.
+check("pro effective keeps travel by default", effectiveAllowedCategories("pro", null).includes("travel"));
+
+// gate integration — the load-bearing layering proof:
+// (a) starter travel spend → HARD DENY (travel not in starter allowlist).
+expectDecision(
+  "starter travel spend → category_not_allowed (hard deny)",
+  "starter",
+  { ...ok(), category: "travel", allowedCategories: DEFAULT_ALLOWED_CATEGORIES_BY_TIER.starter },
+  "category_not_allowed",
+);
+// (b) pro small travel spend → autonomous (category allowed, under just_do_it).
+expectDecision(
+  "pro small travel spend → within_just_do_it_band",
+  "pro",
+  { ...ok(), category: "travel", allowedCategories: DEFAULT_ALLOWED_CATEGORIES_BY_TIER.pro },
+  "within_just_do_it_band",
+);
+// (c) pro LARGE travel spend (over justDoItPerTx $5, under neverPerTx $50) → ask_first,
+//     NOT hard-denied. This is the whole layering: travel is categorically allowed, and
+//     the AMOUNT gate sends a big booking to human approval (the human_approved flow).
+expectDecision(
+  "pro $6 travel spend → ask_first (amount gate, not category deny)",
+  "pro",
+  { ...ok(), amountUsd: 6, category: "travel", allowedCategories: DEFAULT_ALLOWED_CATEGORIES_BY_TIER.pro },
+  "within_ask_first_band",
 );
 
 console.log(`\nfrontier-categories: ${passed} passed, ${failed} failed`);

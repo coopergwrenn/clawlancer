@@ -49,7 +49,7 @@
  *     "counterparty_address":<string 0x…>,      // an external payee
  *     "endpoint":            <string url>,       // the external resource (Bazaar) URL
  *     // capability:
- *     "category": "data"|"search"|"inference"|"compute"|"market"|"media"|"agent"|"other",
+ *     "category": "data"|"search"|"inference"|"compute"|"market"|"media"|"travel"|"agent"|"other",
  *     "tags":     <string[]>,                    // mapped to a category if `category` omitted
  *     // context:
  *     "wallet_balance_usd":  <number>,          // IGNORED (P1-3) — balance is read server-side from bankr_evm_address; kept for backward-compat
