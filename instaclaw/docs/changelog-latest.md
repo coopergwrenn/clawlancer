@@ -1,43 +1,43 @@
 # Changelog — generated 2026-06-10
 
-Window: `cdc519e652d9c685fb69103285c8c2ed26dd20c6` → `HEAD` (HEAD = `741cf114`)
-Total commits: 2
+Window: `741cf1145b0267d4a91ef308dfa57a378c432519` → `HEAD` (HEAD = `9fd98544`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: 741cf1145b0267d4a91ef308dfa57a378c432519 -->
+<!-- LAST_GENERATED_SHA: 9fd98544f63df978919572252cecc8527a31af64 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
-- **Feature (user-facing):** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
+- **Feature (user-facing):** 1
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 2
 - Merge commits: 0
 
 ## What changed for users
 
-_None in this window._
+- `6817d550` 2026-06-10 — feat(economy): /settings suggest deep-link pre-fill on /economy [2 files] _(ai-assisted)_
 
 ## What changed under the hood
 
-- `741cf114` 2026-06-10 — fix(fleet-health): durable manifest-version threshold — kill the drift that recreated the May 11 blind spot [4 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `ecf1fb52` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `9fd98544` 2026-06-10 — ci(frontier): build-time guard -- fail the build if test:frontier is clobbered [1 files] _(ai-assisted)_
+- `cc403b8c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `741cf114` 2026-06-10 — fix(fleet-health): durable manifest-version threshold — kill the drift that recreated the May 11 blind spot [4 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
 
-### Feature (user-facing) (0)
+### Infrastructure (1)
 
-_(none)_
+- `9fd98544` 2026-06-10 — ci(frontier): build-time guard -- fail the build if test:frontier is clobbered [1 files] _(ai-assisted)_
+
+### Feature (user-facing) (1)
+
+- `6817d550` 2026-06-10 — feat(economy): /settings suggest deep-link pre-fill on /economy [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -45,21 +45,17 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `ecf1fb52` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `cc403b8c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `741cf114` 2026-06-10 — [reconciler, infrastructure, docs] — fix(fleet-health): durable manifest-version threshold — kill the drift that recreated the May 11 blind spot
-
-## AI-assisted commits (1)
+## AI-assisted commits (2)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `741cf114` 2026-06-10 — fix(fleet-health): durable manifest-version threshold — kill the drift that recreated the May 11 blind spot
+- `6817d550` 2026-06-10 — feat(economy): /settings suggest deep-link pre-fill on /economy
+- `9fd98544` 2026-06-10 — ci(frontier): build-time guard -- fail the build if test:frontier is clobbered
 
 ## Appendix — every commit (chronological)
 
-- `ecf1fb52` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `741cf114` 2026-06-10 — fix(fleet-health): durable manifest-version threshold — kill the drift that recreated the May 11 blind spot [4 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `cc403b8c` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `6817d550` 2026-06-10 — feat(economy): /settings suggest deep-link pre-fill on /economy [2 files] _(ai-assisted)_
+- `9fd98544` 2026-06-10 — ci(frontier): build-time guard -- fail the build if test:frontier is clobbered [1 files] _(ai-assisted)_
