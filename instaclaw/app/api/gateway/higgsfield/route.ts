@@ -185,22 +185,6 @@ export async function POST(req: NextRequest) {
       chat_id?: string | number;
     };
 
-    // chat_id resolution — A1 primary, A2 fallback, then settle-only:
-    //   A1 (agent): the skill passes --chat-id from the conversation metadata.
-    //   A2 (fallback): if the agent omits it, use the VM's stored
-    //       telegram_chat_id (populated by the passive backfill on telegram
-    //       inbound traffic). Survives across VM restart — server-side state,
-    //       not conversation-bound — which is why webhook delivery beats the
-    //       agent-poll sketch for the async case.
-    // Either source signs `c` into the webhook payload → the webhook delivers
-    // the finished clip directly. Absent BOTH → webhook settles only and the
-    // agent delivers from its poll loop (v1). No chat_id is ever fabricated.
-    const chatIdFromAgent = body.chat_id != null ? String(body.chat_id) : undefined;
-    const chatId =
-      chatIdFromAgent ??
-      (vm.telegram_chat_id ? String(vm.telegram_chat_id) : undefined);
-    const chatIdSource = chatIdFromAgent ? "agent" : chatId ? "vm_fallback" : "none";
-
     // --- 1. VALIDATE model (allowlist) — NO arbitrary endpoint passthrough. ---
     const endpoint = (typeof body.endpoint === "string" && body.endpoint) || DEFAULT_MODEL;
     const model = HF_MODELS[endpoint];
@@ -224,6 +208,34 @@ export async function POST(req: NextRequest) {
       );
     }
     const input = validated.input;
+
+    // chat_id resolution — A1 primary, A2 fallback, then settle-only:
+    //   A1 (agent): the skill passes --chat-id from the conversation metadata.
+    //   A2 (fallback): if the agent omits it, use the VM's stored
+    //       telegram_chat_id (populated by the passive backfill on telegram
+    //       inbound traffic). Survives across VM restart — server-side state,
+    //       which is why webhook delivery beats the agent-poll sketch.
+    // IMAGE SUPPRESSION (2026-06-10): an image render is NEVER webhook-delivered.
+    // It's either the intermediate source frame of a text->image->video flow
+    // (pipeline plumbing the user never asked for) or a standalone image the
+    // agent delivers inline from the returned URL. Signing `c` for an image made
+    // the webhook ship it via sendTelegramVideo as higgsfield.mp4 -> a 00:00
+    // unplayable "video". So for kind:image we force NO chat_id -> the webhook
+    // settles only, never delivers. Only kind:image2video webhook-delivers.
+    const chatIdFromAgent = body.chat_id != null ? String(body.chat_id) : undefined;
+    const chatId =
+      model.kind === "image"
+        ? undefined
+        : chatIdFromAgent ??
+          (vm.telegram_chat_id ? String(vm.telegram_chat_id) : undefined);
+    const chatIdSource =
+      model.kind === "image"
+        ? "suppressed_image"
+        : chatIdFromAgent
+          ? "agent"
+          : chatId
+            ? "vm_fallback"
+            : "none";
 
     // --- 2. ESTIMATE our video-credit cost (held == charged; flat per model). ---
     const est = estimateVideoCredits(model);
