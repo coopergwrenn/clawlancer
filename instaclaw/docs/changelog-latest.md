@@ -1,18 +1,18 @@
 # Changelog — generated 2026-06-10
 
-Window: `55cab1738f78bc7af5ceca77e6b632b484549550` → `HEAD` (HEAD = `001952fd`)
+Window: `001952fd7499746a07fc818ba91d913f7bef7a07` → `HEAD` (HEAD = `59e8ef57`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 001952fd7499746a07fc818ba91d913f7bef7a07 -->
+<!-- LAST_GENERATED_SHA: 59e8ef57f8051029cea82449d6a0262c67dd0662 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
+- **Docs / PRD only:** 1
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `57ee97aa` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `001952fd` 2026-06-10 — docs(audit): margin-note forensic-row caveats + canary mock-seam reference [2 files] _(ai-assisted)_
+- `59e8ef57` 2026-06-10 — test(empty-guards): commit the discrimination-proof mock harness [1 files] _(ai-assisted)_
+- `38ad35a9` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `59e8ef57` 2026-06-10 — test(empty-guards): commit the discrimination-proof mock harness [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -43,18 +43,17 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `57ee97aa` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `001952fd` 2026-06-10 — docs(audit): margin-note forensic-row caveats + canary mock-seam reference [2 files] _(ai-assisted)_
+- `38ad35a9` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `001952fd` 2026-06-10 — docs(audit): margin-note forensic-row caveats + canary mock-seam reference
+- `59e8ef57` 2026-06-10 — test(empty-guards): commit the discrimination-proof mock harness
 
 ## Appendix — every commit (chronological)
 
-- `57ee97aa` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `001952fd` 2026-06-10 — docs(audit): margin-note forensic-row caveats + canary mock-seam reference [2 files] _(ai-assisted)_
+- `38ad35a9` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `59e8ef57` 2026-06-10 — test(empty-guards): commit the discrimination-proof mock harness [1 files] _(ai-assisted)_
