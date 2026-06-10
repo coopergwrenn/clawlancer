@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-10
 
-Window: `a8110793111b315a32f7397faaa3b9488d15a627` → `HEAD` (HEAD = `40b248ed`)
+Window: `40b248ed65bc00e5c18a35c0b83c215b9c7c1790` → `HEAD` (HEAD = `4db1a85b`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 40b248ed65bc00e5c18a35c0b83c215b9c7c1790 -->
+<!-- LAST_GENERATED_SHA: 4db1a85b1c9091dfc13b18e5eb291163c613a7ff -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `40b248ed` 2026-06-10 — feat(frontier): add travel spend category (§6, ToolRouter StableTravel) [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
-- `1c3afce3` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `4db1a85b` 2026-06-10 — fix(higgsfield): delivery-tail — suppress image webhook-delivery + delivery idempotency [4 files] _(ai-assisted)_
+- `b3c1945a` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `40b248ed` 2026-06-10 — feat(frontier): add travel spend category (§6, ToolRouter StableTravel) [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `4db1a85b` 2026-06-10 — fix(higgsfield): delivery-tail — suppress image webhook-delivery + delivery idempotency [4 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `1c3afce3` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `40b248ed` 2026-06-10 — [infrastructure, feature] — feat(frontier): add travel spend category (§6, ToolRouter StableTravel)
+- `b3c1945a` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `40b248ed` 2026-06-10 — feat(frontier): add travel spend category (§6, ToolRouter StableTravel)
+- `4db1a85b` 2026-06-10 — fix(higgsfield): delivery-tail — suppress image webhook-delivery + delivery idempotency
 
 ## Appendix — every commit (chronological)
 
-- `1c3afce3` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
-- `40b248ed` 2026-06-10 — feat(frontier): add travel spend category (§6, ToolRouter StableTravel) [5 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `b3c1945a` 2026-06-10 — chore(changelog): auto-update [skip ci] [2 files]
+- `4db1a85b` 2026-06-10 — fix(higgsfield): delivery-tail — suppress image webhook-delivery + delivery idempotency [4 files] _(ai-assisted)_
