@@ -17,6 +17,11 @@ Guard 1 (retry-then-fallback on empty) ships transparently on the **non-streamin
 ## The gating unknown (what the canary must answer)
 **Does OpenClaw's gateway tolerate a multi-second gap with no body bytes after the response headers (shape 1) / after `message_start` (shape 2)?** Today OpenClaw receives `message_start` in ~ms and only *content* is delayed by TTFT; both shapes delay the first byte (or the first byte after `message_start`) by ~TTFT + (for a retry) a second generation. If OpenClaw's stream-inactivity timeout is shorter than that window, the hold becomes a new failure mode.
 
+## Substrate ALREADY BUILT (2026-06-10 — reuse, don't rebuild)
+The empty-completion-guards ship (merge `55cab173`) left two pieces this canary should reuse:
+- **Dev-only mock-upstream seam in the proxy:** `x-proxy-upstream-override` request header. When `NODE_ENV !== "production"` AND the header value `startsWith("http://localhost")`, the proxy points its upstream fetch (original + 5xx retry + empty fallback) at that URL. It's the way to feed the proxy controlled empty/non-empty Anthropic responses without touching real Anthropic. **Off in preview AND prod** (both are NODE_ENV=production builds) — local-dev-only.
+- **Reusable mock Anthropic server:** `scripts/_proof-empty-guards.mjs` contains an in-process mock (modes `empty` / `ok` / `by-model`, both streaming SSE and non-streaming JSON, with a per-request log). The streaming-retry canary can lift this mock wholesale to force the empty-stream case and verify the held-`message_start` behavior.
+
 ## Canary plan (when picked up)
 1. Read the OpenClaw dist on a VM: the anthropic/openai stream consumer — find the read/inactivity timeout governing the gap between SSE events (grep the provider bundle for the fetch/stream read timeout).
 2. Deploy shape 1 (buffer-until-first-content) to vm-1019 only.
