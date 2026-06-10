@@ -3,7 +3,8 @@ import { getSupabase } from "@/lib/supabase";
 import { assignOrProvisionUserVm } from "@/lib/createUserVM";
 import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
 import { wipeVMForNextUser, type VMRecord } from "@/lib/ssh";
-import { isUserBillableForVmAssignment } from "@/lib/billing-status";
+import { isUserBillableForVmAssignment, getBillingStatusVerified } from "@/lib/billing-status";
+import { getStripe } from "@/lib/stripe";
 import { logger } from "@/lib/logger";
 
 // Prevent Vercel CDN from caching per-user responses
@@ -889,6 +890,7 @@ export async function GET(req: NextRequest) {
   let pass6WipeFailed = 0;
   let pass6NoVm = 0;
   let pass6SkippedRace = 0;
+  let pass6SkippedProtected = 0;
 
   // Widened from 10 → 30 min on 2026-05-27 (P1-D fix). Pre-launch sizing
   // for ~1000 Edge attendees who may take a phone call mid-flow, walk
@@ -1037,6 +1039,37 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
+      // ─── Rule 14 + Rule 33 guard (2026-06-10 audit): never wipe a working VM ──
+      // Pass 6 selects purely on consumed_at IS NULL + age — NO health or
+      // billing check. The Rule-33 trap state (configure's supplemental write
+      // failed, leaving a HEALTHY, serving VM with consumed_at still NULL) means
+      // a working / paying / billing_exempt user's VM could be irreversibly
+      // wiped here. Before the (irreversible) wipe, confirm the owner truly
+      // abandoned: skip if Stripe-verified paying (fail-CLOSED on unverifiable,
+      // Rule 14) OR if the user has real recent activity (last_user_activity_at
+      // within 7 days). The pending row stays claimed (consumed_at set above) —
+      // a working user IS effectively settled; that just stops Pass 6 looping.
+      const wipeBilling = await getBillingStatusVerified(supabase, getStripe(), vm.id);
+      const lastActivityMs = vm.last_user_activity_at
+        ? new Date(vm.last_user_activity_at).getTime()
+        : 0;
+      const recentlyActive =
+        lastActivityMs > 0 && Date.now() - lastActivityMs < 7 * 24 * 60 * 60 * 1000;
+      if (!wipeBilling || wipeBilling.isPaying || recentlyActive) {
+        logger.warn("Pass 6: WIPE SKIPPED — billing-protected / active / unverifiable (Rule-33 trap guard)", {
+          route: "cron/process-pending",
+          pendingId: pending.id,
+          userId,
+          vmId: vm.id,
+          vmName: vm.name,
+          isPaying: wipeBilling?.isPaying ?? null,
+          recentlyActive,
+          reasons: wipeBilling?.reasons ?? ["unverifiable"],
+        });
+        pass6SkippedProtected++;
+        continue;
+      }
+
       // ─── Wipe the VM ──
       // wipeVMForNextUser is the same 15-step SSH-side wipe used by
       // the manual reclaim flow (lib/ssh.ts) — stops gateway, removes
@@ -1176,6 +1209,7 @@ export async function GET(req: NextRequest) {
       wipeFailed: pass6WipeFailed,
       noVm: pass6NoVm,
       skippedRace: pass6SkippedRace,
+      skippedProtected: pass6SkippedProtected,
     },
   });
 }
