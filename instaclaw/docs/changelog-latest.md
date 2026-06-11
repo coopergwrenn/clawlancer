@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-11
 
-Window: `cf3dd9636cb463295f6857d299d611b46b039e81` → `HEAD` (HEAD = `a71e248e`)
+Window: `a71e248e0f01c0022d08802ee2af238001b9453f` → `HEAD` (HEAD = `c040b10b`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: a71e248e0f01c0022d08802ee2af238001b9453f -->
+<!-- LAST_GENERATED_SHA: c040b10b43bdc83d0eb8e95f5e3ca088c9c89b18 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `b3d04e6f` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
-- `a71e248e` 2026-06-11 — docs(travala): canary runbook — controlled book->cancel->refund-watch, seams ledger, aborts [1 files] _(ai-assisted)_
+- `f15a43d7` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `c040b10b` 2026-06-11 — chore(travala): promote applied composite-unique migration + fix guests->rooms search examples [4 files] _(ai-assisted)_
 
 ## By category
 
@@ -45,16 +45,16 @@ _(none)_
 
 ### Docs / PRD only (2)
 
-- `b3d04e6f` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
-- `a71e248e` 2026-06-11 — docs(travala): canary runbook — controlled book->cancel->refund-watch, seams ledger, aborts [1 files] _(ai-assisted)_
+- `f15a43d7` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `c040b10b` 2026-06-11 — chore(travala): promote applied composite-unique migration + fix guests->rooms search examples [4 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `a71e248e` 2026-06-11 — docs(travala): canary runbook — controlled book->cancel->refund-watch, seams ledger, aborts
+- `c040b10b` 2026-06-11 — chore(travala): promote applied composite-unique migration + fix guests->rooms search examples
 
 ## Appendix — every commit (chronological)
 
-- `b3d04e6f` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
-- `a71e248e` 2026-06-11 — docs(travala): canary runbook — controlled book->cancel->refund-watch, seams ledger, aborts [1 files] _(ai-assisted)_
+- `f15a43d7` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `c040b10b` 2026-06-11 — chore(travala): promote applied composite-unique migration + fix guests->rooms search examples [4 files] _(ai-assisted)_
