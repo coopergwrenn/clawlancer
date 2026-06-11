@@ -160,14 +160,24 @@ async function main() {
   catch { fail("frontier_skill_missing", { detail: `travala booking requires the frontier skill's payer core at ${CORE_PATH}` }); }
   const { selectPaymentRequirement, buildAuthorization, buildTransferTypedData, buildXPaymentHeader, newRequestId, tagsFromResource } = core;
 
+  // the search-option snapshot the agent threads through (hotel/dates/policy/
+  // free-cancel deadline) — captured at record time, irretrievable later.
+  let snapshot;
+  try { snapshot = args.snapshot ? JSON.parse(args.snapshot) : undefined; }
+  catch { snapshot = undefined; }
+
   // ── G (recovery): on an explicit retry, check status FIRST so we never double-charge. ──
   if (args.retry) {
     const st = await backend("book-status", gatewayToken, { packageId, sessionId });
     if (st.status === 200 && st.json?.ok) {
       const txt = JSON.stringify(st.json.result ?? "");
       if (/confirmed|booked|success|complete/i.test(txt)) {
-        return out({ ok: true, already_booked: true, booking_status: st.json.result,
-          narration: `This booking already went through — not charging again. ${bookingRefFrom(txt) ? `Ref ${bookingRefFrom(txt)}.` : ""}` });
+        // Confirmed-but-maybe-unrecorded recovery: ensure a booking row exists so
+        // the agent can cancel it (a paid booking with no row is uncancellable).
+        const rr = await backend("book-record", gatewayToken, { packageId, sessionId, customer, snapshot, pay_response_raw: txt });
+        const ref = rr.json?.booking_id || bookingRefFrom(txt);
+        return out({ ok: true, already_booked: true, recorded: !!rr.json?.recorded, booking_ref: ref, booking_status: st.json.result,
+          narration: `This booking already went through — not charging again.${ref ? ` Ref ${ref}.` : ""}${rr.json?.recorded ? ` It's saved to your trips — ask me to cancel anytime.` : ` (Heads up: I couldn't save it to my cancellation list — keep your Travala confirmation email.)`}` });
       }
     }
     // not confirmed (or status unreadable) → safe to proceed to a fresh pay below.
@@ -323,9 +333,32 @@ async function main() {
   });
 
   if (paid) {
-    const ref = bookingRefFrom(resultBody);
-    return out({ ok: true, paid: true, hold_id: holdId, tx_hash: txHash, amount_usd: amountUsd, booking_ref: ref, result: resultBody,
-      narration: `Booked. $${amountUsd} paid in USDC on Base${txHash ? ` (tx ${String(txHash).slice(0, 12)}…)` : ""}.${ref ? ` Booking ref ${ref}.` : ""}` });
+    const refRegex = bookingRefFrom(resultBody);
+    // ── 6. RECORD: persist the booking — the ONLY record it happened (the MCP
+    // can't list bookings; cancel needs the row). Retry 3×; the backend validates
+    // the bookingId via book-status (never the bare regex). PARTIAL-FAILURE: if
+    // recording ultimately fails, the booking is REAL (paid, irreversible) but
+    // uncancellable-through-us — we tell the user the truth + how to recover. ──
+    let recorded = false, recordedRef = refRegex, recordErr = null;
+    for (let attempt = 0; attempt < 3 && !recorded; attempt++) {
+      if (attempt > 0) await sleep(1500 * attempt);
+      try {
+        const rr = await backend("book-record", gatewayToken, {
+          packageId, sessionId, customer,
+          amount_usd: amountUsd, tx_hash: txHash, hold_id: holdId, request_id: requestId,
+          pay_response_raw: resultBody, snapshot,
+        });
+        if (rr.status === 200 && rr.json?.ok && rr.json?.recorded) {
+          recorded = true; recordedRef = rr.json.booking_id || refRegex;
+        } else { recordErr = rr.json?.reason || `http_${rr.status}`; }
+      } catch (e) { recordErr = String(e?.message ?? e); }
+    }
+    if (recorded) {
+      return out({ ok: true, paid: true, recorded: true, hold_id: holdId, tx_hash: txHash, amount_usd: amountUsd, booking_ref: recordedRef, result: resultBody,
+        narration: `Booked. $${amountUsd} paid in USDC on Base${txHash ? ` (tx ${String(txHash).slice(0, 12)}…)` : ""}.${recordedRef ? ` Booking ref ${recordedRef}.` : ""} Saved to your trips — ask me to cancel it anytime (refunds come back as Travala credit, not to your wallet).` });
+    }
+    return out({ ok: true, paid: true, recorded: false, record_error: recordErr, hold_id: holdId, tx_hash: txHash, amount_usd: amountUsd, booking_ref: refRegex, result: resultBody,
+      narration: `Booked and paid ($${amountUsd} USDC on Base${txHash ? `, tx ${String(txHash).slice(0, 12)}…` : ""})${refRegex ? `, ref ${refRegex}` : ""}. One caveat: I couldn't save it to my cancellation list just now, so I can't cancel it through me yet — please keep your Travala confirmation email. Ask me to "retry recording this booking" and I'll try again.` });
   }
   return out({ ok: false, paid: false, hold_id: holdId, reason: payErr, pay_error_body: payErrBody,
     narration: `The booking payment failed (${payErr}). Your hold is recorded; re-run with --retry --request-id ${requestId} to resume safely.` });

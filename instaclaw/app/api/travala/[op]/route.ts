@@ -33,10 +33,28 @@ import {
   mcpToolsCall,
   extractBookQuote,
 } from "@/lib/travala-mcp";
+import {
+  lookupOwnedBooking,
+  recordConfirmedBooking,
+  classifyToolResult,
+  parseCancelOutcome,
+  markCancelRequested,
+  markCancelled,
+  markCancelFailed,
+  type TravalaBookingSnapshot,
+} from "@/lib/travala-bookings";
 
 export const maxDuration = 300; // MCP-over-HTTP + OAuth mint, external (Rule 11)
 
-const OPS = new Set(["search-hotel", "search-package", "book-quote", "book-status"]);
+const OPS = new Set([
+  "search-hotel",
+  "search-package",
+  "book-quote",
+  "book-status",
+  "book-record", // persist a confirmed booking (the only record it happened)
+  "manage-booking", // OTP-gated booking lookup (read)
+  "cancel-booking", // OTP-gated cancellation
+]);
 
 function extractGatewayToken(req: NextRequest): string | null {
   const auth = req.headers.get("authorization");
@@ -104,8 +122,154 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
     return NextResponse.json({ ok: true, result: r.result }, { status: 200 });
   }
 
-  // ── book-quote: the gated money path ──
+  // ── DB-backed ops share one client (book-record / manage / cancel / book-quote) ──
   const supabase = getSupabase();
+
+  // ── book-record: persist a CONFIRMED booking — the ONLY record it happened.
+  // Called by travala-book.mjs AFTER a successful pay. NOT gated by toggle/kill:
+  // recording a paid booking must always succeed so the user can later cancel it.
+  // PARTIAL-FAILURE POSTURE (deliberate): if this write fails, the booking is REAL
+  // (paid, irreversible) but untracked — the VM-side script surfaces record_failed
+  // to the user truthfully (with the Travala link) AND retries; a confirmed-but-
+  // unrecorded booking is recoverable via travala-book.mjs --retry (book-status +
+  // re-record). See lib/travala-bookings.ts recordConfirmedBooking. ──
+  if (op === "book-record") {
+    const a = (body.arguments as Record<string, unknown>) ?? body;
+    const packageId = String(a.packageId ?? a.package_id ?? "");
+    const sessionId = String(a.sessionId ?? a.session_id ?? "");
+    const customer = (a.customer ?? a.contact) as
+      | { firstName?: string; lastName?: string; email?: string; phone?: string }
+      | undefined;
+    if (!packageId || !sessionId) {
+      return NextResponse.json({ error: "packageId and sessionId are required" }, { status: 400 });
+    }
+    if (!customer?.lastName || !customer?.email) {
+      return NextResponse.json({ error: "customer.lastName and customer.email are required" }, { status: 400 });
+    }
+    const rec = await recordConfirmedBooking(supabase, {
+      vmId: vm.id,
+      userId: vm.assigned_to as string,
+      customer: { firstName: customer.firstName, lastName: customer.lastName, email: customer.email, phone: customer.phone },
+      packageId,
+      sessionId,
+      amountUsd: typeof a.amount_usd === "number" ? a.amount_usd : null,
+      txHash: (a.tx_hash as string) ?? null,
+      holdId: (a.hold_id as string) ?? null,
+      requestId: (a.request_id as string) ?? null,
+      payResponseRaw: (a.pay_response_raw as string) ?? null,
+      snapshot: (a.snapshot as TravalaBookingSnapshot) ?? null,
+    });
+    if (!rec.recorded) {
+      return NextResponse.json(
+        { ok: false, recorded: false, reason: rec.reason, booking_id: rec.bookingId },
+        { status: 502 },
+      );
+    }
+    return NextResponse.json(
+      { ok: true, recorded: true, booking_id: rec.bookingId, ref_source: rec.refSource },
+      { status: 200 },
+    );
+  }
+
+  // ── manage-booking: OTP-gated booking lookup (read). Gate chain: gateway auth →
+  // gate-2 ownership (bookingId in our table AND vm_id match) BEFORE any MCP call,
+  // so VM-A can never trigger an OTP email to VM-B's user. lastName/email come from
+  // the stored row (canonical), never trusted from the caller. Two-step OTP shape:
+  // call without otp → "code emailed"; call again with otp → booking details. ──
+  if (op === "manage-booking") {
+    const a = (body.arguments as Record<string, unknown>) ?? body;
+    const bookingId = String(a.bookingId ?? a.booking_id ?? "");
+    if (!bookingId) return NextResponse.json({ error: "bookingId is required" }, { status: 400 });
+    const row = await lookupOwnedBooking(supabase, vm.id, bookingId);
+    if (!row) {
+      return NextResponse.json({ ok: false, gated: true, reason: "not_your_booking" }, { status: 200 });
+    }
+    const tok = await mintTravalaToken("mcp:read mcp:book");
+    if (!tok.ok || !tok.access_token) {
+      return NextResponse.json({ error: "travala_token_mint_failed", detail: tok.status }, { status: 502 });
+    }
+    const mcpArgs: Record<string, unknown> = { bookingId, lastName: row.last_name, email: row.email };
+    if (a.otp) mcpArgs.otp = String(a.otp);
+    const r = await mcpToolsCall(tok.access_token, "travala_manage_bookings", mcpArgs);
+    const cls = classifyToolResult(r);
+    return NextResponse.json(
+      { ok: cls.state === "ok", state: cls.state, step: a.otp ? 2 : 1, booking_id: bookingId, message: cls.text },
+      { status: 200 },
+    );
+  }
+
+  // ── cancel-booking: OTP-gated cancellation. KILL-SWITCH BYPASS + NO TOGGLE:
+  // cancel IS the protection — only identity (gateway auth) and ownership (gate-2)
+  // may gate it. An emergency stop is exactly when users need cancel most, and a
+  // toggle must never trap a user's funds in a booking they own. This NEVER touches
+  // the frontier ledger (/authorize, /settle, /refund) and NEVER credits a budget:
+  // the USDC spend is permanent; the refund posts as Travala Travel Credit off-
+  // ledger and is recorded here as an informational snapshot only. ──
+  if (op === "cancel-booking") {
+    const a = (body.arguments as Record<string, unknown>) ?? body;
+    const bookingId = String(a.bookingId ?? a.booking_id ?? "");
+    if (!bookingId) return NextResponse.json({ error: "bookingId is required" }, { status: 400 });
+    // Gate-2 ownership FIRST — before any MCP call (no OTP email for someone else's booking).
+    const row = await lookupOwnedBooking(supabase, vm.id, bookingId);
+    if (!row) {
+      return NextResponse.json({ ok: false, gated: true, reason: "not_your_booking" }, { status: 200 });
+    }
+    // Honest cached short-circuit — no MCP call needed.
+    if (row.status === "cancelled") {
+      return NextResponse.json(
+        { ok: true, state: "already_cancelled", booking_id: bookingId, message: "This booking is already cancelled." },
+        { status: 200 },
+      );
+    }
+    const tok = await mintTravalaToken("mcp:read mcp:book mcp:cancel");
+    if (!tok.ok || !tok.access_token) {
+      return NextResponse.json({ error: "travala_token_mint_failed", detail: tok.status }, { status: 502 });
+    }
+    const mcpArgs: Record<string, unknown> = { bookingId, lastName: row.last_name, email: row.email };
+    const hasOtp = !!a.otp;
+    if (hasOtp) mcpArgs.otp = String(a.otp);
+    const r = await mcpToolsCall(tok.access_token, "travala_cancel_booking", mcpArgs);
+    const cls = classifyToolResult(r);
+
+    if (!hasOtp) {
+      // STEP 1: request OTP. Success ⇒ Travala emailed a code to row.email.
+      if (cls.state === "ok") {
+        await markCancelRequested(supabase, row.id);
+        return NextResponse.json(
+          { ok: true, state: "otp_sent", step: 1, booking_id: bookingId, email: row.email, message: cls.text },
+          { status: 200 },
+        );
+      }
+      return NextResponse.json({ ok: false, state: cls.state, step: 1, booking_id: bookingId, message: cls.text }, { status: 200 });
+    }
+
+    // STEP 2: confirm with the OTP the user read back.
+    if (cls.state === "ok") {
+      const outcome = parseCancelOutcome(cls.text);
+      await markCancelled(supabase, row.id, { ...outcome, raw: r.result });
+      return NextResponse.json(
+        {
+          ok: true,
+          state: "cancelled",
+          step: 2,
+          booking_id: bookingId,
+          refund_amount: outcome.refundAmount,
+          cancellation_fee: outcome.cancellationFee,
+          refund_destination: "travala_credit",
+          message: cls.text,
+        },
+        { status: 200 },
+      );
+    }
+    if (cls.state === "bad_otp") {
+      // leave status at cancel_requested so the user can retry with a fresh code.
+      return NextResponse.json({ ok: false, state: "bad_otp", step: 2, booking_id: bookingId, message: cls.text }, { status: 200 });
+    }
+    await markCancelFailed(supabase, row.id, cls.text);
+    return NextResponse.json({ ok: false, state: cls.state, step: 2, booking_id: bookingId, message: cls.text }, { status: 200 });
+  }
+
+  // ── book-quote: the gated money path ──
 
   // Gate 2 (global emergency kill) — checked first, cheap, fleet-wide.
   if (await isTravalaBookingKilled(supabase)) {
