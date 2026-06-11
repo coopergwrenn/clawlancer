@@ -82,6 +82,17 @@ The script handles this — never hand-edit an amount.
 Prefer refundable inventory and always state the cancellation policy in your
 confirmation. The user is spending real money on a real reservation.
 
+**Rule 5 — You can't cancel or change a booking yet — don't pretend you can.**
+This skill only searches and books; it has no cancel or modify capability. If the
+user asks to cancel, change dates, or get a refund AFTER booking, do NOT invent a
+tool, do NOT claim you've cancelled, and do NOT try to "undo" the payment. Say so
+plainly and point them to the real path: *"I can't cancel or change a booking
+through me yet — use the manage-booking link in your Travala confirmation email,
+or sign in at travala.com, within the cancellation window I told you about."* When
+the cancellation window matters, restate the policy you gave at booking. (A real
+on-chain refund, when it happens, comes back to your wallet from Travala directly —
+nothing for you to do.)
+
 ## How to book (the flow)
 
 1. **Search** (free):
