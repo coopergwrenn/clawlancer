@@ -43,6 +43,7 @@ import {
   markCancelFailed,
   type TravalaBookingSnapshot,
 } from "@/lib/travala-bookings";
+import { sendPerVmAlertDeduped } from "@/lib/admin-alert";
 
 export const maxDuration = 300; // MCP-over-HTTP + OAuth mint, external (Rule 11)
 
@@ -160,6 +161,24 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
       snapshot: (a.snapshot as TravalaBookingSnapshot) ?? null,
     });
     if (!rec.recorded) {
+      // PARTIAL-FAILURE: the booking is REAL (paid, irreversible) but untracked —
+      // uncancellable through the agent until backfilled. Alert the operator
+      // (per VM+package dedup) so it's visible beyond the user-driven --retry path.
+      // The reconcile-travala-bookings cron is the periodic net; this is immediate.
+      await sendPerVmAlertDeduped({
+        alertKey: `travala_record_failed:${vm.id}:${packageId}`,
+        subject: `[P1] Travala booking PAID but NOT recorded — ${vm.name ?? vm.id}`,
+        body:
+          `A confirmed (paid, irreversible) Travala booking failed to record — it is ` +
+          `uncancellable through the agent until backfilled.\n\n` +
+          `vm: ${vm.name ?? vm.id} (${vm.id})\nuser: ${vm.assigned_to}\n` +
+          `packageId: ${packageId}\nsessionId: ${sessionId}\n` +
+          `customer: ${customer.lastName} <${customer.email}>\n` +
+          `booking_id (best-effort): ${rec.bookingId ?? "none"}\nreason: ${rec.reason}\n\n` +
+          `Recovery: re-run travala-book.mjs --retry on the VM (it re-checks book-status ` +
+          `and re-records), or insert the row manually from the frontier hold + pay response.`,
+        dedupHours: 6,
+      }).catch(() => {});
       return NextResponse.json(
         { ok: false, recorded: false, reason: rec.reason, booking_id: rec.bookingId },
         { status: 502 },

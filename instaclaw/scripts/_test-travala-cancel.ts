@@ -16,6 +16,8 @@ import {
   parseCancelOutcome,
   lookupOwnedBooking,
   markCancelled,
+  recordConfirmedBooking,
+  isTravalaSpend,
 } from "../lib/travala-bookings";
 import type { McpCallResult } from "../lib/travala-mcp";
 
@@ -89,6 +91,53 @@ ok("lib code makes no frontier-ledger / budget-credit call", !/agent-economy|cre
 ok("cancel handler has NO kill-switch / toggle gate (bypass)", !/isTravalaBookingKilled|isTravalaBookingEnabled/.test(cancelBlock));
 ok("cancel handler runs ownership lookup BEFORE mcpToolsCall", cancelBlock.indexOf("lookupOwnedBooking") < cancelBlock.indexOf("mcpToolsCall") && cancelBlock.indexOf("lookupOwnedBooking") > -1);
 ok("cancel handler makes no frontier-ledger call", !/agent-economy|\/authorize|\/settle|\/refund/i.test(cancelBlock));
+
+console.log("\n── G. recordConfirmedBooking — composite-unique race-catch (P1a) ──");
+// no TRAVALA creds in the test env → book_status mint returns not_configured →
+// extractBookingIdViaStatus no-ops (no network); bookingId comes from the regex.
+delete process.env.TRAVALA_OAUTH_CLIENT_ID;
+delete process.env.TRAVALA_OAUTH_CLIENT_SECRET;
+// Sequence-scripted mock: existence-check (maybeSingle #0) → null; insert #0 →
+// composite-unique violation; re-select (maybeSingle #1) → the race winner; update → ok.
+function scriptedSb(s: { existing: unknown; insertErr?: string; reselect?: unknown }) {
+  let ms = 0;
+  let ins = 0;
+  let updated: Record<string, unknown> | null = null;
+  const api = {
+    _updated: () => updated,
+    from: () => ({
+      select: () => {
+        const chain: Record<string, unknown> = {
+          eq: () => chain,
+          or: () => ({ limit: async () => ({ data: [], error: null }) }),
+          maybeSingle: async () => ({ data: ms++ === 0 ? s.existing : (s.reselect ?? null), error: null }),
+          single: async () => ({ data: { id: "ins-row" }, error: null }),
+        };
+        return chain;
+      },
+      insert: () => ({ select: () => ({ single: async () => (ins++ === 0 && s.insertErr ? { data: null, error: { message: s.insertErr } } : { data: { id: "ins-row" }, error: null }) }) }),
+      update: (p: Record<string, unknown>) => ({ eq: async () => { updated = p; return { error: null }; } }),
+    }),
+  };
+  return api as never;
+}
+const recParams = {
+  vmId: "vm-A", userId: "u-A",
+  customer: { lastName: "Doe", email: "d@x.com" },
+  packageId: "PKG1", sessionId: "SESS1",
+  payResponseRaw: "Booking confirmed: ref MN5V9DWQ",
+};
+const race = await recordConfirmedBooking(scriptedSb({ existing: null, insertErr: 'duplicate key value violates unique constraint "instaclaw_travala_bookings_vm_pkg_sess_uniq"', reselect: { id: "winner-row" } }), recParams);
+ok("race: composite-unique violation → recorded:true on the winner row", race.recorded === true && race.rowId === "winner-row", JSON.stringify(race));
+const fresh = await recordConfirmedBooking(scriptedSb({ existing: null }), recParams);
+ok("fresh insert → recorded:true with bookingId from pay-response regex", fresh.recorded === true && fresh.bookingId === "MN5V9DWQ", JSON.stringify(fresh));
+const dupBooking = await recordConfirmedBooking(scriptedSb({ existing: null, insertErr: 'duplicate key value violates unique constraint "instaclaw_travala_bookings_booking_id_uidx"' }), recParams);
+ok("booking_id collision → degrades to ref-less row (recorded, booking_id null)", dupBooking.recorded === true && dupBooking.bookingId === null, JSON.stringify(dupBooking));
+
+console.log("\n── H. isTravalaSpend (reconciler cron cross-ref) ──");
+ok("tags include travala → true", isTravalaSpend({ tags: ["travel", "hotel", "travala"] }) === true);
+ok("category travel but no travala tag → false (precise)", isTravalaSpend({ category: "travel", tags: ["travel", "hotel"] }) === false);
+ok("no metadata → false", isTravalaSpend(null) === false && isTravalaSpend(undefined) === false);
 
 console.log(`\n${fail === 0 ? "ALL PASS" : "FAILURES"}: ${pass} passed, ${fail} failed\n`);
 process.exit(fail === 0 ? 0 : 1);

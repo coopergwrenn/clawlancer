@@ -2,6 +2,10 @@
   "ignoreCommand": "cd .. && git diff HEAD^ HEAD --quiet -- instaclaw/",
   "crons": [
     {
+      "path": "/api/cron/reconcile-travala-bookings",
+      "schedule": "17 * * * *"
+    },
+    {
       "path": "/api/cron/health-check",
       "schedule": "*/2 * * * *"
     },

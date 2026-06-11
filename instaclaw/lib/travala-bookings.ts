@@ -251,15 +251,43 @@ export async function recordConfirmedBooking(
   }
 
   let ins = await supabase.from(TRAVALA_BOOKINGS_TABLE).insert(baseRow).select("id").single();
-  // If a parse collision trips the unique booking_id index, degrade to a
-  // ref-less row (booking present + raw kept) rather than losing the record.
-  if (ins.error && /duplicate|unique|23505/i.test(ins.error.message)) {
-    refSource = "none";
-    const degraded = { ...baseRow, booking_id: null, meta: { ...(baseRow.meta as object), ref_source: "none", ref_collision: bookingId } };
-    bookingId = null;
-    ins = await supabase.from(TRAVALA_BOOKINGS_TABLE).insert(degraded).select("id").single();
+  if (ins.error) {
+    const msg = ins.error.message || "";
+    // (post-apply, dormant until 20260611170000) composite-unique race: a
+    // concurrent record already created the row for this (vm, package, session).
+    // Re-select + update the winner instead of failing — applying that index is
+    // the ONLY step that activates this fix; pre-apply the violation never fires.
+    // MUST be checked before the generic unique-collision branch below (its
+    // message also contains "unique"/"duplicate").
+    if (/vm_pkg_sess/i.test(msg)) {
+      const { data: ex } = await supabase
+        .from(TRAVALA_BOOKINGS_TABLE)
+        .select("id")
+        .eq("vm_id", p.vmId)
+        .eq("package_id", p.packageId)
+        .eq("session_id", p.sessionId)
+        .maybeSingle();
+      if (ex) {
+        const { error: upErr } = await supabase
+          .from(TRAVALA_BOOKINGS_TABLE)
+          .update({ ...baseRow, updated_at: new Date().toISOString() })
+          .eq("id", (ex as { id: string }).id);
+        if (!upErr) return { recorded: true, bookingId, rowId: (ex as { id: string }).id, refSource };
+        return { recorded: false, bookingId, rowId: null, refSource, reason: upErr.message };
+      }
+    }
+    // booking_id parse collision (a different booking parsed to the same ref) →
+    // degrade to a ref-less row (booking present + raw kept) rather than lose it.
+    if (/booking_id|duplicate|unique|23505/i.test(msg)) {
+      refSource = "none";
+      const collided = bookingId;
+      bookingId = null;
+      const degraded = { ...baseRow, booking_id: null, meta: { ...(baseRow.meta as object), ref_source: "none", ref_collision: collided } };
+      ins = await supabase.from(TRAVALA_BOOKINGS_TABLE).insert(degraded).select("id").single();
+      if (!ins.error) return { recorded: true, bookingId: null, rowId: (ins.data as { id: string }).id, refSource: "none" };
+    }
+    if (ins.error) return { recorded: false, bookingId, rowId: null, refSource, reason: ins.error.message };
   }
-  if (ins.error) return { recorded: false, bookingId, rowId: null, refSource, reason: ins.error.message };
   return { recorded: true, bookingId, rowId: (ins.data as { id: string }).id, refSource };
 }
 
@@ -297,4 +325,15 @@ export async function markCancelFailed(supabase: SupabaseClient, rowId: string, 
     .from(TRAVALA_BOOKINGS_TABLE)
     .update({ status: "cancel_failed", cancel_raw: { error: reason.slice(0, 2000) }, updated_at: new Date().toISOString() })
     .eq("id", rowId);
+}
+
+// ── reconciler helper: does a frontier_transactions.metadata blob belong to a
+// Travala booking spend? The reconcile-travala-bookings cron cross-references
+// settled travala spends against booking rows to surface paid-but-unrecorded
+// bookings. Precise: requires the 'travala' tag (travala-book.mjs always sets it),
+// not merely category=travel (which a future non-Travala travel spender could use).
+export function isTravalaSpend(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== "object") return false;
+  const tags = (metadata as { tags?: unknown }).tags;
+  return Array.isArray(tags) && tags.some((t) => typeof t === "string" && t.toLowerCase() === "travala");
 }
