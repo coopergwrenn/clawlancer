@@ -223,11 +223,15 @@ export async function POST(req: NextRequest) {
     // as higgsfield.mp4 renders as a 00:00 unplayable "video".
     const { data: kindRow } = await supabase
       .from("instaclaw_video_transactions")
-      .select("endpoint")
+      .select("endpoint, metadata")
       .eq("vm_id", target.v)
       .eq("request_id", target.r)
       .single();
     const modelKind = kindRow?.endpoint ? HF_MODELS[kindRow.endpoint]?.kind : undefined;
+    // First-video seed (build order §4): the gift gets its own caption — the
+    // wow moment is marked in the delivery itself; the agent lands the
+    // once-only upsell conversationally afterward (SKILL.md).
+    const isSeed = (kindRow?.metadata as { seed?: boolean } | null)?.seed === true;
     if (modelKind === "image") {
       logger.info("video webhook: image render — delivery suppressed", {
         route: "gateway/higgsfield/webhook",
@@ -289,10 +293,11 @@ export async function POST(req: NextRequest) {
     }
 
     // --- Non-completed terminal states: calm message, no charge logic ---
+    // (No em-dashes in user-facing copy — standing rule.)
     if (status !== "completed") {
       const msg =
         status === "nsfw"
-          ? "I couldn't make that one — let's tweak the idea and try again."
+          ? "I couldn't make that one. Let's tweak the idea and try again."
           : "That one didn't render this time. Want me to try again?";
       await sendTelegramNotification(botToken, target.c, msg);
       logger.info("Higgsfield non-completed delivered", {
@@ -319,7 +324,7 @@ export async function POST(req: NextRequest) {
       await sendTelegramNotification(
         botToken,
         target.c,
-        "Your video finished but I couldn't fetch it — want me to try again?"
+        "Your video finished but I couldn't fetch it. Want me to try again?"
       );
       return ack();
     }
@@ -338,7 +343,9 @@ export async function POST(req: NextRequest) {
             target.c,
             buf,
             "higgsfield.mp4",
-            "🎬 Your cinematic clip — made by your InstaClaw agent"
+            isSeed
+              ? "🎬 Your first cinematic clip · on us. Made by your InstaClaw agent"
+              : "🎬 Your cinematic clip · made by your InstaClaw agent"
           );
           delivered = r.success;
           if (!r.success) {
@@ -370,7 +377,9 @@ export async function POST(req: NextRequest) {
       await sendTelegramNotification(
         botToken,
         target.c,
-        `🎬 Your cinematic clip is ready:\n${videoUrl}`
+        isSeed
+          ? `🎬 Your first cinematic clip (on us) is ready:\n${videoUrl}`
+          : `🎬 Your cinematic clip is ready:\n${videoUrl}`
       );
     }
 

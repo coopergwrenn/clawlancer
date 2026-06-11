@@ -313,8 +313,69 @@ export async function POST(req: NextRequest) {
     // does NOT insert a row), fall through to a paid hold with the SAME id.
     let reserved: { reserved?: boolean; reason?: string; free?: boolean; [k: string]: unknown } | null = null;
     let usedFree = false;
+    let usedSeed = false;
 
-    if (model.freeEligible) {
+    // ── FIRST-VIDEO SEED (build order §4): one free premium text-to-video per
+    // VM, granted on the FIRST video request (not at signup — spend only on
+    // engaged users). Semantics, hostile-walked:
+    //   • Marker-based eligibility: no prior metadata.seed row in
+    //     pending/settled. metadata is GATE-constructed (the body has no
+    //     metadata passthrough), so a caller can't forge the marker.
+    //   • A FAILED seed render does NOT consume the gift — released rows are
+    //     excluded, so the user's first impression actually delivers
+    //     (mirrors the free-cap's "failed frees the slot" philosophy).
+    //   • Credited users get it too: one render, universally delightful,
+    //     and the eligibility check stays one indexed query.
+    //   • p_free_cap_daily is effectively unbounded for the seed call — the
+    //     route-level eligibility IS the gate; the daily soul/dop-lite cap
+    //     is a different mechanism (and the (C) migration excludes seed rows
+    //     from that count so the gift is additive, not a swap).
+    //   • Double-submit race ≈ the ms between check and insert; pending rows
+    //     count, so the second check sees the first's row once committed.
+    //     Worst case: two seeds, $0.81 each. Accepted + bounded.
+    //   • ANY seed-path failure falls through to the normal paid path — the
+    //     gift can never block a request.
+    if (!model.freeEligible && model.kind === "text2video") {
+      try {
+        const { data: priorSeed } = await supabase
+          .from("instaclaw_video_transactions")
+          .select("id")
+          .eq("vm_id", vm.id)
+          .eq("metadata->>seed", "true")
+          .in("status", ["pending", "settled"])
+          .limit(1);
+        if (!priorSeed || priorSeed.length === 0) {
+          const { data: seedRes, error: seedErr } = await supabase.rpc("instaclaw_video_reserve_spend", {
+            p_vm_id: vm.id,
+            p_request_id: internalRequestId,
+            p_endpoint: endpoint,
+            p_est_credits: est,
+            p_hf_cost_credits: model.hfCostCredits,
+            p_is_free: true,
+            p_free_cap_daily: 999999, // route-level eligibility is the real gate
+            p_cap_daily: VIDEO_DAILY_CREDIT_CEILING,
+            p_window_start: windowStart,
+            p_fresh_pending_cutoff: freshPendingCutoff,
+            p_metadata: { ...metadata, seed: true },
+          });
+          if (!seedErr && seedRes?.reserved) {
+            reserved = seedRes;
+            usedFree = true;
+            usedSeed = true;
+            logger.info("first-video seed granted", {
+              route: "gateway/higgsfield", vmId: vm.id, endpoint, internalRequestId,
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn("first-video seed check failed (falling through to paid)", {
+          route: "gateway/higgsfield", vmId: vm.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    if (!reserved?.reserved && model.freeEligible) {
       const { data, error } = await reserve(true);
       if (error) {
         logger.error("video reserve (free) RPC error", {
@@ -457,6 +518,7 @@ export async function POST(req: NextRequest) {
       endpoint,
       held: usedFree ? 0 : est,
       free: usedFree,
+      seed: usedSeed,
       delivery: chatId ? "webhook" : "agent_poll",
       chatIdSource, // "agent" (A1) | "vm_fallback" (A2) | "none" — proves the delivery leg
     });
@@ -466,6 +528,9 @@ export async function POST(req: NextRequest) {
       status: submit?.status ?? "queued",
       held: usedFree ? 0 : est,
       free: usedFree,
+      // The first-video gift fired — the skill keys its "this one's on us"
+      // moment (and the once-only post-delivery upsell guidance) on this.
+      seed: usedSeed,
       // "webhook" → the gate will deliver the finished clip itself (chat_id
       // resolved via A1 or A2); "agent_poll" → the agent delivers from its poll
       // loop. The skill keys its hands-off behavior on this.

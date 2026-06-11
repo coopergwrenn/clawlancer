@@ -273,9 +273,16 @@ def cmd_generate(args):
                   "message": "Submitted, but I have no delivery target — pass --chat-id "
                              "(the chat id from the conversation metadata) so I can send the video."}, args.json)
             return 0
+        if resp.get("seed"):
+            # The first-video gift fired (build order §4). Tell the user it's
+            # on us — and SKILL.md covers the once-only upsell after delivery.
+            _out({"status": "submitted", "request_id": request_id, "model": slug, "seed": True,
+                  "message": "Rendering now (usually 2 to 5 minutes). This first cinematic "
+                             "video is on us. I'll send it here the moment it's ready."}, args.json)
+            return 0
         _out({"status": "submitted", "request_id": request_id, "model": slug,
-              "message": "Rendering now — usually 2 to 5 minutes. I'll send the video here the "
-                         "moment it's ready (you don't need to do anything)."}, args.json)
+              "message": "Rendering now (usually 2 to 5 minutes). I'll send the video here the "
+                         "moment it's ready. You don't need to do anything."}, args.json)
         return 0
 
     # ── IMAGE: short, bounded SYNC poll (images finish in seconds). Returns the

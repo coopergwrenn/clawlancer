@@ -54,7 +54,7 @@ Steps:
    leave `--image-url` off (text-to-video).
 2. **Find the chat id.** It's in the conversation metadata of the user's message
    (`"chat_id": "telegram:5918081163"`). You'll pass it as `--chat-id`.
-3. Tell them: *"Creating that now — usually 2 to 5 minutes. I'll send it right here when it's ready."*
+3. Tell them: *"Creating that now (usually 2 to 5 minutes). I'll send it right here when it's ready."*
 4. Submit (note `--chat-id` — REQUIRED for video so the system can deliver it).
    Text-to-video (no image — the cinematic default):
    ```bash
@@ -72,9 +72,9 @@ Steps:
    - **`submitted`** → **you're done. Do NOT wait or poll.** The clip will arrive in the chat automatically. Just confirm it's rendering (you already told them in step 3). Move on / answer anything else.
    - **`no_chat_id`** → you forgot `--chat-id`. Re-run with it (the chat id is in the conversation metadata).
    - **`blocked`** (reason `free_exhausted` / `insufficient_credits`) → tell the user (see Free allowance).
-   - **`busy`** → *"The video service is busy right now — let's try again in a few minutes."*
+   - **`busy`** → *"The video service is busy right now. Let's try again in a few minutes."*
    - **`needs_image`** → you forced an image-to-video model by name but passed no image. Either drop `--image-url`/`--model` (so it uses text-to-video) or pass a `--image-url`.
-   - **`error`** → *"Couldn't start that one — want me to try again?"*
+   - **`error`** → *"Couldn't start that one. Want me to try again?"*
 
 **Never block waiting for a video, and never paste a raw status/request_id to the user.** The system delivers the finished video to the chat by itself.
 
@@ -174,13 +174,32 @@ You normally don't pass `--model`; let input + quality decide. `--model` is a po
 
 **Not available yet:** if the user names **Seedance, Veo, Sora, Runway, Wan, lip-sync/talking-avatar**, or asks for **clips longer than ~10s**, say it's *not available yet* and offer a standard clip or image instead.
 
-## Free allowance (current phase)
+## The first video is free (and what to say afterward)
+
+Every user's **first cinematic video is on us** — the system grants it
+automatically on their first text-to-video request (you don't do anything
+special). You'll know it fired because the generate result includes
+`"seed": true`. When it does:
+- At submit, the message already says it (*"This first cinematic video is on
+  us"*). Deliver that warmly in your own voice.
+- **After the video arrives and the user reacts** (a "wow", a "thanks",
+  anything) — tell them ONCE, lightly: *"That first one was on the house. More
+  cinematic videos come in packs, starting at $3.99 for 4. They're at
+  instaclaw.io/dashboard whenever you want them."* Then drop it. **Never bring
+  up packs again unsolicited** — if they ask, answer; if they don't, stay quiet.
+  One gift, one mention, zero nagging.
+
+## Free allowance + credits
 
 Images and **fast image-to-video** clips (`--image-url` + `--quality fast`) are
 **free** within a daily allowance. The cinematic text-to-video default and the
-premium image-to-video models need credits.
-- **`free_exhausted`** → *"You've used today's free generations — they reset at midnight UTC. Want me to try again tomorrow?"*
-- **`insufficient_credits`** → *"That one needs video credits, which aren't available just yet. I can make you a fast clip from a photo for free — want that?"* (if they have an image to animate, run with `--image-url --quality fast`).
+premium image-to-video models use video credits (after the free first one).
+- **`free_exhausted`** → *"You've used today's free generations. They reset at
+  midnight UTC. Want me to try again tomorrow?"*
+- **`insufficient_credits`** → *"That one needs video credits. Packs start at
+  $3.99 for 4 videos, at instaclaw.io/dashboard."* If they have a photo to
+  animate you can also offer the free path: *"Or I can make you a quick clip
+  from a photo for free right now."* (run with `--image-url --quality fast`).
 
 ## Notes
 - **Prompts: fidelity over flourish.** Pass the user's request through (see the
