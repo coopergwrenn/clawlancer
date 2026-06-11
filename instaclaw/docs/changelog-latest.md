@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-11
 
-Window: `40a67c29a0b46e3ac8fffea2d1904012bdaa40f7` → `HEAD` (HEAD = `38d1c016`)
+Window: `38d1c016439366b7622a5e81e3da9946d5600ca0` → `HEAD` (HEAD = `7db75cde`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 38d1c016439366b7622a5e81e3da9946d5600ca0 -->
+<!-- LAST_GENERATED_SHA: 7db75cde77bbf74d23e2dc7fe6c07aaa365d27a9 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `38d1c016` 2026-06-11 — fix(telegram): sendTelegramVideo passes real dimensions + supports_streaming (fleet media surface) [1 files] _(ai-assisted)_
-- `30367772` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `7db75cde` 2026-06-11 — fix(telegram): restore sendTelegramMessageWithButton + dims fix (unbreak main build) [1 files] _(ai-assisted)_
+- `7bc3e268` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `38d1c016` 2026-06-11 — fix(telegram): sendTelegramVideo passes real dimensions + supports_streaming (fleet media surface) [1 files] _(ai-assisted)_
+- `7db75cde` 2026-06-11 — fix(telegram): restore sendTelegramMessageWithButton + dims fix (unbreak main build) [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `30367772` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `7bc3e268` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `38d1c016` 2026-06-11 — fix(telegram): sendTelegramVideo passes real dimensions + supports_streaming (fleet media surface)
+- `7db75cde` 2026-06-11 — fix(telegram): restore sendTelegramMessageWithButton + dims fix (unbreak main build)
 
 ## Appendix — every commit (chronological)
 
-- `30367772` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
-- `38d1c016` 2026-06-11 — fix(telegram): sendTelegramVideo passes real dimensions + supports_streaming (fleet media surface) [1 files] _(ai-assisted)_
+- `7bc3e268` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `7db75cde` 2026-06-11 — fix(telegram): restore sendTelegramMessageWithButton + dims fix (unbreak main build) [1 files] _(ai-assisted)_
