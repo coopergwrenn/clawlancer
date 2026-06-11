@@ -29,7 +29,17 @@ export const VIDEO_MARGIN = 1.15;
 // quotes/proofs; the gate meters in video-credits, not dollars.
 export const VIDEO_CREDIT_SALE_USD = 0.1;
 
-export type HFModelKind = "image" | "image2video";
+export type HFModelKind = "image" | "image2video" | "text2video";
+
+// Soul image valid width_and_height values (SDK SoulSize enum). 16:9 landscape
+// is the cinematic default for video source frames — a square source yields a
+// square clip (image2video inherits the source aspect).
+const SOUL_SIZES = new Set<string>([
+  "2048x1152", "2048x1536", "2016x1344", "1696x960", "1632x1088",
+  "1152x2048", "1536x2048", "1344x2016", "960x1696", "1088x1632",
+  "1536x1536", "1536x1152", "1152x1536",
+]);
+const SOUL_SIZE_16_9 = "2048x1152"; // cinematic widescreen default
 
 export interface HFModel {
   /** Cloud API slug — the endpoint path itself (NOT a body field). */
@@ -122,6 +132,16 @@ export const HF_MODELS: Record<string, HFModel> = {
     freeEligible: false,
     label: "Clip (Kling 3.0, premium)",
   },
+  // Kling 3.0 TEXT-to-video — the legacy crab's exact mode (full-scene
+  // generation, not static-image animation). The fair-fight head-to-head vs
+  // the muapi crab. Patterned t2v slug; cost unmeasured (held conservatively).
+  "kling-video/v3.0/pro/text-to-video": {
+    endpoint: "kling-video/v3.0/pro/text-to-video",
+    kind: "text2video",
+    hfCostCredits: 15.0,
+    freeEligible: false,
+    label: "Clip (Kling 3.0 text-to-video, premium)",
+  },
   "kling-video/v2.6/pro/image-to-video": {
     endpoint: "kling-video/v2.6/pro/image-to-video",
     kind: "image2video",
@@ -198,6 +218,9 @@ export function validateInput(
     image_url?: unknown;
     prompt?: unknown;
     duration?: unknown;
+    width_and_height?: unknown;
+    quality?: unknown;
+    aspect_ratio?: unknown;
   },
 ): ValidationResult {
   if (!isNonEmptyString(raw.prompt, MAX_PROMPT)) {
@@ -206,8 +229,26 @@ export function validateInput(
   const prompt = (raw.prompt as string).trim();
 
   if (model.kind === "image") {
-    // text→image: prompt only.
-    return { ok: true, input: { prompt } };
+    // text→image. Forward width_and_height + quality so the source frame's
+    // aspect is controllable — image2video inherits the source's shape, so a
+    // square source = a square clip. DEFAULT to 16:9 landscape @1080p (cinematic
+    // video sources); validate width_and_height against Soul's enum (Rule: never
+    // forward an unvalidated value that could trigger a coerced bill).
+    const whRaw = typeof raw.width_and_height === "string" ? raw.width_and_height : undefined;
+    const wh = whRaw && SOUL_SIZES.has(whRaw) ? whRaw : SOUL_SIZE_16_9;
+    const q = raw.quality === "720p" || raw.quality === "1080p" ? raw.quality : "1080p";
+    return { ok: true, input: { prompt, width_and_height: wh, quality: q } };
+  }
+
+  if (model.kind === "text2video") {
+    // text→video (e.g. Kling 3.0 t2v — the legacy crab's mode: the model
+    // generates the whole scene, full motion, no static source frame). prompt
+    // (+ optional aspect_ratio, forwarded if provided; the t2v default is 16:9).
+    const input: ValidatedInput = { prompt };
+    if (typeof raw.aspect_ratio === "string" && /^\d{1,2}:\d{1,2}$/.test(raw.aspect_ratio)) {
+      input.aspect_ratio = raw.aspect_ratio;
+    }
+    return { ok: true, input };
   }
 
   // image→video: image_url + prompt (+ optional duration).
