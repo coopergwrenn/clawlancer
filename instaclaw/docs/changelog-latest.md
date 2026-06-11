@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-11
 
-Window: `aef2a4d530fb6fb8da1de33c41e200015b856e2f` → `HEAD` (HEAD = `34a6e047`)
+Window: `34a6e0475847bea830c00b9d9db8ede4dc163d7b` → `HEAD` (HEAD = `6d4918d5`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 34a6e0475847bea830c00b9d9db8ede4dc163d7b -->
+<!-- LAST_GENERATED_SHA: 6d4918d5ddaae42f171fbf2d984d89e85a46b4e9 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `34a6e047` 2026-06-11 — feat(frontier): verdict logging — frontier_spend_events (Tier 0 A) [6 files] _(ai-assisted)_
-- `bb2b79b9` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `6d4918d5` 2026-06-11 — chore(frontier): broaden armed-population invariant to armed ⊆ assigned (audit fold) [1 files] _(ai-assisted)_
+- `c5fd20f5` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `34a6e047` 2026-06-11 — feat(frontier): verdict logging — frontier_spend_events (Tier 0 A) [6 files] _(ai-assisted)_
+- `6d4918d5` 2026-06-11 — chore(frontier): broaden armed-population invariant to armed ⊆ assigned (audit fold) [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `bb2b79b9` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `c5fd20f5` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `34a6e047` 2026-06-11 — feat(frontier): verdict logging — frontier_spend_events (Tier 0 A)
+- `6d4918d5` 2026-06-11 — chore(frontier): broaden armed-population invariant to armed ⊆ assigned (audit fold)
 
 ## Appendix — every commit (chronological)
 
-- `bb2b79b9` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
-- `34a6e047` 2026-06-11 — feat(frontier): verdict logging — frontier_spend_events (Tier 0 A) [6 files] _(ai-assisted)_
+- `c5fd20f5` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `6d4918d5` 2026-06-11 — chore(frontier): broaden armed-population invariant to armed ⊆ assigned (audit fold) [1 files] _(ai-assisted)_
