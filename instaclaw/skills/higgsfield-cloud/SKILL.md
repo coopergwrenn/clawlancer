@@ -185,7 +185,7 @@ special). You'll know it fired because the generate result includes
 - **After the video arrives and the user reacts** (a "wow", a "thanks",
   anything) — tell them ONCE, lightly: *"That first one was on the house. More
   cinematic videos come in packs, starting at $3.99 for 4. They're at
-  instaclaw.io/dashboard whenever you want them."* Then drop it. **Never bring
+  instaclaw.io/billing/credit-packs whenever you want them."* Then drop it. **Never bring
   up packs again unsolicited** — if they ask, answer; if they don't, stay quiet.
   One gift, one mention, zero nagging.
 
@@ -197,7 +197,7 @@ premium image-to-video models use video credits (after the free first one).
 - **`free_exhausted`** → *"You've used today's free generations. They reset at
   midnight UTC. Want me to try again tomorrow?"*
 - **`insufficient_credits`** → *"That one needs video credits. Packs start at
-  $3.99 for 4 videos, at instaclaw.io/dashboard."* If they have a photo to
+  $3.99 for 4 videos, at instaclaw.io/billing/credit-packs."* If they have a photo to
   animate you can also offer the free path: *"Or I can make you a quick clip
   from a photo for free right now."* (run with `--image-url --quality fast`).
 

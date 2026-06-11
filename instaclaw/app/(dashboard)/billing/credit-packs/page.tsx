@@ -1,30 +1,76 @@
 "use client";
 
 import { useState } from "react";
-import { Zap } from "lucide-react";
+import { Zap, Clapperboard } from "lucide-react";
 
-const mediaPacks = [
+// Unified display shape so media + video packs share one card renderer.
+interface PackDisplay {
+  key: string;
+  title: string;
+  description: string;
+  price: number;
+  perUnit: string;
+  whatYouGet: string;
+  popular?: boolean;
+}
+
+const mediaPacks: PackDisplay[] = [
   {
     key: "media_500",
-    credits: 500,
+    title: "500 Credits",
     price: 4.99,
-    perCredit: "~1\u00A2 each",
+    perUnit: "~1¢ each",
     description: "Good for a handful of images or a couple videos",
+    whatYouGet: "~50 images or ~6 videos",
   },
   {
     key: "media_1200",
-    credits: 1200,
+    title: "1,200 Credits",
     price: 9.99,
-    perCredit: "~0.8\u00A2 each",
+    perUnit: "~0.8¢ each",
     description: "Enough for a full creative session",
+    whatYouGet: "~120 images or ~15 videos",
     popular: true,
   },
   {
     key: "media_3000",
-    credits: 3000,
+    title: "3,000 Credits",
     price: 19.99,
-    perCredit: "~0.7\u00A2 each",
+    perUnit: "~0.7¢ each",
     description: "Best value for heavy media workflows",
+    whatYouGet: "~300 images or ~37 videos",
+  },
+];
+
+// Cinematic video packs (Higgsfield launch §3.1). Sold as CLIPS, not credits:
+// the user knows exactly what they're buying. Pack slugs map to CREDIT_PACKS
+// in app/api/billing/credit-pack/route.ts (target:"video" → video_credit_balance).
+// Standing rule: the 99¢/video rate exists ONLY on the taste pack.
+const videoPacks: PackDisplay[] = [
+  {
+    key: "video_taste",
+    title: "4 Premium Videos",
+    price: 3.99,
+    perUnit: "99¢ a video",
+    description: "A taste of cinematic text-to-video",
+    whatYouGet: "4 premium 16:9 cinematic clips",
+  },
+  {
+    key: "video_creator",
+    title: "12 Premium Videos",
+    price: 14.99,
+    perUnit: "$1.25 a video",
+    description: "For regular creating",
+    whatYouGet: "12 premium 16:9 cinematic clips",
+    popular: true,
+  },
+  {
+    key: "video_studio",
+    title: "32 Premium Videos",
+    price: 39.99,
+    perUnit: "$1.25 a video",
+    description: "The studio shelf",
+    whatYouGet: "32 premium 16:9 cinematic clips",
   },
 ];
 
@@ -62,33 +108,10 @@ export default function CreditPacksPage() {
     }
   }
 
-  return (
-    <div className="space-y-8" data-tour="page-credit-packs">
-      <div>
-        <h1
-          className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]"
-          style={{ fontFamily: "var(--font-serif)" }}
-        >
-          Media Credit Packs
-        </h1>
-        <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
-          Top up your media credits for AI video, image, and audio generation.
-        </p>
-      </div>
-
-      <div
-        className="glass rounded-xl p-5"
-        style={{ borderLeft: "3px solid var(--accent)" }}
-      >
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
-          <Zap className="inline-block w-4 h-4 mr-1.5 -mt-0.5" style={{ color: "var(--accent)" }} />
-          Credits are added to your account instantly after purchase and never expire.
-          They stack on top of your daily allowance.
-        </p>
-      </div>
-
+  function renderPackGrid(packs: PackDisplay[]) {
+    return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {mediaPacks.map((pack) => {
+        {packs.map((pack) => {
           const isLoading = loading === pack.key;
 
           const cardContent = (
@@ -113,7 +136,7 @@ export default function CreditPacksPage() {
                   className="text-xl font-normal mb-1"
                   style={{ fontFamily: "var(--font-serif)", color: "var(--foreground)" }}
                 >
-                  {pack.credits.toLocaleString()} Credits
+                  {pack.title}
                 </h3>
                 <p className="text-xs" style={{ color: "var(--muted)" }}>
                   {pack.description}
@@ -129,7 +152,7 @@ export default function CreditPacksPage() {
                     ${pack.price}
                   </span>
                   <span className="text-sm ml-2" style={{ color: "var(--muted)" }}>
-                    {pack.perCredit}
+                    {pack.perUnit}
                   </span>
                 </div>
               </div>
@@ -139,7 +162,7 @@ export default function CreditPacksPage() {
                   What you get
                 </p>
                 <p className="text-[10px] mt-0.5" style={{ color: "var(--muted)" }}>
-                  ~{Math.floor(pack.credits / 10)} images or ~{Math.floor(pack.credits / 80)} videos
+                  {pack.whatYouGet}
                 </p>
               </div>
 
@@ -199,6 +222,52 @@ export default function CreditPacksPage() {
           );
         })}
       </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8" data-tour="page-credit-packs">
+      <div>
+        <h1
+          className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]"
+          style={{ fontFamily: "var(--font-serif)" }}
+        >
+          Media Credit Packs
+        </h1>
+        <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
+          Top up your media credits for AI video, image, and audio generation.
+        </p>
+      </div>
+
+      <div
+        className="glass rounded-xl p-5"
+        style={{ borderLeft: "3px solid var(--accent)" }}
+      >
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          <Zap className="inline-block w-4 h-4 mr-1.5 -mt-0.5" style={{ color: "var(--accent)" }} />
+          Credits are added to your account instantly after purchase and never expire.
+          They stack on top of your daily allowance.
+        </p>
+      </div>
+
+      {renderPackGrid(mediaPacks)}
+
+      {/* ── Cinematic video packs (Higgsfield launch) ── */}
+      <div className="pt-2">
+        <h2
+          className="text-2xl sm:text-3xl font-normal tracking-[-0.5px]"
+          style={{ fontFamily: "var(--font-serif)" }}
+        >
+          Cinematic Video Packs
+        </h2>
+        <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
+          <Clapperboard className="inline-block w-4 h-4 mr-1.5 -mt-0.5" style={{ color: "var(--accent)" }} />
+          Premium text-to-video in widescreen 16:9, from 99¢ a video. Your first one is free:
+          just ask your agent for a video.
+        </p>
+      </div>
+
+      {renderPackGrid(videoPacks)}
 
       {error && (
         <p className="text-sm text-center" style={{ color: "var(--error)" }}>

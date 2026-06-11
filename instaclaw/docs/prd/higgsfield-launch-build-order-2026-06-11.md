@@ -144,6 +144,33 @@ Roll via reconciler waves (Rule: concurrency ≤ 3); the skill is the deploy uni
 
 ---
 
+## 8b. PRIORITY FOLLOW-UP — fork (b): in-chat checkout link (its own session, full ceremony)
+
+**Ruled 2026-06-11:** fork (a) shipped (the 3 video packs on `/billing/credit-packs` +
+`/dashboard/credits` via the existing `handleBuy` → `/api/billing/credit-pack` flow);
+**(b) deferred deliberately** — not because it's wrong ("it's the right product and the
+conversion-dies-on-a-login-wall read is correct") but because a new money-adjacent
+purchase surface deserves full ceremony, not a same-night rush.
+
+**What (b) is:** a gate action (`?action=buy&pack=video_taste`) that creates the Stripe
+Checkout session server-side from the VM's gateway token and returns the URL; the agent
+drops it in chat at the upsell moment. The user never leaves Telegram.
+
+**Risk-shape notes (preserved from the fork presentation):**
+- New purchase-initiation surface authed by **gateway token** (not session). A stolen
+  token could spam checkout-link creation — payment still flows through Stripe to OUR
+  account and links are VM-bound, so the abuse is annoyance-shaped, not theft-shaped,
+  but it needs rate-limiting + the Rule-13 middleware decision made deliberately.
+- Requires server-side VM → user → Stripe-customer mapping in the gate (today that
+  mapping lives in the session-authed billing route).
+- Checkout `success_url`/`cancel_url` UX from a chat context needs design (the user
+  lands in a browser mid-conversation).
+
+**The data gate:** `scripts/_coverage-video-funnel.ts` measures exactly what the login
+wall costs (seed → pack conversion with (a) as the only path). Build (b) off that
+number, not instinct. If conversion is healthy with (a), (b) may not be worth the
+surface; if tasters stall at the wall, (b) jumps the queue.
+
 ## 9. Ops note — negotiate volume pricing with Higgsfield (post-launch, at scale)
 
 The top-up form's **flat 16cr=$1 (6.0¢ best via 500-packs) is a RETAIL CEILING, not a wall.** At fleet scale (hundreds–thousands of premium renders/day), reach out to Higgsfield directly for **negotiated wholesale**. Every cent off the credit rate drops straight to margin: at 5.0¢/cr the kling clip COGS falls $0.8125 → $0.65, lifting Creator/Studio from 35% → ~48%. Owner: Cooper, once daily render volume justifies the conversation.
