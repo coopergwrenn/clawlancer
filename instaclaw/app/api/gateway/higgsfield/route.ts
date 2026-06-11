@@ -354,6 +354,54 @@ export async function POST(req: NextRequest) {
         errorName: err instanceof Error ? err.name : undefined,
         error: err instanceof Error ? err.message : String(err),
       });
+
+      // ── L1 central-balance detector (build order §5; Rule 67 pattern). ──
+      // The SDK throws a NAMED NotEnoughCreditsError (errors.js:41; thrown by
+      // the v2 client on 402) when OUR central account is dry — the one
+      // submit-failure that is OUR outage, not the user's quota and not HF
+      // capacity. Detect by name AND statusCode AND message (robust to SDK
+      // minification), P0-alert with a 1h dedup so the first failing render
+      // of an incident wakes the operator without melting the inbox (every
+      // render fails during the outage). Fire-and-forget: the alert never
+      // delays or breaks the user response. User copy stays the honest
+      // "temporarily at capacity" — they can't fix our billing, and the
+      // skill's rules forbid "the service is broken" messaging.
+      const isCentralBalanceDry =
+        err instanceof Error &&
+        (err.name === "NotEnoughCreditsError" ||
+          (err as { statusCode?: number }).statusCode === 402 ||
+          /not enough credits/i.test(err.message));
+      if (isCentralBalanceDry) {
+        (async () => {
+          const dedupKey = "higgsfield_balance_exhausted:central";
+          try {
+            const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+            const { data: recent } = await supabase
+              .from("instaclaw_admin_alert_log")
+              .select("id")
+              .eq("alert_key", dedupKey)
+              .gte("sent_at", cutoff)
+              .limit(1);
+            if (recent && recent.length > 0) return;
+            await supabase.from("instaclaw_admin_alert_log").insert({
+              alert_key: dedupKey,
+              vm_count: 1,
+              details: `vm=${vm.id} endpoint=${endpoint}`,
+            });
+            const { sendAdminAlertEmail } = await import("@/lib/email");
+            await sendAdminAlertEmail(
+              "[P0] Higgsfield central balance EXHAUSTED — renders failing NOW",
+              `A real render just failed with NotEnoughCredits: the central Higgsfield account is dry.\n\nvm=${vm.id}\nendpoint=${endpoint}\n\nEvery premium render is failing (users see "temporarily at capacity"; holds are auto-released, no one is charged).\n\nACT NOW: top up at platform.higgsfield.ai and verify auto-top-up (trigger 2000 → ceiling 8000) is enabled. The balance cron (/api/cron/higgsfield-balance-check) should have warned ahead of this — if it didn't, check its last run.`,
+            );
+          } catch (alertErr) {
+            logger.error("higgsfield L1 balance alert failed", {
+              route: "gateway/higgsfield",
+              error: alertErr instanceof Error ? alertErr.message : String(alertErr),
+            });
+          }
+        })().catch(() => {});
+      }
+
       return NextResponse.json(
         {
           error: "service_unavailable",
