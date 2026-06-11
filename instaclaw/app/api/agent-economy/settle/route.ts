@@ -62,7 +62,8 @@
  *
  * PRD: instaclaw/docs/PRD-frontier-economic-agency.md §2 (C-spend), §4 Phase 1 (W5)
  */
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { recordSpendEvent } from "@/lib/frontier-spend-log";
 import { getSupabase } from "@/lib/supabase";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 
@@ -288,6 +289,19 @@ export async function POST(req: NextRequest) {
   }
 
   if (flipped && flipped.length === 1) {
+    // Tier-0 A: this call won the flip — log the settle decision (the leg that
+    // carries tx_hash / latency / pay_error, completing "why did agent X spend $Y").
+    // Best-effort, post-response, never blocks. Idempotent-replay returns above are
+    // NOT logged (the winning flip already recorded the settle exactly once).
+    after(() =>
+      recordSpendEvent(supabase, {
+        decision_point: "settle", vm_id: vmId, owner_id: (vm.assigned_to as string) ?? null,
+        verdict: result === "success" ? "settle_success" : result === "disputed" ? "settle_disputed" : "settle_failed",
+        reason: `settle_${result}`, request_id: requestId, transaction_id: hold.id,
+        amount_usd: typeof hold.amount_usdc === "number" ? hold.amount_usdc : null,
+        tx_hash: txHash, latency_ms: latencyMs, pay_error: payError, protocol_fee_usd: protocolFee,
+      }),
+    );
     return NextResponse.json(
       { ok: true, hold_id: hold.id, status: intendedStatus, result_used: resultUsed, idempotent: false },
       { status: 200 },
