@@ -96,6 +96,38 @@ export function selectPaymentRequirement(accepts, opts) {
 // EIP-3009 authorization + X-PAYMENT envelope (buyer side — no proxy)
 // ════════════════════════════════════════════════════════════════════
 
+import { createHash } from "node:crypto";
+
+/**
+ * nonceForRequest — the EIP-3009 `nonce`, DERIVED deterministically from the
+ * request_id (the system's idempotency anchor). DO NOT "improve" this back to
+ * randomBytes — that reintroduces a real-money double-charge bug.
+ *
+ * WHY: a retry of a lost/uncertain pay must re-submit the IDENTICAL on-chain
+ * authorization so USDC's transferWithAuthorization enforces exactly-once — the
+ * token marks authorizationState(from, nonce) used on the first settle and
+ * REVERTS any second submit of the same nonce. A fresh random nonce per attempt
+ * has no such guard and double-charges when the merchant's booking status lags
+ * the on-chain settle (the "B-window", 2026-06-11 book-path audit). Deriving the
+ * nonce from request_id makes every retry of the same logical payment reuse the
+ * same nonce, so the chain itself rejects the double-spend. The nonce is
+ * recomputable from the request_id stored in the ledger row — nothing is lost vs
+ * storing it.
+ *
+ * Domain-separated: the fixed X402_NONCE_DOMAIN prefix guarantees this hash can
+ * never collide with any other sha256 use of request_id elsewhere in the system.
+ * Stable forever for a given (request_id, wallet) — changing the prefix or the
+ * inputs would break idempotency for any retry in flight across the change.
+ */
+const X402_NONCE_DOMAIN = "instaclaw-x402-nonce:v1";
+export function nonceForRequest(requestId, wallet) {
+  if (!requestId || !wallet) throw new Error("nonceForRequest: requestId and wallet are required");
+  const digest = createHash("sha256")
+    .update(`${X402_NONCE_DOMAIN}:${requestId}:${String(wallet).toLowerCase()}`)
+    .digest("hex");
+  return "0x" + digest; // 32 bytes (64 hex) — the EIP-3009 bytes32 nonce
+}
+
 /** Build the EIP-3009 message. validAfter=0 (valid now); validBefore bounded by the requirement's timeout. */
 export function buildAuthorization(args) {
   const timeout = args.maxTimeoutSeconds && args.maxTimeoutSeconds > 0 ? args.maxTimeoutSeconds : 600;

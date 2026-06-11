@@ -132,6 +132,16 @@ function bookingRefFrom(text) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Map a book-status result body to a terminal verdict for the --retry guard.
+// Exported for the decision-tests (the four retry timings). "in_progress" is the
+// non-terminal state we must NOT re-pay on.
+export function bookStatusVerdict(text) {
+  const t = String(text || "").toLowerCase();
+  if (/confirmed|booked|success|complete/.test(t)) return "confirmed";
+  if (/not.?found|invalid|no booking|expired|cancell?ed/.test(t)) return "not_found";
+  return "in_progress";
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const json = !!args.json;
@@ -158,7 +168,7 @@ async function main() {
   let core;
   try { core = await import(pathToFileURL(CORE_PATH).href); }
   catch { fail("frontier_skill_missing", { detail: `travala booking requires the frontier skill's payer core at ${CORE_PATH}` }); }
-  const { selectPaymentRequirement, buildAuthorization, buildTransferTypedData, buildXPaymentHeader, newRequestId, tagsFromResource } = core;
+  const { selectPaymentRequirement, buildAuthorization, buildTransferTypedData, buildXPaymentHeader, newRequestId, tagsFromResource, nonceForRequest } = core;
 
   // the search-option snapshot the agent threads through (hotel/dates/policy/
   // free-cancel deadline) — captured at record time, irretrievable later.
@@ -166,21 +176,39 @@ async function main() {
   try { snapshot = args.snapshot ? JSON.parse(args.snapshot) : undefined; }
   catch { snapshot = undefined; }
 
-  // ── G (recovery): on an explicit retry, check status FIRST so we never double-charge. ──
+  // ── G (recovery): on an explicit retry, settle book-status to a TERMINAL verdict
+  // before deciding to re-pay. Primary double-charge guard is the deterministic
+  // nonce (a redundant pay is an on-chain no-op); polling to terminal is defense
+  // in depth on the 2026-06-11 audit "B-window" — it avoids even attempting a
+  // redundant pay (which would revert on the consumed nonce and read as a
+  // confusing failure). ──
   if (args.retry) {
-    const st = await backend("book-status", gatewayToken, { packageId, sessionId });
-    if (st.status === 200 && st.json?.ok) {
-      const txt = JSON.stringify(st.json.result ?? "");
-      if (/confirmed|booked|success|complete/i.test(txt)) {
-        // Confirmed-but-maybe-unrecorded recovery: ensure a booking row exists so
-        // the agent can cancel it (a paid booking with no row is uncancellable).
-        const rr = await backend("book-record", gatewayToken, { packageId, sessionId, customer, snapshot, pay_response_raw: txt });
-        const ref = rr.json?.booking_id || bookingRefFrom(txt);
-        return out({ ok: true, already_booked: true, recorded: !!rr.json?.recorded, booking_ref: ref, booking_status: st.json.result,
-          narration: `This booking already went through — not charging again.${ref ? ` Ref ${ref}.` : ""}${rr.json?.recorded ? ` It's saved to your trips — ask me to cancel anytime.` : ` (Heads up: I couldn't save it to my cancellation list — keep your Travala confirmation email.)`}` });
+    let verdict = "in_progress", lastResult = null;
+    for (let i = 0; i < 4 && verdict === "in_progress"; i++) {
+      if (i > 0) await sleep(3000);
+      const st = await backend("book-status", gatewayToken, { packageId, sessionId });
+      if (st.status === 200 && st.json?.ok) {
+        lastResult = st.json.result;
+        verdict = bookStatusVerdict(JSON.stringify(lastResult ?? ""));
       }
     }
-    // not confirmed (or status unreadable) → safe to proceed to a fresh pay below.
+    if (verdict === "confirmed") {
+      // already booked → record (so it's cancellable) + never charge again.
+      const txt = JSON.stringify(lastResult ?? "");
+      const rr = await backend("book-record", gatewayToken, { packageId, sessionId, customer, snapshot, pay_response_raw: txt });
+      const ref = rr.json?.booking_id || bookingRefFrom(txt);
+      return out({ ok: true, already_booked: true, recorded: !!rr.json?.recorded, booking_ref: ref, booking_status: lastResult,
+        narration: `This booking already went through — not charging again.${ref ? ` Ref ${ref}.` : ""}${rr.json?.recorded ? ` It's saved to your trips — ask me to cancel anytime.` : ` (Heads up: I couldn't save it to my cancellation list — keep your Travala confirmation email.)`}` });
+    }
+    if (verdict === "in_progress") {
+      // status never settled → do NOT re-pay. The nonce would make it safe, but a
+      // redundant submit reverting on the consumed nonce reads as a confusing "pay
+      // failed". Let the user retry once Travala's status resolves.
+      return out({ ok: false, paid: false, pending: true, request_id: args["request-id"],
+        narration: `That booking is still processing on Travala's side — I have NOT re-charged you. Give it a minute, then tell me to retry.` });
+    }
+    // verdict === "not_found" → the prior attempt didn't take; safe to pay below
+    // (and the deterministic nonce makes even a late-settling first attempt a no-op).
   }
 
   // ── 1. QUOTE: backend mints the token, calls travala_book, returns the 402. ──
@@ -278,7 +306,10 @@ async function main() {
   try {
     if (!bankrKey || !wallet) throw new Error("bankr_not_configured");
     const authorizationMsg = buildAuthorization({
-      from: wallet, to: payTo, amountAtomic, nonceHex: "0x" + randomBytes(32).toString("hex"),
+      // Deterministic nonce from request_id → on-chain exactly-once on retry
+      // (USDC authorizationState reverts a 2nd submit of the same nonce). See
+      // frontier-spend-core.mjs nonceForRequest. Never randomBytes here.
+      from: wallet, to: payTo, amountAtomic, nonceHex: nonceForRequest(requestId, wallet),
       nowSec: Math.floor(Date.now() / 1000), maxTimeoutSeconds: requirement.maxTimeoutSeconds,
     });
     const typedData = buildTransferTypedData(authorizationMsg, { asset, name: requirement.extra?.name, version: requirement.extra?.version });
@@ -364,4 +395,7 @@ async function main() {
     narration: `The booking payment failed (${payErr}). Your hold is recorded; re-run with --retry --request-id ${requestId} to resume safely.` });
 }
 
-main().catch((e) => fail("unexpected_error", { detail: String(e?.stack ?? e) }));
+// Run as a script, not when imported (the decision-tests import bookStatusVerdict).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => fail("unexpected_error", { detail: String(e?.stack ?? e) }));
+}
