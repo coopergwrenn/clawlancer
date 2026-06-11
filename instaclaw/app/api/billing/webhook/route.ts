@@ -1224,6 +1224,31 @@ async function processEvent(event: any) {
           .eq("assigned_to", sub.user_id)
           .single();
 
+        // Finding A (2026-06-11 audit): the two assets in this block fail-closed
+        // in OPPOSITE directions. The VM is irreplaceable data → on uncertainty
+        // KEEP it (F1, the destroy block below stays gated `!exempt && verified`).
+        // frontier_spend_enabled is a re-grantable money permission → on
+        // uncertainty REVOKE it (F4: cheap to restore, expensive to wrongly
+        // retain). So the spend-revoke is split out here, gated only on
+        // `!exempt` — revoke unless CONFIRMED exempt. Composed: confirmed
+        // non-payer → suspend + revoke; confirmed exempt → keep + keep; blip →
+        // VM kept (F1) + spend revoked (F4), each asset closed in its direction.
+        // (Was entangled inside the F1-gated destroy block via 5f809339, so a
+        // blip skipped the revoke and a canceled non-payer held live spend.)
+        if (userVm && !cancelExempt.exempt) {
+          await supabase
+            .from("instaclaw_vms")
+            .update({ frontier_spend_enabled: false })
+            .eq("id", userVm.id)
+            .not("status", "in", '("terminated","destroyed","failed")');
+          logger.info("subscription.deleted: frontier_spend_enabled revoked (revoke unless confirmed-exempt)", {
+            route: "billing/webhook",
+            vmId: userVm.id,
+            userId: sub.user_id,
+            exemptVerified: cancelExempt.verified,
+          });
+        }
+
         // F1 fail-closed: skip the destructive VM-mutation on exempt OR on an
         // unverifiable exempt-read (verified=false) — a DB blip must never
         // suspend a protected VM. Log the skip loudly so a blip-skip is visible.
@@ -1249,11 +1274,9 @@ async function processEvent(event: any) {
               telegram_bot_token: null,
               telegram_bot_username: null,
               telegram_chat_id: null,
-              // F4: revoke autonomous-spend authority on cancel (fail-closed). The lifecycle
-              // TRIGGER can't catch this -- cancel sets health_status='suspended', which is
-              // indistinguishable from an inactivity-suspend at the VM-column level, so this
-              // is the billing chokepoint. A future re-subscribe must re-enable spend.
-              frontier_spend_enabled: false,
+              // (frontier_spend_enabled:false moved OUT of this F1-gated block to
+              //  its own !exempt-gated update above — Finding A. Money permission
+              //  revokes on uncertainty; irreplaceable VM keeps on uncertainty.)
             })
             .eq("id", userVm.id);
 

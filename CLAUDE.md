@@ -4308,6 +4308,28 @@ Every user-facing default (model, tier, quality, provider, route) gets an **expl
 
 **Detection:** for each user-facing default, there should be a recorded ruling with the cost/quality tradeoff. If the only reason it's the default is "inherited," revisit it with the cost table.
 
+### Rule 82 — Fix the whole CLASS, not the instance: grep every producer + consumer, and re-audit from deployed state before declaring "done"
+
+When you find a primitive that returns a billing / exemption / protection / safety signal consumed by a destructive or state-advancing path and it has the wrong fail behavior (fails OPEN — error/uncertainty lets the destructive action proceed), the bug is almost never one function. It is a CLASS. Fixing only the instance in front of you and declaring the class closed is the single most repeated mistake — it produces a parade of "found another one" after every "done."
+
+**The 2026-06-10/11 chain (the proof):** the vm-1075 P0 (a billing_exempt founder VM suspended on cancel) was "fixed" by guarding 2 suspend paths. A self-audit then found the same fail-open on the 30-day reclaim + Pass-6 wipe (F2/F3, irreversible). Those "closed the class." A harder audit found the same shape in two SIBLING primitives gating freeze/reclaim (`isUserBillableForVmAssignment`, `fetchBillingExemptUserIds`). Those "closed the class." A final adversarial audit from deployed main found a FOURTH (`getBillingStatusVerified`'s `verified` discarded → irreversible wipes) plus a cross-lane composition hole (a sibling lane's `frontier_spend_enabled:false` entangled inside the fail-closed guard). **Ten fixes; four found by auditing past "done."** Every premature "closed" was sincere and wrong.
+
+**Mandatory pattern:**
+
+1. **Grep every PRODUCER.** `grep` the codebase for every function returning the signal (every fn whose return feeds an `if` that suspends/hibernates/wipes/reclaims/freezes/revokes/transitions). Enumerate them ALL with their fail-on-error behavior in a table. The list comes back "all verified fail-closed, with evidence per entry" or you found the next one — both are wins; only the first is done.
+2. **Grep every CONSUMER, and check POLARITY at each call site before flipping.** The same primitive is consumed by gates of OPPOSITE polarity: `if (!signal) destroy` (fail-open if signal-false-on-error) vs `if (signal) skip-constructive` (already fail-closed; flipping it BREAKS it — it would provision/configure on a blip). Quote the gate at each site; flip only the destructive-direction ones. Assuming uniform shape is how polarity bugs ship (the 2026-06-11 `isUserBillableForVmAssignment` had 1 destructive caller among 5; flipping all 5 would have provisioned non-payers on a blip).
+3. **Distinguish the three return states** — clean-positive, clean-negative (genuinely-not-protected → proceed), and UNVERIFIABLE (error/exception → fail-closed). Collapsing error into clean-negative IS the bug. Use a `verified` signal (e.g. `{exempt, verified}`, `{ids, verified}`, `{billable, verified}`) when one primitive serves both a GRANT-side consumer (wants signal-false-on-error, no false grant) and a DESTROY-side consumer (wants skip-on-unverifiable) — the two need the same fail-closed PRINCIPLE in OPPOSITE VALUES, which one boolean can't express. Threading `verified` onto the shared status object (so every current AND future destructive consumer is covered) beats per-consumer patches that let the class silently re-open.
+4. **Assets in one write can fail-closed in OPPOSITE directions.** Irreplaceable data (a VM, a session, memory) → keep on uncertainty. A re-grantable permission (spend authority, a token) → revoke on uncertainty (cheap to restore, expensive to wrongly retain). When a block mutates both, split it so each asset is gated in its own direction. (Finding A: `frontier_spend_enabled:false` had to leave the VM-keep guard and revoke on `!confirmed-exempt`.)
+5. **The fix isn't done until you've re-audited from DEPLOYED state.** Re-derive from `origin/main` + the live DB + a live probe — never re-read your own report and call it verified. The end-of-day adversarial audit (hostile re-trace of the full day's diffs as if reviewing a stranger's PR, an interaction trace of overlapping files, and this grep-the-class sweep) is proven practice: it earned its commission three times in one day.
+
+**Banned:**
+- Declaring a fail-open / SoT-bypass class "closed" after patching the instance that surfaced it, without the producer+consumer grep.
+- Flipping a primitive's fail direction without checking polarity at every call site.
+- "Proven" for a fix whose destroy-direction was only checked by construction/tsc and never observed executing on a real candidate — say "proven-by-construction" and carry it as a known assumption.
+- Trusting your own prior report as evidence of deployed state.
+
+**Detection:** any PR fixing a fail-open on a destructive path must include (a) the producer table with per-fn fail behavior, (b) the consumer/polarity list, (c) a `verified`-style three-state return where a primitive is dual-role, (d) a re-audit-from-deployed step. If it patches one call site and stops, it's a Rule 82 violation — the class is still open.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
