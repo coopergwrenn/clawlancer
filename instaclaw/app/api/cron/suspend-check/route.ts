@@ -192,13 +192,16 @@ export async function GET(req: NextRequest) {
         // subscription.deleted handler) that must consult it directly.
         // Only the small set of VMs that survive the grace/sub/credit gates
         // reach this point, so the per-VM query is cheap.
-        const { exempt: passExempt, exemptReason: passExemptReason } =
+        const { exempt: passExempt, exemptReason: passExemptReason, verified: passVerified } =
           await fetchBillingExempt(supabase, vm.assigned_to!);
-        if (passExempt) {
-          logger.info("Pass 2: hibernate SKIPPED — billing_exempt", {
+        // F1 fail-closed: skip hibernate on exempt OR unverifiable read.
+        if (passExempt || !passVerified) {
+          logger.info("Pass 2: hibernate SKIPPED — billing_exempt/unverifiable", {
             route: "cron/suspend-check",
             vmId: vm.id,
             userId: vm.assigned_to,
+            exempt: passExempt,
+            verified: passVerified,
             exemptReason: passExemptReason,
           });
           results.skipped++;

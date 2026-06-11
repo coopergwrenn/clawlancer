@@ -1224,16 +1224,22 @@ async function processEvent(event: any) {
           .eq("assigned_to", sub.user_id)
           .single();
 
-        if (userVm && cancelExempt.exempt) {
-          logger.info("subscription.deleted: VM suspend SKIPPED — billing_exempt", {
+        // F1 fail-closed: skip the destructive VM-mutation on exempt OR on an
+        // unverifiable exempt-read (verified=false) — a DB blip must never
+        // suspend a protected VM. Log the skip loudly so a blip-skip is visible.
+        if (userVm && (cancelExempt.exempt || !cancelExempt.verified)) {
+          logger.info("subscription.deleted: VM suspend SKIPPED — billing_exempt/unverifiable", {
             route: "billing/webhook",
             vmId: userVm.id,
             userId: sub.user_id,
+            exempt: cancelExempt.exempt,
+            verified: cancelExempt.verified,
             exemptReason: cancelExempt.exemptReason,
           });
         }
 
-        if (userVm && !cancelExempt.exempt) {
+        // Destroy only on a CONFIRMED not-exempt read.
+        if (userVm && !cancelExempt.exempt && cancelExempt.verified) {
           // Stamp last_assigned_to and clear telegram fields
           // (releases unique constraint so a future VM can reuse the token)
           await supabase
@@ -1298,7 +1304,7 @@ async function processEvent(event: any) {
           .eq("id", sub.user_id)
           .single();
 
-        if (user?.email && !cancelExempt.exempt) {
+        if (user?.email && !cancelExempt.exempt && cancelExempt.verified) {
           try {
             await sendCanceledEmail(user.email);
           } catch (emailErr) {

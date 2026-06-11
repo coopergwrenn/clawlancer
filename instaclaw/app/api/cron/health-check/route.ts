@@ -1561,16 +1561,20 @@ else:
         // must consult billing_exempt like the webhook + suspend-check paths.
         const pastDueExempt = await fetchBillingExempt(supabase, sub.user_id);
 
-        if (vm && vm.health_status !== "suspended" && pastDueExempt.exempt) {
-          logger.info("health-check past_due: suspend SKIPPED — billing_exempt", {
+        // F1 fail-closed: skip suspend on exempt OR unverifiable read.
+        if (vm && vm.health_status !== "suspended" && (pastDueExempt.exempt || !pastDueExempt.verified)) {
+          logger.info("health-check past_due: suspend SKIPPED — billing_exempt/unverifiable", {
             route: "cron/health-check",
             vmId: vm.id,
             userId: sub.user_id,
+            exempt: pastDueExempt.exempt,
+            verified: pastDueExempt.verified,
             exemptReason: pastDueExempt.exemptReason,
           });
         }
 
-        if (vm && vm.health_status !== "suspended" && !pastDueExempt.exempt) {
+        // Destroy only on a CONFIRMED not-exempt read.
+        if (vm && vm.health_status !== "suspended" && !pastDueExempt.exempt && pastDueExempt.verified) {
           try {
             // Stop the gateway
             await stopGateway(vm);
@@ -1674,11 +1678,14 @@ else:
       // sub was canceled — the third inline suspend path, now consulting the
       // source of truth like the webhook + suspend-check Pass 2 paths.
       const noSubExempt = await fetchBillingExempt(supabase, vm.assigned_to);
-      if (noSubExempt.exempt) {
-        logger.info("health-check no-sub: hibernate SKIPPED — billing_exempt", {
+      // F1 fail-closed: skip hibernate on exempt OR unverifiable read.
+      if (noSubExempt.exempt || !noSubExempt.verified) {
+        logger.info("health-check no-sub: hibernate SKIPPED — billing_exempt/unverifiable", {
           route: "cron/health-check",
           vmId: vm.id,
           userId: vm.assigned_to,
+          exempt: noSubExempt.exempt,
+          verified: noSubExempt.verified,
           exemptReason: noSubExempt.exemptReason,
         });
         continue;

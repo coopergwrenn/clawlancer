@@ -112,28 +112,69 @@ export async function getBillingStatus(
 
 /**
  * Fetch the owning account's comp/founder exemption (instaclaw_users.billing_exempt).
- * Never throws — a lookup failure returns {exempt:false} so a transient DB
- * hiccup can't accidentally grant an exemption (fail-closed on the *grant*
- * side; the worst case is a real comp account briefly classified non-exempt,
- * which the freeze path's live Stripe re-check + grace windows still cushion).
+ * Never throws. Returns THREE signals so both fail directions are correct
+ * (this primitive has a DUAL ROLE — read both paragraphs before "fixing" it):
+ *
+ *   - `exempt`   : true only on a CLEAN read of billing_exempt=true.
+ *   - `verified` : true when the read succeeded (row OR no-row). false on a
+ *                  read ERROR / exception (unverifiable).
+ *   - `exemptReason`: the reason string, or an "unverifiable_*" sentinel on error.
+ *
+ * On an ERROR/exception, `exempt` stays FALSE and `verified` is FALSE. This is
+ * the SAME fail-closed principle expressed in opposite values for the two
+ * caller families:
+ *
+ *   GRANT side — classify() Path 0 (`if (exempt) isPaying=true`), via
+ *   getBillingStatus / getBillingStatusVerified. These IGNORE `verified` and
+ *   read `exempt`, which stays FALSE on error → a transient DB hiccup can never
+ *   accidentally GRANT isPaying to a non-exempt account. Fail-closed on grant.
+ *   (Worst case: a real comp account is briefly classified non-exempt by these
+ *   read paths — cushioned by the destructive consumers' own fail-closed null
+ *   guards + grace windows.) DO NOT make these read `verified`.
+ *
+ *   DESTROY side — the suspend/hibernate guards (`if (!exempt) { suspend }`).
+ *   These MUST read `verified`: destroy only on `(!exempt && verified)` — i.e.
+ *   a CONFIRMED not-exempt read — and skip on `(exempt || !verified)`. A
+ *   transient DB hiccup (verified=false) can never permit a suspend of a
+ *   protected VM. Fail-closed on destroy. (2026-06-11: this is the F1 fix —
+ *   the root primitive under the 2026-06-10 vm-1075 downtime, where the old
+ *   collapsed `{exempt:false}` on error let a blip suspend a comp founder VM.)
+ *
+ * Same principle (a DB blip is never allowed to harm a protected account),
+ * opposite values (grant wants exempt:false, destroy wants !verified) — which
+ * is exactly why the signal is split into `exempt` + `verified` rather than
+ * one boolean. The Pass-2 Rule-14 consolidation should FOLD this `verified`
+ * pattern in, not replace it.
  */
 export async function fetchBillingExempt(
   supabase: SupabaseClient,
   userId: string,
-): Promise<{ exempt: boolean; exemptReason: string | null }> {
+): Promise<{ exempt: boolean; exemptReason: string | null; verified: boolean }> {
   try {
     const { data, error } = await supabase
       .from("instaclaw_users")
       .select("billing_exempt, billing_exempt_reason")
       .eq("id", userId)
       .maybeSingle();
-    if (error || !data) return { exempt: false, exemptReason: null };
+    // Read ERROR — unverifiable. Destroy side fails closed via verified=false;
+    // grant side stays exempt=false (no false grant). Split from the no-row
+    // case below (maybeSingle cleanly distinguishes error from zero rows).
+    if (error) {
+      return { exempt: false, exemptReason: "unverifiable_read_error", verified: false };
+    }
+    // Clean read, NO row — genuinely not exempt. Correct to proceed.
+    if (!data) {
+      return { exempt: false, exemptReason: null, verified: true };
+    }
+    // Clean read with a row.
     return {
       exempt: (data as { billing_exempt?: boolean }).billing_exempt === true,
       exemptReason: (data as { billing_exempt_reason?: string | null }).billing_exempt_reason ?? null,
+      verified: true,
     };
   } catch {
-    return { exempt: false, exemptReason: null };
+    // Exception (network/timeout/client throw) — unverifiable.
+    return { exempt: false, exemptReason: "unverifiable_exception", verified: false };
   }
 }
 
