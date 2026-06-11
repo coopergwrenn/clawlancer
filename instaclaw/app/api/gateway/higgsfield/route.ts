@@ -183,6 +183,9 @@ export async function POST(req: NextRequest) {
       prompt?: unknown;
       duration?: unknown;
       chat_id?: string | number;
+      width_and_height?: unknown;
+      quality?: unknown;
+      aspect_ratio?: unknown;
     };
 
     // --- 1. VALIDATE model (allowlist) — NO arbitrary endpoint passthrough. ---
@@ -200,6 +203,9 @@ export async function POST(req: NextRequest) {
       image_url: body.image_url,
       prompt: body.prompt,
       duration: body.duration,
+      width_and_height: body.width_and_height,
+      quality: body.quality,
+      aspect_ratio: body.aspect_ratio,
     });
     if (!validated.ok) {
       return NextResponse.json(
