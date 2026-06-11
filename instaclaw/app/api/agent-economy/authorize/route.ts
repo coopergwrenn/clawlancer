@@ -70,6 +70,7 @@
  */
 import { NextRequest, NextResponse, after } from "next/server";
 import { recordSpendEvent } from "@/lib/frontier-spend-log";
+import { sendPerVmAlertDeduped } from "@/lib/admin-alert";
 import { getSupabase } from "@/lib/supabase";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 import {
@@ -351,6 +352,32 @@ export async function POST(req: NextRequest) {
         counterparty: v.counterparty_vm_id ?? v.counterparty_address ?? v.endpoint ?? null,
       }),
     );
+    // UNVERIFIABLE = the spend rail went blind (kill-switch state unreadable after
+    // retry) and is failing CLOSED — every spend on every VM is being denied until
+    // the DB recovers. That's the safe direction, but the operator must know NOW
+    // (IR runbook S4). FLEET-level key (not per-VM): during DB sickness every VM
+    // fires; one email/hour, not an inbox melt (Rule 67 pattern). The helper's
+    // dedup query fails-OPEN and the email goes to Resend, so this alert works
+    // even during the exact DB sickness it reports. Best-effort, post-response.
+    if (killState === "unverifiable") {
+      after(async () => {
+        try {
+          await sendPerVmAlertDeduped({
+            alertKey: "frontier_kill_switch_unverifiable",
+            subject: "[P1] Frontier spend rail BLIND — kill-switch state unreadable, all spends failing closed",
+            body:
+              `The spend kill-switch read failed (after retry) on /api/agent-economy/authorize. ` +
+              `Every autonomous spend fleet-wide is being DENIED with reason spend_kill_switch_unverifiable until the DB recovers — money is safe, the rail is down.\n\n` +
+              `First-seen VM: ${vmId} (owner ${ownerId}).\n` +
+              `Runbook: instaclaw/docs/runbooks/frontier-spend-ir.md — scenario S4 (unverifiable denials spiking).\n` +
+              `Detection: SELECT count(*) FROM frontier_spend_events WHERE reason='spend_kill_switch_unverifiable' AND created_at > now() - interval '15 minutes';`,
+            dedupHours: 1,
+          });
+        } catch {
+          // never let the alert path throw into after()
+        }
+      });
+    }
     return NextResponse.json(
       { authorized: false, mode: null, outcome: "deny", reason: killReason },
       { status: 200 },

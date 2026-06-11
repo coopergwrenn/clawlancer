@@ -1494,6 +1494,45 @@ Rule: <new R<N> | existing R<N> | none-mapped>.
 | `HighMemory` (>90% for 5m) | `du -sh ~/.openclaw/sessions/*` | Bloated session (Rule 30 territory) | In-place compact; never archive (Rule 30) |
 | `RestartStorm` (>10/h) | Boot times + journal | Rule 16 / Rule 34 (rollback path) | Address journal cause; do NOT loop fixes |
 
+### Frontier spend incidents (the money rail) — pointer + stop-the-bleeding
+
+For any incident where an agent is spending USDC it shouldn't, a revoke didn't stop a
+spend, a refund didn't land, or the spend rail is denying everything: the full runbook is
+**`instaclaw/docs/runbooks/frontier-spend-ir.md`** — ten scenarios, each with a tested
+detection query, diagnosis branches, exact remediation SQL, and blast radius. (Kept as a
+sibling doc, not inlined here, because it's ~400 lines of incident SQL needed only during a
+specific incident; the entry point lives here so a cold terminal finds it.)
+
+**The one thing to internalize before reading it — the trust ladder:** the spend rail is
+**non-custodial** (the agent signs its own Bankr-wallet payment; we never hold the money).
+So `frontier_spend_events` = what we *decided*, `frontier_transactions` = what the agent
+*told us*, and **only Base mainnet (basescan) = what actually moved.** When the DB is clean
+but money's gone, the agent went around the rail — reconcile against the chain (runbook S3).
+
+**30-second triage:** unexplained spend → S1 (trace) then S3 (chain); kill-switch-on but
+spending → S2; spend on-chain but ledger empty → S3; "[P1] spend rail BLIND" alert → S4;
+revoke didn't interdict → S5; refund stalled → S6; trace empty but money moved → S7
+(the verdict log itself is down); double-charge → S8; coverage invariant fired → S9.
+
+**STOP THE BLEEDING (P0 — engage first, diagnose second).** Decision rule: ≥1 confirmed
+unauthorized spend, or a malicious supplier, or you can't yet tell the blast radius →
+engage. Reversible; when unsure, engage. Read live: `npx tsx instaclaw/scripts/_coverage-frontier.ts`.
+```sql
+-- ENGAGE the frontier spend kill switch (denies EVERY spend, fleet-wide, next call):
+INSERT INTO instaclaw_admin_settings (setting_key, bool_value, notes)
+VALUES ('frontier_spend_kill_switch', true, 'IR: <why> — <who>, <when>')
+ON CONFLICT (setting_key) DO UPDATE SET bool_value = true, updated_at = now(), notes = EXCLUDED.notes;
+-- RELEASE:
+UPDATE instaclaw_admin_settings SET bool_value = false, updated_at = now()
+WHERE setting_key = 'frontier_spend_kill_switch';
+```
+Blast radius of engaging: every `frontier_spend_enabled=true` VM is denied
+(`reason=spend_kill_switch`) until released; does NOT reverse in-flight on-chain payments,
+and does NOT stop hotel bookings — engage `travala_booking_kill_switch` (same upsert/UPDATE
+shape; the row doesn't exist in prod yet so engage *creates* it) if hotels are the vector.
+The kill switch is non-custodial-blind too: it stops the authorize path, not an agent
+bypassing the rail — for that, freeze the VM (stop its gateway). Full detail: the runbook.
+
 ### Anti-patterns — never do these
 
 - **Hallucinate root cause** when telemetry doesn't support it. If you can't cite a journal line, metric, or file path that shows the cause, your hypothesis is wrong. (Rule 29)
