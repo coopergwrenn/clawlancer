@@ -127,6 +127,38 @@ export async function sendTelegramNotification(
 }
 
 /**
+ * Send a plain message with a single inline URL-button (an unforgeable one-tap
+ * link into a web page). Used by the Frontier human_approved hardening's detection
+ * notification ("agent spent $X with your approval -- was that you? [Revoke]"). The
+ * button opens a URL in the user's browser; the link itself carries the auth (a
+ * signed token or a session-gated page), never the chat. Best-effort: returns false
+ * on any failure, never throws (a missed notification must never block a spend).
+ */
+export async function sendTelegramMessageWithButton(
+  botToken: string,
+  chatId: string,
+  message: string,
+  buttonText: string,
+  buttonUrl: string,
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${TELEGRAM_API}/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        disable_web_page_preview: true,
+        reply_markup: { inline_keyboard: [[{ text: buttonText, url: buttonUrl }]] },
+      }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Attempt to discover the chat_id for a bot by calling getUpdates.
  * This briefly interrupts the VM's long-polling (one missed cycle ~1s).
  * Returns the chat_id string or null if no chats found.
