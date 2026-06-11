@@ -35,12 +35,18 @@ image deliver differently — read this carefully:**
 ## VIDEO — "make me a video / clip / animation / animate this"
 
 **Two paths, picked automatically by what you pass:**
-- **No image (just a description)** → text-to-video. The model generates the
-  **whole scene** in cinematic 16:9 widescreen. This is the default and the best
-  look — use it whenever the user just describes a video. **You do NOT need to
-  make an image first.**
-- **The user gave you a photo (or you want to animate a specific image)** → pass
+- **No image (the user just described a video)** → text-to-video. The model
+  generates the **whole scene** in true 16:9 widescreen. **This is the default for
+  every "make me a video of X" request.**
+- **The user gave you a photo (or explicitly wants their image animated)** → pass
   `--image-url`. The model animates that frame (image-to-video).
+
+> **HARD RULE — never make an image first for a text-only video request.** If the
+> user described a video and did NOT give you a photo, submit text-to-video
+> directly (`--kind video`, NO `--image-url`). Do **NOT** generate a `--kind image`
+> first and then animate it — that produces a cropped, lower-quality clip and is
+> the wrong path. Generate-then-animate is ONLY for a photo the user gave you, or
+> when they explicitly ask to animate a specific image.
 
 Steps:
 1. Figure out the prompt. If the user supplied a photo, grab its URL for `--image-url`; otherwise leave it off (text-to-video).
@@ -51,13 +57,13 @@ Steps:
    Text-to-video (no image — the cinematic default):
    ```bash
    python3 ~/.openclaw/skills/higgsfield-cloud/scripts/higgsfield-cloud.py generate \
-     --kind video --prompt "<vivid description of the whole scene>" \
+     --kind video --prompt "<the user's request, word for word — see the Prompt rule below>" \
      --chat-id "<chat id from the conversation metadata>" --json
    ```
    Animate a supplied photo (image-to-video — add `--image-url`):
    ```bash
    python3 ~/.openclaw/skills/higgsfield-cloud/scripts/higgsfield-cloud.py generate \
-     --kind video --prompt "<what should happen>" --image-url "<photo url>" \
+     --kind video --prompt "<the motion the user asked for, stated simply — no style words>" --image-url "<photo url>" \
      --chat-id "<chat id from the conversation metadata>" --json
    ```
 5. Read the `status`:
@@ -69,6 +75,35 @@ Steps:
    - **`error`** → *"Couldn't start that one — want me to try again?"*
 
 **Never block waiting for a video, and never paste a raw status/request_id to the user.** The system delivers the finished video to the chat by itself.
+
+## Prompt rule — pass the user's words through; do NOT restyle (CRITICAL)
+
+For **text-to-video, send the user's request to the model essentially verbatim.**
+Your job is fidelity to what they asked for, **not authorship.** Every extra word
+you add slows the motion and pulls the clip away from their intent — this is
+measured, not a preference.
+
+- **Take the user's own description and pass it as the prompt, unchanged.** Don't
+  expand it into a scene. Don't add a second sentence. Closer to their exact words
+  = better, faster, more faithful motion.
+- **Do NOT add** camera language, lighting, lens, film stock, mood, or any setting
+  detail the user didn't say.
+- **BANNED words/phrases — never add these unless the user said them first:**
+  `cinematic`, `cinematic slow motion`, `film look`, `35mm`, `anamorphic`,
+  `depth of field`, `moody`, `atmospheric`, `golden hour`, `slow`, `graceful`,
+  `elegant`, `deliberate`, `epic`, `art-film`. The model reads these as "slow,
+  deliberate, art-film motion" and they **cause a slow-motion failure.**
+- The rule self-handles style: a user who *wants* a cinematic or slow-motion look
+  will say so in their own words — which pass through verbatim. You never add the
+  aesthetic yourself.
+
+For **image-to-video** (animating a photo): state only the **motion** the user
+asked for, simply (e.g. *"the puppy blinks and wiggles its paws"*). Same banned
+list — no style words you weren't given.
+
+**Example.** User: *"make me a video of a fox leaping through snow."*
+- ✅ prompt: `a fox leaping through snow`
+- ❌ prompt: `a red fox mid-leap through powder snow, cinematic tracking shot, golden hour, 35mm film look, moody atmosphere` ← this is the slow-motion failure.
 
 ## IMAGE — "make me an image / picture"
 
@@ -105,6 +140,14 @@ The script picks the model from your **input + `--quality`** automatically:
   - `--quality standard` → Kling 2.6.
   - `--quality fast` → DoP-lite (cheapest, draws from the free allowance).
 
+**Default to the cinematic premium tier.** For an open-ended or *"surprise me"*
+creative request — or any video request that doesn't explicitly ask for a quick
+draft — use the **premium** path (text-to-video, or Kling 3.0 for a supplied
+photo). **Do NOT default to `--quality fast`.** Reserve `fast` (DoP-lite) for when
+the user explicitly wants a quick/draft clip, or when premium credits aren't
+available and you're offering the free fallback. A great first video matters more
+than saving a credit.
+
 You normally don't pass `--model`; let input + quality decide. `--model` is a power-user override (an explicit image-to-video model with no `--image-url` returns `needs_image`).
 
 **Not available yet:** if the user names **Seedance, Veo, Sora, Runway, Wan, lip-sync/talking-avatar**, or asks for **clips longer than ~10s**, say it's *not available yet* and offer a standard clip or image instead.
@@ -118,6 +161,9 @@ premium image-to-video models need credits.
 - **`insufficient_credits`** → *"That one needs video credits, which aren't available just yet. I can make you a fast clip from a photo for free — want that?"* (if they have an image to animate, run with `--image-url --quality fast`).
 
 ## Notes
-- Be **specific** in prompts (subject, action, setting, lighting, style).
+- **Prompts: fidelity over flourish.** Pass the user's request through (see the
+  Prompt rule). For text-to-video especially, do not add scene/lighting/style — it
+  slows the motion. For images you have more latitude, but still lead with the
+  user's own words.
 - Don't expose raw `request_id`s, slugs, or JSON to the user.
 - Auth + endpoint + delivery are automatic (the script reads `GATEWAY_TOKEN`; the gate meters everything and delivers video via webhook). You don't manage keys or chat plumbing beyond passing `--chat-id` for video.
