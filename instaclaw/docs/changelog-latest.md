@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-11
 
-Window: `8f09e42450d427172cc9c61f9776185ad9c2d937` → `HEAD` (HEAD = `c70c3086`)
+Window: `c70c3086ef4fe473761576e33ea856cb2fa712a8` → `HEAD` (HEAD = `c9d6bb08`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: c70c3086ef4fe473761576e33ea856cb2fa712a8 -->
+<!-- LAST_GENERATED_SHA: c9d6bb08a145a9d7c89cecde7f4692c8570e74c5 -->
 
 ## Summary
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `c70c3086` 2026-06-11 — feat(travala): agent-driven cancel + manage, booking persistence, honest refund copy [8 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `c603ab36` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `c9d6bb08` 2026-06-11 — feat(travala): P1s — composite-unique race-fix + record-failure alert + reconciler cron [6 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `ae6cb261` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `c70c3086` 2026-06-11 — feat(travala): agent-driven cancel + manage, booking persistence, honest refund copy [8 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `c9d6bb08` 2026-06-11 — feat(travala): P1s — composite-unique race-fix + record-failure alert + reconciler cron [6 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `c603ab36` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `ae6cb261` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `c70c3086` 2026-06-11 — [reconciler, infrastructure, docs] — feat(travala): agent-driven cancel + manage, booking persistence, honest refund copy
+- `c9d6bb08` 2026-06-11 — [reconciler, infrastructure] — feat(travala): P1s — composite-unique race-fix + record-failure alert + reconciler cron
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `c70c3086` 2026-06-11 — feat(travala): agent-driven cancel + manage, booking persistence, honest refund copy
+- `c9d6bb08` 2026-06-11 — feat(travala): P1s — composite-unique race-fix + record-failure alert + reconciler cron
 
 ## Appendix — every commit (chronological)
 
-- `c603ab36` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
-- `c70c3086` 2026-06-11 — feat(travala): agent-driven cancel + manage, booking persistence, honest refund copy [8 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `ae6cb261` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `c9d6bb08` 2026-06-11 — feat(travala): P1s — composite-unique race-fix + record-failure alert + reconciler cron [6 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
