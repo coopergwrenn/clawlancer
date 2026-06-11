@@ -1,15 +1,15 @@
 # Changelog — generated 2026-06-11
 
-Window: `6d4918d5ddaae42f171fbf2d984d89e85a46b4e9` → `HEAD` (HEAD = `3c6bdaf6`)
+Window: `3c6bdaf63f8aeaac041808705cf9fc992cdfd746` → `HEAD` (HEAD = `cf3dd963`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 3c6bdaf63f8aeaac041808705cf9fc992cdfd746 -->
+<!-- LAST_GENERATED_SHA: cf3dd9636cb463295f6857d299d611b46b039e81 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 1
-- **Infrastructure:** 0
+- **Reconciler / manifest:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `3c6bdaf6` 2026-06-11 — fix(frontier): deterministic EIP-3009 nonce per request_id — on-chain exactly-once on retry [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-- `97f14375` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `cf3dd963` 2026-06-11 — feat(frontier): revoke interdiction — in-flight holds cancelled on revoke (Tier 0 G, mechanism C) [7 files] _(ai-assisted)_
+- `3374a0d3` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (1)
-
-- `3c6bdaf6` 2026-06-11 — fix(frontier): deterministic EIP-3009 nonce per request_id — on-chain exactly-once on retry [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
-
-### Infrastructure (0)
+### Reconciler / manifest (0)
 
 _(none)_
+
+### Infrastructure (1)
+
+- `cf3dd963` 2026-06-11 — feat(frontier): revoke interdiction — in-flight holds cancelled on revoke (Tier 0 G, mechanism C) [7 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,21 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `97f14375` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `3c6bdaf6` 2026-06-11 — [reconciler, infrastructure] — fix(frontier): deterministic EIP-3009 nonce per request_id — on-chain exactly-once on retry
+- `3374a0d3` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `3c6bdaf6` 2026-06-11 — fix(frontier): deterministic EIP-3009 nonce per request_id — on-chain exactly-once on retry
+- `cf3dd963` 2026-06-11 — feat(frontier): revoke interdiction — in-flight holds cancelled on revoke (Tier 0 G, mechanism C)
 
 ## Appendix — every commit (chronological)
 
-- `97f14375` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
-- `3c6bdaf6` 2026-06-11 — fix(frontier): deterministic EIP-3009 nonce per request_id — on-chain exactly-once on retry [4 files] _(multi: [reconciler, infrastructure]; ai-assisted)_
+- `3374a0d3` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `cf3dd963` 2026-06-11 — feat(frontier): revoke interdiction — in-flight holds cancelled on revoke (Tier 0 G, mechanism C) [7 files] _(ai-assisted)_
