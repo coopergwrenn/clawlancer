@@ -255,18 +255,34 @@ async function handleCreditPackPurchase(session: any): Promise<void> {
   // bankr/webhook — already pass p_source explicitly for the same reason.)
   // The 35-day silent breakage 2026-04-28 → 2026-06-02 cost 6 users $90 of
   // unapplied credits; see docs/postmortems/2026-06-02-credit-pack-overload.md.
-  const { data: newBalance, error: rpcErr } = await supabase.rpc("instaclaw_add_credits", {
-    p_vm_id: vmId,
-    p_credits: credits,
-    p_reference_id: paymentIntent,
-    p_source: "stripe",
-  });
+  // Video packs (build order §3) credit the SEPARATE video_credit_balance via
+  // instaclaw_add_video_credits (source video_topup). Everything upstream — the
+  // instaclaw_credit_purchases idempotency claim + the instaclaw_credit_ledger
+  // probe (vm_id + reference_id) — is shared, because the video RPC writes a
+  // ledger row keyed by the same reference_id (the Stripe payment_intent). Only
+  // the increment target differs. Any other target falls through to the legacy
+  // credit_balance path (messages/media).
+  const isVideo = target === "video";
+  const { data: newBalance, error: rpcErr } = isVideo
+    ? await supabase.rpc("instaclaw_add_video_credits", {
+        p_vm_id: vmId,
+        p_credits: credits,
+        p_reference_id: paymentIntent,
+        p_source: "video_topup",
+      })
+    : await supabase.rpc("instaclaw_add_credits", {
+        p_vm_id: vmId,
+        p_credits: credits,
+        p_reference_id: paymentIntent,
+        p_source: "stripe",
+      });
   if (rpcErr) {
-    logger.error("Credit pack webhook: instaclaw_add_credits RPC failed — throwing for Stripe retry", {
-      route: "billing/webhook", vmId, paymentIntent, credits,
+    const rpcName = isVideo ? "instaclaw_add_video_credits" : "instaclaw_add_credits";
+    logger.error(`Credit pack webhook: ${rpcName} RPC failed — throwing for Stripe retry`, {
+      route: "billing/webhook", vmId, paymentIntent, credits, target,
       error: rpcErr.message, code: (rpcErr as any).code,
     });
-    throw new Error(`instaclaw_add_credits failed for vm=${vmId} pi=${paymentIntent}: ${rpcErr.message}`);
+    throw new Error(`${rpcName} failed for vm=${vmId} pi=${paymentIntent}: ${rpcErr.message}`);
   }
   logger.info("Credit pack purchased — credits posted", {
     route: "billing/webhook", vmId, paymentIntent, credits, newBalance,

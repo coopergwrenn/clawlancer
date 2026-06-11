@@ -107,12 +107,14 @@ export const HF_MODELS: Record<string, HFModel> = {
   "kling-video/v2.1/pro/image-to-video": {
     endpoint: "kling-video/v2.1/pro/image-to-video",
     kind: "image2video",
-    // MEASURED 10s tier = $0.9375 = 15.0 cr (req 4f40be27, dashboard).
-    // (15.68 was fal's estimate, not our measurement — re-pinned to the real
-    //  number.) Kling is duration-SELECTABLE (5s/10s); the 5s tier is UNMEASURED,
-    //  so we LOCK to 10s via allowedDurations until 5s is measured — that keeps
-    //  this flat cost correct (one length = one price) and closes the overcharge.
-    hfCostCredits: 15.0,
+    // RECONCILED 2026-06-11 to 13 cr. The June dashboard (171 cr) reconciles
+    // EXACTLY when every kling render = 13 cr (12 kling × 13 + 15 non-kling = 171;
+    // see launch build order §1). The older standalone "$0.9375 = 15 cr" reading
+    // (req 4f40be27) is superseded by the fleet reconciliation — per-variant cost
+    // (v2.1 vs v3.0 vs v2.6) is a future line-item measurement round; 13 is the
+    // proven fleet average and the operative cost. Kling stays duration-SELECTABLE
+    // (5s/10s); 5s UNMEASURED, so LOCK to 10s via allowedDurations.
+    hfCostCredits: 13.0,
     freeEligible: false,
     label: "Clip (premium, 10s)",
     allowedDurations: [10],
@@ -128,7 +130,7 @@ export const HF_MODELS: Record<string, HFModel> = {
   "kling-video/v3.0/pro/image-to-video": {
     endpoint: "kling-video/v3.0/pro/image-to-video",
     kind: "image2video",
-    hfCostCredits: 15.0, // unmeasured; held conservatively (real settle 18==18, 06-11)
+    hfCostCredits: 13.0, // RECONCILED to June dashboard (171 cr → 13/render exactly); build order §1
     freeEligible: false,
     label: "Clip (Kling 3.0, premium)",
     // DURATION SURFACE (v3.0): intentionally NO allowedDurations lock yet. Unlike
@@ -154,14 +156,14 @@ export const HF_MODELS: Record<string, HFModel> = {
   "kling-video/v3.0/pro/text-to-video": {
     endpoint: "kling-video/v3.0/pro/text-to-video",
     kind: "text2video",
-    hfCostCredits: 15.0,
+    hfCostCredits: 13.0, // RECONCILED to June dashboard (171 cr → 13/render exactly); build order §1
     freeEligible: false,
     label: "Clip (Kling 3.0 text-to-video, premium)",
   },
   "kling-video/v2.6/pro/image-to-video": {
     endpoint: "kling-video/v2.6/pro/image-to-video",
     kind: "image2video",
-    hfCostCredits: 15.0, // unmeasured
+    hfCostCredits: 13.0, // RECONCILED to June dashboard (171 cr → 13/render exactly); build order §1
     freeEligible: false,
     label: "Clip (Kling 2.6)",
   },
@@ -171,25 +173,24 @@ export const HF_MODELS: Record<string, HFModel> = {
 export const DEFAULT_MODEL = "higgsfield-ai/dop/lite";
 
 /**
- * Our held/charged video-credits for a model = ceil(hfCost * margin).
- * Integer at the user-facing charge; the *cost* stays fractional (calibration
- * #7 — never round the cost, only the charge).
+ * Held/charged video-credits for a model. 1 video-credit == 1 Higgsfield-credit
+ * equivalent, so the per-render charge == the model's measured HF cost
+ * (kling=13, dop-lite=2, soul=1). The VIDEO_MARGIN multiplier is GONE (build
+ * order §3.4): margin no longer lives in the metering — it lives in the PACK
+ * PRICE. A pack sells N clips for $X where $X > N × (clip COGS); e.g. Taste
+ * $3.99 = 4 clips = 52 vc, COGS 4 × $0.8125 = $3.25, margin in the $3.99.
  *
- * This is FLAT (model-only, no params) and is correct TODAY only because every
- * duration-variable model is LOCKED to a single measured length via
- * `allowedDurations` (Kling → 10s only). No mispricing is possible while that
- * lock holds: one length ⇒ one measured cost.
+ * FLAT (model-only, no params) and correct because every duration-variable model
+ * is LOCKED to a single measured length via `allowedDurations` (Kling → 10s).
  *
- * DEFERRED FOLLOW-UP (funded-measurement round): once the 5s Kling cell (and
- * Seedance/Veo durations) are MEASURED, this becomes params-aware —
- * `estimateVideoCredits(model, validatedInput)` with a per-duration lookup
- * keyed on `input.duration`, and the relevant `allowedDurations` widens
- * (Kling → [5,10]). Until each cell is MEASURED (never guessed from fal's
- * price), models stay locked to their measured length(s). The settle clamp
- * (charge ≤ hold) already guards us if an estimate is ever slightly off.
+ * DEFERRED (funded-measurement round): once the 5s Kling cell is MEASURED this
+ * becomes params-aware (`estimateVideoCredits(model, validatedInput)` keyed on
+ * `input.duration`, `allowedDurations` → [5,10]). The settle clamp (charge ≤
+ * hold) guards any drift meanwhile. VIDEO_MARGIN is retained as an exported
+ * constant only for the profitability-proof math; it no longer affects billing.
  */
 export function estimateVideoCredits(model: HFModel): number {
-  return Math.ceil(model.hfCostCredits * VIDEO_MARGIN);
+  return Math.ceil(model.hfCostCredits);
 }
 
 /** Our raw cost in USD for a model (for margin proofs). */
