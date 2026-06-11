@@ -10,7 +10,7 @@
  * before travala-book.mjs is ever run.
  *
  * Usage:
- *   node travala-search.mjs --type hotel --args '{"location":"Lisbon","checkIn":"2026-06-24","checkOut":"2026-06-26","guests":2}' --json
+ *   node travala-search.mjs --type hotel --args '{"location":"Lisbon","checkIn":"2026-06-24","checkOut":"2026-06-26","rooms":["2"]}' --json
  *   node travala-search.mjs --type package --args '{...}'
  *
  * Reads GATEWAY_TOKEN from ~/.openclaw/.env. Node ESM, built-ins only.
@@ -59,8 +59,15 @@ async function main() {
   let toolArgs = {};
   if (args.args) { try { toolArgs = JSON.parse(args.args); } catch { fail("bad_args_json", { detail: "--args must be valid JSON" }); } }
   // Convenience flags fold into the tool args (explicit --args wins per-key).
-  for (const [flag, key] of [["location", "location"], ["check-in", "checkIn"], ["check-out", "checkOut"], ["guests", "guests"]]) {
-    if (args[flag] !== undefined && toolArgs[key] === undefined) toolArgs[key] = flag === "guests" ? Number(args[flag]) : args[flag];
+  for (const [flag, key] of [["location", "location"], ["check-in", "checkIn"], ["check-out", "checkOut"]]) {
+    if (args[flag] !== undefined && toolArgs[key] === undefined) toolArgs[key] = args[flag];
+  }
+  // --guests N maps to the MCP's required occupancy shape rooms:["N"] (one room,
+  // N adults). The schema takes rooms (string[]) — a bare `guests` key fails its
+  // validation (2026-06-11 canary-prep finding).
+  if (args.guests !== undefined && toolArgs.rooms === undefined) {
+    const n = Math.max(1, Number(args.guests) || 1);
+    toolArgs.rooms = [String(n)];
   }
 
   const res = await fetch(`${API_BASE}/api/travala/${op}`, {

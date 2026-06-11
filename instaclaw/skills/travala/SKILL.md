@@ -109,7 +109,7 @@ If a booking wasn't made through you (no record on this agent), you can't cancel
 1. **Search** (free):
    ```bash
    node ~/.openclaw/skills/travala/scripts/travala-search.mjs --type hotel \
-     --args '{"location":"Lisbon","checkIn":"2026-06-24","checkOut":"2026-06-26","guests":2}' --json
+     --args '{"location":"Lisbon","checkIn":"2026-06-24","checkOut":"2026-06-26","rooms":["2"]}' --json
    ```
    Present 1–3 good options with price + cancellation policy. Note each option's
    `packageId` and `sessionId`.
