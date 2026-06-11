@@ -4,7 +4,8 @@ import { wipeVMForNextUser, connectSSH } from "@/lib/ssh";
 import { sendAdminAlertEmail } from "@/lib/email";
 import { getProvider } from "@/lib/providers";
 import { logger } from "@/lib/logger";
-import { isUserBillableForVmAssignment } from "@/lib/billing-status";
+import { isUserBillableForVmAssignment, classifyFreezeBilling } from "@/lib/billing-status";
+import { getStripe } from "@/lib/stripe";
 import type { VMRecord } from "@/lib/ssh";
 import {
   PROTECTED_INFRA_LINODE_IDS,
@@ -22,7 +23,6 @@ import {
   // column based) for assigned VMs + skip-entirely for no-assignee
   // orphans (no user to protect → SSH-check is overcaution).
   userHasRecentActivity,
-  userHasLiveSubscription,
   vmHasCredits,
   logOrphan,
 } from "@/lib/vm-lifecycle-helpers";
@@ -32,6 +32,7 @@ import {
   MAX_FREEZE_PER_RUN,
   FREEZE_GRACE_SUSPENDED_DAYS,
   FREEZE_GRACE_HIBERNATING_DAYS,
+  FREEZE_BILLING_UNVERIFIABLE_PREFIX,
   type FreezeCandidate,
 } from "@/lib/vm-freeze-thaw";
 import { randomUUID } from "node:crypto";
@@ -196,6 +197,9 @@ export async function GET(req: NextRequest) {
     report.errors.push(`Settings read failed: ${String(err)}`);
   }
   const runId = randomUUID();
+  // SoT billing gate (Rule 14 + Rule 82): both the orphan-delete pass and the
+  // freeze pass verify against Stripe ground truth before any destructive op.
+  const stripe = getStripe();
   // Pass -1 has its OWN deletion counter, NOT shared with totalDeletions.
   // Otherwise Pass -1 deleting up to MAX_ORPHAN_DELETES_PER_RUN would
   // immediately trip Pass 1's MAX_DELETIONS_PER_CYCLE circuit breaker
@@ -365,18 +369,24 @@ export async function GET(req: NextRequest) {
           });
         }
 
-        // ── Safety check: re-verify Stripe (only if we have a user_id) ──
-        // For "DB-dead" rows we still re-check because a stale dead row
-        // might belong to a user who's actively paying on a *different* VM.
+        // ── Safety check: SoT billing verify before deleting an orphan instance ──
+        // (Rule 14 + Rule 82) Replaces the prior active/trialing-only check — a
+        // stale dead row might belong to a user paying by ANY means (sub,
+        // past_due-grace, credits, partner, all-inclusive, comp-exempt) on a
+        // *different* VM. "unverifiable" (Stripe OR exempt read failed) → refuse
+        // to delete this orphan (Lesson 2 — never act destructively on an
+        // untrustworthy non-paying signal); a Stripe outage skips each in turn.
         if (dbRow?.assigned_to) {
-          const liveSub = await userHasLiveSubscription(supabase, dbRow.assigned_to);
-          if (liveSub) {
+          const verdict = await classifyFreezeBilling(supabase, stripe, dbRow.id);
+          if (verdict === "paying" || verdict === "unverifiable") {
             orphanReport.skipped_active++;
             await logOrphan(supabase, {
               linodeId: l.id, vmLabel: l.label, vmDbId: dbRow.id,
               userId: dbRow.assigned_to, userEmail: null,
               action: "skip_active",
-              reason: "user has active/trialing Stripe subscription — refuse to delete",
+              reason: verdict === "paying"
+                ? "owner isPaying per SoT (Rule 14: sub/grace/credits/partner/all-inclusive/comp-exempt) — refuse to delete"
+                : "billing unverifiable (Stripe or comp-exempt read failed) — refuse to delete (Lesson 2)",
               linodeCreatedAt: l.created, linodeTags: l.tags, linodeType: l.type,
               monthlyCostUsd: linodeCost(l.type), runId, dryRun,
             });
@@ -850,7 +860,7 @@ export async function GET(req: NextRequest) {
         let result: Awaited<ReturnType<typeof freezeVM>>;
         let threwFromFreezeVM = false;
         try {
-          result = await freezeVM(supabase, candidate, dryRun, runId);
+          result = await freezeVM(supabase, stripe, candidate, dryRun, runId);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           threwFromFreezeVM = true;
@@ -859,6 +869,33 @@ export async function GET(req: NextRequest) {
             vmId: vm.id, vmName: vm.name, error: msg,
           });
           result = { success: false, reason: `freezeVM threw: ${msg.slice(0, 200)}` };
+        }
+
+        // ── SoT billing UNVERIFIABLE → skip ALL candidates this tick (Rule 14 + Lesson 2) ──
+        // freezeVM returns this prefix when a Stripe sub existed but the live
+        // retrieve failed, the comp-exempt read errored, or the VM row was
+        // unreadable — the non-paying signal is untrustworthy. A billing-read
+        // outage must NEVER cause a freeze spree on possibly-paying / possibly-
+        // comp customers, so we halt the whole pass (not just this VM) and let
+        // the next tick retry. Bail BEFORE the budget / freeze_consecutive_failures
+        // accounting so an outage doesn't pollute queue fairness for an innocent VM.
+        if (!result.success && result.reason?.startsWith(FREEZE_BILLING_UNVERIFIABLE_PREFIX)) {
+          report.pass1_v2_skipped_safety++;
+          logger.error(
+            "vm-lifecycle: freeze billing UNVERIFIABLE — skipping ALL freeze candidates this tick",
+            { route: "cron/vm-lifecycle", runId, vmId: vm.id, vmName: vm.name, reason: result.reason },
+          );
+          if (!dryRun) {
+            await logLifecycleEvent(
+              supabase, vm, vm.assigned_to ?? null, "(billing-unverifiable)", null,
+              "freeze_skipped_safety", result.reason,
+            );
+            sendAdminAlertEmail(
+              "Freeze pass halted — billing unverifiable (Stripe/exempt outage?)",
+              `vm-lifecycle freeze pass skipped ALL candidates this tick because SoT billing could not be verified for ${vm.name ?? vm.id}.\nReason: ${result.reason}\nRun ID: ${runId}\n\nFail-closed (Lesson 2) — no VM frozen. If billing reads are healthy and this persists, investigate the verification path.`,
+            ).catch(() => {});
+          }
+          break;
         }
 
         // v97: classify result and decide budget consumption.

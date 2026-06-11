@@ -34,6 +34,21 @@ export type BillingStatus = {
     stripePaymentStatus: string | null;
     /** True ONLY if we verified against Stripe API, not just local DB. */
     stripeSubVerified: boolean;
+    /**
+     * True ONLY when a Stripe subscription EXISTED but the live retrieve FAILED
+     * (outage) — the non-paying signal is untrustworthy. Distinct from
+     * stripeSubVerified=false on a no-sub user (nothing to verify → reliable).
+     * Destructive callers MUST treat true as "do not act" (Lesson 2). Default false.
+     */
+    stripeUnreachable: boolean;
+    /**
+     * True when the comp/founder billing_exempt read was a CLEAN read (verified).
+     * False when that read errored — the exemption status is unknown, so a
+     * destructive caller must fail-closed (a blip could be hiding an exempt
+     * account). Mirrors fetchBillingExempt's `verified`. Default true (the
+     * unassigned path + legacy callers have nothing to verify).
+     */
+    compExemptVerified: boolean;
     /** Set when verified=true and Stripe disagrees with local DB. */
     stripeDriftDetected: boolean;
     creditBalance: number;
@@ -78,6 +93,8 @@ export async function getBillingStatus(
         stripeSubStatus: null,
         stripePaymentStatus: null,
         stripeSubVerified: false,
+        stripeUnreachable: false,
+        compExemptVerified: true,
         stripeDriftDetected: false,
         creditBalance: 0,
         partner: null,
@@ -105,9 +122,9 @@ export async function getBillingStatus(
   })[0] ?? null;
 
   // Path 0 input: comp/founder exemption on the owning account.
-  const { exempt, exemptReason } = await fetchBillingExempt(supabase, vm.assigned_to);
+  const { exempt, exemptReason, verified: exemptVerified } = await fetchBillingExempt(supabase, vm.assigned_to);
 
-  return classify(vm, sub, /* verified */ false, /* drift */ false, exempt, exemptReason);
+  return classify(vm, sub, /* verified */ false, /* drift */ false, exempt, exemptReason, exemptVerified);
 }
 
 /**
@@ -205,7 +222,7 @@ export async function getBillingStatusVerified(
 
   // Path 0 input: comp/founder exemption on the owning account. Fetched once,
   // threaded into every classify() branch below.
-  const { exempt, exemptReason } = await fetchBillingExempt(supabase, vm.assigned_to);
+  const { exempt, exemptReason, verified: exemptVerified } = await fetchBillingExempt(supabase, vm.assigned_to);
 
   const { data: subs } = await supabase
     .from("instaclaw_subscriptions")
@@ -224,7 +241,7 @@ export async function getBillingStatusVerified(
   // No local sub → just classify on credits/partner/exemption. Stripe
   // verification doesn't apply (no sub_id to retrieve).
   if (!localSub?.stripe_subscription_id) {
-    return classify(vm, localSub, /* verified */ false, /* drift */ false, exempt, exemptReason);
+    return classify(vm, localSub, /* verified */ false, /* drift */ false, exempt, exemptReason, exemptVerified);
   }
 
   // Hit Stripe for ground truth.
@@ -245,8 +262,10 @@ export async function getBillingStatusVerified(
   }
 
   if (!stripeSub) {
-    // Verification failed. Classify on local DB but flag unverified.
-    return classify(vm, localSub, /* verified */ false, /* drift */ false, exempt, exemptReason);
+    // Verification failed AND a stripe_subscription_id existed → the non-paying
+    // signal is untrustworthy. Flag stripeUnreachable=true (7th→8th arg) so
+    // destructive callers fail-closed (Lesson 2).
+    return classify(vm, localSub, /* verified */ false, /* drift */ false, exempt, exemptReason, exemptVerified, /* unreachable */ true);
   }
 
   // Detect DB drift: when Stripe says one thing and our DB says another.
@@ -274,7 +293,7 @@ export async function getBillingStatusVerified(
     canceled_at: stripeSub.canceled_at ? new Date(stripeSub.canceled_at * 1000).toISOString() : null,
   };
 
-  return classify(vm, synth, /* verified */ true, drift, exempt, exemptReason);
+  return classify(vm, synth, /* verified */ true, drift, exempt, exemptReason, exemptVerified);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -288,6 +307,12 @@ function classify(
   // that haven't been updated (or the unassigned path) behave as before.
   billingExempt = false,
   billingExemptReason: string | null = null,
+  // True when the billing_exempt read was a clean read (mirrors
+  // fetchBillingExempt's `verified`). Default true: the unassigned path + any
+  // legacy caller has nothing to verify.
+  compExemptVerified = true,
+  // True ONLY in the stripe-retrieve-failed branch (sub existed, Stripe down).
+  stripeUnreachable = false,
 ): BillingStatus {
   const reasons: string[] = [];
   let isPaying = false;
@@ -359,6 +384,8 @@ function classify(
       stripeSubStatus: subStatus,
       stripePaymentStatus: paymentStatus,
       stripeSubVerified: verified,
+      stripeUnreachable,
+      compExemptVerified,
       stripeDriftDetected: drift,
       creditBalance,
       partner,
@@ -366,6 +393,46 @@ function classify(
       tier,
     },
   };
+}
+
+/**
+ * Freeze-safety verdict, built on the SoT (Rule 14 + Rule 82). The canonical
+ * billing gate for EVERY destructive freeze/delete path — never re-implement
+ * billing classification at the call site (that anti-pattern is exactly what
+ * Rule 14 exists to kill; it was found live in the freeze gate on 2026-06-11).
+ *
+ * Composes ONE coherent predicate over getBillingStatusVerified, which already
+ * folds the comp/founder exemption (Path 0) AND every revenue source into
+ * isPaying and verifies against Stripe. Three mutually-exclusive states:
+ *   - "paying":      isPaying by ANY source — active/trialing sub, past_due-in-
+ *                    grace, credits, partner, all-inclusive tier, OR a verified
+ *                    comp-exemption. NEVER act — caller skips THIS vm.
+ *   - "unverifiable":the VM row was unreadable, OR a Stripe sub existed but its
+ *                    live retrieve failed (stripeUnreachable), OR the comp-exempt
+ *                    read errored (compExemptVerified=false). The non-paying
+ *                    signal is untrustworthy → caller MUST skip ALL candidates
+ *                    THIS TICK. Fail-closed on BOTH the Stripe AND the exempt
+ *                    read — an outage on either must never cause a destructive
+ *                    spree on possibly-paying / possibly-comp customers (Lesson 2).
+ *   - "freezable":   reliably non-paying AND both reads were trustworthy. Safe.
+ *
+ * Requires a Stripe client (verified path). Call AFTER the cheap local gates
+ * (status/health/activity) so Stripe is only hit for genuine survivors.
+ */
+export type FreezeBillingVerdict = "paying" | "freezable" | "unverifiable";
+
+export async function classifyFreezeBilling(
+  supabase: SupabaseClient,
+  stripe: Stripe,
+  vmId: string,
+): Promise<FreezeBillingVerdict> {
+  const bs = await getBillingStatusVerified(supabase, stripe, vmId);
+  if (bs === null) return "unverifiable"; // couldn't read the VM row
+  if (bs.isPaying) return "paying"; // any revenue source incl verified comp-exemption
+  // !isPaying — trust it ONLY if BOTH reads were trustworthy.
+  if (bs.details.stripeUnreachable) return "unverifiable"; // sub existed, Stripe down
+  if (!bs.details.compExemptVerified) return "unverifiable"; // comp-exempt read errored
+  return "freezable";
 }
 
 /**

@@ -28,12 +28,18 @@
 import { logger } from "./logger";
 import { sendAdminAlertEmail } from "./email";
 import { connectSSH, type VMRecord } from "./ssh";
-import {
-  userHasLiveSubscription,
-  userHasRecentActivity,
-  vmHasCredits,
-} from "./vm-lifecycle-helpers";
+import { userHasRecentActivity } from "./vm-lifecycle-helpers";
+import { classifyFreezeBilling } from "./billing-status";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type Stripe from "stripe";
+
+/**
+ * Reason prefix freezeVM returns when the SoT billing read was unverifiable
+ * (VM row unreadable, or a Stripe sub existed but the live retrieve failed).
+ * The cron loop MUST detect this prefix and skip ALL remaining freeze
+ * candidates THIS TICK (a Stripe outage must never cause a freeze spree).
+ */
+export const FREEZE_BILLING_UNVERIFIABLE_PREFIX = "BILLING_UNVERIFIABLE";
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -601,6 +607,7 @@ async function releaseLock(supabase: SupabaseClient, vmId: string): Promise<void
  */
 export async function freezeVM(
   supabase: SupabaseClient,
+  stripe: Stripe,
   vm: FreezeCandidate,
   dryRun: boolean,
   runId: string,
@@ -627,18 +634,11 @@ export async function freezeVM(
     return { success: false, reason: "no provider_server_id (already frozen?)" };
   }
 
-  // ── Safety check 1: live Stripe subscription? ──
-  // userHasLiveSubscription fails CLOSED on errors (returns true). Safe.
-  if (await userHasLiveSubscription(supabase, vm.assigned_to)) {
-    return { success: false, reason: "active Stripe subscription — refuse" };
-  }
+  // The CHEAP, local gates run FIRST so we only spend a Stripe round-trip on
+  // genuine survivors (getBillingStatusVerified's own guidance: filter cheap,
+  // then verify). Order: bankr → activity → SoT billing (Stripe) last.
 
-  // ── Safety check 2: credit_balance > 0 (PRD rule 3) ──
-  if (vmHasCredits(vm.credit_balance)) {
-    return { success: false, reason: `credit_balance=${vm.credit_balance} > 0 — paid credits remain` };
-  }
-
-  // ── Safety check 3: active Bankr token launch (PRD rule 5) ──
+  // ── Safety check 1: active Bankr token launch (PRD rule 5) ──
   // The user's Bankr private key lives in ~/.openclaw/.env on disk. Freezing
   // doesn't lose the key (it's in the snapshot) but blocks fee claims for the
   // freeze window. Conservatively skip until policy is set.
@@ -646,7 +646,7 @@ export async function freezeVM(
     return { success: false, reason: `active Bankr token ${vm.bankr_token_address.slice(0, 10)}... — refuse` };
   }
 
-  // ── Safety check 4: real-user activity in last 7 days (Rule 50) ──
+  // ── Safety check 2: real-user activity in last 7 days (Rule 50) ──
   // Authoritative signal: instaclaw_vms.last_user_activity_at, set only by
   // genuine user-driven proxy calls. Replaces the legacy SSH-mtime check
   // which produced false positives because strip-thinking.py (every min)
@@ -658,6 +658,31 @@ export async function freezeVM(
   const activity = userHasRecentActivity(vm);
   if (activity.active) {
     return { success: false, reason: activity.reason };
+  }
+
+  // ── Safety check 3: SoT billing (Rule 14 + Rule 82) — the SINGLE billing gate ──
+  // Replaces the prior reinvented active/trialing-only check + standalone
+  // credits check (the exact Rule-14 anti-pattern, found live in this
+  // destructive path 2026-06-11). classifyFreezeBilling is built on
+  // getBillingStatusVerified — it covers EVERY revenue source (active/trialing,
+  // past_due-in-grace, credits, partner, all-inclusive tier) AND verifies
+  // against Stripe ground truth before this destructive op (Lesson 2). Runs
+  // LAST because it is the only gate that hits the network.
+  //   - "paying":       refuse THIS vm (a paying customer must never freeze).
+  //   - "unverifiable": Stripe outage on a sub-bearing user (or unreadable row)
+  //                     → return the UNVERIFIABLE prefix so the cron loop skips
+  //                     ALL candidates this tick (fail-closed, never act on an
+  //                     untrustworthy non-paying signal).
+  //   - "freezable":    reliably non-paying → proceed.
+  const billingVerdict = await classifyFreezeBilling(supabase, stripe, vm.id);
+  if (billingVerdict === "paying") {
+    return { success: false, reason: "billing: isPaying per SoT (Rule 14) — refuse" };
+  }
+  if (billingVerdict === "unverifiable") {
+    return {
+      success: false,
+      reason: `${FREEZE_BILLING_UNVERIFIABLE_PREFIX}: SoT billing read not Stripe-verified — skip ALL candidates this tick (Lesson 2)`,
+    };
   }
 
   // ── Dry-run early-return (must be BEFORE lock acquire) ──

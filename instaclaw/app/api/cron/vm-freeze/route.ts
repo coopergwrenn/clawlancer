@@ -50,10 +50,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
-import {
-  userHasLiveSubscription,
-  vmHasCredits,
-} from "@/lib/vm-lifecycle-helpers";
+import { classifyFreezeBilling } from "@/lib/billing-status";
+import { getStripe } from "@/lib/stripe";
 import { sendAdminAlertEmail } from "@/lib/email";
 import { randomUUID } from "node:crypto";
 
@@ -117,6 +115,7 @@ interface FreezeOneResult {
     | "archive_stale"
     | "live_sub"
     | "has_credits"
+    | "billing_unverifiable"
     | "bankr_token"
     | "cas_failed"
     | "no_provider_id"
@@ -148,6 +147,8 @@ export async function GET(req: NextRequest) {
   const runId = randomUUID();
   const tStart = Date.now();
   const supabase = getSupabase();
+  // SoT billing gate (Rule 14 + Rule 82) — verify against Stripe before destroy.
+  const stripe = getStripe();
 
   const cronLock = await tryAcquireCronLock("vm-freeze", CRON_LOCK_TTL_SECONDS, "vercel-cron");
   if (!cronLock) {
@@ -282,13 +283,26 @@ export async function GET(req: NextRequest) {
 
       summary.attempted++;
       const tVm = Date.now();
-      const result = await freezeOne(supabase, vm, runId);
+      const result = await freezeOne(supabase, stripe, vm, runId);
       result.duration_ms = Date.now() - tVm;
       summary.results.push(result);
 
       if (result.outcome === "frozen") {
         summary.frozen++;
         processed++;
+      } else if (result.outcome === "billing_unverifiable") {
+        // SoT billing read could not be Stripe-verified (outage on a sub-bearing
+        // user). Halt the WHOLE pass this tick — a Stripe outage must never cause
+        // a freeze spree on possibly-paying customers (Lesson 2). Next tick retries.
+        summary.skipped++;
+        logger.error("vm-freeze: billing UNVERIFIABLE — skipping ALL candidates this tick", {
+          route: "cron/vm-freeze", runId, vmId: vm.id, vmName: vm.name, detail: result.detail,
+        });
+        sendAdminAlertEmail(
+          "Freeze-v2 pass halted — billing unverifiable (Stripe outage?)",
+          `vm-freeze skipped ALL candidates this tick: SoT billing not Stripe-verified for ${vm.name ?? vm.id}.\n${result.detail}\nRun ID: ${runId}\n\nFail-closed (Lesson 2) — nothing destroyed.`,
+        ).catch(() => {});
+        break;
       } else if (
         result.outcome === "skipped_lock" ||
         result.outcome === "state_changed" ||
@@ -328,6 +342,7 @@ export async function GET(req: NextRequest) {
 
 async function freezeOne(
   supabase: ReturnType<typeof getSupabase>,
+  stripe: ReturnType<typeof getStripe>,
   vm: FreezeCandidate,
   runId: string,
 ): Promise<FreezeOneResult> {
@@ -384,18 +399,20 @@ async function freezeOne(
         detail: `archive ${Math.floor(archAge / (60 * 60 * 1000))}h old; archive cron will re-snapshot`,
       };
     }
-    // Live Stripe re-check (defense in depth per Rule 14 + PRD §15.6 step 2).
-    // userHasLiveSubscription fails CLOSED on errors (returns true) so a
-    // transient Supabase outage during this check refuses to destroy.
-    if (await userHasLiveSubscription(supabase, fresh.assigned_to)) {
-      return { ...base, outcome: "live_sub", detail: "user resubscribed since archive" };
+    // SoT billing re-check (Rule 14 + Rule 82 + PRD §15.6 step 2). Replaces the
+    // prior reinvented active/trialing + credits checks with the single SoT
+    // primitive, which also covers partner / past_due-grace / all-inclusive and
+    // verifies against Stripe ground truth before this destructive op (Lesson 2).
+    //   - "paying":       user resubscribed / still pays → skip (live_sub).
+    //   - "unverifiable": Stripe unreachable on a sub-bearing user → skip ALL this
+    //                     tick (the loop halts on this outcome); never destroy on
+    //                     an untrustworthy non-paying signal.
+    const billingVerdict = await classifyFreezeBilling(supabase, stripe, fresh.id);
+    if (billingVerdict === "paying") {
+      return { ...base, outcome: "live_sub", detail: "owner isPaying per SoT (Rule 14) since archive" };
     }
-    if (vmHasCredits(fresh.credit_balance)) {
-      return {
-        ...base,
-        outcome: "has_credits",
-        detail: `credit_balance=${fresh.credit_balance} > 0`,
-      };
+    if (billingVerdict === "unverifiable") {
+      return { ...base, outcome: "billing_unverifiable", detail: "SoT billing not Stripe-verified — skip ALL this tick (Lesson 2)" };
     }
     if (fresh.bankr_token_address) {
       return {
