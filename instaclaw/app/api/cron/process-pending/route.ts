@@ -3,7 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { assignOrProvisionUserVm } from "@/lib/createUserVM";
 import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
 import { wipeVMForNextUser, type VMRecord } from "@/lib/ssh";
-import { isUserBillableForVmAssignment, getBillingStatusVerified } from "@/lib/billing-status";
+import { isUserBillableForVmAssignment, getBillingStatusVerified, fetchBillingExempt } from "@/lib/billing-status";
 import { getStripe } from "@/lib/stripe";
 import { logger } from "@/lib/logger";
 
@@ -1050,12 +1050,17 @@ export async function GET(req: NextRequest) {
       // within 7 days). The pending row stays claimed (consumed_at set above) —
       // a working user IS effectively settled; that just stops Pass 6 looping.
       const wipeBilling = await getBillingStatusVerified(supabase, getStripe(), vm.id);
+      // Finding B (2026-06-11 audit): getBillingStatusVerified's internal
+      // exempt-read is grant-side (verified discarded by classify), so for an
+      // exempt-only user a transient blip yields isPaying=false. Direct verified
+      // check so this irreversible wipe fails CLOSED on an unverifiable exemption.
+      const wipeExempt = await fetchBillingExempt(supabase, vm.assigned_to);
       const lastActivityMs = vm.last_user_activity_at
         ? new Date(vm.last_user_activity_at).getTime()
         : 0;
       const recentlyActive =
         lastActivityMs > 0 && Date.now() - lastActivityMs < 7 * 24 * 60 * 60 * 1000;
-      if (!wipeBilling || wipeBilling.isPaying || recentlyActive) {
+      if (!wipeBilling || wipeBilling.isPaying || recentlyActive || !wipeExempt.verified) {
         logger.warn("Pass 6: WIPE SKIPPED — billing-protected / active / unverifiable (Rule-33 trap guard)", {
           route: "cron/process-pending",
           pendingId: pending.id,
@@ -1064,6 +1069,7 @@ export async function GET(req: NextRequest) {
           vmName: vm.name,
           isPaying: wipeBilling?.isPaying ?? null,
           recentlyActive,
+          exemptVerified: wipeExempt.verified,
           reasons: wipeBilling?.reasons ?? ["unverifiable"],
         });
         pass6SkippedProtected++;

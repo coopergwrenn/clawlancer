@@ -1787,12 +1787,20 @@ else:
       // destroy data when we couldn't confirm the customer isn't paying).
       if (vm.assigned_to && reclaimStripe) {
         const reclaimBilling = await getBillingStatusVerified(supabase, reclaimStripe, vm.id);
-        if (!reclaimBilling || reclaimBilling.isPaying) {
-          logger.info("30-day reclaim SKIPPED — billing-protected or unverifiable (fail-closed)", {
+        // Finding B (2026-06-11 audit): getBillingStatusVerified's internal
+        // exempt-read is grant-side (fetchBillingExempt's `verified` is discarded
+        // by classify), so for an exempt-ONLY user (no sub/credits/partner —
+        // e.g. a comp founder VM) a transient exempt-read blip yields
+        // isPaying=false and this irreversible wipe would proceed. Add a direct
+        // verified check so the wipe fails CLOSED on an unverifiable exemption.
+        const reclaimExempt = await fetchBillingExempt(supabase, vm.assigned_to);
+        if (!reclaimBilling || reclaimBilling.isPaying || !reclaimExempt.verified) {
+          logger.info("30-day reclaim SKIPPED — billing-protected / unverifiable (fail-closed)", {
             route: "cron/health-check",
             vmId: vm.id,
             vmName: vm.name,
             isPaying: reclaimBilling?.isPaying ?? null,
+            exemptVerified: reclaimExempt.verified,
             reasons: reclaimBilling?.reasons ?? ["unverifiable"],
           });
           continue;
