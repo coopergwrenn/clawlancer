@@ -43,17 +43,34 @@ SLUG_IMAGE = "higgsfield-ai/soul/standard"
 SLUG_DOP_LITE = "higgsfield-ai/dop/lite"
 SLUG_DOP_TURBO = "higgsfield-ai/dop/turbo"
 SLUG_DOP_STANDARD = "higgsfield-ai/dop/standard"
-SLUG_KLING = "kling-video/v2.1/pro/image-to-video"
+SLUG_KLING_21_I2V = "kling-video/v2.1/pro/image-to-video"
+SLUG_KLING_26_I2V = "kling-video/v2.6/pro/image-to-video"
+SLUG_KLING_30_I2V = "kling-video/v3.0/pro/image-to-video"
+SLUG_KLING_30_T2V = "kling-video/v3.0/pro/text-to-video"
 
-ALLOWLISTED = {SLUG_IMAGE, SLUG_DOP_LITE, SLUG_DOP_TURBO, SLUG_DOP_STANDARD, SLUG_KLING}
+ALLOWLISTED = {
+    SLUG_IMAGE, SLUG_DOP_LITE, SLUG_DOP_TURBO, SLUG_DOP_STANDARD,
+    SLUG_KLING_21_I2V, SLUG_KLING_26_I2V, SLUG_KLING_30_I2V, SLUG_KLING_30_T2V,
+}
+
+# Slugs that take a PROMPT ONLY (no source image). The gate forwards aspect_ratio
+# for these (default 16:9 — the legacy crab's cinematic format). Everything else
+# in the video ladder is image→video and needs a source frame.
+TEXT2VIDEO = {SLUG_KLING_30_T2V}
 
 # Friendly names / aliases the agent (or a user) might pass → canonical slug.
+# MODEL NAMES ONLY — quality words ("premium"/"hq"/"fast") are NOT aliases; they
+# are the --quality ladder, resolved BY INPUT in resolve_model below. (Mixing the
+# two is how "premium" used to hard-pin one slug regardless of text-vs-image
+# input — the bug this rewrite closes.)
 ALIASES = {
     "soul": SLUG_IMAGE, "image": SLUG_IMAGE, "img": SLUG_IMAGE,
     "lite": SLUG_DOP_LITE, "dop-lite": SLUG_DOP_LITE, "dop_lite": SLUG_DOP_LITE,
     "turbo": SLUG_DOP_TURBO, "dop-turbo": SLUG_DOP_TURBO,
-    "standard": SLUG_DOP_STANDARD, "dop-standard": SLUG_DOP_STANDARD, "hq": SLUG_DOP_STANDARD,
-    "kling": SLUG_KLING, "premium": SLUG_KLING,
+    "dop-standard": SLUG_DOP_STANDARD, "dop_standard": SLUG_DOP_STANDARD,
+    "kling": SLUG_KLING_30_I2V, "kling-2.1": SLUG_KLING_21_I2V,
+    "kling-2.6": SLUG_KLING_26_I2V, "kling-3.0": SLUG_KLING_30_I2V,
+    "kling-3.0-t2v": SLUG_KLING_30_T2V, "text-to-video": SLUG_KLING_30_T2V,
 }
 
 # Models that EXIST upstream but are NOT allowlisted (unmeasured cost — the gate
@@ -65,14 +82,30 @@ UNSUPPORTED = {
 }
 
 
-def resolve_model(kind, quality=None, explicit=None):
+def resolve_model(kind, quality=None, explicit=None, has_image=False):
     """Natural-request → Cloud slug. Pure + deterministic (Rule-31 contract).
 
     Returns (slug, None) on success, or (None, reason) where reason is a short,
-    user-safe explanation. Discriminating: image vs video, the quality ladder,
-    explicit aliases, and an UNSUPPORTED set that fails CLOSED with clear copy.
+    user-safe explanation.
+
+    Routing is BY INPUT (the 2026-06-11 wiring): the video quality ladder splits
+    on whether the caller supplied a source image.
+      • text-only (no image)  → text→video. kling-3.0 t2v is the cinematic bar
+        (the legacy muapi crab's exact mode — full-scene generation, native 16:9,
+        full motion). It's our only t2v slug, so every text-only request resolves
+        to it: premium IS the default for text-only. This is the fleet's first
+        video experience, on purpose.
+      • user/agent image (i2v) → image→video ladder: premium → kling-3.0 i2v,
+        standard → kling-2.6 i2v, fast → dop-lite. KNOWN LIMIT: a soul source frame
+        caps at ~4:3 landscape (1536x1152 @1080p), so an i2v clip is not true 16:9
+        — for cinematic widescreen, prefer text-only (t2v). Documented in SKILL.md.
+
+    explicit model/alias still wins (literal slug); the UNSUPPORTED set fails
+    CLOSED with clear copy.
     """
-    # 1. Explicit model/alias wins — but validate it.
+    # 1. Explicit model/alias wins — literal slug, validated. (Power-user escape
+    #    hatch: an explicit i2v alias with no image will fall to needs_image in
+    #    cmd_generate — that's intended; explicit means explicit.)
     if explicit:
         e = explicit.strip().lower()
         if e in UNSUPPORTED:
@@ -90,14 +123,19 @@ def resolve_model(kind, quality=None, explicit=None):
     if k not in ("video", "clip", "animation", "vid"):
         return (None, "Tell me whether you want an image or a video.")
 
-    # 3. Video quality ladder. Default = lite (cheapest + fastest + free-allowance).
+    # 3. Video quality ladder — routed by INPUT.
     q = (quality or "").strip().lower()
-    if q in ("premium", "best", "long", "longer", "10s", "kling"):
-        return (SLUG_KLING, None)
-    if q in ("hq", "high", "standard", "cinematic"):
-        return (SLUG_DOP_STANDARD, None)
-    # fast / unspecified / anything else → the default
-    return (SLUG_DOP_LITE, None)
+    if has_image:
+        # image→video: animate the supplied source frame.
+        if q in ("standard", "hq", "high", "cinematic"):
+            return (SLUG_KLING_26_I2V, None)
+        if q in ("fast", "lite", "quick", "cheap"):
+            return (SLUG_DOP_LITE, None)
+        # premium / best / unspecified → the kling-3.0 bar
+        return (SLUG_KLING_30_I2V, None)
+    # text-only → text→video. Only one t2v slug exists (the cinematic bar), so
+    # every quality lands there. premium IS the default for text-only.
+    return (SLUG_KLING_30_T2V, None)
 
 
 # ── Gate plumbing ───────────────────────────────────────────────────────────
@@ -168,25 +206,33 @@ def cmd_generate(args):
         print("ERROR: no GATEWAY_TOKEN configured", file=sys.stderr)
         return 4
 
-    slug, reason = resolve_model(args.kind, args.quality, args.model)
+    slug, reason = resolve_model(args.kind, args.quality, args.model, has_image=bool(args.image_url))
     if not slug:
         _out({"status": "blocked", "message": reason}, args.json)
         return 3
 
     is_image = slug == SLUG_IMAGE
-    if not is_image and not args.image_url:
-        # All video models are image→video — they need a source image. Tell the
-        # agent to generate a base image first (image kind) then animate it.
+    is_text2video = slug in TEXT2VIDEO
+    # i2v models animate a source frame → they NEED an image. t2v + soul-image are
+    # self-sufficient (prompt only). Text-only video routes to t2v (resolve_model),
+    # so this needs_image branch only fires for an explicit i2v alias with no image.
+    needs_source = (not is_image) and (not is_text2video)
+    if needs_source and not args.image_url:
         _out({
             "status": "needs_image",
-            "message": "Video needs a source image. Generate an image first "
-                       "(--kind image), then animate it by passing its URL as --image-url.",
+            "message": "That model animates a source image. Either pass --image-url, "
+                       "or just describe the video with no image and I'll generate the "
+                       "whole scene (text-to-video).",
         }, args.json)
         return 3
 
     body = {"endpoint": slug, "prompt": args.prompt}
-    if not is_image:
+    if needs_source:
         body["image_url"] = args.image_url
+    if is_text2video:
+        # The legacy crab's format. The gate validates aspect_ratio against
+        # /^\d+:\d+$/ and forwards it; t2v generates the full scene natively 16:9.
+        body["aspect_ratio"] = "16:9"
     if args.duration is not None:
         body["duration"] = args.duration
     # VIDEO is async (submit → webhook delivers). Sign the chat_id so the gate's

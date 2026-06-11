@@ -4183,6 +4183,93 @@ Any PR that adds or changes a tracked component but doesn't touch the tracking d
 - **Rule 27** (coverage queries): build the visibility before you need it; same spirit — keep the source of truth current, not reconstructed under pressure.
 - **Rule 56** (a migration file is a *promise* about prod reality): docs and files must faithfully describe the real state, not an aspiration.
 
+### Rule 73 — Shared core libs are NEVER copy-targets across branches; cherry-pick the diff onto current main
+
+Any source file that more than one lane/branch touches — `lib/telegram.ts`, `lib/billing-status.ts`, `lib/vm-reconcile.ts`, `lib/ssh.ts`, `lib/vm-manifest.ts`, `package.json`, `CLAUDE.md`, and any other widely-shared core lib — is **NEVER** the target of a wholesale file copy from a feature branch. `git checkout <branch> -- <shared-file>` (and `git restore --source=<branch> <shared-file>`, `cp` from another worktree, etc.) overwrite the CURRENT main version with whatever STALE snapshot the branch forked from — silently reverting every other lane's intervening changes to that file. To bring a shared-file change from a branch onto main, you **cherry-pick the DIFF** (the specific hunks your lane added) onto main's current version: a 3-way merge / `git cherry-pick`, an explicit `git diff <base>..<branch> -- <file> | git apply`, or a hand-applied Edit of just your hunks. Never the whole file.
+
+#### The incidents this codifies
+
+- **2026-06-11 telegram.ts clobber (the SECOND of its kind):** merging the Higgsfield delivery-dims fix, a batched script ran `git checkout worktree-higgsfield-official-rail -- instaclaw/lib/telegram.ts`. My branch's telegram.ts was forked BEFORE `sendTelegramMessageWithButton` (a Frontier-lane dependency) was added to main. The wholesale checkout deleted that function → `frontier-approval-io.ts` failed tsc → `next build` broke on main. The actual change I needed was ONLY the `parseMp4Dimensions` + dims-on-`sendVideo` hunks (88 insertions, 1 deletion vs pre-break main); the clobber threw away an unrelated function that lived only on main.
+- **The package.json clobber (the FIRST):** same shape, earlier the same day — a stale branch's package.json copied over main's, reverting a dependency another lane had added.
+
+Two instances of the identical mistake in one day. The cost each time: a broken main build, a recovery commit, and re-deriving what the real diff should have been.
+
+#### Mandatory pattern
+
+1. **Identify shared files before any cross-branch file operation.** If a file is imported by code outside your lane, it is shared. When unsure, assume shared.
+2. **Bring the DIFF, not the FILE.** `git diff <fork-base>..<your-branch> -- <shared-file>` to see exactly your hunks, then apply only those onto main's current version (cherry-pick, `git apply`, or a manual Edit of those hunks).
+3. **After applying, diff against the PRE-merge main** (not your branch) to confirm the net change is ONLY your intended hunks: `git diff <pre-merge-main-sha> HEAD -- <shared-file>` should show your insertions and nothing else. If it shows deletions of functions/imports you didn't touch, you clobbered — revert and redo.
+4. **Never script a `git checkout <branch> -- <shared-file>` into a batched merge.** The batching hides the clobber until the build breaks.
+
+#### Banned patterns
+
+- `git checkout <branch> -- <shared-core-lib>` / `git restore --source=<branch> <shared-core-lib>` / `cp <other-worktree>/<shared-core-lib> .` for ANY file imported outside the lane making the change.
+- Treating "my branch's version of the shared file is newer/correct" as license to copy it wholesale. Your branch is stale on every hunk another lane added after your fork point — which is invisible until something that depends on those hunks breaks.
+- Merging a shared-file change without a post-merge diff against pre-merge main to prove the net change is only your hunks.
+
+#### Detection rule
+
+Any merge/PR that modifies a shared core lib must show, in its description or commit body, the `git diff <pre-merge-main>..HEAD -- <file>` proving the net change equals only the intended hunks. A diff that deletes a symbol the lane never mentioned is a clobber — reject.
+
+#### Related rules
+
+- **Rule 74** (directly-captured tsc gate): the clobber above shipped because the push gate read a script's printed conclusion instead of a real tsc exit code. The two rules are the paired halves of "merge a shared file safely."
+- **Rule 23** (lying-DB / stale-cache): same root shape — acting on a stale snapshot of shared state instead of current ground truth.
+
+### Rule 74 — Every push gates on a directly-captured `tsc` exit code, never a script's printed conclusion
+
+Before any `git push` of TypeScript changes, the build gate MUST be a `tsc` exit code captured DIRECTLY into a variable with `$?` read IMMEDIATELY after the command, with NO pipe between `tsc` and the capture. The decision to push is made on that integer, never on a string a script printed, never on the tail of piped output, never on a human-read "looks clean."
+
+#### Why this rule exists
+
+On 2026-06-11 I misread a `tsc` exit code a **fourth** time in one day. The failure mode is always a pipe swallowing the real status:
+
+```bash
+# WRONG — PIPESTATUS through a cd+subshell+pipe came back empty, so the
+# "did tsc pass?" branch evaluated against an empty string and PUSHED past a
+# real type error:
+cd instaclaw && npx tsc --noEmit | tail -5; TSC=${PIPESTATUS[0]}   # TSC="" here
+
+# WRONG — reading the printed conclusion of a wrapper script ("BUILD OK") that
+# computed pass/fail through its own (broken) pipe:
+RESULT=$(./merge-and-check.sh | grep -c "BUILD OK")   # script lied
+```
+
+```bash
+# CORRECT — direct capture, no pipe between tsc and $?:
+cd instaclaw
+npx tsc --noEmit > /tmp/tsc.out 2>&1
+TSCEXIT=$?
+if [ "$TSCEXIT" -ne 0 ]; then echo "TSC FAILED ($TSCEXIT)"; cat /tmp/tsc.out; exit 1; fi
+echo "TSC CLEAN"
+```
+
+Redirect `tsc` output to a file, capture `$?` on the very next line, branch on the integer, and only THEN inspect the file for detail. `${PIPESTATUS[0]}` is acceptable ONLY when the pipe is in the SAME shell and you've verified it isn't reset by an intervening command — but the safe default is no pipe at all.
+
+#### Mandatory pattern
+
+1. Run `tsc` (or `next build`) with output to a file, not a pipe.
+2. Capture `$?` on the immediately-following line into a named variable.
+3. Branch the push decision on that variable being `0`.
+4. Inspect the output file for error detail only after the integer check.
+5. Never let a wrapper script's printed string ("OK"/"clean"/"passed") be the gate — the script's own exit-code logic may be the thing that's broken.
+
+#### Banned patterns
+
+- A pipe between `tsc`/`next build` and the exit-code capture (`tsc | tail; $?` reads `tail`'s status or empty).
+- `${PIPESTATUS[0]}` read after an intervening command has run (it's been overwritten).
+- Gating a push on grepping a script's stdout for a success string.
+- "I read the output and it looked clean" — read the integer, not the prose.
+
+#### Detection rule
+
+Any batched merge/push script must contain a literal `EXIT=$?` (or equivalent) on the line directly after the `tsc`/`next build` invocation, with that invocation redirecting to a file (no `|`). A reviewer grepping the script for `tsc` must find the very next line capturing `$?`. If the gate's decision traces to a piped tail or a printed string, it is non-compliant.
+
+#### Related rules
+
+- **Rule 73** (shared-file clobber ban): the paired half — the 2026-06-11 telegram.ts clobber reached main because this gate read a printed conclusion instead of a real exit code.
+- **Rule 10** (verify every config set; no `|| true`): same discipline — read ground truth (re-read the value / the exit integer), never "we tried" or "it printed OK."
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.

@@ -128,13 +128,29 @@ export const HF_MODELS: Record<string, HFModel> = {
   "kling-video/v3.0/pro/image-to-video": {
     endpoint: "kling-video/v3.0/pro/image-to-video",
     kind: "image2video",
-    hfCostCredits: 15.0, // unmeasured; held conservatively
+    hfCostCredits: 15.0, // unmeasured; held conservatively (real settle 18==18, 06-11)
     freeEligible: false,
     label: "Clip (Kling 3.0, premium)",
+    // DURATION SURFACE (v3.0): intentionally NO allowedDurations lock yet. Unlike
+    // v2.1 (locked to [10] — its only MEASURED cell), v3.0's per-duration cost is
+    // unmeasured, so it takes the generic image2video duration path (1–15s,
+    // forwarded as-is) at a FLAT 18-credit charge. Billing is safe (flat hold ==
+    // settle; clamp guards any drift); the only exposure is under-recovery if
+    // Higgsfield bills longer v3.0 clips more. Add an allowedDurations lock here
+    // once the funded-measurement round prices v3.0's 5s/10s cells.
   },
   // Kling 3.0 TEXT-to-video — the legacy crab's exact mode (full-scene
   // generation, not static-image animation). The fair-fight head-to-head vs
-  // the muapi crab. Patterned t2v slug; cost unmeasured (held conservatively).
+  // the muapi crab. CALIBRATION (2026-06-11, real settle req @13:53:11): a t2v
+  // render at aspect_ratio 16:9 HELD 18 and SETTLED 18 (est==settled, clamp
+  // never engaged). aspect_ratio does NOT move OUR charge — pricing is flat
+  // per model (identical 18 to every kling i2v). The REAL Higgsfield credit
+  // burn (the central key's dashboard) is still UNMEASURED here — hfCostCredits
+  // 15 is the conservative held value, not a dashboard reading. Confirming the
+  // true upstream cost per model + whether duration moves it is the deferred
+  // funded-measurement round. duration is NOT a t2v lever today (validateInput's
+  // text2video branch forwards prompt + aspect_ratio only; a passed duration is
+  // dropped, so it can't trigger a coerced bill — calibration #6).
   "kling-video/v3.0/pro/text-to-video": {
     endpoint: "kling-video/v3.0/pro/text-to-video",
     kind: "text2video",
