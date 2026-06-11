@@ -1,19 +1,19 @@
 # Changelog — generated 2026-06-11
 
-Window: `c9d6bb08a145a9d7c89cecde7f4692c8570e74c5` → `HEAD` (HEAD = `aef2a4d5`)
-Total commits: 3
+Window: `aef2a4d530fb6fb8da1de33c41e200015b856e2f` → `HEAD` (HEAD = `34a6e047`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: aef2a4d530fb6fb8da1de33c41e200015b856e2f -->
+<!-- LAST_GENERATED_SHA: 34a6e0475847bea830c00b9d9db8ede4dc163d7b -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 2
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 2
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
@@ -22,9 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `5327ea8a` 2026-06-11 — feat(frontier): armed-population coverage section (Tier 0 B, Rule 27) [1 files] _(ai-assisted)_
-- `aef2a4d5` 2026-06-11 — fix(frontier): kill switches FAIL-CLOSED, not fail-open (Tier 0 F + Rule 82 class) [7 files] _(ai-assisted)_
-- `cb0b18b4` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `34a6e047` 2026-06-11 — feat(frontier): verdict logging — frontier_spend_events (Tier 0 A) [6 files] _(ai-assisted)_
+- `bb2b79b9` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -32,10 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (2)
+### Infrastructure (1)
 
-- `5327ea8a` 2026-06-11 — feat(frontier): armed-population coverage section (Tier 0 B, Rule 27) [1 files] _(ai-assisted)_
-- `aef2a4d5` 2026-06-11 — fix(frontier): kill switches FAIL-CLOSED, not fail-open (Tier 0 F + Rule 82 class) [7 files] _(ai-assisted)_
+- `34a6e047` 2026-06-11 — feat(frontier): verdict logging — frontier_spend_events (Tier 0 A) [6 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -47,17 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `cb0b18b4` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `bb2b79b9` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (2)
+## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `5327ea8a` 2026-06-11 — feat(frontier): armed-population coverage section (Tier 0 B, Rule 27)
-- `aef2a4d5` 2026-06-11 — fix(frontier): kill switches FAIL-CLOSED, not fail-open (Tier 0 F + Rule 82 class)
+- `34a6e047` 2026-06-11 — feat(frontier): verdict logging — frontier_spend_events (Tier 0 A)
 
 ## Appendix — every commit (chronological)
 
-- `cb0b18b4` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
-- `5327ea8a` 2026-06-11 — feat(frontier): armed-population coverage section (Tier 0 B, Rule 27) [1 files] _(ai-assisted)_
-- `aef2a4d5` 2026-06-11 — fix(frontier): kill switches FAIL-CLOSED, not fail-open (Tier 0 F + Rule 82 class) [7 files] _(ai-assisted)_
+- `bb2b79b9` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `34a6e047` 2026-06-11 — feat(frontier): verdict logging — frontier_spend_events (Tier 0 A) [6 files] _(ai-assisted)_
