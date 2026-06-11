@@ -158,10 +158,14 @@ const hr = (title: string) => console.log(`\n── ${title} ──`);
       row(`  health=${h}`, n);
     }
 
-    // F4 invariant: armed ∩ {frozen,terminated} must be 0 — the trigger clears it.
-    const terminalLeak = armed.filter((v) => v.status === "frozen" || v.status === "terminated");
-    if (terminalLeak.length > 0) {
-      row("⚠ ARMED on terminal status (F4 leak)", `${terminalLeak.length} — ${terminalLeak.map((v) => v.id.slice(0, 8)).join(", ")}`);
+    // Invariant (broadened): armed ⊆ status='assigned'. A VM can only be armed by an
+    // OWNER opting in (no owner → can't arm), and the F4 lifecycle trigger clears the
+    // flag on ownership change / terminal status. So armed-on-any-non-assigned-status is
+    // suspicious: frozen/terminated = F4 trigger leak; ready/provisioning = armed pool VM
+    // with no owner; failed = broken-but-armed. Flag the whole class, not just terminal.
+    const nonAssignedArmed = armed.filter((v) => v.status !== "assigned");
+    if (nonAssignedArmed.length > 0) {
+      row("⚠ ARMED on non-assigned status (F4/opt-in leak)", `${nonAssignedArmed.length} — ${nonAssignedArmed.map((v) => `${v.id.slice(0, 8)}:${v.status}`).join(", ")}`);
       unhealthy = true;
     }
 
