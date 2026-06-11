@@ -387,15 +387,30 @@ function classify(
  * they go from /auth → /onboarding/done with no Stripe round-trip, so they
  * never have a subscription row, and every retry pass skipped them.
  *
- * Never throws — returns { billable: false, reason: "lookup_error" } on
- * any DB error. Callers should default to skipping the user (same as
- * "no payment signal") so a transient DB hiccup doesn't accidentally
- * provision free VMs to canceled users.
+ * Never throws. Returns { billable, reason, verified }:
+ *   - On a CLEAN read (incl. a genuine "not billable" result like
+ *     no_payment_signal / stripe_canceled), `verified` is TRUE.
+ *   - On a read ERROR / exception, `billable` stays FALSE and `verified` is
+ *     FALSE (unverifiable).
+ *
+ * `verified` exists because callers have OPPOSITE polarity and must fail
+ * closed in their own direction (2026-06-11, sibling of the F1 fix):
+ *   - CONSTRUCTIVE callers — `if (!billable) skip` to gate provision/configure
+ *     (process-pending Pass 1/3/3b, health-check stuck-deploy). These IGNORE
+ *     `verified`: billable=false on error → skip the constructive action =
+ *     already fail-closed (don't provision/configure on a blip). UNCHANGED.
+ *   - DESTRUCTIVE-direction caller — vm-lifecycle's hibernating→suspended
+ *     transition (`if (billable) skip-transition`). This MUST read `verified`:
+ *     skip the transition on `(billable || !verified)` so a blip can't advance
+ *     a protected VM toward reclaim. Fail-closed on destroy.
+ * DO NOT make the constructive callers read `verified` — that would flip them
+ * to provision/configure on a blip (the polarity bug). Check the gate
+ * direction at every new call site before relying on `verified`.
  */
 export async function isUserBillableForVmAssignment(
   supabase: SupabaseClient,
   userId: string,
-): Promise<{ billable: boolean; reason: string }> {
+): Promise<{ billable: boolean; reason: string; verified: boolean }> {
   // 0/1. Comp-exempt + partner gate (cheap, hits instaclaw_users only).
   //    billing_exempt users (founder / family / partner-comp) are billable
   //    regardless of Stripe state — Path 0, same as getBillingStatus.classify.
@@ -414,7 +429,7 @@ export async function isUserBillableForVmAssignment(
         userId,
         error: userErr.message,
       });
-      return { billable: false, reason: "user_lookup_error" };
+      return { billable: false, reason: "user_lookup_error", verified: false };
     }
     const u = user as {
       partner?: string | null;
@@ -422,18 +437,18 @@ export async function isUserBillableForVmAssignment(
       billing_exempt_reason?: string | null;
     } | null;
     if (u?.billing_exempt === true) {
-      return { billable: true, reason: `comp_exempt_${u.billing_exempt_reason ?? "unknown"}` };
+      return { billable: true, reason: `comp_exempt_${u.billing_exempt_reason ?? "unknown"}`, verified: true };
     }
     const partner = u?.partner ?? null;
     if (partner) {
-      return { billable: true, reason: `partner_${partner}` };
+      return { billable: true, reason: `partner_${partner}`, verified: true };
     }
   } catch (err) {
     logger.warn("isUserBillableForVmAssignment: user lookup threw", {
       userId,
       error: err instanceof Error ? err.message : String(err),
     });
-    return { billable: false, reason: "user_lookup_exception" };
+    return { billable: false, reason: "user_lookup_exception", verified: false };
   }
 
   // 2. Subscription gate. Active or trialing → billable.
@@ -448,21 +463,24 @@ export async function isUserBillableForVmAssignment(
         userId,
         error: subErr.message,
       });
-      return { billable: false, reason: "sub_lookup_error" };
+      return { billable: false, reason: "sub_lookup_error", verified: false };
     }
     const status = (sub as { status?: string | null } | null)?.status ?? null;
     if (status && ["active", "trialing"].includes(status)) {
-      return { billable: true, reason: `stripe_${status}` };
+      return { billable: true, reason: `stripe_${status}`, verified: true };
     }
+    // Clean read, genuinely not billable (no sub / canceled / past_due / etc.)
+    // → verified TRUE so the destructive-direction caller proceeds as today.
     return {
       billable: false,
       reason: status ? `stripe_${status}` : "no_payment_signal",
+      verified: true,
     };
   } catch (err) {
     logger.warn("isUserBillableForVmAssignment: sub lookup threw", {
       userId,
       error: err instanceof Error ? err.message : String(err),
     });
-    return { billable: false, reason: "sub_lookup_exception" };
+    return { billable: false, reason: "sub_lookup_exception", verified: false };
   }
 }

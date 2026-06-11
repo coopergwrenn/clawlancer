@@ -80,22 +80,31 @@ const NO_SUB_GRACE_DAYS = 3;
 // account) with the first-class instaclaw_users.billing_exempt flag. The flag
 // is the single source of truth read by lib/billing-status.ts Path 0, so this
 // freeze pre-check and the billing classification can no longer disagree.
-// Fetched once per cron run into a Set; isProtectedUser is a pure membership
-// test. Fail-open to {} on lookup error so a DB hiccup can't make the freeze
-// pass treat a comp account as freezable (freezeVM also live-re-checks Stripe,
-// but skipping comp accounts here avoids the call entirely).
+// Fetched once per cron run; isProtectedUser is a pure membership test.
+// Returns { ids, verified }. `verified` distinguishes a genuinely-empty exempt
+// list (clean read, no comp accounts → verified:true) from an UNVERIFIABLE read
+// (DB error/exception → verified:false). 2026-06-11 fail-closed fix (sibling of
+// F1): the consumers gate IRREVERSIBLE freeze (:768) + Pass-1 reclaim (:987),
+// and the OLD empty-Set-on-error made a transient DB blip read as "nobody is
+// protected" → freeze/reclaim every candidate (fail-OPEN on the destroy side).
+// Consumers MUST treat verified=false as "EVERYONE is potentially protected"
+// and skip ALL freeze/reclaim candidates that tick, logged loudly.
 async function fetchBillingExemptUserIds(
   supabase: ReturnType<typeof getSupabase>,
-): Promise<Set<string>> {
+): Promise<{ ids: Set<string>; verified: boolean }> {
   try {
     const { data, error } = await supabase
       .from("instaclaw_users")
       .select("id")
       .eq("billing_exempt", true);
-    if (error || !data) return new Set();
-    return new Set((data as Array<{ id: string }>).map((u) => u.id));
+    // Read ERROR — unverifiable. Empty set but verified:false → consumers fail
+    // closed (skip all destructive candidates), NOT fail open.
+    if (error) return { ids: new Set(), verified: false };
+    // Clean read (rows OR genuinely none) — authoritative.
+    return { ids: new Set(((data ?? []) as Array<{ id: string }>).map((u) => u.id)), verified: true };
   } catch {
-    return new Set();
+    // Exception — unverifiable.
+    return { ids: new Set(), verified: false };
   }
 }
 
@@ -115,7 +124,17 @@ export async function GET(req: NextRequest) {
   // Billing-exempt accounts (founder/family/comp) — fetched once, used by the
   // freeze pre-checks below via isProtectedUser. Single source of truth:
   // instaclaw_users.billing_exempt (migration 20260610210000).
-  const exemptUserIds = await fetchBillingExemptUserIds(supabase);
+  // `exemptVerified=false` means the exempt-list read FAILED — the destructive
+  // passes treat that as "everyone is potentially protected" and skip ALL
+  // freeze/reclaim candidates this tick (fail-closed; 2026-06-11 sibling of F1).
+  const { ids: exemptUserIds, verified: exemptVerified } =
+    await fetchBillingExemptUserIds(supabase);
+  if (!exemptVerified) {
+    logger.error(
+      "vm-lifecycle: billing-exempt list UNVERIFIABLE — skipping ALL freeze/reclaim/transition candidates this tick (fail-closed)",
+      { route: "cron/vm-lifecycle", dryRun },
+    );
+  }
 
   const report = {
     dry_run: dryRun,
@@ -556,7 +575,20 @@ export async function GET(req: NextRequest) {
           supabase,
           vm.assigned_to,
         );
-        if (billing.billable) continue;
+        // Fail-closed (2026-06-11): skip the destructive-direction transition
+        // on billable OR an unverifiable billing read — a blip must not advance
+        // a protected VM toward reclaim.
+        if (billing.billable || !billing.verified) {
+          if (!billing.verified) {
+            logger.warn("vm-lifecycle: hibernating→suspended SKIPPED — billing unverifiable (fail-closed)", {
+              route: "cron/vm-lifecycle",
+              vmId: vm.id,
+              userId: vm.assigned_to,
+              reason: billing.reason,
+            });
+          }
+          continue;
+        }
       }
 
       // Transition: hibernating → suspended
@@ -766,7 +798,10 @@ export async function GET(req: NextRequest) {
 
         // Protected user — never freeze (defense in depth; freezeVM also
         // re-checks Stripe live, but skip the call entirely for these).
-        if (vm.assigned_to && isProtectedUser(vm.assigned_to, exemptUserIds)) {
+        // Fail-closed: when the exempt list is unverifiable, treat EVERY
+        // candidate as potentially protected and skip the freeze (the loud
+        // one-time signal is logged at fetch time, :118).
+        if (!exemptVerified || (vm.assigned_to && isProtectedUser(vm.assigned_to, exemptUserIds))) {
           report.pass1_v2_skipped_safety++;
           if (!dryRun) {
             await logLifecycleEvent(
@@ -984,7 +1019,9 @@ export async function GET(req: NextRequest) {
         // ── Safety checks ──
 
         // 1. Protected user
-        if (userId && isProtectedUser(userId, exemptUserIds)) {
+        // Fail-closed: unverifiable exempt list → treat every candidate as
+        // potentially protected, skip the (irreversible) reclaim this tick.
+        if (!exemptVerified || (userId && isProtectedUser(userId, exemptUserIds))) {
           report.pass1_skipped_safety++;
           continue;
         }
