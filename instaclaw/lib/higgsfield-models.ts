@@ -107,6 +107,46 @@ export const HF_MODELS: Record<string, HFModel> = {
     label: "Clip (premium, 10s)",
     allowedDurations: [10],
   },
+  // ── G9 FRONTIER SLUG SWEEP (2026-06-11) — real-render probe of whether the ──
+  // Cloud API can reach kling-3.0-class models. Slugs patterned from the proven
+  // kling-video/v2.1/pro grammar. Holds conservative (settle clamps charge<=hold).
+  // Paid. DEAD ones (model-not-found) get reverted at the end of the sweep; any
+  // that render and match the crab become the premium default and stay.
+  "kling-video/v3.0/pro/image-to-video": {
+    endpoint: "kling-video/v3.0/pro/image-to-video",
+    kind: "image2video",
+    hfCostCredits: 15.0, // conservative; unmeasured
+    freeEligible: false,
+    label: "Clip (Kling 3.0 — G9 probe)",
+  },
+  "kling-video/v2.6/pro/image-to-video": {
+    endpoint: "kling-video/v2.6/pro/image-to-video",
+    kind: "image2video",
+    hfCostCredits: 15.0,
+    freeEligible: false,
+    label: "Clip (Kling 2.6 — G9 probe)",
+  },
+  "bytedance/seedance/v2.0/pro/image-to-video": {
+    endpoint: "bytedance/seedance/v2.0/pro/image-to-video",
+    kind: "image2video",
+    hfCostCredits: 15.0,
+    freeEligible: false,
+    label: "Clip (Seedance 2.0 — G9 probe)",
+  },
+  "google/veo/v3.1/image-to-video": {
+    endpoint: "google/veo/v3.1/image-to-video",
+    kind: "image2video",
+    hfCostCredits: 30.0, // veo predicted most expensive; high hold (clamps)
+    freeEligible: false,
+    label: "Clip (Veo 3.1 — G9 probe, low-confidence slug)",
+  },
+  "bytedance/seedance/v1/pro/image-to-video": {
+    endpoint: "bytedance/seedance/v1/pro/image-to-video",
+    kind: "image2video",
+    hfCostCredits: 15.0,
+    freeEligible: false,
+    label: "Clip (Seedance 1 Pro — G9 retry w/ logging)",
+  },
 };
 
 /** The product default when no model is specified: cheapest + fastest. */
