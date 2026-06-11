@@ -193,6 +193,26 @@ const hr = (title: string) => console.log(`\n── ${title} ──`);
     q.eq("status", "pending_approval").lt("expires_at", approvalStuckCutoff));
   if (stuckApprovals > 0) row("⚠ pending past TTL (expiry not sweeping)", stuckApprovals);
 
+  // ── Revoke interdiction (Tier-0 G) ──
+  // How many in-flight holds the human cancelled, and — the load-bearing one — the
+  // reconciliation gap: a settle attempt against an already-revoked hold that
+  // carried a tx_hash (the agent had PAID on-chain before the revoke landed). Money
+  // left, the hold can't settle; these need a manual on-chain reconcile. The events
+  // table is pending until the spend-events migration is applied → cnt() returns -1
+  // and we report n/a rather than a false 0.
+  hr("Revoke interdiction (Tier-0 G)");
+  const revokedHolds = await cnt("frontier_transactions", (q) =>
+    q.eq("direction", "spend").eq("status", "revoked").gte("created_at", dayAgo));
+  row("holds revoked 24h", revokedHolds < 0 ? "n/a (enum pending)" : revokedHolds);
+  const revokedPaidGap = await cnt("frontier_spend_events", (q) =>
+    q.eq("reason", "settle_on_revoked_hold").not("tx_hash", "is", null).gte("created_at", dayAgo));
+  if (revokedPaidGap > 0) {
+    row("⚠ revoked-but-on-chain-paid (reconcile)", revokedPaidGap);
+    unhealthy = true;
+  } else {
+    row("revoked-but-on-chain-paid gaps", revokedPaidGap < 0 ? "n/a (events table pending)" : 0);
+  }
+
   // ── Offerings ──
   hr("Offerings");
   row("total", await cnt("frontier_offerings"));

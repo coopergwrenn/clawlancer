@@ -117,6 +117,11 @@ export function gateForReason(reason: string | null | undefined): string {
     // idempotent replay (authorize route)
     case "request_id_consumed":
       return "idempotency";
+    // revoke interdiction (Tier-0 G) — the hold the human cancelled, and the
+    // settle-attempt against an already-revoked hold (the reconciliation-gap signal).
+    case "revoked_in_flight":
+    case "settle_on_revoked_hold":
+      return "revoke";
     default:
       return "other";
   }

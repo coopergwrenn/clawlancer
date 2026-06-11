@@ -21,9 +21,11 @@
  * Self-auth route (the token is the auth) -> MUST be in middleware selfAuthAPIs (Rule 13).
  * Returns a small HTML page (opened in the user's browser from the Telegram button).
  */
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { verifyRevokeToken } from "@/lib/frontier-approvals";
+import { recordSpendEvent } from "@/lib/frontier-spend-log";
+import { runInterdiction, buildInterdictionEvents, revokeConfirmationCopy } from "@/lib/frontier-revoke";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -63,7 +65,7 @@ export async function GET(req: NextRequest) {
   // Confirm the VM exists, then disable autonomous spend (fail-safe direction).
   const { data: vm, error: readErr } = await supabase
     .from("instaclaw_vms")
-    .select("id, frontier_spend_enabled")
+    .select("id, assigned_to, frontier_spend_enabled")
     .eq("id", v.vmId)
     .maybeSingle();
   if (readErr || !vm) {
@@ -76,6 +78,8 @@ export async function GET(req: NextRequest) {
     return htmlPage("Spending is off", "Autonomous spending for this agent is already turned off. No action was needed.", 200);
   }
 
+  // (1) FUTURE-spend gate — the existing master opt-in. Flip first; if this fails
+  // we don't proceed to interdiction (the gate is the load-bearing half).
   const { error: updErr } = await supabase
     .from("instaclaw_vms")
     .update({ frontier_spend_enabled: false })
@@ -85,10 +89,34 @@ export async function GET(req: NextRequest) {
     return htmlPage("Something went wrong", "We couldn't turn spending off just now. Please use your dashboard to disable it.", 500);
   }
 
-  logger.info("revoke-spend: disabled", { route: "agent-economy/revoke-spend", vmId: v.vmId });
-  return htmlPage(
-    "Spending turned off",
-    "Autonomous spending for this agent is now off. Your agent will ask before any further payments. You can re-enable it any time from your dashboard.",
-    200,
-  );
+  // (2) INTERDICT in-flight holds (Tier-0 G, mechanism C). One guarded UPDATE flips
+  // every still-pending spend hold for this VM to 'revoked'. It is ATOMIC on
+  // status='pending' — Postgres serializes it against settle's CAS (same guard), so
+  // a hold either revokes here (and settle then finds 0 pending → loses cleanly) or
+  // settles first (and is not in our flipped set). The returned rows ARE the
+  // interdicted set. BEST-EFFORT: pre-migration the 'revoked' value violates the OLD
+  // CHECK → the UPDATE is rejected → 0 flipped → caught → revoke still disabled future
+  // spend (no regression), copy honestly reports 0 cancelled. No on-chain money is
+  // touched here — this can only stop a hold from settling, never reverse a payment
+  // the agent already broadcast.
+  const { holds: interdicted, errored: interdictErrored } = await runInterdiction(supabase, v.vmId);
+  if (interdictErrored) {
+    logger.warn("revoke-spend: interdiction update failed (best-effort; 'revoked' enum may be pre-migration)", {
+      route: "agent-economy/revoke-spend", vmId: v.vmId,
+    });
+  }
+
+  // (3) One verdict-log row per interdicted hold (deny / revoked_in_flight) carrying
+  // its transaction_id + amount — the complete trace for H's "revoke didn't
+  // interdict" query. Post-response (after()), best-effort, never blocks.
+  if (interdicted.length > 0) {
+    const events = buildInterdictionEvents(v.vmId, (vm.assigned_to as string | null) ?? null, interdicted);
+    after(() => Promise.all(events.map((ev) => recordSpendEvent(supabase, ev))));
+  }
+
+  logger.info("revoke-spend: disabled", {
+    route: "agent-economy/revoke-spend", vmId: v.vmId, interdicted: interdicted.length,
+  });
+  const copy = revokeConfirmationCopy(interdicted.length);
+  return htmlPage(copy.title, copy.body, 200);
 }
