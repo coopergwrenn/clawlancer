@@ -24,6 +24,11 @@
  * - 48h TTL kills free-image-host abuse (public links die) — that, not a
  *   per-VM quota, is the v1 abuse bound: renders are the metered resource
  *   and storage cost is negligible (4MB × heavy use ≈ cents/month).
+ *   (Measured 2026-06-11: a deleted object's public URL can keep serving
+ *   from Supabase's CDN edge cache briefly after removal — storage-side
+ *   delete verified by bucket listing. Effective link death ≈ TTL + ~1h
+ *   cache decay. Fine for the abuse bound; don't be surprised by a 200
+ *   right after a delete.)
  * - Public bucket by design: Higgsfield must fetch the URL unauthenticated.
  *   If the bucket ever flips private, renders fail at submit (released, no
  *   charge) — loud, not silent.
