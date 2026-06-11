@@ -84,7 +84,7 @@ import { loadVmStanding, LedgerReadError } from "@/lib/frontier-standing-db";
 import type { CreditStanding } from "@/lib/frontier-standing";
 import { HOLD_TTL_MS, SPEND_WINDOW_MS } from "@/lib/frontier-ledger-db";
 import { decideAuthorization } from "@/lib/frontier-authz";
-import { isFrontierSpendKilled } from "@/lib/frontier-kill-switch";
+import { frontierSpendKillState } from "@/lib/frontier-kill-switch";
 import { isFrontierSpendEnabled } from "@/lib/frontier-spend-optin";
 import { evaluateApproval } from "@/lib/frontier-approvals";
 import {
@@ -332,10 +332,19 @@ export async function POST(req: NextRequest) {
 
   // ── Emergency stop (no deploy, instant, fleet-wide): if the spend kill switch is
   // engaged, deny EVERY spend — overrides human_approved (it's an emergency stop, not a
-  // policy band). Checked before the pipeline so it also short-circuits cheaply. ──
-  if (await isFrontierSpendKilled(supabase)) {
+  // policy band). Checked before the pipeline so it also short-circuits cheaply.
+  // FAIL-CLOSED (Tier-0 F): an unreadable switch denies too (reason *_unverifiable), so a
+  // transient blip can never bypass an engaged brake. Distinct reasons let an operator
+  // tell "stopped on purpose" from "went blind". ──
+  const killState = await frontierSpendKillState(supabase);
+  if (killState !== "clear") {
     return NextResponse.json(
-      { authorized: false, mode: null, outcome: "deny", reason: "spend_kill_switch" },
+      {
+        authorized: false,
+        mode: null,
+        outcome: "deny",
+        reason: killState === "engaged" ? "spend_kill_switch" : "spend_kill_switch_unverifiable",
+      },
       { status: 200 },
     );
   }

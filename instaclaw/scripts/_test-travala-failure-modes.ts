@@ -9,7 +9,7 @@
  *     maxAmountRequired intact so the downstream selectPaymentRequirement signs
  *     against the on-chain amount, not a display price
  *   - kill-switch / opt-in semantics → isTravalaBookingEnabled FAIL-CLOSED,
- *     isTravalaBookingKilled FAIL-OPEN
+ *     isTravalaBookingKilled FAIL-CLOSED (Tier-0 F, 2026-06-11 — was fail-open)
  *   - token mint not_configured when env is absent
  *   - OAuth secret verifier shape check (whitespace / too-short rejected)
  *
@@ -23,7 +23,11 @@
  * Run: `npx tsx scripts/_test-travala-failure-modes.ts`
  */
 import { extractBookQuote, mintTravalaToken } from "../lib/travala-mcp";
-import { isTravalaBookingEnabled } from "../lib/travala-kill-switch";
+import {
+  isTravalaBookingEnabled,
+  isTravalaBookingKilled,
+  travalaBookingKillState,
+} from "../lib/travala-kill-switch";
 
 let passed = 0;
 let failed = 0;
@@ -126,6 +130,46 @@ console.log("\nisTravalaBookingEnabled — fail-closed:");
   // truthy-but-not-true must NOT enable (strict equality is the safety property)
   check("false on string 'true' (not boolean)", isTravalaBookingEnabled({ travala_booking_enabled: "true" as unknown as boolean }) === false);
   check("false on 1 (not boolean)", isTravalaBookingEnabled({ travala_booking_enabled: 1 as unknown as boolean }) === false);
+}
+
+// ── global emergency kill: FAIL-CLOSED (Tier-0 F) ──
+// Booking real hotel rooms is the literal announce verb; its emergency brake must
+// fail closed. A transient blip on the kill-switch read that recovers before the
+// per-VM check would otherwise let an ENGAGED kill be bypassed (gate 1 reads the
+// already-loaded vm row, so it can't catch a blip on THIS read). One retry absorbs
+// a single transient hiccup; a sustained failure ⇒ killed.
+console.log("\nisTravalaBookingKilled — fail-closed:");
+{
+  // Mock the supabase chain readKillSwitchState walks: from().select().eq().maybeSingle().
+  // `recoverAfter` models a transient blip: error N times then return `result`.
+  function mockSb(
+    result: { data?: unknown; error?: unknown },
+    throws = false,
+    recoverAfter = 0,
+  ): never {
+    let calls = 0;
+    const chain: Record<string, unknown> = {};
+    chain.select = () => chain;
+    chain.eq = () => chain;
+    chain.maybeSingle = async () => {
+      calls++;
+      if (calls <= recoverAfter) {
+        if (throws) throw new Error("db blip");
+        return { data: null, error: { message: "blip" } };
+      }
+      if (throws && recoverAfter === 0) throw new Error("db down");
+      return result;
+    };
+    return { from: () => chain } as never;
+  }
+  check("engaged (bool_value true) → KILLED", (await isTravalaBookingKilled(mockSb({ data: { bool_value: true } }))) === true);
+  check("clear (bool_value false) → not killed", (await isTravalaBookingKilled(mockSb({ data: { bool_value: false } }))) === false);
+  check("absent row → not killed (safe default)", (await isTravalaBookingKilled(mockSb({ data: null }))) === false);
+  check("persistent read error → FAIL-CLOSED (KILLED)", (await isTravalaBookingKilled(mockSb({ data: null, error: { message: "x" } }))) === true);
+  check("persistent exception → FAIL-CLOSED (KILLED)", (await isTravalaBookingKilled(mockSb({}, true))) === true);
+  check("transient blip then clear → retry absorbs → not killed", (await isTravalaBookingKilled(mockSb({ data: { bool_value: false } }, false, 1))) === false);
+  check("state engaged", (await travalaBookingKillState(mockSb({ data: { bool_value: true } }))) === "engaged");
+  check("state unverifiable (persistent error)", (await travalaBookingKillState(mockSb({ data: null, error: { message: "x" } }))) === "unverifiable");
 }
 
 // ── token mint: not_configured when env absent ──

@@ -26,7 +26,7 @@ import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 import { getSupabase } from "@/lib/supabase";
 import {
   isTravalaBookingEnabled,
-  isTravalaBookingKilled,
+  travalaBookingKillState,
 } from "@/lib/travala-kill-switch";
 import {
   mintTravalaToken,
@@ -290,10 +290,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
 
   // ── book-quote: the gated money path ──
 
-  // Gate 2 (global emergency kill) — checked first, cheap, fleet-wide.
-  if (await isTravalaBookingKilled(supabase)) {
+  // Gate 2 (global emergency kill) — checked first, cheap, fleet-wide. FAIL-CLOSED
+  // (Tier-0 F): an unreadable switch gates booking too (reason *_unverifiable), so a
+  // transient blip can never let an engaged brake through on the literal announce path.
+  const bookingKillState = await travalaBookingKillState(supabase);
+  if (bookingKillState !== "clear") {
     return NextResponse.json(
-      { ok: false, gated: true, reason: "travala_booking_kill_switch" },
+      {
+        ok: false,
+        gated: true,
+        reason:
+          bookingKillState === "engaged"
+            ? "travala_booking_kill_switch"
+            : "travala_booking_kill_switch_unverifiable",
+      },
       { status: 200 },
     );
   }

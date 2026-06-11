@@ -14,12 +14,16 @@
  *      on for that agent (each VM has its own wallet; the user owns the toggle).
  *
  *   2. GLOBAL EMERGENCY KILL — `instaclaw_admin_settings.travala_booking_kill_switch`
- *      (operator's "stop every booking fleet-wide RIGHT NOW" stop). FAIL-OPEN on a
- *      read error, for the same reason the frontier kill switch is fail-open: a
- *      transient DB blip must not be misread as "killed", and the per-VM opt-in
- *      (gate 1, fail-closed) already prevents any booking on an unreadable vm row.
+ *      (operator's "stop every booking fleet-wide RIGHT NOW" stop). FAIL-CLOSED on a
+ *      read error (Tier-0 F, 2026-06-11): if the switch state can't be read (still
+ *      erroring after one retry), booking is denied with reason
+ *      `travala_booking_kill_switch_unverifiable`. The prior fail-OPEN had the same
+ *      hole as the frontier switch — a transient blip on this read that recovers before
+ *      the per-VM check would let an ENGAGED kill be bypassed (gate 1 reads the already-
+ *      loaded vm row, so it does NOT catch a transient blip on THIS read). Booking real
+ *      hotel rooms is the literal announce capability; its emergency brake fails CLOSED.
  *      Absent row = not engaged (the safe default — bookings work until an operator
- *      flips it on).
+ *      flips it on). See lib/kill-switch-core.ts for the shared fail-closed reader.
  *
  *   ENGAGE the emergency kill (stop the bleeding, no deploy, instant, fleet-wide):
  *     INSERT INTO instaclaw_admin_settings (setting_key, bool_value, notes)
@@ -42,6 +46,7 @@
  * merchant. See instaclaw/docs/prd/travala-x402-booking-2026-06-10.md §5, §14-F.
  */
 import type { getSupabase } from "@/lib/supabase";
+import { readKillSwitchState, type KillSwitchState } from "@/lib/kill-switch-core";
 
 export const TRAVALA_BOOKING_KILL_KEY = "travala_booking_kill_switch";
 
@@ -60,20 +65,19 @@ export function isTravalaBookingEnabled(
 }
 
 /**
- * Gate 2 (global emergency kill). True when an operator has engaged the
- * fleet-wide booking stop. FAIL-OPEN on read error (a DB blip must not be
- * misread as "killed"; gate 1 already protects the unreadable-vm case).
+ * Diagnostic state of the booking kill switch. "engaged" | "clear" |
+ * "unverifiable". Prefer this at the booking call site so the deny reason can
+ * distinguish a deliberate stop from a blind read (both deny — only "clear" allows).
+ */
+export function travalaBookingKillState(supabase: SB): Promise<KillSwitchState> {
+  return readKillSwitchState(supabase, TRAVALA_BOOKING_KILL_KEY);
+}
+
+/**
+ * Gate 2 (global emergency kill). True when booking must be halted — engaged OR
+ * unverifiable (FAIL-CLOSED). Boolean convenience for callers that don't need the
+ * diagnostic distinction.
  */
 export async function isTravalaBookingKilled(supabase: SB): Promise<boolean> {
-  try {
-    const { data, error } = await supabase
-      .from("instaclaw_admin_settings")
-      .select("bool_value")
-      .eq("setting_key", TRAVALA_BOOKING_KILL_KEY)
-      .maybeSingle();
-    if (error) return false; // fail-open (see header)
-    return data?.bool_value === true;
-  } catch {
-    return false; // fail-open
-  }
+  return (await travalaBookingKillState(supabase)) !== "clear";
 }

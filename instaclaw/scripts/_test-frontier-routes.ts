@@ -17,7 +17,7 @@
 import type { NextRequest } from "next/server";
 import { validate, extractGatewayToken, classifyExistingHold } from "../app/api/agent-economy/authorize/route";
 import { validateSettleBody, classifySettleOutcome } from "../app/api/agent-economy/settle/route";
-import { isFrontierSpendKilled } from "../lib/frontier-kill-switch";
+import { isFrontierSpendKilled, frontierSpendKillState } from "../lib/frontier-kill-switch";
 import { isFrontierSpendEnabled } from "../lib/frontier-spend-optin";
 
 let passed = 0;
@@ -262,12 +262,29 @@ check("optin: fail-closed — string 'true' → NOT enabled", isFrontierSpendEna
 
 
 // ───────────────────────────── kill switch (emergency stop) ─────────────────────────────
-// Mock the supabase chain isFrontierSpendKilled walks: from().select().eq().maybeSingle().
-function mockSb(result: { data?: unknown; error?: unknown }, throws = false): never {
+// Mock the supabase chain readKillSwitchState walks: from().select().eq().maybeSingle().
+// `throws` makes maybeSingle throw on EVERY call; `errorEveryCall` returns {error} on
+// every call. Both exercise the retry: the core calls maybeSingle up to twice, and only
+// a sustained failure → "unverifiable" → FAIL-CLOSED (killed). A `recoverAfter` count
+// lets us model a TRANSIENT blip (error once, then succeed) to prove the retry absorbs it.
+function mockSb(
+  result: { data?: unknown; error?: unknown },
+  throws = false,
+  recoverAfter = 0, // throw/err for the first N calls, then return `result`
+): never {
+  let calls = 0;
   const chain: Record<string, unknown> = {};
   chain.select = () => chain;
   chain.eq = () => chain;
-  chain.maybeSingle = async () => { if (throws) throw new Error("db down"); return result; };
+  chain.maybeSingle = async () => {
+    calls++;
+    if (calls <= recoverAfter) {
+      if (throws) throw new Error("db blip");
+      return { data: null, error: { message: "blip" } };
+    }
+    if (throws && recoverAfter === 0) throw new Error("db down");
+    return result;
+  };
   return { from: () => chain } as never;
 }
 // Async (kill-switch reads are async) → IIFE, since this harness compiles to CJS (no TLA).
@@ -275,8 +292,17 @@ function mockSb(result: { data?: unknown; error?: unknown }, throws = false): ne
   check("kill: bool_value true → KILLED", (await isFrontierSpendKilled(mockSb({ data: { bool_value: true } }))) === true);
   check("kill: bool_value false → not killed", (await isFrontierSpendKilled(mockSb({ data: { bool_value: false } }))) === false);
   check("kill: absent row → not killed (safe default)", (await isFrontierSpendKilled(mockSb({ data: null }))) === false);
-  check("kill: read error → fail-OPEN (not killed)", (await isFrontierSpendKilled(mockSb({ data: null, error: { message: "x" } }))) === false);
-  check("kill: exception → fail-OPEN (not killed)", (await isFrontierSpendKilled(mockSb({}, true))) === false);
+  // FAIL-CLOSED (Tier-0 F): a sustained read error / exception ⇒ KILLED (was fail-OPEN).
+  check("kill: persistent read error → FAIL-CLOSED (KILLED)", (await isFrontierSpendKilled(mockSb({ data: null, error: { message: "x" } }))) === true);
+  check("kill: persistent exception → FAIL-CLOSED (KILLED)", (await isFrontierSpendKilled(mockSb({}, true))) === true);
+  // The retry must absorb a SINGLE transient blip so we don't deny on noise: error once,
+  // then the underlying value (false) comes back ⇒ not killed.
+  check("kill: transient blip then false → retry absorbs → not killed", (await isFrontierSpendKilled(mockSb({ data: { bool_value: false } }, false, 1))) === false);
+  check("kill: transient blip then engaged → retry absorbs → KILLED", (await isFrontierSpendKilled(mockSb({ data: { bool_value: true } }, false, 1))) === true);
+  // State function distinguishes engaged vs blind (drives the distinct deny reason).
+  check("kill: state engaged", (await frontierSpendKillState(mockSb({ data: { bool_value: true } }))) === "engaged");
+  check("kill: state clear (absent)", (await frontierSpendKillState(mockSb({ data: null }))) === "clear");
+  check("kill: state unverifiable (persistent error)", (await frontierSpendKillState(mockSb({ data: null, error: { message: "x" } }))) === "unverifiable");
 
   console.log(`frontier-routes: ${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);
