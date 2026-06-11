@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-11
 
-Window: `93f4d405c0fc154e5e8aac6a55de442efa454fd8` → `HEAD` (HEAD = `61dbc1b3`)
+Window: `61dbc1b3625f88e5069c1af6160d4637aac774ea` → `HEAD` (HEAD = `9fbf9a14`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 61dbc1b3625f88e5069c1af6160d4637aac774ea -->
+<!-- LAST_GENERATED_SHA: 9fbf9a14eaf4c776f415a46afac404c84501bd06 -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `61dbc1b3` 2026-06-11 — fix(billing): Finding B — fail-close F2/F3 irreversible wipes on unverifiable exemption [2 files] _(ai-assisted)_
-- `2ddd8b14` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `9fbf9a14` 2026-06-11 — fix(freeze): allow 'frozen' in instaclaw_vms status + health_status CHECKs [1 files] _(ai-assisted)_
+- `c213afc9` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `61dbc1b3` 2026-06-11 — fix(billing): Finding B — fail-close F2/F3 irreversible wipes on unverifiable exemption [2 files] _(ai-assisted)_
+- `9fbf9a14` 2026-06-11 — fix(freeze): allow 'frozen' in instaclaw_vms status + health_status CHECKs [1 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `2ddd8b14` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `c213afc9` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `61dbc1b3` 2026-06-11 — fix(billing): Finding B — fail-close F2/F3 irreversible wipes on unverifiable exemption
+- `9fbf9a14` 2026-06-11 — fix(freeze): allow 'frozen' in instaclaw_vms status + health_status CHECKs
 
 ## Appendix — every commit (chronological)
 
-- `2ddd8b14` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
-- `61dbc1b3` 2026-06-11 — fix(billing): Finding B — fail-close F2/F3 irreversible wipes on unverifiable exemption [2 files] _(ai-assisted)_
+- `c213afc9` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `9fbf9a14` 2026-06-11 — fix(freeze): allow 'frozen' in instaclaw_vms status + health_status CHECKs [1 files] _(ai-assisted)_
