@@ -127,38 +127,6 @@ export async function sendTelegramNotification(
 }
 
 /**
- * Send a plain message with a single inline URL-button (an unforgeable one-tap
- * link into a web page). Used by the Frontier human_approved hardening's detection
- * notification ("agent spent $X with your approval -- was that you? [Revoke]"). The
- * button opens a URL in the user's browser; the link itself carries the auth (a
- * signed token or a session-gated page), never the chat. Best-effort: returns false
- * on any failure, never throws (a missed notification must never block a spend).
- */
-export async function sendTelegramMessageWithButton(
-  botToken: string,
-  chatId: string,
-  message: string,
-  buttonText: string,
-  buttonUrl: string,
-): Promise<boolean> {
-  try {
-    const response = await fetch(`${TELEGRAM_API}/bot${botToken}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: message,
-        disable_web_page_preview: true,
-        reply_markup: { inline_keyboard: [[{ text: buttonText, url: buttonUrl }]] },
-      }),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Attempt to discover the chat_id for a bot by calling getUpdates.
  * This briefly interrupts the VM's long-polling (one missed cycle ~1s).
  * Returns the chat_id string or null if no chats found.
@@ -279,8 +247,88 @@ export async function sendTelegramPhoto(
 }
 
 /**
+ * Parse an MP4's display dimensions + duration from the buffer (pure JS, no
+ * ffmpeg — works on Vercel serverless). Walks moov→trak→tkhd (width/height are
+ * 16.16 fixed-point at the tail of the tkhd payload) + moov→mvhd (duration via
+ * timescale). Returns the VIDEO track's dims (the audio track's tkhd is 0x0).
+ * Best-effort: returns null on any parse failure or non-MP4.
+ *
+ * WHY (2026-06-11): Telegram's sendVideo does NOT reliably probe dimensions
+ * from the uploaded buffer, so the inline player renders a wrong (often square)
+ * box even for a true 16:9 file. Passing explicit width/height/supports_streaming
+ * fixes the presentation. This is the fleet's media surface — load-bearing.
+ */
+export function parseMp4Dimensions(
+  buf: Buffer,
+): { width: number; height: number; duration?: number } | null {
+  const walk = (
+    start: number,
+    end: number,
+    cb: (type: string, payloadStart: number, boxEnd: number) => void,
+  ): void => {
+    let off = start;
+    while (off + 8 <= end) {
+      const size = buf.readUInt32BE(off);
+      const type = buf.toString("ascii", off + 4, off + 8);
+      let hdr = 8;
+      let boxSize = size;
+      if (size === 1) {
+        // 64-bit largesize
+        boxSize = Number(buf.readBigUInt64BE(off + 8));
+        hdr = 16;
+      } else if (size === 0) {
+        boxSize = end - off; // box extends to end
+      }
+      if (boxSize < hdr || off + boxSize > end) break;
+      cb(type, off + hdr, off + boxSize);
+      off += boxSize;
+    }
+  };
+
+  try {
+    let dims: { width: number; height: number } | null = null;
+    let durationSec: number | undefined;
+    walk(0, buf.length, (type, s, e) => {
+      if (type !== "moov") return;
+      walk(s, e, (t2, s2, e2) => {
+        if (t2 === "mvhd") {
+          const ver = buf[s2];
+          if (ver === 1) {
+            const ts = buf.readUInt32BE(s2 + 20);
+            const du = Number(buf.readBigUInt64BE(s2 + 24));
+            if (ts) durationSec = du / ts;
+          } else {
+            const ts = buf.readUInt32BE(s2 + 12);
+            const du = buf.readUInt32BE(s2 + 16);
+            if (ts) durationSec = du / ts;
+          }
+        } else if (t2 === "trak") {
+          walk(s2, e2, (t3, _s3, e3) => {
+            if (t3 !== "tkhd") return;
+            // width/height: last 8 bytes of the tkhd payload, 16.16 fixed-point.
+            const w = buf.readUInt32BE(e3 - 8) / 65536;
+            const h = buf.readUInt32BE(e3 - 4) / 65536;
+            if (w >= 1 && h >= 1) dims = { width: Math.round(w), height: Math.round(h) };
+          });
+        }
+      });
+    });
+    if (!dims) return null;
+    return {
+      width: (dims as { width: number; height: number }).width,
+      height: (dims as { width: number; height: number }).height,
+      duration: durationSec && durationSec > 0 ? Math.round(durationSec) : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Send a video to a Telegram chat.
- * 50MB limit.
+ * 50MB limit. Passes explicit width/height/duration/supports_streaming so the
+ * inline player renders at the true aspect (see parseMp4Dimensions). Falls back
+ * to a bare send (still delivers) if dimensions can't be parsed.
  */
 export async function sendTelegramVideo(
   botToken: string,
@@ -293,6 +341,13 @@ export async function sendTelegramVideo(
   formData.append("chat_id", chatId);
   formData.append("video", new Blob([new Uint8Array(fileBuffer)]), filename);
   if (caption) formData.append("caption", caption.slice(0, 1024));
+  const dims = parseMp4Dimensions(fileBuffer);
+  if (dims) {
+    formData.append("width", String(dims.width));
+    formData.append("height", String(dims.height));
+    if (dims.duration) formData.append("duration", String(dims.duration));
+  }
+  formData.append("supports_streaming", "true");
   return telegramMultipartPost(botToken, "sendVideo", formData);
 }
 
