@@ -11,7 +11,7 @@
  */
 import { createHash } from "node:crypto";
 import { nonceForRequest } from "../skills/frontier/scripts/frontier-spend-core.mjs";
-import { bookStatusVerdict } from "../skills/travala/scripts/travala-book.mjs";
+import { bookStatusVerdict, denyNarrationFor, isRevokedSettleConflict } from "../skills/travala/scripts/travala-book.mjs";
 
 let pass = 0;
 let fail = 0;
@@ -46,6 +46,25 @@ function run() {
   // 'not_found' → SAFE to re-pay (same nonce makes even a late first attempt a no-op).
   ok("orphaned-hold (status not_found) → 'not_found' → safe to re-pay", bookStatusVerdict('{"interpretation":"not_found"}') === "not_found");
   ok("empty/garbage status → 'in_progress' (conservative: no re-pay)", bookStatusVerdict("") === "in_progress" && bookStatusVerdict(null as unknown as string) === "in_progress");
+
+  console.log("\n── denyNarrationFor: every deny tells the TRUE state + TRUE remedy (GAP-1) ──");
+  const killN = denyNarrationFor("spend_kill_switch", 50);
+  ok("kill switch → 'paused by the platform operator', NOT a limit claim", killN.includes("paused by the platform operator") && !killN.includes("over your travel spending limit"));
+  const killUnv = denyNarrationFor("spend_kill_switch_unverifiable", 50);
+  ok("kill unverifiable → precautionary-pause copy, NOT a limit claim", killUnv.includes("pauses spending as a precaution") && !killUnv.includes("over your travel spending limit"));
+  const offN = denyNarrationFor("spend_not_enabled", 50);
+  ok("spend_not_enabled → 'turned off' + dashboard re-enable path", offN.includes("turned off") && offN.includes("dashboard"));
+  const consN = denyNarrationFor("request_id_consumed", 50, "revoked");
+  ok("request_id_consumed → 'already finalized' + surfaces consumed_status + no-recharge", consN.includes("already finalized") && consN.includes("revoked") && consN.includes("NOT charged you again"));
+  const limN = denyNarrationFor("travel_ceiling_exceeded", 50);
+  ok("limit-class default → keeps the original limit copy", limN.includes("over your travel spending limit (travel_ceiling_exceeded)"));
+  ok("every deny narration says nothing-was-charged or no-recharge", [killN, killUnv, offN, consN].every((n) => /nothing was charged|not charged you again/i.test(n)));
+
+  console.log("\n── isRevokedSettleConflict: the revoked-but-paid collision detector ──");
+  ok("409 + 'hold is now revoked' → true", isRevokedSettleConflict(409, { error: "hold is now revoked; cannot settle as success" }) === true);
+  ok("409 + other conflict (settled race) → false", isRevokedSettleConflict(409, { error: "hold is now success; cannot settle as failed" }) === false);
+  ok("200 ok → false", isRevokedSettleConflict(200, { ok: true }) === false);
+  ok("missing body → false (no crash)", isRevokedSettleConflict(409, undefined) === false);
 
   console.log(`\n${fail === 0 ? "ALL PASS" : "FAILURES"}: ${pass} passed, ${fail} failed\n`);
   process.exit(fail === 0 ? 0 : 1);

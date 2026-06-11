@@ -327,6 +327,31 @@ export async function markCancelFailed(supabase: SupabaseClient, rowId: string, 
     .eq("id", rowId);
 }
 
+/**
+ * The cancel-flow state-transition decision (GAP-2, 2026-06-11 full-lane audit):
+ * given the classified Travala result for a cancel call, which row state do we
+ * write? THE INVARIANT: the row must never contradict reality.
+ *   - already_cancelled (EITHER step) → "cancelled" — Travala says the booking IS
+ *     cancelled; recording cancel_failed (the old fall-through) made the row lie.
+ *   - step 1 ok → "cancel_requested" (OTP sent, booking still active).
+ *   - step 2 ok → "cancelled".
+ *   - bad_otp → "none" (stay cancel_requested; the user retries with a fresh code).
+ *   - step 1 any other error → "none" (nothing happened; row stays as-is).
+ *   - step 2 not_found / invalid_input / upstream_error → "cancel_failed".
+ * Pure — the route maps the verdict to markCancelRequested/markCancelled/
+ * markCancelFailed. Tested in scripts/_test-travala-cancel.ts.
+ */
+export function cancelMarkFor(
+  state: TravalaToolState,
+  step: 1 | 2,
+): "cancel_requested" | "cancelled" | "cancel_failed" | "none" {
+  if (state === "already_cancelled") return "cancelled";
+  if (step === 1) return state === "ok" ? "cancel_requested" : "none";
+  if (state === "ok") return "cancelled";
+  if (state === "bad_otp") return "none";
+  return "cancel_failed";
+}
+
 // ── reconciler helper: does a frontier_transactions.metadata blob belong to a
 // Travala booking spend? The reconcile-travala-bookings cron cross-references
 // settled travala spends against booking rows to surface paid-but-unrecorded

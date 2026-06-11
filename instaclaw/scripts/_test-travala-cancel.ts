@@ -18,6 +18,7 @@ import {
   markCancelled,
   recordConfirmedBooking,
   isTravalaSpend,
+  cancelMarkFor,
 } from "../lib/travala-bookings";
 import type { McpCallResult } from "../lib/travala-mcp";
 
@@ -133,6 +134,20 @@ const fresh = await recordConfirmedBooking(scriptedSb({ existing: null }), recPa
 ok("fresh insert → recorded:true with bookingId from pay-response regex", fresh.recorded === true && fresh.bookingId === "MN5V9DWQ", JSON.stringify(fresh));
 const dupBooking = await recordConfirmedBooking(scriptedSb({ existing: null, insertErr: 'duplicate key value violates unique constraint "instaclaw_travala_bookings_booking_id_uidx"' }), recParams);
 ok("booking_id collision → degrades to ref-less row (recorded, booking_id null)", dupBooking.recorded === true && dupBooking.bookingId === null, JSON.stringify(dupBooking));
+
+console.log("\n── I. cancelMarkFor — the row must never contradict reality (GAP-2) ──");
+// THE fix: already_cancelled at EITHER step marks the row cancelled, never cancel_failed.
+ok("step 1 already_cancelled → cancelled (not failed, not none)", cancelMarkFor("already_cancelled", 1) === "cancelled");
+ok("step 2 already_cancelled → cancelled (the old fall-through wrote cancel_failed)", cancelMarkFor("already_cancelled", 2) === "cancelled");
+// the rest of the matrix:
+ok("step 1 ok → cancel_requested (OTP sent)", cancelMarkFor("ok", 1) === "cancel_requested");
+ok("step 2 ok → cancelled", cancelMarkFor("ok", 2) === "cancelled");
+ok("step 2 bad_otp → none (stay cancel_requested for a fresh code)", cancelMarkFor("bad_otp", 2) === "none");
+ok("step 1 not_found → none (nothing happened)", cancelMarkFor("not_found", 1) === "none");
+ok("step 1 upstream_error → none", cancelMarkFor("upstream_error", 1) === "none");
+ok("step 2 not_found → cancel_failed", cancelMarkFor("not_found", 2) === "cancel_failed");
+ok("step 2 upstream_error → cancel_failed", cancelMarkFor("upstream_error", 2) === "cancel_failed");
+ok("step 2 invalid_input → cancel_failed", cancelMarkFor("invalid_input", 2) === "cancel_failed");
 
 console.log("\n── H. isTravalaSpend (reconciler cron cross-ref) ──");
 ok("tags include travala → true", isTravalaSpend({ tags: ["travel", "hotel", "travala"] }) === true);

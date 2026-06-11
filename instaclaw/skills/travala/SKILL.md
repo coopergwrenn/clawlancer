@@ -142,8 +142,10 @@ If a booking wasn't made through you (no record on this agent), you can't cancel
      it does, the resume returns a fresh `approval_url` — just relay the new one.
    - **`paid: true`** — done. Report the booking ref, dates, total paid, tx hash,
      and cancel policy.
-   - **`outcome: "deny"`** — over the user's travel spending limit; relay the reason
-     plainly. Do not retry or improvise (they'd raise the limit in their dashboard).
+   - **`outcome: "deny"`** — the script's narration already explains the TRUE cause:
+     over the travel limit, spending paused by the operator, autonomous spending
+     turned off, or a booking attempt that was already finalized/revoked. Relay that
+     narration as-is — it names the real remedy. Do not retry or improvise.
    - **`gated`** — booking isn't enabled for this agent / paused fleet-wide (see the
      STOP section). Relay plainly.
 

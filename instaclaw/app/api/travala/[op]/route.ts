@@ -38,6 +38,7 @@ import {
   recordConfirmedBooking,
   classifyToolResult,
   parseCancelOutcome,
+  cancelMarkFor,
   markCancelRequested,
   markCancelled,
   markCancelFailed,
@@ -249,11 +250,30 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
     if (hasOtp) mcpArgs.otp = String(a.otp);
     const r = await mcpToolsCall(tok.access_token, "travala_cancel_booking", mcpArgs);
     const cls = classifyToolResult(r);
+    const step: 1 | 2 = hasOtp ? 2 : 1;
 
-    if (!hasOtp) {
+    // GAP-2 (2026-06-11 full-lane audit): the row must never contradict reality.
+    // The mark is decided by the pure cancelMarkFor — critically, already_cancelled
+    // at EITHER step marks the row CANCELLED (the old fall-through wrote
+    // cancel_failed for a booking Travala says IS cancelled — a lying row).
+    const mark = cancelMarkFor(cls.state, step);
+    if (mark === "cancel_requested") await markCancelRequested(supabase, row.id);
+    else if (mark === "cancelled") {
+      const outcome = cls.state === "ok"
+        ? parseCancelOutcome(cls.text)
+        : { refundAmount: null, cancellationFee: null }; // already_cancelled: no fresh snapshot
+      await markCancelled(supabase, row.id, { ...outcome, raw: r.result });
+    } else if (mark === "cancel_failed") await markCancelFailed(supabase, row.id, cls.text);
+
+    if (cls.state === "already_cancelled") {
+      return NextResponse.json(
+        { ok: true, state: "already_cancelled", step, booking_id: bookingId, message: cls.text },
+        { status: 200 },
+      );
+    }
+    if (step === 1) {
       // STEP 1: request OTP. Success ⇒ Travala emailed a code to row.email.
       if (cls.state === "ok") {
-        await markCancelRequested(supabase, row.id);
         return NextResponse.json(
           { ok: true, state: "otp_sent", step: 1, booking_id: bookingId, email: row.email, message: cls.text },
           { status: 200 },
@@ -261,11 +281,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
       }
       return NextResponse.json({ ok: false, state: cls.state, step: 1, booking_id: bookingId, message: cls.text }, { status: 200 });
     }
-
     // STEP 2: confirm with the OTP the user read back.
     if (cls.state === "ok") {
       const outcome = parseCancelOutcome(cls.text);
-      await markCancelled(supabase, row.id, { ...outcome, raw: r.result });
       return NextResponse.json(
         {
           ok: true,
@@ -280,12 +298,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
         { status: 200 },
       );
     }
-    if (cls.state === "bad_otp") {
-      // leave status at cancel_requested so the user can retry with a fresh code.
-      return NextResponse.json({ ok: false, state: "bad_otp", step: 2, booking_id: bookingId, message: cls.text }, { status: 200 });
-    }
-    await markCancelFailed(supabase, row.id, cls.text);
-    return NextResponse.json({ ok: false, state: cls.state, step: 2, booking_id: bookingId, message: cls.text }, { status: 200 });
+    // bad_otp leaves the row at cancel_requested (mark === "none") for a fresh code.
+    return NextResponse.json(
+      { ok: false, state: cls.state, step: 2, booking_id: bookingId, message: cls.text },
+      { status: 200 },
+    );
   }
 
   // ── book-quote: the gated money path ──

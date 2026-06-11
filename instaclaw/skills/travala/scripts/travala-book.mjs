@@ -24,7 +24,9 @@
  *                reason:human_approved_session → proceed. The approval is single-use
  *                with a 15-min TTL; re-authorize re-mints a fresh url on expiry, so
  *                we never fail the booking — we re-surface. (A hard deny — over the
- *                §6 travel ceiling / banned / drain / privacy — has NO url and can't
+ *                §6 travel ceiling / banned / drain / privacy / operator kill switch
+ *                (spend_kill_switch, _unverifiable) / spend_not_enabled /
+ *                request_id_consumed — has NO url and can't
  *                be overridden; we report it.)
  *   4. PAY     — buildAuthorization → buildTransferTypedData → Bankr /wallet/sign
  *                → buildXPaymentHeader(resource = baseURL+path) → POST X-PAYMENT
@@ -131,6 +133,33 @@ function bookingRefFrom(text) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Honest deny narration by REASON CLASS (GAP-1, 2026-06-11 full-lane audit).
+// Every deny tells the user the TRUE state and the TRUE remedy. The old single
+// narration claimed "over your spending limit" for ALL denies — false for the
+// operator kill, the spend toggle, and a consumed/revoked request_id.
+// Exported for the decision-tests.
+export function denyNarrationFor(reason, amountUsd, consumedStatus) {
+  if (reason === "spend_kill_switch" || reason === "spend_kill_switch_unverifiable") {
+    return reason === "spend_kill_switch"
+      ? `I can't book right now — spending is paused by the platform operator (an emergency stop, not your limits). Nothing was charged. Try again later.`
+      : `I can't book right now — the platform couldn't verify its safety stop, so it pauses spending as a precaution (not your limits). Nothing was charged. Try again in a few minutes.`;
+  }
+  if (reason === "spend_not_enabled") {
+    return `I can't book — autonomous spending is turned off for me. Nothing was charged. Turn it on in your dashboard (Spending settings) and ask me again.`;
+  }
+  if (reason === "request_id_consumed") {
+    return `That booking attempt was already finalized${consumedStatus ? ` (${consumedStatus})` : ""} — most likely you revoked spending or it already settled. I have NOT charged you again. If you still want the room, ask me to search fresh and I'll start a new booking.`;
+  }
+  // limit-class (travel ceiling / banned / drain / privacy) — the original copy.
+  return `I can't book this — $${amountUsd} is over your travel spending limit (${reason}). You'd need to raise the limit in your dashboard.`;
+}
+
+// Did settle report the hold was REVOKED mid-flight? (the revoked-but-paid
+// collision — settle returns 409 "hold is now revoked"). Exported for tests.
+export function isRevokedSettleConflict(status, json) {
+  return status === 409 && /revoked/i.test(String(json?.error ?? ""));
+}
 
 // Map a book-status result body to a terminal verdict for the --retry guard.
 // Exported for the decision-tests (the four retry timings). "in_progress" is the
@@ -269,9 +298,12 @@ async function main() {
 
   const denyOut = () => out({ ok: true, paid: false, authorized: false, outcome: "deny", reason: d.reason,
     spent_today_usd: d.spent_today_usd, earned_daily_budget_usd: d.earned_daily_budget_usd,
-    narration: `I can't book this — $${amountUsd} is over your travel spending limit (${d.reason}). You'd need to raise the limit in your dashboard.` });
+    narration: denyNarrationFor(d.reason, amountUsd, d.consumed_status) });
 
-  // Hard deny (over the §6 travel ceiling / banned / drain / privacy) — no url, can't be overridden.
+  // Hard deny — no url, can't be overridden. Reasons: §6 travel ceiling / banned /
+  // drain / privacy (limit-class), operator kill switch (spend_kill_switch,
+  // _unverifiable), spend_not_enabled, request_id_consumed (revoked/settled id).
+  // denyNarrationFor names the TRUE cause + remedy per class (GAP-1, 2026-06-11).
   if (!d.authorized && d.outcome === "deny") return denyOut();
 
   // ask_first → needs the browser-session tap. Surface the url; bounded in-turn poll for a fast tap.
@@ -352,7 +384,11 @@ async function main() {
   // ── 5. SETTLE: flip the hold, record the outcome (H). ──
   const settleResult = paid ? "success" : "failed";
   const resultUsed = paid && !!resultBody && resultBody.trim().length > 0;
-  await settle(gatewayToken, {
+  // READ the settle verdict (GAP-1 companion, 2026-06-11 audit): a 409
+  // "hold is now revoked" means the user revoked spending while the payment was
+  // already in flight — the booking completed anyway (X-PAYMENT can't be recalled).
+  // The user must hear that truth, not a plain "Booked."
+  const settleRes = await settle(gatewayToken, {
     hold_id: holdId,
     request_id: requestId,
     result: settleResult,
@@ -362,6 +398,10 @@ async function main() {
     latency_ms: latencyMs ?? undefined,
     pay_error: payErr ?? undefined,
   });
+  const revokedCollision = isRevokedSettleConflict(settleRes.status, settleRes.json);
+  const revokedLine = revokedCollision
+    ? ` Heads up: your spending revoke arrived after this payment was already in flight, so the booking completed — I can cancel it for you if you'd like.`
+    : "";
 
   if (paid) {
     const refRegex = bookingRefFrom(resultBody);
@@ -385,11 +425,11 @@ async function main() {
       } catch (e) { recordErr = String(e?.message ?? e); }
     }
     if (recorded) {
-      return out({ ok: true, paid: true, recorded: true, hold_id: holdId, tx_hash: txHash, amount_usd: amountUsd, booking_ref: recordedRef, result: resultBody,
-        narration: `Booked. $${amountUsd} paid in USDC on Base${txHash ? ` (tx ${String(txHash).slice(0, 12)}…)` : ""}.${recordedRef ? ` Booking ref ${recordedRef}.` : ""} Saved to your trips — ask me to cancel it anytime (refunds come back as Travala credit, not to your wallet).` });
+      return out({ ok: true, paid: true, recorded: true, revoked_collision: revokedCollision || undefined, hold_id: holdId, tx_hash: txHash, amount_usd: amountUsd, booking_ref: recordedRef, result: resultBody,
+        narration: `Booked. $${amountUsd} paid in USDC on Base${txHash ? ` (tx ${String(txHash).slice(0, 12)}…)` : ""}.${recordedRef ? ` Booking ref ${recordedRef}.` : ""} Saved to your trips — ask me to cancel it anytime (refunds come back as Travala credit, not to your wallet).${revokedLine}` });
     }
-    return out({ ok: true, paid: true, recorded: false, record_error: recordErr, hold_id: holdId, tx_hash: txHash, amount_usd: amountUsd, booking_ref: refRegex, result: resultBody,
-      narration: `Booked and paid ($${amountUsd} USDC on Base${txHash ? `, tx ${String(txHash).slice(0, 12)}…` : ""})${refRegex ? `, ref ${refRegex}` : ""}. One caveat: I couldn't save it to my cancellation list just now, so I can't cancel it through me yet — please keep your Travala confirmation email. Ask me to "retry recording this booking" and I'll try again.` });
+    return out({ ok: true, paid: true, recorded: false, revoked_collision: revokedCollision || undefined, record_error: recordErr, hold_id: holdId, tx_hash: txHash, amount_usd: amountUsd, booking_ref: refRegex, result: resultBody,
+      narration: `Booked and paid ($${amountUsd} USDC on Base${txHash ? `, tx ${String(txHash).slice(0, 12)}…` : ""})${refRegex ? `, ref ${refRegex}` : ""}. One caveat: I couldn't save it to my cancellation list just now, so I can't cancel it through me yet — please keep your Travala confirmation email. Ask me to "retry recording this booking" and I'll try again.${revokedLine}` });
   }
   return out({ ok: false, paid: false, hold_id: holdId, reason: payErr, pay_error_body: payErrBody,
     narration: `The booking payment failed (${payErr}). Your hold is recorded; re-run with --retry --request-id ${requestId} to resume safely.` });

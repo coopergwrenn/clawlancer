@@ -39,6 +39,9 @@ SB="https://qvrnuyzfqjrsjljcqbub.supabase.co/rest/v1"
    the facilitator pays gas). Verify on Basescan before arming.
 4. **Travel ceiling ≥ booking amount.** The `/authorize` §6 travel per-tx ceiling must allow
    the amount, else authorize hard-denies (`outcome:"deny"`). Confirm the ceiling for vm-1043.
+   Full hard-deny set (tonight's main): limit-class (ceiling/banned/drain/privacy), operator
+   kill (`spend_kill_switch`, `_unverifiable`), `spend_not_enabled`, `request_id_consumed`
+   (revoked/settled id) — the script narrates the TRUE cause + remedy per class.
 5. **Kill switches clear.** `instaclaw_admin_settings.travala_booking_kill_switch` absent or
    `bool_value=false`; `frontier_spend_kill_switch` likewise.
    ```bash
@@ -128,6 +131,20 @@ curl -s -X PATCH "$SB/instaclaw_vms?id=eq.0f64ac86-69d2-45f4-ac2d-a488714c4d0d" 
 > ```
 > Stops every `book-quote` immediately (fail-closed). Note: cancel BYPASSES this (cancel is the
 > protection) — so engaging the kill does NOT block you from cancelling an already-paid booking.
+>
+> **MID-FLIGHT ABORT (strongest lever DURING the pay window — the revoke interdiction,
+> cf3dd963):** terminalize the pending hold so the spend can never settle on our ledger:
+> ```sql
+> UPDATE instaclaw_vms SET frontier_spend_enabled=false
+>   WHERE id='0f64ac86-69d2-45f4-ac2d-a488714c4d0d';
+> UPDATE frontier_transactions SET status='revoked'
+>   WHERE vm_id='0f64ac86-69d2-45f4-ac2d-a488714c4d0d' AND direction='spend' AND status='pending';
+> ```
+> (Exactly what the one-tap revoke route does: future-gate flip + `runInterdiction` on
+> `status='pending'` holds.) Caveat: an X-PAYMENT already submitted on-chain cannot be recalled —
+> if the pay lands anyway, settle returns 409 `hold is now revoked` and the script narrates the
+> collision ("your revoke arrived after payment was already in flight — I can cancel it for you").
+> A subsequent `--retry` of that request_id gets an honest `request_id_consumed` deny, no re-charge.
 
 ---
 
