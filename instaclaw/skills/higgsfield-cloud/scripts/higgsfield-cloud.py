@@ -327,6 +327,65 @@ def cmd_status(args):
     return 2
 
 
+def cmd_upload(args):
+    """Upload a LOCAL image (user photo) → public URL for --image-url.
+
+    SILENT plumbing: the agent never narrates this step to the user
+    ("uploading", "public URL", etc. are internal). Accepts a filesystem
+    path or a media:// URI (OpenClaw inbound media → ~/.openclaw/media/...).
+    Raw-bytes POST to the gate's ?action=upload; 4MB cap (Telegram photos
+    are far smaller); JPEG/PNG/WebP only (validated server-side by magic
+    bytes — the gate never trusts a claimed content-type).
+    """
+    token = _load_env_var("GATEWAY_TOKEN")
+    if not token:
+        print("ERROR: no GATEWAY_TOKEN configured", file=sys.stderr)
+        return 4
+
+    path = args.file
+    if path.startswith("media://"):
+        path = os.path.expanduser("~/.openclaw/media/" + path[len("media://"):])
+    path = os.path.expanduser(path)
+    if not os.path.isfile(path):
+        _out({"status": "error", "message": f"File not found: {args.file}"}, args.json)
+        return 4
+    with open(path, "rb") as f:
+        data = f.read()
+    if len(data) > 4 * 1024 * 1024:
+        _out({"status": "blocked",
+              "message": "That image is too large to animate (max 4MB). Ask the user for a smaller photo."}, args.json)
+        return 3
+
+    url = f"{_gate_base()}?action=upload"
+    req = urllib.request.Request(url, data=data, method="POST")
+    req.add_header("Content-Type", "application/octet-stream")
+    req.add_header("x-gateway-token", token)
+    bypass = _load_env_var("HIGGSFIELD_GATE_BYPASS")
+    if bypass:
+        req.add_header("x-vercel-protection-bypass", bypass)
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            body = json.loads(resp.read().decode() or "{}")
+            if body.get("url"):
+                _out({"status": "uploaded", "url": body["url"]}, args.json)
+                return 0
+            _out({"status": "error", "message": "Upload returned no URL."}, args.json)
+            return 4
+    except urllib.error.HTTPError as e:
+        try:
+            body = json.loads(e.read().decode() or "{}")
+        except Exception:
+            body = {}
+        if e.code in (400, 413):
+            _out({"status": "blocked", "message": body.get("message") or "That image can't be used."}, args.json)
+            return 3
+        _out({"status": "busy", "message": "Couldn't process the image right now. Please try again in a moment."}, args.json)
+        return 3
+    except Exception as e:
+        _out({"status": "error", "message": f"Upload failed: {e}"}, args.json)
+        return 4
+
+
 def main():
     p = argparse.ArgumentParser(description="Higgsfield Cloud — video & image (agent-poll)")
     sub = p.add_subparsers(dest="command", required=True)
@@ -350,8 +409,13 @@ def main():
     s.add_argument("--request-id", required=True)
     s.add_argument("--json", action="store_true")
 
+    u = sub.add_parser("upload", help="Upload a local/user image → public URL for --image-url")
+    u.add_argument("--file", required=True,
+                   help="local path or media:// URI of the image (e.g. media://inbound/<id>.jpg)")
+    u.add_argument("--json", action="store_true")
+
     args = p.parse_args()
-    sys.exit({"generate": cmd_generate, "status": cmd_status}[args.command](args))
+    sys.exit({"generate": cmd_generate, "status": cmd_status, "upload": cmd_upload}[args.command](args))
 
 
 if __name__ == "__main__":

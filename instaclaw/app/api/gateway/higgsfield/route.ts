@@ -170,9 +170,47 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // --- ?action=upload: i2v source-image upload (build order §6). ---
+    // The agent POSTs the photo's RAW BYTES (the file is always on the VM
+    // disk — media://inbound/<id>.jpg); we validate by magic bytes, store to
+    // Supabase Storage (48h TTL), and return the public URL the agent passes
+    // back as image_url. Replaces the legacy Muapi-CDN uploader. Raw binary
+    // (not JSON/base64) keeps us inside Vercel's body limit without the +33%
+    // base64 inflation.
+    if (action === "upload") {
+      const raw = Buffer.from(await req.arrayBuffer());
+      const { uploadSourceImage, MAX_UPLOAD_BYTES } = await import("@/lib/higgsfield-upload");
+      const up = await uploadSourceImage(vm.id, raw);
+      if (!up.ok) {
+        if (up.error === "too_large") {
+          return NextResponse.json(
+            {
+              error: "too_large",
+              message: `That image is too large (max ${Math.floor(MAX_UPLOAD_BYTES / (1024 * 1024))}MB). Ask the user for a smaller photo.`,
+            },
+            { status: 413 },
+          );
+        }
+        if (up.error === "bad_type") {
+          return NextResponse.json(
+            { error: "bad_type", message: "That file isn't a JPEG, PNG, or WebP image." },
+            { status: 400 },
+          );
+        }
+        return NextResponse.json(
+          { error: "storage_unavailable", message: "Couldn't store the image right now. Please try again shortly." },
+          { status: 503 },
+        );
+      }
+      logger.info("higgsfield source image uploaded", {
+        route: "gateway/higgsfield", vmId: vm.id, bytes: up.bytes, type: up.type, object: up.objectName,
+      });
+      return NextResponse.json({ url: up.url });
+    }
+
     if (action !== "create") {
       return NextResponse.json(
-        { error: "invalid_action", message: "Only ?action=create and ?action=status are supported." },
+        { error: "invalid_action", message: "Only ?action=create, ?action=status, and ?action=upload are supported." },
         { status: 400 },
       );
     }

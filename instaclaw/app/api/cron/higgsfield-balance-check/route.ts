@@ -90,6 +90,19 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // §6 piggyback: 48h-TTL cleanup of i2v source images (one name-asc list,
+    // delete-until-unexpired — see lib/higgsfield-upload.ts). Best-effort,
+    // never blocks the balance reading; same lock, video-ops concern.
+    let sourcesDeleted = 0;
+    try {
+      const { cleanupExpiredSources } = await import("@/lib/higgsfield-upload");
+      sourcesDeleted = (await cleanupExpiredSources()).deleted;
+    } catch (err) {
+      logger.warn("higgsfield-balance-check: source cleanup failed (non-blocking)", {
+        route: "cron/higgsfield-balance-check", error: String(err),
+      });
+    }
+
     const reading = await readCentralBalance();
 
     if (reading.world === "none") {
@@ -137,8 +150,9 @@ export async function GET(req: NextRequest) {
       balanceCredits: bal,
       renders,
       alerted,
+      sourcesDeleted,
     });
-    return NextResponse.json({ world: reading.world, balanceCredits: bal, renders, alerted });
+    return NextResponse.json({ world: reading.world, balanceCredits: bal, renders, alerted, sourcesDeleted });
   } catch (err) {
     logger.error("higgsfield-balance-check: cycle failed", {
       route: "cron/higgsfield-balance-check",

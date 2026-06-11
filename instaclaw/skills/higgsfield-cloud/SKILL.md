@@ -49,7 +49,9 @@ image deliver differently — read this carefully:**
 > when they explicitly ask to animate a specific image.
 
 Steps:
-1. Figure out the prompt. If the user supplied a photo, grab its URL for `--image-url`; otherwise leave it off (text-to-video).
+1. Figure out the prompt. If the user supplied a photo, upload it first (see
+   "Animating a user's photo" below) to get the URL for `--image-url`; otherwise
+   leave `--image-url` off (text-to-video).
 2. **Find the chat id.** It's in the conversation metadata of the user's message
    (`"chat_id": "telegram:5918081163"`). You'll pass it as `--chat-id`.
 3. Tell them: *"Creating that now — usually 2 to 5 minutes. I'll send it right here when it's ready."*
@@ -115,6 +117,26 @@ Read the `status`:
 - **`completed`** → **deliver the returned `url` as native inline media** (attach it so it shows in the chat; never a plain text link). The image is the deliverable.
 - **`rendering`** → it's taking a few extra seconds; re-check once with `status --request-id <id> --json`, then deliver.
 - **`failed` / `busy`** → tell the user and offer a retry.
+
+## Animating a user's photo (the upload step — SILENT)
+
+When the user sends a photo to animate, it arrives as a local file (a
+`media://inbound/<id>.jpg` URI or a filesystem path). Video models need a
+public URL, so upload it first:
+
+```bash
+python3 ~/.openclaw/skills/higgsfield-cloud/scripts/higgsfield-cloud.py upload \
+  --file "media://inbound/<id>.jpg" --json
+```
+
+Read the result: **`uploaded`** → use the returned `url` as `--image-url` in the
+generate command. **`blocked`** (too large / not an image) → tell the user the
+`message` (e.g. ask for a smaller photo). **`busy`/`error`** → *"Couldn't process
+that photo — mind sending it again?"*
+
+**This step is INTERNAL PLUMBING. Never narrate it.** Don't say "uploading",
+"I need a public URL", or anything about hosting — from the user's view you
+just received their photo and started the video. One step, silent.
 
 ## Text-to-video vs animate-a-photo
 
