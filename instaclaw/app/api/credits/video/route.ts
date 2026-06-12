@@ -43,21 +43,39 @@ export async function GET() {
     const supabase = getSupabase();
     const vm = await getUserVm<{
       video_credit_balance: number | null;
+      video_plan_status: string | null;
+      video_plan_allowance_remaining: number | null;
+      video_plan_period_end: string | null;
       updated_at: string | null;
-    }>(supabase, session.user.id, { columns: "video_credit_balance, updated_at" });
+    }>(supabase, session.user.id, {
+      columns:
+        "video_credit_balance, video_plan_status, video_plan_allowance_remaining, video_plan_period_end, updated_at",
+    });
 
     if (!vm) {
       return NextResponse.json(
-        { balance: 0, clips: 0, updated_at: new Date().toISOString() },
+        { balance: 0, clips: 0, plan: null, updated_at: new Date().toISOString() },
         { headers: NO_CACHE_HEADERS },
       );
     }
 
     const balance = Number(vm.video_credit_balance ?? 0);
+    // Creator-plan state for the billing hub card ("N clips left this month ·
+    // resets on the Nth"). plan: null when the user has never subscribed or
+    // the plan is canceled — the hub then shows the subscribe card instead.
+    const planActive = vm.video_plan_status === "active" || vm.video_plan_status === "past_due";
+    const allowance = Number(vm.video_plan_allowance_remaining ?? 0);
     return NextResponse.json(
       {
         balance,
         clips: Math.floor(balance / 13),
+        plan: planActive
+          ? {
+              status: vm.video_plan_status,
+              clips_remaining: Math.floor(Math.max(allowance, 0) / 13),
+              resets_at: vm.video_plan_period_end,
+            }
+          : null,
         updated_at: vm.updated_at ?? new Date().toISOString(),
       },
       { headers: NO_CACHE_HEADERS },

@@ -137,6 +137,30 @@ async function main() {
   console.log(`  seed COGS: $${seedCogs.toFixed(2)}   NET: ${net >= 0 ? "+" : ""}$${net.toFixed(2)} ${net >= 0 ? "✅ funnel paying back" : "❌ funnel underwater"}`);
   console.log(`  ⚠ taste-only converters (net-loss profile): ${tasteOnlyVms}/${converted.length || 1}`);
   console.log(`  breakeven reference: 15.5% conversion to creator / 5.8% to studio`);
+
+  // 5. CREATOR PLAN (the 42-cap confirm-or-nudge data; tracker note 2026-06-12:
+  //    "the 42 cap ships as the launch number; post-flip funnel percentiles
+  //    confirm or nudge it before the sub population is large").
+  const { data: planVms, error: pe } = await sb
+    .from("instaclaw_vms")
+    .select("id, video_plan_status, video_plan_allowance_remaining")
+    .not("video_plan_status", "is", null);
+  if (pe) {
+    console.log("\n— CREATOR PLAN — (columns not applied yet; section activates with the migration)");
+  } else {
+    const active = (planVms ?? []).filter((v) => v.video_plan_status === "active");
+    const pastDue = (planVms ?? []).filter((v) => v.video_plan_status === "past_due");
+    const utilizations = active.map((v) => (546 - Number(v.video_plan_allowance_remaining ?? 0)) / 546);
+    const pct = (q: number) => {
+      if (!utilizations.length) return "n/a";
+      const s = [...utilizations].sort((a, b) => a - b);
+      return `${Math.round(s[Math.min(s.length - 1, Math.floor(q * s.length))] * 100)}%`;
+    };
+    console.log("\n— CREATOR PLAN —");
+    console.log(`  subscribers: active=${active.length} past_due=${pastDue.length} canceled=${(planVms ?? []).length - active.length - pastDue.length}`);
+    console.log(`  allowance utilization (this period): p50=${pct(0.5)} p90=${pct(0.9)}`);
+    console.log(`  the 42-cap check: sustained p90 ≥ 100% = cap pressure (consider nudging up); p90 ≪ 50% = cap headroom is marketing surplus`);
+  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

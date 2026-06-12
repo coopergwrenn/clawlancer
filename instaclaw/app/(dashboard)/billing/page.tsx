@@ -11,6 +11,13 @@ import {
   TOOLROUTER_PACKS,
   type CatalogPack,
 } from "@/lib/billing-catalog";
+import { useToast, ToastViewport } from "@/components/ui/toast";
+
+interface VideoPlanState {
+  status: string;
+  clips_remaining: number;
+  resets_at: string | null;
+}
 
 const tiers = [
   {
@@ -93,8 +100,10 @@ export default function BillingPage() {
   const [msgBalance, setMsgBalance] = useState<number | null>(null);
   const [mediaBal, setMediaBal] = useState<number | null>(null);
   const [videoClips, setVideoClips] = useState<number | null>(null);
+  const [videoPlan, setVideoPlan] = useState<VideoPlanState | null>(null);
   const [buying, setBuying] = useState<string | null>(null);
   const [buyError, setBuyError] = useState("");
+  const { toast, showToast, dismissToast } = useToast();
 
   useEffect(() => {
     fetch("/api/billing/status")
@@ -113,8 +122,19 @@ export default function BillingPage() {
       .catch(() => {});
     fetch("/api/credits/video")
       .then((r) => r.json())
-      .then((d) => setVideoClips(typeof d.clips === "number" ? d.clips : 0))
+      .then((d) => {
+        setVideoClips(typeof d.clips === "number" ? d.clips : 0);
+        setVideoPlan(d.plan ?? null);
+      })
       .catch(() => {});
+    // Subscribe confirmation (checkout success_url lands here) — overlay
+    // toast, never inline (the layout-shift ban).
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("plan") === "video_subscribed") {
+      window.history.replaceState({}, "", "/billing");
+      showToast({ message: "Video creator plan active · 42 premium videos every month" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleBuy(packId: string) {
@@ -394,6 +414,78 @@ export default function BillingPage() {
           "For AI video, image, and audio generation. Never expire.",
           MEDIA_PACKS,
         )}
+        {/* ── THE PLAN — the video section's recurring headliner ── */}
+        <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
+          <div className="flex items-center gap-2.5 mb-1">
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: "linear-gradient(135deg, rgba(199,90,52,0.1), rgba(220,103,67,0.1))" }}
+            >
+              <Clapperboard className="w-4 h-4" style={{ color: "var(--accent)" }} />
+            </div>
+            <h2 className="text-lg font-normal" style={{ fontFamily: "var(--font-serif)" }}>
+              Video Creator Plan
+            </h2>
+          </div>
+          {videoPlan ? (
+            <div className="ml-[42px]">
+              <div className="flex items-center gap-2 mb-1">
+                <span
+                  className="text-xs font-semibold px-2.5 py-0.5 rounded-full"
+                  style={
+                    videoPlan.status === "past_due"
+                      ? { background: "rgba(220,103,67,0.12)", color: "var(--accent)" }
+                      : { background: "rgba(34,197,94,0.1)", color: "#16a34a" }
+                  }
+                >
+                  {videoPlan.status === "past_due" ? "Payment issue" : "Active"}
+                </span>
+              </div>
+              <p className="text-sm" style={{ color: "var(--foreground)" }}>
+                <span className="text-2xl font-semibold tracking-tight">{videoPlan.clips_remaining}</span>
+                <span className="text-sm ml-1.5" style={{ color: "var(--muted)" }}>
+                  premium videos left this month
+                  {videoPlan.resets_at
+                    ? ` · resets ${new Date(videoPlan.resets_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+                    : ""}
+                </span>
+              </p>
+              {videoPlan.status === "past_due" && (
+                <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>
+                  There is a payment issue with your plan, so the monthly videos are
+                  paused. Update your card in the Stripe portal below. Video packs
+                  keep working in the meantime.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="ml-[42px]">
+              <p className="text-sm mb-3" style={{ color: "var(--muted)" }}>
+                42 premium videos every month · $1.07 a video, our best rate.
+                Cancel anytime, keep the month you paid for.
+              </p>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => handleBuy("video_plan_monthly")}
+                  disabled={buying !== null}
+                  className="px-5 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer disabled:opacity-50"
+                  style={{
+                    background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+                    boxShadow:
+                      "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(255,255,255,0.3) 0px -1px 1px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px",
+                    color: "#ffffff",
+                  }}
+                >
+                  {buying === "video_plan_monthly" ? "Opening checkout..." : "Subscribe · $44.99/mo"}
+                </button>
+                <span className="text-xs" style={{ color: "var(--muted)" }}>
+                  Monthly videos always get used before your purchased packs.
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
         {catalogSection(
           <Clapperboard className="w-4 h-4" style={{ color: "var(--accent)" }} />,
           "Cinematic Video Packs",
@@ -412,6 +504,9 @@ export default function BillingPage() {
             {buyError}
           </p>
         )}
+
+        {/* Subscribe/purchase confirmations: overlay toast, never inline. */}
+        <ToastViewport toast={toast} onDismiss={dismissToast} />
 
         {/* ── Manage subscription (the utility, at the bottom where it belongs) ── */}
         <div data-tour="page-billing-card" className="glass rounded-xl p-6 space-y-4">

@@ -25,6 +25,14 @@ const CREDIT_PACKS: Record<string, { credits: number; label: string; envKey: str
   "video_studio":  { credits: 416, label: "32 premium videos — $39.99", envKey: "STRIPE_PRICE_VIDEO_STUDIO",  target: "video" },
 };
 
+/** Recurring plans sold through this same buy endpoint (mode:"subscription" —
+ *  packs are mode:"payment"). The video creator plan: $44.99/mo → 546 vc/mo
+ *  granted on invoice.paid (lib/video-plan.ts; the discrimination gate keeps
+ *  these subs out of every platform handler). One video plan per user. */
+const VIDEO_PLANS: Record<string, { envKey: string; label: string }> = {
+  video_plan_monthly: { envKey: "STRIPE_PRICE_VIDEO_PLAN_MONTHLY", label: "Video Creator Plan — $44.99/mo" },
+};
+
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();
@@ -34,17 +42,18 @@ export async function POST(req: NextRequest) {
 
     const { pack } = (await req.json()) as { pack: string };
 
+    const planDef = VIDEO_PLANS[pack];
     const packDef = CREDIT_PACKS[pack];
-    if (!packDef) {
+    if (!packDef && !planDef) {
       return NextResponse.json(
-        { error: `Invalid credit pack. Valid packs: ${Object.keys(CREDIT_PACKS).join(", ")}.` },
+        { error: `Invalid credit pack. Valid packs: ${[...Object.keys(CREDIT_PACKS), ...Object.keys(VIDEO_PLANS)].join(", ")}.` },
         { status: 400 }
       );
     }
 
-    const priceId = process.env[packDef.envKey];
+    const priceId = process.env[(planDef ?? packDef)!.envKey];
     if (!priceId) {
-      logger.error("Missing Stripe price ID for credit pack", { envKey: packDef.envKey, route: "billing/credit-pack" });
+      logger.error("Missing Stripe price ID for credit pack", { envKey: (planDef ?? packDef)!.envKey, route: "billing/credit-pack" });
       return NextResponse.json(
         { error: "Credit packs not yet configured" },
         { status: 500 }
@@ -95,6 +104,44 @@ export async function POST(req: NextRequest) {
 
     const origin = req.headers.get("origin") ?? process.env.NEXTAUTH_URL!;
 
+    // ── Video creator plan: recurring checkout (mode:"subscription"). ──
+    // subscription_data.metadata carries the discrimination marker
+    // (lib/video-plan.ts isVideoPlanSubscription's belt half — the price-id
+    // match is the suspenders) so EVERY downstream webhook can tell this sub
+    // from the platform sub. Identity/status sync rides subscription.created;
+    // the allowance grant rides invoice.paid exclusively.
+    if (planDef) {
+      // One video plan per user: an active/past_due plan on their current VM
+      // means a second subscription would double-bill.
+      const { data: planVm } = await supabase
+        .from("instaclaw_vms")
+        .select("video_plan_status")
+        .eq("id", vm.id)
+        .single();
+      if (planVm?.video_plan_status === "active" || planVm?.video_plan_status === "past_due") {
+        return NextResponse.json(
+          { error: "You already have the video creator plan. Manage it from the billing page." },
+          { status: 409 }
+        );
+      }
+      const planSession = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: "subscription",
+        line_items: [{ price: priceId, quantity: 1 }],
+        success_url: `${origin}/billing?plan=video_subscribed`,
+        cancel_url: `${origin}/billing`,
+        metadata: {
+          type: "video_plan",
+          instaclaw_user_id: user.id,
+          vm_id: vm.id,
+        },
+        subscription_data: {
+          metadata: { plan_type: "video_creator_plan" },
+        },
+      });
+      return NextResponse.json({ url: planSession.url });
+    }
+
     const checkoutSession = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "payment",
@@ -108,12 +155,12 @@ export async function POST(req: NextRequest) {
         type: "credit_pack",
         instaclaw_user_id: user.id,
         vm_id: vm.id,
-        credits: String(packDef.credits),
+        credits: String(packDef!.credits),
         // target distinguishes which balance the webhook credits.
         // Defaults to "messages" for backward-compat with the 3 legacy
         // packs that pre-date the field. New ToolRouter pack sets this
         // explicitly so the webhook can route to instaclaw_add_toolrouter_searches.
-        ...(packDef.target ? { target: packDef.target } : {}),
+        ...(packDef!.target ? { target: packDef!.target } : {}),
       },
     });
 

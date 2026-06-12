@@ -5,6 +5,7 @@ import { getSupabase } from "@/lib/supabase";
 import { resetAgentMemory, restartGateway, checkDuplicateIP, wipeVMForNextUser } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 import { bankrWalletLifecycle } from "@/lib/bankr-wallet-lifecycle";
+import { VIDEO_BILLING_WIPE_FIELDS } from "@/lib/vm-billing-wipe";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest) {
             telegram_bot_token: null,
             telegram_bot_username: null,
             telegram_chat_id: null,
+            ...VIDEO_BILLING_WIPE_FIELDS,  // Finding 2: video billing leaves with the user
           })
           .eq("id", vmId);
 

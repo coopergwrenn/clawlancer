@@ -23,6 +23,7 @@ import {
   type InvoiceLike,
 } from "@/lib/video-plan";
 import { randomUUID } from "node:crypto";
+import { VIDEO_BILLING_WIPE_FIELDS } from "@/lib/vm-billing-wipe";
 
 // ── Video-plan discrimination gate plumbing (Finding 1, 2026-06-12). ──
 // The price id is read per-call (no module-load env coupling); the sub
@@ -1367,6 +1368,7 @@ async function processEvent(event: any) {
               telegram_bot_token: null,
               telegram_bot_username: null,
               telegram_chat_id: null,
+              ...VIDEO_BILLING_WIPE_FIELDS,  // Finding 2: video billing leaves with the user
               // (frontier_spend_enabled:false moved OUT of this F1-gated block to
               //  its own !exempt-gated update above — Finding A. Money permission
               //  revokes on uncertainty; irreplaceable VM keeps on uncertainty.)

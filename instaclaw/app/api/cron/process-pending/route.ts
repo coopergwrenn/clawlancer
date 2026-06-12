@@ -6,6 +6,7 @@ import { wipeVMForNextUser, type VMRecord } from "@/lib/ssh";
 import { isUserBillableForVmAssignment, getBillingStatusVerified, fetchBillingExempt } from "@/lib/billing-status";
 import { getStripe } from "@/lib/stripe";
 import { logger } from "@/lib/logger";
+import { VIDEO_BILLING_WIPE_FIELDS } from "@/lib/vm-billing-wipe";
 
 // Prevent Vercel CDN from caching per-user responses
 export const dynamic = "force-dynamic";
@@ -606,6 +607,7 @@ export async function GET(req: NextRequest) {
         // Rule 34: clear per-user channel state so the next assignee doesn't
         // inherit the prior user's Telegram identity from the DB.
         telegram_bot_token: null, telegram_bot_username: null, telegram_chat_id: null,
+        ...VIDEO_BILLING_WIPE_FIELDS,  // Finding 2: video billing leaves with the user
         // Option B (defense-in-depth): null IP at failed-flip — see
         // cron/health-check/route.ts:336 for full rationale. Prevents the
         // resurrection probe from re-selecting this row after Linode reuses
@@ -1110,6 +1112,7 @@ export async function GET(req: NextRequest) {
             telegram_bot_token: null,
             telegram_bot_username: null,
             telegram_chat_id: null,
+            ...VIDEO_BILLING_WIPE_FIELDS,  // Finding 2: video billing leaves with the user
           })
           .eq("id", vm.id);
 
@@ -1171,6 +1174,7 @@ export async function GET(req: NextRequest) {
           telegram_bot_username: null,
           telegram_chat_id: null,
           partner: null,
+          ...VIDEO_BILLING_WIPE_FIELDS,  // Finding 2: video billing leaves with the user
         })
         .eq("id", vm.id);
 
