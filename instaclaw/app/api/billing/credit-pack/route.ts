@@ -40,7 +40,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { pack } = (await req.json()) as { pack: string };
+    const { pack, return_to } = (await req.json()) as { pack: string; return_to?: string };
+
+    // The buyer returns to the page that sold them (routing rule: /videos is
+    // the video seller, /billing the money hub, /dashboard legacy). Allow-list
+    // only — never an open redirect.
+    const RETURN_PATHS = new Set(["/dashboard", "/billing", "/videos"]);
+    const returnPath = return_to && RETURN_PATHS.has(return_to) ? return_to : null;
 
     const planDef = VIDEO_PLANS[pack];
     const packDef = CREDIT_PACKS[pack];
@@ -128,8 +134,8 @@ export async function POST(req: NextRequest) {
         customer: customerId,
         mode: "subscription",
         line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${origin}/billing?plan=video_subscribed`,
-        cancel_url: `${origin}/billing`,
+        success_url: `${origin}${returnPath ?? "/billing"}?plan=video_subscribed`,
+        cancel_url: `${origin}${returnPath ?? "/billing"}`,
         metadata: {
           type: "video_plan",
           instaclaw_user_id: user.id,
@@ -149,8 +155,8 @@ export async function POST(req: NextRequest) {
       // pack id rides the success URL so the landing page's confirmation
       // toast can say WHAT was bought + show the fresh balance (user test #1
       // round two: "credits added" is generic; the system knows better).
-      success_url: `${origin}/dashboard?credits=purchased&pack=${encodeURIComponent(pack)}`,
-      cancel_url: `${origin}/dashboard`,
+      success_url: `${origin}${returnPath ?? "/dashboard"}?credits=purchased&pack=${encodeURIComponent(pack)}`,
+      cancel_url: `${origin}${returnPath ?? "/dashboard"}`,
       metadata: {
         type: "credit_pack",
         instaclaw_user_id: user.id,
