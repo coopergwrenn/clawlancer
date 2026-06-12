@@ -36,6 +36,7 @@ import {
   type FreezeCandidate,
 } from "@/lib/vm-freeze-thaw";
 import { randomUUID } from "node:crypto";
+import { fetchAllOrThrow, IncompleteFetchError } from "@/lib/complete-set";
 
 export const dynamic = "force-dynamic";
 // 800s — the published Vercel Pro maxDuration cap (900s is Enterprise-only).
@@ -111,6 +112,62 @@ async function fetchBillingExemptUserIds(
 
 function isProtectedUser(userId: string, exemptUserIds: Set<string>): boolean {
   return exemptUserIds.has(userId);
+}
+
+/**
+ * Row shape the Pass -1 orphan reaper reads. Explicit (not supabase-inferred)
+ * because the rows now come through fetchAllOrThrow<OrphanDbRow>. Must cover
+ * every `dbRow.<field>` access in the reaper loop.
+ */
+type OrphanDbRow = {
+  id: string;
+  name: string | null;
+  ip_address: string | null;
+  provider_server_id: number | string | null;
+  status: string | null;
+  health_status: string | null;
+  assigned_to: string | null;
+  credit_balance: number | null;
+  lifecycle_locked_at: string | null;
+  last_user_activity_at: string | null;
+};
+
+/**
+ * P0 admin alert when the orphan reaper refuses to run because it could not
+ * prove its DB-row set was complete (Rule 85 / INC-2026-06-12). Deduped to one
+ * email per 6h so an ongoing truncation doesn't spam, but loud enough that an
+ * operator knows the cost-cleanup is paused AND why. Best-effort; never throws.
+ */
+async function alertOrphanReaperAbort(
+  supabase: ReturnType<typeof getSupabase>,
+  err: IncompleteFetchError,
+  runId: string,
+): Promise<void> {
+  const alertKey = `orphan_reaper_abort:${err.table}`;
+  try {
+    const sixHrAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+    const { data: existing } = await supabase
+      .from("instaclaw_admin_alert_log")
+      .select("id")
+      .eq("alert_key", alertKey)
+      .gte("sent_at", sixHrAgo)
+      .limit(1);
+    if (existing && existing.length > 0) return; // already alerted this window
+    await supabase
+      .from("instaclaw_admin_alert_log")
+      .insert({ alert_key: alertKey, vm_count: 0, details: err.message });
+  } catch {
+    // dedup bookkeeping failed — fall through and still send (better a dup
+    // alert than a silent paused reaper).
+  }
+  await sendAdminAlertEmail(
+    "[P0] Orphan reaper ABORTED — incomplete DB set (deleted nothing)",
+    `vm-lifecycle Pass -1 refused to run: the instaclaw_vms set could not be proven complete ` +
+      `(fetched ${err.fetched}, server count(*) = ${err.expected}). NO Linodes were deleted this run.\n\n` +
+      `This is the Rule 85 / INC-2026-06-12 fail-closed guard firing. Investigate why the fetch is ` +
+      `incomplete — PostgREST 1000-row cap exceeded, pagination bug, or count drift under concurrent ` +
+      `writes. Cost-cleanup stays paused (safe) until resolved; it retries every run.\n\nrunId=${runId}`,
+  ).catch(() => {});
 }
 
 export async function GET(req: NextRequest) {
@@ -247,25 +304,52 @@ export async function GET(req: NextRequest) {
   if (settings.orphanReconciliationEnabled) {
     try {
       const linodes = await listAllLinodes();
-      const running = linodes.filter((l) => l.status === "running");
+      // `let` not `const`: on an incomplete DB fetch we set this to [] so the
+      // candidate loop below iterates nothing (fail closed). See Rule 85.
+      let running = linodes.filter((l) => l.status === "running");
 
-      // Pull every Linode-provider DB row regardless of status — we need
-      // BOTH alive (assigned/ready/provisioning/configuring) AND dead
-      // (terminated/failed/destroyed) so we can categorize correctly.
-      const { data: allVms } = await supabase
-        .from("instaclaw_vms")
-        .select(
-          // last_user_activity_at: added 2026-05-22 for the Rule 50 user-
-          // activity check that replaces the broken sshHasRecentActivity
-          // (which produced false-positives on dead-DB orphans due to
-          // platform crons touching workspace files).
-          "id, name, ip_address, provider_server_id, status, health_status, assigned_to, credit_balance, lifecycle_locked_at, last_user_activity_at"
-        )
-        .eq("provider", "linode");
-
-      const dbByPsid = new Map<string, NonNullable<typeof allVms>[number]>();
-      for (const vm of allVms ?? []) {
-        if (vm.provider_server_id) dbByPsid.set(String(vm.provider_server_id), vm);
+      // ── Build the COMPLETE DB-row map (Rule 85 / INC-2026-06-12) ──
+      // The candidate loop deletes a running Linode whose id is ABSENT from
+      // this map ("not in DB → orphan"). A bare PostgREST select silently caps
+      // at 1000 rows; on 2026-06-12 the table had 1004 linode rows, so 4
+      // PRESENT rows read as "not in DB" and the reaper deleted 13 customer
+      // VMs (10 paying, 0 recoverable) — 100% false positives.
+      //
+      // fetchAllOrThrow paginates AND asserts fetched.length === count(*),
+      // throwing IncompleteFetchError on any mismatch. We FAIL CLOSED: if the
+      // set can't be proven complete we delete NOTHING this run (running = []),
+      // alert, and retry next cycle. We need BOTH alive
+      // (assigned/ready/provisioning) AND dead (terminated/failed/destroyed)
+      // rows, so the only filter is provider=linode.
+      const dbByPsid = new Map<string, OrphanDbRow>();
+      try {
+        const allVms = await fetchAllOrThrow<OrphanDbRow>(supabase, {
+          table: "instaclaw_vms",
+          columns:
+            "id, name, ip_address, provider_server_id, status, health_status, assigned_to, credit_balance, lifecycle_locked_at, last_user_activity_at",
+          applyFilters: (q) => q.eq("provider", "linode"),
+          context: "vm-lifecycle Pass -1 orphan reconciliation",
+        });
+        for (const vm of allVms) {
+          if (vm.provider_server_id) dbByPsid.set(String(vm.provider_server_id), vm);
+        }
+      } catch (fetchErr) {
+        if (fetchErr instanceof IncompleteFetchError) {
+          report.errors.push(`Pass -1 ABORTED (incomplete DB set): ${fetchErr.message}`);
+          logger.error(
+            "vm-lifecycle: Pass -1 ABORT — instaclaw_vms set provably incomplete; refusing to delete on row-absence (Rule 85 / INC-2026-06-12)",
+            {
+              route: "cron/vm-lifecycle",
+              runId,
+              fetched: fetchErr.fetched,
+              expected: fetchErr.expected,
+            },
+          );
+          await alertOrphanReaperAbort(supabase, fetchErr, runId);
+          running = []; // fail closed — iterate nothing, delete nothing
+        } else {
+          throw fetchErr;
+        }
       }
 
       const deadStatuses = new Set(["terminated", "failed", "destroyed"]);

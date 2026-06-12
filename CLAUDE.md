@@ -4454,6 +4454,56 @@ Any batched merge/push script must contain a literal `EXIT=$?` (or equivalent) o
 
 - **Rule 83** (shared-file clobber ban): the paired half — the 2026-06-11 telegram.ts clobber reached main because this gate read a printed conclusion instead of a real exit code.
 - **Rule 10** (verify every config set; no `|| true`): same discipline — read ground truth (re-read the value / the exit integer), never "we tried" or "it printed OK."
+
+### Rule 85 — Never make a destructive decision from a row's ABSENCE in a set you haven't proven complete — paginate or assert count, and fail closed on mismatch
+
+Any code that **deletes, suspends, hibernates, freezes, or otherwise destroys** a resource *because a matching row is MISSING from a fetched set* MUST first prove the set is complete: paginate to exhaustion AND assert `fetched.length === count(*)`. On any mismatch — cap hit, page error, count drift — **fail closed**: do nothing destructive that run, alert, and retry next cycle. A bare `.select()` is a silent landmine here: **PostgREST caps every response at 1000 rows by default**, so the moment a table crosses 1000, present rows read as absent and absence-based destruction fires on real customers.
+
+#### The incident (INC-2026-06-12 — 13 customer VMs deleted, 10 paying, 0 recoverable)
+
+The `vm-lifecycle` orphan reaper (Pass -1) decides "this running Linode has no DB row → it's an orphan → delete it" by checking a Map built from:
+
+```ts
+const { data: allVms } = await supabase.from("instaclaw_vms")
+  .select("...").eq("provider", "linode");   // ← no .limit(), no pagination
+const dbByPsid = new Map();
+for (const vm of allVms ?? []) dbByPsid.set(String(vm.provider_server_id), vm);
+```
+
+`instaclaw_vms WHERE provider=linode` had **1004** rows; PostgREST returned exactly **1000**. The 4 rows outside the page were absent from `dbByPsid`, so their running Linodes read as `isNotInDb` → deleted. Worse, **every safety check** (`userHasLiveSubscription`, `credit_balance > 0`, recent-activity, lifecycle-lock) was gated on `if (dbRow?.assigned_to)` / `if (dbRow…)`, so a missing `dbRow` **skipped all of them**. The set is **unordered** (no `.order()`), so the excluded 4 rotated every hourly run — a rolling roulette. Over 2026-06-09 17:00 → 2026-06-12 01:01 UTC it deleted **13 customer VMs** (confirmed via Linode events: `linode_delete finished` by our own API token, 22s after the agent's last live proxy call) — **10 paying** (3 active Stripe subs, 4 on 1,900–4,972 WLD credits, 2 bankr-token launchers), **0 with snapshots → all reprovision-only**. Reconciling the other direction proved the reaper had **zero legitimate orphans** to delete (all 6 "orphans" were infra/bake/canary): **100% of its customer deletions were false positives.** A user DM'd us before any monitoring noticed.
+
+#### The fix — a reusable invariant, not a limit bump
+
+`lib/complete-set.ts` exports `fetchAllOrThrow(supabase, {table, columns, applyFilters, context})`:
+1. Reads exact `count(*)` (HEAD, no rows).
+2. Pages with `.range(from, to)` until `count` rows are collected.
+3. Asserts `rows.length === count`; throws **`IncompleteFetchError`** on any mismatch.
+
+It returns normally ONLY when every matching row is present. The reaper now builds `dbByPsid` via `fetchAllOrThrow`; on `IncompleteFetchError` it sets `running = []` (iterate nothing → delete nothing), pushes to `report.errors`, and fires a 6h-deduped P0 admin alert. Cost-cleanup pauses (safe) instead of deleting on a set it can't trust.
+
+#### Mandatory pattern
+
+- **Absence drives destruction ⟹ prove completeness first.** Use `fetchAllOrThrow` (or an equivalent paginate-and-assert-count) for the set you check absence against. Never a bare `.select()`.
+- **Fail closed on incompleteness.** Catch `IncompleteFetchError`, skip the destructive work that run, alert, retry next cycle. Never swallow it and proceed.
+- **Don't gate safety checks on the presence of the very row whose absence triggers the delete.** When `dbRow` is missing, `if (dbRow?.x)` silently skips every guard — the missing row is exactly the dangerous case. Either prove the row can't be missing (Rule 85 completeness) or treat "missing" as "abort," never "proceed unprotected."
+
+#### Banned patterns
+
+- A `.select()` feeding a `Map`/`Set` whose **absence** then drives `delete`/`suspend`/`freeze`/`hibernate`, with no pagination and no count assertion.
+- Trusting that "the table is small" — the bug is dormant until row 1001. Today's safe query is tomorrow's silent mass-deletion.
+- Safety gates written as `if (matchedRow?.field)` on the absence path — they evaporate exactly when the row is missing.
+
+#### Detection rule
+
+When reviewing any cron/script that deletes/suspends/freezes: find the set it checks membership against. Ask "what happens when a row that SHOULD be in this set is silently missing?" If the answer is "we destroy the resource," it MUST use `fetchAllOrThrow` (or assert `length === count`) and fail closed. The discrimination tests live in `scripts/_test-complete-set.ts` — seed 1001+ rows → assert ZERO false candidates AND `map.size === count`; feed a count-exceeds-fetchable set → assert it ABORTS. Reproduce that shape for any new absence-based destructive path.
+
+#### Related rules
+
+- **Rule 14** (single source of truth for billing): the same spirit — the reaper *had* a credit-balance + live-subscription safety check; the truncation bypassed it. SoT helpers only protect you if you actually reach them; an incomplete set skips them.
+- **Rule 19 / 20 / 21** (PostgREST returns capped results / wrong column / strings-for-bigints): Rule 85 is the destructive-decision member of that family — the cap that returns "fewer rows than exist" becomes a customer-deletion when absence means delete.
+- **Rule 82** (fix the whole class, not the instance): the fix is a reusable invariant (`fetchAllOrThrow`) that makes the class impossible, not a `.limit(2000)` patch on one query.
+- **Rule 39** (distinguish critical-step failure from optional-sidecar): the abort is loud (P0 alert) but non-fatal — cost-cleanup is optional; deleting a paying customer is not.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
