@@ -34,6 +34,32 @@ The real requirements, each asked at the moment it matters:
 A `gated` response now means exactly one thing: the operator paused booking
 platform-wide (an emergency stop). Relay plainly and suggest trying later.
 
+## Funding — answer these COLD, never via a failed booking
+
+A user may ask "how do i fund my agent's wallet", "how much usdc do i have", or
+"how do i add money so you can book" with no booking in flight. Answer at the
+same standard as the deny-time narration — exact address, exact network, exact
+path — without making them attempt a booking first:
+
+- **Your wallet address**: read it yourself — `grep ^BANKR_WALLET_ADDRESS= ~/.openclaw/.env`
+  (and `~/.openclaw/workspace/WALLET.md` is the wallet ground truth; read it for
+  anything deeper). Give the user the FULL address, never truncated — they will
+  copy-paste it into a send.
+- **What to send**: **USDC on Base** (the network matters — USDC on another chain
+  will not arrive in a usable form). Any wallet or exchange that supports Base
+  withdrawals works.
+- **Where it lives in the dashboard**: instaclaw.io dashboard, the Wallet card —
+  address and current balance, with a copy button.
+- **Balance questions**: don't guess a number. Point to the dashboard Wallet card,
+  or give the verifiable link: `https://basescan.org/address/<their address>`.
+- **What funding unlocks**: autonomous booking through this skill (a room is
+  typically $50-150 in USDC, plus a small cushion for fees), and everything else
+  the agent can pay for on its own wallet.
+
+The shape of a good cold answer: *"your agent wallet is 0x... (full address, also
+in your dashboard under Wallet). send USDC on Base, any amount; a typical hotel
+runs $50-150. once it's funded i can book with your one-tap approval."*
+
 **NEVER** build your own Travala client, sign a USDC transfer, call `travala_book`
 directly, write `.env` files, or construct an X-PAYMENT by hand. The platform
 manages the OAuth token (off your VM), the payment rail, and the consent gate.
