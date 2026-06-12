@@ -70,12 +70,12 @@ function run() {
   const fundNoW = denyNarrationFor("would_drain_wallet", 84.5, undefined, undefined);
   ok("funding ask without wallet in env → still actionable via dashboard", /dashboard under Wallet/i.test(fundNoW) && !fundNoW.includes("undefined"));
 
-  // THE PAYWALL MOMENT (Finding 3 / Q1) — proud of the search, honest tier, exact path, zero shame.
+  // category_not_allowed (Q1 REVERSED 2026-06-12: travel open to all tiers; the
+  // Pro-paywall copy retired). Branch stays reachable via tightened per-VM
+  // category overrides → an honest generic, NEVER a tier or limit claim.
   const proN = denyNarrationFor("category_not_allowed", 84.5);
-  ok("paywall → leads with the work done (proud, not apologizing)", proN.startsWith("I did the search and found your room."));
-  ok("paywall → honest about the tier + exact path", proN.includes("Pro plan") && /dashboard under Billing/i.test(proN));
-  ok("paywall → the demo wasn't a trick (searching stays free)", proN.includes("Searching stays free either way."));
-  ok("paywall → zero shame, zero 'unfortunately', no limit claim", !/unfortunately|sorry|limit/i.test(proN));
+  ok("category-off → honest generic, no tier claim, no Pro upsell", !/pro plan|billing|upgrade/i.test(proN) && proN.includes("switched off"));
+  ok("category-off → names the path (spending settings) + no shame/limit words", /Spending settings/i.test(proN) && !/unfortunately|sorry|limit/i.test(proN));
 
   ok("every deny narration says nothing-was-charged or no-recharge", [killN, killUnv, offN, consN, fundN, proN].every((n) => /nothing was charged|not charged you again/i.test(n)));
 

@@ -368,23 +368,23 @@ export function mapTagsToCategory(tags: string[] | null | undefined): SpendCateg
  * is the category most likely to cause harm, so it requires deliberate opt-in.
  * The human can widen or narrow this from the dashboard (stored as an override).
  *
- * "travel" (ToolRouter StableTravel: flights/hotels/lodging) is allowed at pro + power,
- * NOT starter. The reasoning: a category absent from the allowlist is a Gate-1 HARD
- * DENY (category_not_allowed) that even a human approval cannot override per-spend AND
- * the override is tighten-only (a missing category can never be re-added) — so to make
- * travel usable AT ALL it must live in the default. The risk of a large autonomous
- * travel spend is handled by the AMOUNT gates, not categorical exclusion: a booking
- * over justDoItPerTx bounces to ask_first → session-rooted human approval (the
- * human_approved hardening). Starter (the minimal tier — only data/search/agent, no
- * inference/compute/media either) is kept travel-free to preserve its locked-down
- * posture; moving travel into starter is a one-line change if desired.
+ * "travel" is allowed at EVERY tier including starter (Cooper ruling 2026-06-12,
+ * Q1 reversal): the user funds their own wallet and the money is theirs — gating
+ * the booking by plan tier charges twice for the same action. The risk of a large
+ * travel spend is handled by the AMOUNT + CONSENT gates, not categorical
+ * exclusion: travel is SESSION_REQUIRED (justDoItPerTx=0 via travelBands, every
+ * booking → the unforgeable dashboard tap) under the tier-independent travel
+ * ceiling ($1200/tx, $3000/day). A category absent from the allowlist is a Gate-1
+ * HARD DENY that even a human approval cannot override AND the override is
+ * tighten-only — so travel must live in every default for "any instaclaw agent
+ * can book hotels" to be true.
  */
 export const DEFAULT_ALLOWED_CATEGORIES_BY_TIER: Record<FrontierTier, readonly SpendCategory[]> = {
-  starter: ["data", "search", "agent"],
+  starter: ["data", "search", "travel", "agent"], // travel: all tiers (2026-06-12 Q1 reversal)
   pro: ["data", "search", "inference", "compute", "media", "travel", "agent"],
   power: ["data", "search", "inference", "compute", "media", "travel", "agent", "other"],
   // "market" intentionally excluded from all defaults — opt-in only.
-  // "travel" included at pro + power (see docblock); excluded from starter by design.
+  // "travel" included at EVERY tier (2026-06-12 Q1 reversal — see docblock).
 };
 
 /**

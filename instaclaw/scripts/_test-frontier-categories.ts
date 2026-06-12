@@ -133,20 +133,22 @@ check("['search'] still → search (no travel term)", mapTagsToCategory(["search
 // tier defaults — pro + power allow travel; starter does NOT.
 check("pro default includes travel", DEFAULT_ALLOWED_CATEGORIES_BY_TIER.pro.includes("travel"));
 check("power default includes travel", DEFAULT_ALLOWED_CATEGORIES_BY_TIER.power.includes("travel"));
-check("starter default excludes travel", !DEFAULT_ALLOWED_CATEGORIES_BY_TIER.starter.includes("travel"));
+check("starter default INCLUDES travel (Q1 reversed 2026-06-12 — every tier books)", DEFAULT_ALLOWED_CATEGORIES_BY_TIER.starter.includes("travel"));
 
-// tighten-only: starter can never ADD travel (not in its tier default).
-expectCats("starter cannot add 'travel' (above-tier)", "starter", ["data", "travel"], ["data"]);
+// tighten-only: travel is in starter's default now (Q1 reversal), so a tightening
+// that KEEPS it is legal; "market" (in no tier default) is the above-tier case.
+expectCats("starter keeps 'travel' through a tightening that includes it", "starter", ["data", "travel"], ["data", "travel"]);
+expectCats("starter cannot add 'market' (above-tier)", "starter", ["data", "market"], ["data"]);
 // pro keeps travel through a tightening that includes it.
 check("pro effective keeps travel by default", effectiveAllowedCategories("pro", null).includes("travel"));
 
 // gate integration — the load-bearing layering proof:
 // (a) starter travel spend → HARD DENY (travel not in starter allowlist).
 expectDecision(
-  "starter travel spend → category_not_allowed (hard deny)",
+  "starter travel spend → ask_first ALLOW-path (Q1 reversed 2026-06-12)",
   "starter",
   { ...ok(), category: "travel", allowedCategories: DEFAULT_ALLOWED_CATEGORIES_BY_TIER.starter },
-  "category_not_allowed",
+  "within_ask_first_band",
 );
 // ── travel CEILING matrix (§6 — the category-scoped raise; the half that completes
 //    the category so real-priced bookings reach ask_first instead of hard-denying) ──
@@ -155,6 +157,21 @@ const powerCats = DEFAULT_ALLOWED_CATEGORIES_BY_TIER.power;
 
 check("TRAVEL_MAX_PER_TX is 1200", TRAVEL_MAX_PER_TX === 1200);
 check("TRAVEL_MAX_PER_DAY is 3000", TRAVEL_MAX_PER_DAY === 3000);
+
+// ── Q1 REVERSED (Cooper ruling 2026-06-12): travel is open to EVERY tier,
+// Starter included — no tier gate anywhere in the travel lane. A starter's
+// booking flows exactly like a pro's: category gate passes, travelBands replace
+// the tier bands (justDoItPerTx=0 → consent-always tap), $1200/$3000 ceiling. ──
+const starterCats = DEFAULT_ALLOWED_CATEGORIES_BY_TIER.starter;
+check("travel ∈ starter's default allowlist (the one-line reversal)", starterCats.includes("travel"));
+expectDecision("STARTER $84.50 travel → ask_first ALLOW-path (the reversal's proof)", "starter",
+  { ...ok(), amountUsd: 84.5, category: "travel", allowedCategories: starterCats }, "within_ask_first_band");
+expectDecision("starter $5 travel → ask_first NOT just_do_it (consent-always holds for starter too)", "starter",
+  { ...ok(), amountUsd: 5, category: "travel", allowedCategories: starterCats }, "within_ask_first_band");
+expectDecision("starter $1300 travel → exceeds_per_tx_ceiling (same $1200 cap as pro — no worse wall)", "starter",
+  { ...ok(), amountUsd: 1300, category: "travel", allowedCategories: starterCats }, "exceeds_per_tx_ceiling");
+expectDecision("starter travel via TIGHTENED override excluding travel → category_not_allowed (the honest-generic path)", "starter",
+  { ...ok(), amountUsd: 84.5, category: "travel", allowedCategories: effectiveAllowedCategories("starter", ["data"]) }, "category_not_allowed");
 
 // real bookings now REACH ask_first (were hard-denying at the tier neverPerTx $50/$200).
 expectDecision("pro $100 travel → ask_first (was hard-deny at $50)", "pro",

@@ -30,7 +30,6 @@ export const maxDuration = 30; // DB read + best-effort on-chain balance (Rule 1
 
 const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BASE_RPC = process.env.BASE_RPC_URL || "https://mainnet.base.org";
-const BOOKING_TIERS = new Set(["pro", "power"]); // starter is category-denied (frontier-policy)
 
 async function readUsdcUsd(address: string | null | undefined): Promise<number | null> {
   if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) return null;
@@ -66,7 +65,10 @@ async function resolveVm() {
 
 function prereqView(vm: Record<string, unknown>, walletFundedUsd: number | null) {
   const tier = typeof vm.tier === "string" ? vm.tier : "starter";
-  const tierOk = BOOKING_TIERS.has(tier);
+  // tierOk: ALWAYS true (Q1 reversed 2026-06-12 — booking is open to every tier,
+  // Starter included; no tier gate anywhere in the travel lane). Field kept so
+  // older card clients reading prereqs don't break.
+  const tierOk = true;
   const spendEnabled = isFrontierSpendEnabled(vm as { frontier_spend_enabled?: boolean | null });
   const walletProvisioned = !!vm.bankr_evm_address;
   return {

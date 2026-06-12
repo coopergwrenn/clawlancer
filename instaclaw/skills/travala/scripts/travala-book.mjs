@@ -24,7 +24,7 @@
  *                reason:human_approved_session → proceed. The approval is single-use
  *                with a 15-min TTL; re-authorize re-mints a fresh url on expiry, so
  *                we never fail the booking — we re-surface. (A hard deny — over the
- *                §6 travel ceiling / banned / drain / privacy / operator kill switch
+ *                §6 travel ceiling / category switched off / drain / privacy / operator kill switch
  *                (spend_kill_switch, _unverifiable) / spend_not_enabled /
  *                request_id_consumed — has NO url and can't
  *                be overridden; we report it.)
@@ -158,11 +158,12 @@ export function denyNarrationFor(reason, amountUsd, consumedStatus, wallet) {
     const addr = wallet ? `Send USDC to ${wallet} (it's also in your dashboard under Wallet), ` : `Send USDC to your agent wallet (the address is in your dashboard under Wallet), `;
     return `I found your room. To book it, your agent wallet needs about $${need} USDC on Base and it doesn't have enough right now. ${addr}then ask me to book it again. Nothing was charged.`;
   }
-  // THE PAYWALL MOMENT (Finding 3 / Q1 ruling) — the first upsell ever delivered
-  // by an autonomous agent that just did real work. Proud of the search, honest
-  // about the tier, exact path, zero shame, zero "unfortunately".
+  // category_not_allowed (Q1 REVERSED 2026-06-12: travel is allowed at EVERY
+  // tier — the Pro-plan paywall copy is retired). Still reachable on a VM whose
+  // per-VM category override was tightened to exclude travel, so an honest
+  // generic remains: name the true state + the true path, never a tier claim.
   if (reason === "category_not_allowed") {
-    return `I did the search and found your room. Booking it for you autonomously, with my wallet and your one-tap approval, is where the Pro plan starts. Upgrade in your dashboard under Billing, then tell me to book it and I'll handle the rest. Searching stays free either way. Nothing was charged.`;
+    return `I found your room, but this category of spending is switched off for me right now. Nothing was charged. Check your dashboard (Spending settings, category controls) and ask me to book it again once travel is enabled.`;
   }
   if (reason === "request_id_consumed") {
     return `That booking attempt was already finalized${consumedStatus ? ` (${consumedStatus})` : ""} — most likely you revoked spending or it already settled. I have NOT charged you again. If you still want the room, ask me to search fresh and I'll start a new booking.`;
