@@ -11,7 +11,7 @@
  */
 import { createHash } from "node:crypto";
 import { nonceForRequest } from "../skills/frontier/scripts/frontier-spend-core.mjs";
-import { bookStatusVerdict, denyNarrationFor, isRevokedSettleConflict } from "../skills/travala/scripts/travala-book.mjs";
+import { bookStatusVerdict, denyNarrationFor, isRevokedSettleConflict, parseSnapshotArg } from "../skills/travala/scripts/travala-book.mjs";
 
 let pass = 0;
 let fail = 0;
@@ -90,7 +90,22 @@ function run() {
   ok("200 ok → false", isRevokedSettleConflict(200, { ok: true }) === false);
   ok("missing body → false (no crash)", isRevokedSettleConflict(409, undefined) === false);
 
-  console.log(`\n${fail === 0 ? "ALL PASS" : "FAILURES"}: ${pass} passed, ${fail} failed\n`);
+  console.log("\n── tracker #8: parseSnapshotArg — bad snapshots are LOUD, good ones are quiet ──");
+{
+  const good = parseSnapshotArg(JSON.stringify({ hotelName: "memmo alfama", freeCancellationUntilUtc: "2026-06-24T15:00:00Z" }));
+  ok("valid snapshot → parsed, NOT flagged (no crying wolf)", good.ignored === false && good.snapshot?.hotelName === "memmo alfama");
+  const absent = parseSnapshotArg(undefined);
+  ok("absent snapshot → quiet (caller chose not to pass one)", absent.ignored === false && absent.snapshot === undefined);
+  ok("empty-string snapshot → quiet", parseSnapshotArg("").ignored === false);
+  const bad = parseSnapshotArg("{hotelName: memmo");  // the silent-degrade case the tracker named
+  ok("malformed JSON → FLAGGED + snapshot dropped", bad.ignored === true && bad.snapshot === undefined);
+  ok("valid-JSON-but-not-an-object (\"42\") → FLAGGED (would record junk)", parseSnapshotArg("42").ignored === true);
+  ok("\"null\" → FLAGGED", parseSnapshotArg("null").ignored === true);
+  ok("a JSON array → FLAGGED (record expects an object)", parseSnapshotArg("[1,2]").ignored === true);
+  ok("quoted string → FLAGGED", parseSnapshotArg('"oops"').ignored === true);
+}
+
+console.log(`\n${fail === 0 ? "ALL PASS" : "FAILURES"}: ${pass} passed, ${fail} failed\n`);
   process.exit(fail === 0 ? 0 : 1);
 }
 

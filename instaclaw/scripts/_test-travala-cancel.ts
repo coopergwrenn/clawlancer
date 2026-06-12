@@ -19,6 +19,7 @@ import {
   recordConfirmedBooking,
   isTravalaSpend,
   cancelMarkFor,
+  buildTravalaOpsLog,
 } from "../lib/travala-bookings";
 import type { McpCallResult } from "../lib/travala-mcp";
 
@@ -153,6 +154,37 @@ console.log("\n── H. isTravalaSpend (reconciler cron cross-ref) ──");
 ok("tags include travala → true", isTravalaSpend({ tags: ["travel", "hotel", "travala"] }) === true);
 ok("category travel but no travala tag → false (precise)", isTravalaSpend({ category: "travel", tags: ["travel", "hotel"] }) === false);
 ok("no metadata → false", isTravalaSpend(null) === false && isTravalaSpend(undefined) === false);
+
+console.log("\n-- tracker #7: buildTravalaOpsLog — the 2am fields, PII-safe by construction --");
+{
+  const e = buildTravalaOpsLog({
+    op: "cancel-booking", step: 2, vmId: "vm-uuid-1", bookingId: "MN5V9DWQ",
+    state: "upstream_error", mark: "cancel_failed",
+    upstreamText: "Travala said: cannot cancel booking for doug.rathell@gmail.com — internal error 731",
+  });
+  ok("fields: op/step/vm_id/booking_id/state/mark all present",
+    e.op === "cancel-booking" && e.step === 2 && e.vm_id === "vm-uuid-1" &&
+    e.booking_id === "MN5V9DWQ" && e.state === "upstream_error" && e.mark === "cancel_failed");
+  ok("email in upstream text is SCRUBBED", typeof e.upstream === "string" && e.upstream.includes("<email>") && !String(e.upstream).includes("doug.rathell"));
+  ok("the diagnostic substance survives the scrub", String(e.upstream).includes("internal error 731"));
+}
+{
+  const long = "x".repeat(1000) + " tail-that-must-not-appear";
+  const e = buildTravalaOpsLog({ op: "manage-booking", step: 1, vmId: "v", bookingId: "B", state: "invalid_input", upstreamText: long });
+  ok("upstream text BOUNDED to 400 + ellipsis", String(e.upstream).length === 401 && String(e.upstream).endsWith("…"));
+  ok("no mark key when mark not provided (manage has none)", !("mark" in e));
+}
+{
+  const e = buildTravalaOpsLog({ op: "cancel-booking", step: 1, vmId: "v", bookingId: "B", state: "token_mint_failed", upstreamStatus: 503 });
+  ok("token-mint shape: upstream_status carried, empty text", e.upstream_status === 503 && e.upstream === "");
+  // PII by construction: the helper takes no email/lastName/otp inputs at all —
+  // assert none of those keys can appear in the output.
+  ok("no PII keys exist in the log object", !("email" in e) && !("last_name" in e) && !("otp" in e));
+}
+{
+  const e = buildTravalaOpsLog({ op: "cancel-booking", step: 2, vmId: "v", bookingId: "B", state: "bad_otp", mark: "none", upstreamText: "Invalid code entered for a.b+c@x.co.uk" });
+  ok("plus-addressed/multi-TLD email also scrubbed", !String(e.upstream).includes("@x.co.uk") && String(e.upstream).includes("<email>"));
+}
 
 console.log(`\n${fail === 0 ? "ALL PASS" : "FAILURES"}: ${pass} passed, ${fail} failed\n`);
 process.exit(fail === 0 ? 0 : 1);

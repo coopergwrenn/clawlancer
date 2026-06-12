@@ -41,9 +41,19 @@ import {
   markCancelRequested,
   markCancelled,
   markCancelFailed,
+  buildTravalaOpsLog,
   type TravalaBookingSnapshot,
 } from "@/lib/travala-bookings";
 import { sendPerVmAlertDeduped } from "@/lib/admin-alert";
+import { logger } from "@/lib/logger";
+
+// Tracker #7 — ONE searchable tag for every non-ok cancel/manage outcome (the 2am
+// grep). bad_otp is warn (an expected user mistype, still canary-diagnostic);
+// everything else (upstream_error / invalid_input / token mint / unknown) is error.
+function logOpsNonOk(entry: Record<string, unknown>): void {
+  if (entry.state === "bad_otp") logger.warn("TRAVALA_OPS_NON_OK", entry);
+  else logger.error("TRAVALA_OPS_NON_OK", entry);
+}
 
 export const maxDuration = 300; // MCP-over-HTTP + OAuth mint, external (Rule 11)
 
@@ -205,12 +215,22 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
     }
     const tok = await mintTravalaToken("mcp:read mcp:book");
     if (!tok.ok || !tok.access_token) {
+      logOpsNonOk(buildTravalaOpsLog({
+        op: "manage-booking", step: a.otp ? 2 : 1, vmId: vm.id as string, bookingId,
+        state: "token_mint_failed", upstreamStatus: tok.status ?? null,
+      }));
       return NextResponse.json({ error: "travala_token_mint_failed", detail: tok.status }, { status: 502 });
     }
     const mcpArgs: Record<string, unknown> = { bookingId, lastName: row.last_name, email: row.email };
     if (a.otp) mcpArgs.otp = String(a.otp);
     const r = await mcpToolsCall(tok.access_token, "travala_manage_bookings", mcpArgs);
     const cls = classifyToolResult(r);
+    if (cls.state !== "ok") {
+      logOpsNonOk(buildTravalaOpsLog({
+        op: "manage-booking", step: a.otp ? 2 : 1, vmId: vm.id as string, bookingId,
+        state: cls.state, upstreamText: cls.text,
+      }));
+    }
     return NextResponse.json(
       { ok: cls.state === "ok", state: cls.state, step: a.otp ? 2 : 1, booking_id: bookingId, message: cls.text },
       { status: 200 },
@@ -242,6 +262,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
     }
     const tok = await mintTravalaToken("mcp:read mcp:book mcp:cancel");
     if (!tok.ok || !tok.access_token) {
+      logOpsNonOk(buildTravalaOpsLog({
+        op: "cancel-booking", step: a.otp ? 2 : 1, vmId: vm.id as string, bookingId,
+        state: "token_mint_failed", upstreamStatus: tok.status ?? null,
+      }));
       return NextResponse.json({ error: "travala_token_mint_failed", detail: tok.status }, { status: 502 });
     }
     const mcpArgs: Record<string, unknown> = { bookingId, lastName: row.last_name, email: row.email };
@@ -278,6 +302,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
           { status: 200 },
         );
       }
+      logOpsNonOk(buildTravalaOpsLog({
+        op: "cancel-booking", step: 1, vmId: vm.id as string, bookingId,
+        state: cls.state, mark, upstreamText: cls.text,
+      }));
       return NextResponse.json({ ok: false, state: cls.state, step: 1, booking_id: bookingId, message: cls.text }, { status: 200 });
     }
     // STEP 2: confirm with the OTP the user read back.
@@ -298,6 +326,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
       );
     }
     // bad_otp leaves the row at cancel_requested (mark === "none") for a fresh code.
+    logOpsNonOk(buildTravalaOpsLog({
+      op: "cancel-booking", step: 2, vmId: vm.id as string, bookingId,
+      state: cls.state, mark, upstreamText: cls.text,
+    }));
     return NextResponse.json(
       { ok: false, state: cls.state, step: 2, booking_id: bookingId, message: cls.text },
       { status: 200 },

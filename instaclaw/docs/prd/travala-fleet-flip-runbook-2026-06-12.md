@@ -113,6 +113,24 @@ lift the switch (the §1 undo) → run the stages with the operator watching →
 flip. The F1 cohort is technically bookable during this window — acceptable
 because the window is short and operator-attended.
 
+**CANARY-DAY CHECKLIST — step ONE, before anything else: re-deploy vm-1043 to
+CURRENT.** The original Stage-0 scoped deploy predates the decouple-era files —
+running the canary on that copy would test yesterday's code (the three-requirement
+SKILL.md, the old narrations, missing cancel/manage scripts, no snapshot
+parse-fail flag, pre-#7 server logs). Re-run Stage 0 from flip-day main and
+verify on-disk: SKILL.md contains "exactly two"; `travala-cancel.mjs` +
+`travala-manage.mjs` present; `travala-book.mjs` contains `parseSnapshotArg`
+(the #8 sentinel). Only then lift the kill switch for the window.
+
+**Canary 2am fields (shipped pre-canary, tracker #7 + #8):** every non-ok
+cancel/manage outcome now writes ONE structured server line — grep the function
+logs for **`TRAVALA_OPS_NON_OK`** → `{op, step, vm_id, booking_id, state, mark,
+upstream_status?, upstream}` (email-scrubbed, 400-char-bounded; full bodies live
+on the booking row). bad_otp logs at warn (user mistype), everything else at
+error. And a malformed `--snapshot` is LOUD: the book result carries
+`snapshot_ignored: true` + a narration clause, so a degraded-path booking can
+never read as a clean canary pass.
+
 **The canary gate is MET only when ALL of these are observed (not inferred):**
 1. Stage 2: a real charge lands; booking confirmed with a Travala ref; tx hash on Base.
 2. Stage 3: our `instaclaw_travala_bookings` row records it (book-record).

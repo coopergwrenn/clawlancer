@@ -179,6 +179,24 @@ export function denyNarrationFor(reason, amountUsd, consumedStatus, wallet) {
 
 // Did settle report the hold was REVOKED mid-flight? (the revoked-but-paid
 // collision — settle returns 409 "hold is now revoked"). Exported for tests.
+// Tracker #8 — the snapshot parse, made honest. ignored=true ONLY when the agent
+// DID pass something and it was unusable (malformed JSON, or valid JSON that
+// isn't an object — `"42"`/`"null"` parse fine but record junk). An ABSENT
+// snapshot stays quiet: the caller chose not to pass one, which is legitimate
+// (e.g. a bare retry). Pure; exported for the decision tests.
+export function parseSnapshotArg(raw) {
+  if (raw === undefined || raw === null || raw === "") return { snapshot: undefined, ignored: false };
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return { snapshot: undefined, ignored: true };
+    }
+    return { snapshot: parsed, ignored: false };
+  } catch {
+    return { snapshot: undefined, ignored: true };
+  }
+}
+
 export function isRevokedSettleConflict(status, json) {
   return status === 409 && /revoked/i.test(String(json?.error ?? ""));
 }
@@ -223,9 +241,14 @@ async function main() {
 
   // the search-option snapshot the agent threads through (hotel/dates/policy/
   // free-cancel deadline) — captured at record time, irretrievable later.
-  let snapshot;
-  try { snapshot = args.snapshot ? JSON.parse(args.snapshot) : undefined; }
-  catch { snapshot = undefined; }
+  // Tracker #8: a malformed snapshot must be LOUD, not silent (parseSnapshotArg
+  // flags it; the success narration carries the clause) — otherwise the booking
+  // records without policy/deadline and nobody is told (the canary would "pass"
+  // while testing a degraded path).
+  const { snapshot, ignored: snapshotIgnored } = parseSnapshotArg(args.snapshot);
+  const snapClause = snapshotIgnored
+    ? ` (Heads up: the cancellation-policy details didn't save with this booking — the booking itself is fine; ask me to check this booking and I'll read the live policy.)`
+    : "";
 
   // ── G (recovery): on an explicit retry, settle book-status to a TERMINAL verdict
   // before deciding to re-pay. Primary double-charge guard is the deterministic
@@ -249,7 +272,8 @@ async function main() {
       const rr = await backend("book-record", gatewayToken, { packageId, sessionId, customer, snapshot, pay_response_raw: txt });
       const ref = rr.json?.booking_id || bookingRefFrom(txt);
       return out({ ok: true, already_booked: true, recorded: !!rr.json?.recorded, booking_ref: ref, booking_status: lastResult,
-        narration: `This booking already went through — not charging again.${ref ? ` Ref ${ref}.` : ""}${rr.json?.recorded ? ` It's saved to your trips — ask me to cancel anytime.` : ` (Heads up: I couldn't save it to my cancellation list — keep your Travala confirmation email.)`}` });
+        snapshot_ignored: snapshotIgnored || undefined,
+        narration: `This booking already went through — not charging again.${ref ? ` Ref ${ref}.` : ""}${rr.json?.recorded ? ` It's saved to your trips — ask me to cancel anytime.` : ` (Heads up: I couldn't save it to my cancellation list — keep your Travala confirmation email.)`}${snapClause}` });
     }
     if (verdict === "in_progress") {
       // status never settled → do NOT re-pay. The nonce would make it safe, but a
@@ -449,10 +473,12 @@ async function main() {
     }
     if (recorded) {
       return out({ ok: true, paid: true, recorded: true, revoked_collision: revokedCollision || undefined, hold_id: holdId, tx_hash: txHash, amount_usd: amountUsd, booking_ref: recordedRef, result: resultBody,
-        narration: `Booked. $${amountUsd} paid in USDC on Base${txHash ? ` (tx ${String(txHash).slice(0, 12)}…)` : ""}.${recordedRef ? ` Booking ref ${recordedRef}.` : ""} Saved to your trips — ask me to cancel it anytime (refunds come back as Travala credit, not to your wallet).${revokedLine}` });
+        snapshot_ignored: snapshotIgnored || undefined,
+        narration: `Booked. $${amountUsd} paid in USDC on Base${txHash ? ` (tx ${String(txHash).slice(0, 12)}…)` : ""}.${recordedRef ? ` Booking ref ${recordedRef}.` : ""} Saved to your trips — ask me to cancel it anytime (refunds come back as Travala credit, not to your wallet).${revokedLine}${snapClause}` });
     }
     return out({ ok: true, paid: true, recorded: false, revoked_collision: revokedCollision || undefined, record_error: recordErr, hold_id: holdId, tx_hash: txHash, amount_usd: amountUsd, booking_ref: refRegex, result: resultBody,
-      narration: `Booked and paid ($${amountUsd} USDC on Base${txHash ? `, tx ${String(txHash).slice(0, 12)}…` : ""})${refRegex ? `, ref ${refRegex}` : ""}. One caveat: I couldn't save it to my cancellation list just now, so I can't cancel it through me yet — please keep your Travala confirmation email. Ask me to "retry recording this booking" and I'll try again.${revokedLine}` });
+      snapshot_ignored: snapshotIgnored || undefined,
+      narration: `Booked and paid ($${amountUsd} USDC on Base${txHash ? `, tx ${String(txHash).slice(0, 12)}…` : ""})${refRegex ? `, ref ${refRegex}` : ""}. One caveat: I couldn't save it to my cancellation list just now, so I can't cancel it through me yet — please keep your Travala confirmation email. Ask me to "retry recording this booking" and I'll try again.${revokedLine}${snapClause}` });
   }
   return out({ ok: false, paid: false, hold_id: holdId, reason: payErr, pay_error_body: payErrBody,
     narration: `The booking payment failed (${payErr}). Your hold is recorded; re-run with --retry --request-id ${requestId} to resume safely.` });

@@ -362,3 +362,54 @@ export function isTravalaSpend(metadata: unknown): boolean {
   const tags = (metadata as { tags?: unknown }).tags;
   return Array.isArray(tags) && tags.some((t) => typeof t === "string" && t.toLowerCase() === "travala");
 }
+
+/* ── Tracker #7 — the 2am fields (structured logs on cancel/manage upstream errors) ──
+ *
+ * When Travala's cancel/manage endpoints misbehave mid-flow (the canary's stages
+ * 4–6 ARE this flow), the operator gets ONE structured line that answers, in 90
+ * seconds: which op, which step, whose booking, what Travala said, and what our
+ * code decided in response. Searchable by the stable tag the route logs it under
+ * (TRAVALA_OPS_NON_OK).
+ *
+ * PII BY CONSTRUCTION, not by discipline:
+ *   - the helper has NO email/lastName/OTP inputs — they cannot leak because they
+ *     cannot arrive;
+ *   - the upstream text snippet is email-SCRUBBED (Travala bodies echo the booking
+ *     email) and BOUNDED to 400 chars (log hygiene; the full body is already
+ *     persisted on the row by markCancelFailed/cancel_raw where it belongs).
+ *
+ * Pure. Tested in scripts/_test-travala-cancel.ts.
+ */
+const OPS_LOG_TEXT_MAX = 400;
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+
+export function buildTravalaOpsLog(input: {
+  op: "manage-booking" | "cancel-booking";
+  step: 1 | 2;
+  vmId: string;
+  bookingId: string;
+  /** classifyToolResult state (or "token_mint_failed" for the pre-MCP failure). */
+  state: string;
+  /** cancel only — what cancelMarkFor decided for our row ("none" = row untouched). */
+  mark?: string;
+  /** Upstream/classified text — scrubbed + bounded here, never pre-trimmed by callers. */
+  upstreamText?: string | null;
+  /** Transport-shaped failure detail: an HTTP code (non-200 MCP) OR the token-mint
+   *  verifier status string ("auth_failed", "unreachable", …) — both diagnostic. */
+  upstreamStatus?: number | string | null;
+}): Record<string, unknown> {
+  const raw = (input.upstreamText ?? "").replace(EMAIL_RE, "<email>");
+  const upstream = raw.length > OPS_LOG_TEXT_MAX ? `${raw.slice(0, OPS_LOG_TEXT_MAX)}…` : raw;
+  return {
+    op: input.op,
+    step: input.step,
+    vm_id: input.vmId,
+    booking_id: input.bookingId,
+    state: input.state,
+    ...(input.mark !== undefined ? { mark: input.mark } : {}),
+    ...(input.upstreamStatus !== undefined && input.upstreamStatus !== null
+      ? { upstream_status: input.upstreamStatus }
+      : {}),
+    upstream,
+  };
+}
