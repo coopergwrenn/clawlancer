@@ -139,7 +139,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // narration claimed "over your spending limit" for ALL denies — false for the
 // operator kill, the spend toggle, and a consumed/revoked request_id.
 // Exported for the decision-tests.
-export function denyNarrationFor(reason, amountUsd, consumedStatus) {
+export function denyNarrationFor(reason, amountUsd, consumedStatus, wallet) {
   if (reason === "spend_kill_switch" || reason === "spend_kill_switch_unverifiable") {
     return reason === "spend_kill_switch"
       ? `I can't book right now — spending is paused by the platform operator (an emergency stop, not your limits). Nothing was charged. Try again later.`
@@ -147,6 +147,20 @@ export function denyNarrationFor(reason, amountUsd, consumedStatus) {
   }
   if (reason === "spend_not_enabled") {
     return `I can't book — autonomous spending is turned off for me. Nothing was charged. Turn it on in your dashboard (Spending settings) and ask me again.`;
+  }
+  // THE FUNDING ASK (Finding 2, north-star ruling 2026-06-12) — the gate with no
+  // UI: it speaks. Motivation first, exact need, exact path, no charge, no shame.
+  // Full address (not truncated): a send-to address must be copyable in one step.
+  if (reason === "would_drain_wallet") {
+    const need = Math.ceil(amountUsd + 1); // the room + a small cushion for fees
+    const addr = wallet ? `Send USDC to ${wallet} (it's also in your dashboard under Wallet), ` : `Send USDC to your agent wallet (the address is in your dashboard under Wallet), `;
+    return `I found your room. To book it, your agent wallet needs about $${need} USDC on Base and it doesn't have enough right now. ${addr}then ask me to book it again. Nothing was charged.`;
+  }
+  // THE PAYWALL MOMENT (Finding 3 / Q1 ruling) — the first upsell ever delivered
+  // by an autonomous agent that just did real work. Proud of the search, honest
+  // about the tier, exact path, zero shame, zero "unfortunately".
+  if (reason === "category_not_allowed") {
+    return `I did the search and found your room. Booking it for you autonomously, with my wallet and your one-tap approval, is where the Pro plan starts. Upgrade in your dashboard under Billing, then tell me to book it and I'll handle the rest. Searching stays free either way. Nothing was charged.`;
   }
   if (reason === "request_id_consumed") {
     return `That booking attempt was already finalized${consumedStatus ? ` (${consumedStatus})` : ""} — most likely you revoked spending or it already settled. I have NOT charged you again. If you still want the room, ask me to search fresh and I'll start a new booking.`;
@@ -298,7 +312,7 @@ async function main() {
 
   const denyOut = () => out({ ok: true, paid: false, authorized: false, outcome: "deny", reason: d.reason,
     spent_today_usd: d.spent_today_usd, earned_daily_budget_usd: d.earned_daily_budget_usd,
-    narration: denyNarrationFor(d.reason, amountUsd, d.consumed_status) });
+    narration: denyNarrationFor(d.reason, amountUsd, d.consumed_status, wallet) });
 
   // Hard deny — no url, can't be overridden. Reasons: §6 travel ceiling / banned /
   // drain / privacy (limit-class), operator kill switch (spend_kill_switch,

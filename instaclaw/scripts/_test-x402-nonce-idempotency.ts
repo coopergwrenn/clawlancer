@@ -58,7 +58,26 @@ function run() {
   ok("request_id_consumed → 'already finalized' + surfaces consumed_status + no-recharge", consN.includes("already finalized") && consN.includes("revoked") && consN.includes("NOT charged you again"));
   const limN = denyNarrationFor("travel_ceiling_exceeded", 50);
   ok("limit-class default → keeps the original limit copy", limN.includes("over your travel spending limit (travel_ceiling_exceeded)"));
-  ok("every deny narration says nothing-was-charged or no-recharge", [killN, killUnv, offN, consN].every((n) => /nothing was charged|not charged you again/i.test(n)));
+
+  // THE FUNDING ASK (Finding 2) — motivation first, exact need, exact path, no charge, no shame.
+  const W = "0xd998a6dc14e5ec290b2a9f201d6a6c82a1dd38c4";
+  const fundN = denyNarrationFor("would_drain_wallet", 84.5, undefined, W);
+  ok("funding ask → leads with the found room (motivation first)", fundN.startsWith("I found your room."));
+  ok("funding ask → exact need with cushion ($86 for an $84.50 room)", fundN.includes("about $86 USDC on Base"));
+  ok("funding ask → FULL send-to address (copyable in one step, never truncated)", fundN.includes(W));
+  ok("funding ask → dashboard path named", /dashboard under Wallet/i.test(fundN));
+  ok("funding ask → no limit claim, no shame word", !/limit|unfortunately|sorry/i.test(fundN));
+  const fundNoW = denyNarrationFor("would_drain_wallet", 84.5, undefined, undefined);
+  ok("funding ask without wallet in env → still actionable via dashboard", /dashboard under Wallet/i.test(fundNoW) && !fundNoW.includes("undefined"));
+
+  // THE PAYWALL MOMENT (Finding 3 / Q1) — proud of the search, honest tier, exact path, zero shame.
+  const proN = denyNarrationFor("category_not_allowed", 84.5);
+  ok("paywall → leads with the work done (proud, not apologizing)", proN.startsWith("I did the search and found your room."));
+  ok("paywall → honest about the tier + exact path", proN.includes("Pro plan") && /dashboard under Billing/i.test(proN));
+  ok("paywall → the demo wasn't a trick (searching stays free)", proN.includes("Searching stays free either way."));
+  ok("paywall → zero shame, zero 'unfortunately', no limit claim", !/unfortunately|sorry|limit/i.test(proN));
+
+  ok("every deny narration says nothing-was-charged or no-recharge", [killN, killUnv, offN, consN, fundN, proN].every((n) => /nothing was charged|not charged you again/i.test(n)));
 
   console.log("\n── isRevokedSettleConflict: the revoked-but-paid collision detector ──");
   ok("409 + 'hold is now revoked' → true", isRevokedSettleConflict(409, { error: "hold is now revoked; cannot settle as success" }) === true);
