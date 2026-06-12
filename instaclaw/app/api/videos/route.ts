@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (!vm) {
-      const empty: { quotas: VideoQuotas; renders: RenderItem[]; months: never[]; next_cursor: null } = {
+      const empty: { quotas: VideoQuotas; renders: RenderItem[]; months: never[]; unsearchable_count: number; next_cursor: null } = {
         quotas: {
           free: { used: 0, cap: freeCapForTier(null) },
           plan: null,
@@ -77,6 +77,7 @@ export async function GET(req: NextRequest) {
         },
         renders: [],
         months: [],
+        unsearchable_count: 0,
         next_cursor: null,
       };
       return NextResponse.json(empty, { headers: NO_CACHE_HEADERS });
@@ -158,9 +159,14 @@ export async function GET(req: NextRequest) {
     if (filter === "premium") q = q.in("endpoint", premiumEndpoints);
     if (filter === "quick") q = q.in("endpoint", quickEndpoints);
     if (search) {
-      // Escape LIKE wildcards in user input; match anywhere in the prompt.
-      const pattern = `%${search.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
-      q = q.ilike("metadata->>prompt", pattern);
+      // Word-AND semantics (launch-readiness pass): "wolf tundra" should match
+      // a prompt containing both words anywhere, not the contiguous substring.
+      // Each word is its own ilike (PostgREST ANDs chained filters); LIKE
+      // wildcards in user input are escaped per word. Capped at 6 words.
+      const words = search.split(/\s+/).filter(Boolean).slice(0, 6);
+      for (const w of words) {
+        q = q.ilike("metadata->>prompt", `%${w.replace(/[%_\\]/g, (c) => `\\${c}`)}%`);
+      }
     }
     if (monthParam && /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam)) {
       const [yy, mm] = monthParam.split("-").map(Number);
@@ -193,11 +199,21 @@ export async function GET(req: NextRequest) {
     // filter/q/month on purpose — it's a navigation map of the LIBRARY, not
     // of the current view. Bounded at 5000 rows (timestamps only, ~150KB
     // worst case; the design ceiling is 1000 videos).
-    const { data: stamps } = await applyBaseWhere(
-      supabase.from("instaclaw_video_transactions").select("created_at"),
-    )
-      .order("created_at", { ascending: false })
-      .range(0, 4999);
+    const [{ data: stamps }, unsearchableRes] = await Promise.all([
+      applyBaseWhere(supabase.from("instaclaw_video_transactions").select("created_at"))
+        .order("created_at", { ascending: false })
+        .range(0, 4999),
+      // Rows with no stored prompt are invisible to search (pre-2026-06-12
+      // renders; transcripts compacted — see the legacy-prompt closure doc).
+      // The count lets the empty-search state say so instead of looking broken
+      // while a matching clip sits on screen.
+      applyBaseWhere(
+        supabase
+          .from("instaclaw_video_transactions")
+          .select("request_id", { count: "exact", head: true }),
+      ).is("metadata->>prompt", null),
+    ]);
+    const unsearchableCount = unsearchableRes.count ?? 0;
     const monthMap = new Map<string, number>();
     for (const s of stamps ?? []) {
       const d = new Date(s.created_at);
@@ -273,6 +289,7 @@ export async function GET(req: NextRequest) {
         quotas,
         renders,
         months,
+        unsearchable_count: unsearchableCount,
         next_cursor: hasMore && pageRows.length > 0 ? pageRows[pageRows.length - 1].created_at : null,
       },
       { headers: NO_CACHE_HEADERS },
