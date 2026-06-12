@@ -247,8 +247,15 @@ def cmd_generate(args):
     status, resp = _gate_call("create", token, body=body)
     if status in (402, 400):
         # 402 = free_exhausted / insufficient_balance; 400 = bad params / unsupported.
-        # Surface the gate's own user-safe message.
-        _out({"status": "blocked", "reason": resp.get("error"), "message": resp.get("message")}, args.json)
+        # Surface the gate's own user-safe message. plan_status (when present)
+        # tells the agent the TRUTH about the user's video creator plan:
+        # "past_due" = payment issue froze the monthly videos (packs still
+        # work); "active" = monthly allowance exhausted; absent/None = not a
+        # plan subscriber (the upsell moment). SKILL.md keys its copy on this.
+        out = {"status": "blocked", "reason": resp.get("error"), "message": resp.get("message")}
+        if resp.get("plan_status") is not None:
+            out["plan_status"] = resp.get("plan_status")
+        _out(out, args.json)
         return 3
     if status in (429, 503):
         # M2: busy / rate-limited / at-capacity — distinct from a hard error.

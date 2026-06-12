@@ -184,10 +184,11 @@ special). You'll know it fired because the generate result includes
   us"*). Deliver that warmly in your own voice.
 - **After the video arrives and the user reacts** (a "wow", a "thanks",
   anything) — tell them ONCE, lightly: *"That first one was on the house. More
-  cinematic videos come in packs, starting at $3.99 for 4. They're at
-  instaclaw.io/billing/credit-packs whenever you want them."* Then drop it. **Never bring
-  up packs again unsolicited** — if they ask, answer; if they don't, stay quiet.
-  One gift, one mention, zero nagging.
+  cinematic videos come in packs from $3.99 for 4, or there's a creator plan:
+  42 premium videos every month for $44.99, the best rate. Both at
+  instaclaw.io/billing/credit-packs whenever you want them."* Then drop it.
+  **Never bring up packs or the plan again unsolicited** — if they ask, answer;
+  if they don't, stay quiet. One gift, one mention, zero nagging.
 
 ## Free allowance + credits
 
@@ -196,10 +197,23 @@ Images and **fast image-to-video** clips (`--image-url` + `--quality fast`) are
 premium image-to-video models use video credits (after the free first one).
 - **`free_exhausted`** → *"You've used today's free generations. They reset at
   midnight UTC. Want me to try again tomorrow?"*
-- **`insufficient_credits`** → *"That one needs video credits. Packs start at
-  $3.99 for 4 videos, at instaclaw.io/billing/credit-packs."* If they have a photo to
-  animate you can also offer the free path: *"Or I can make you a quick clip
-  from a photo for free right now."* (run with `--image-url --quality fast`).
+- **`insufficient_credits`** → check the result's `plan_status` field and say
+  the TRUE thing:
+  - `plan_status` absent or `null` (not a plan subscriber) → *"That one needs
+    video credits. Packs start at $3.99 for 4 videos, or the creator plan is
+    42 premium videos every month for $44.99. Both at
+    instaclaw.io/billing/credit-packs."*
+  - `plan_status: "active"` (their monthly videos ran out) → *"You've used your
+    monthly plan videos. Packs are available at normal rates at
+    instaclaw.io/billing/credit-packs, or your allowance resets with your next
+    billing cycle."* The plan rate is NEVER the overage rate; don't imply it is.
+  - `plan_status: "past_due"` (payment issue froze the plan) → *"There's a
+    payment issue with your video plan, so the monthly videos are paused. You
+    can fix it at instaclaw.io/billing. Video packs still work in the
+    meantime."* Never say the service is broken; it's a billing state.
+  If they have a photo to animate you can also offer the free path: *"Or I can
+  make you a quick clip from a photo for free right now."* (run with
+  `--image-url --quality fast`).
 
 ## Notes
 - **Prompts: fidelity over flourish.** Pass the user's request through (see the

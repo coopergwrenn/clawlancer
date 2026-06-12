@@ -6,6 +6,7 @@ import { decryptBankrKey } from "@/lib/bankr-encryption";
 import { logger } from "@/lib/logger";
 import { sendVMReadyEmail, sendAdminAlertEmail } from "@/lib/email";
 import { logOnboardingEvent } from "@/lib/onboarding-events";
+import { VIDEO_BILLING_WIPE_FIELDS } from "@/lib/vm-billing-wipe";
 
 // SSH + configure-vm.sh + health check + optional data migration can take 60-150s
 export const maxDuration = 300;
@@ -626,6 +627,7 @@ export async function POST(req: NextRequest) {
           telegram_bot_token: null,
           telegram_bot_username: null,
           telegram_chat_id: null,
+          ...VIDEO_BILLING_WIPE_FIELDS,  // Finding 2: video billing leaves with the user
           // Per eec2cf95: null IP at failed-flip so the row can never be
           // selected by health-check's recovery probe after Linode IP reuse.
           ip_address: null,
@@ -1032,6 +1034,7 @@ export async function POST(req: NextRequest) {
               // Rule 34: clear per-user channel state so the next assignee
               // doesn't inherit the prior user's Telegram identity from the DB.
               telegram_bot_token: null, telegram_bot_username: null, telegram_chat_id: null,
+              ...VIDEO_BILLING_WIPE_FIELDS,  // Finding 2: video billing leaves with the user
               // Per eec2cf95: null IP at failed-flip so the row can never be
               // selected by health-check's recovery probe after Linode IP reuse.
               ip_address: null,

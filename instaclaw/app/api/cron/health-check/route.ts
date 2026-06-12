@@ -11,6 +11,7 @@ import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { isUserBillableForVmAssignment, fetchBillingExempt, getBillingStatusVerified } from "@/lib/billing-status";
 import { getStripe } from "@/lib/stripe";
 import { deleteLinodeInstance } from "@/lib/vm-lifecycle-helpers";
+import { VIDEO_BILLING_WIPE_FIELDS } from "@/lib/vm-billing-wipe";
 
 // Prevent Vercel CDN from caching per-user responses
 export const dynamic = "force-dynamic";
@@ -2999,6 +3000,7 @@ else:
             telegram_bot_token: null,
             telegram_bot_username: null,
             telegram_chat_id: null,
+            ...VIDEO_BILLING_WIPE_FIELDS,  // Finding 2: video billing leaves with the user
           })
           .eq("id", deadVm.id);
 
