@@ -16,8 +16,46 @@ drills includes the credibility of the canary itself.** Every decision below is 
 
 **Subject VM (the canary): `instaclaw-vm-1043`**
 - `id` = `0f64ac86-69d2-45f4-ac2d-a488714c4d0d` · IP `45.33.95.220`
-- wallet (`bankr_evm_address`) = `0xd998a6dc14e5ec290b2a9f201d6a6c82a1dd38c4`
+- wallet (`bankr_evm_address`) = `0xd998a6dc14e5ec290b2a9f201d6a6c82a1dd38c4` ← **fund THIS** (vm-1043's own Bankr wallet; verify on basescan before sending).
 - both gates start **OFF**; Stage 1 arms them; Stage 11 disarms.
+
+### ⛔ STAGE 0 PRECONDITION — OWNERSHIP (close before funding; verified 2026-06-12 from rows)
+
+The three accounts, quoted from `instaclaw_users` / `instaclaw_vms`:
+
+| account (login) | user id | owns | that VM's Bankr wallet |
+|---|---|---|---|
+| `cooper-v122-canary@instaclaw.test` (TEST acct, `partner=edge_city`, no real mailbox) | `59dcf829-22d0-4db5-8890-d9cde788b576` | **vm-1043** (the canary) | `0xd998…38c4` (the fund target) |
+| `coopgwrenn@gmail.com` (Cooper's real login) | `4e0213b3-c9e8-4812-9385-827786900b66` | vm-050 (`timmytimmytimbot`) | `0xe1e0…54f3` (what Cooper sees in HIS dashboard) |
+
+**The hole this closes:** vm-1043 is owned by the TEST account, NOT Cooper. The two wallets are different VMs, NOT a primary/CDP pair (vm-050's CDP is `0x748568…2830`, unrelated). The canary was put on a separate VM **and** a separate account; the separate-account half was never reconciled against "who taps the approval."
+
+**Why this BLOCKS the booking:** the per-booking travel approval is **session-rooted and owner-scoped**. `/api/agent-economy/authorize` derives `ownerId = vm.assigned_to` (route line 316); `/api/agent-economy/approve` requires a NextAuth browser session and 404s unless `approval.owner_id === session.user.id` (route lines 13, 74). Travel is `SESSION_REQUIRED` (Rule 79) — only a session approval authorizes it, never the forgeable bool. **Net: the booking's approval can be minted ONLY from a browser logged into vm-1043's owner. Today that is the `.test` account Cooper cannot log into.** Logged in as `coopgwrenn@gmail.com`, Cooper gets a 404 — he cannot see or approve the spend.
+
+**Resolution — REQUIRED before Stage 1 (pick one; A recommended):**
+
+- **Option A (recommended): reassign vm-1043's owner to `coopgwrenn@gmail.com`.** A bare `assigned_to` flip is sufficient and clean — `authorize` reads `ownerId` straight from `assigned_to`, so the approval becomes mintable from Cooper's real session. Wallet is per-VM → fund target unchanged. Blast radius stays vm-1043 (NOT vm-050) → the isolation rationale holds. Both accounts are `partner=edge_city` → no partner drift. **Do it as a direct DB PATCH, NOT the `/assign` flow** (which would re-run `configureOpenClaw` and could wipe state). Reversible — flip back in Stage 11.
+
+  ```bash
+  # APPLY (operator, after Cooper's go):
+  curl -s -X PATCH "$SB/instaclaw_vms?id=eq.$VM1043" -H "apikey: $SRK" -H "Authorization: Bearer $SRK" \
+    -H "Content-Type: application/json" -d '{"assigned_to":"4e0213b3-c9e8-4812-9385-827786900b66"}'
+  curl -s "$SB/instaclaw_vms?id=eq.$VM1043&select=assigned_to" -H "apikey: $SRK" -H "Authorization: Bearer $SRK"
+  #   EXPECT [{"assigned_to":"4e0213b3-c9e8-4812-9385-827786900b66"}]  ← Cooper now owns vm-1043.
+  # REVERT (Stage 11, after the canary):
+  #   PATCH assigned_to back to "59dcf829-22d0-4db5-8890-d9cde788b576".
+  ```
+
+- **Option B: log in as the test account.** `.test` email has no real mailbox (no magic link). Viable only if a seeded password / admin-impersonate path exists. Not confirmed; skip unless one is found.
+- **Option C: run the canary on vm-050.** Rejected — vm-050 is Cooper's primary agent (`timmy`); arming real-money frontier spend + firing brake drills against it is exactly the blast radius the separate-VM design avoids.
+
+**The booking email (the guest/voucher inbox) is a FREE PARAMETER** passed in the `book` op's `customer` object at booking time (route line 341) — it is NOT tied to the VM's owner account. `coopgwrenn@gmail.com` works as the guest email under any owning account.
+
+**Stage 0 ownership checklist (all must be true before Stage 1):**
+1. vm-1043's `assigned_to` = `coopgwrenn@gmail.com`'s user id (`4e0213b3…`) — via Option A, Cooper-approved.
+2. Fund `0xd998…38c4` (vm-1043's Bankr wallet) — **as late as practical** before the booking (Bankr key is on the VM; "unarmed" guards the authorize path, not raw signing).
+3. Booking `customer.email` = `coopgwrenn@gmail.com` (free param; voucher lands in Cooper's real inbox).
+4. Cooper logged into `instaclaw.io` as `coopgwrenn@gmail.com` for the in-browser approval tap.
 
 ```bash
 # Bootstrap (one-time per session)
@@ -313,6 +351,9 @@ curl -s "$SB/instaclaw_vms?id=eq.$VM1043&select=frontier_spend_enabled,travala_b
 curl -s "$SB/frontier_transactions?vm_id=eq.$VM1043&status=eq.pending&direction=eq.spend&select=id,created_at" -H "apikey: $SRK" -H "Authorization: Bearer $SRK" # expect [] (or terminalize any to 'failed')
 # R4: coverage script clean (incl. the revoked-but-paid gap = 0 if D2b ran + reconciled)
 npx tsx /Users/cooperwrenn/wild-west-bots-tier0/instaclaw/scripts/_coverage-frontier.ts; echo "exit=$?"                                                          # expect "✓ healthy" exit 0
+# R5: revert the Stage-0 ownership reassign (ONLY if Option A was applied) — return vm-1043 to the test acct.
+curl -s -X PATCH "$SB/instaclaw_vms?id=eq.$VM1043" -H "apikey: $SRK" -H "Authorization: Bearer $SRK" -H "Content-Type: application/json" -d '{"assigned_to":"59dcf829-22d0-4db5-8890-d9cde788b576"}'
+curl -s "$SB/instaclaw_vms?id=eq.$VM1043&select=assigned_to" -H "apikey: $SRK" -H "Authorization: Bearer $SRK"                                                   # expect [{"assigned_to":"59dcf829-..."}]
 ```
 
 **Update `PRD §2.2` (the living e2e ledger) with the results — Rule 72:**
