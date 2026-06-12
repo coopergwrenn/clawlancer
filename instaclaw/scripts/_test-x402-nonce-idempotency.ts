@@ -52,8 +52,13 @@ function run() {
   ok("kill switch → 'paused by the platform operator', NOT a limit claim", killN.includes("paused by the platform operator") && !killN.includes("over your travel spending limit"));
   const killUnv = denyNarrationFor("spend_kill_switch_unverifiable", 50);
   ok("kill unverifiable → precautionary-pause copy, NOT a limit claim", killUnv.includes("pauses spending as a precaution") && !killUnv.includes("over your travel spending limit"));
+  // spend_not_enabled is UNREACHABLE for travel post-decouple (2026-06-12) —
+  // reachable only against a stale pre-decouple server. The narration must be
+  // honest about the unknown AND must NEVER send a hotel-booker to enable the
+  // autonomous-spending switch (the exact conflation the decouple removed).
   const offN = denyNarrationFor("spend_not_enabled", 50);
-  ok("spend_not_enabled → 'turned off' + dashboard re-enable path", offN.includes("turned off") && offN.includes("dashboard"));
+  ok("spend_not_enabled → honest generic + dashboard pointer, no charge", offN.includes("Nothing was charged") && offN.includes("dashboard"));
+  ok("spend_not_enabled → never instructs enabling autonomous spending", !offN.includes("Turn it on") && !offN.includes("autonomous spending is turned off"));
   const consN = denyNarrationFor("request_id_consumed", 50, "revoked");
   ok("request_id_consumed → 'already finalized' + surfaces consumed_status + no-recharge", consN.includes("already finalized") && consN.includes("revoked") && consN.includes("NOT charged you again"));
   const limN = denyNarrationFor("travel_ceiling_exceeded", 50);

@@ -147,8 +147,13 @@ export function denyNarrationFor(reason, amountUsd, consumedStatus, wallet) {
       ? `I can't book right now — spending is paused by the platform operator (an emergency stop, not your limits). Nothing was charged. Try again later.`
       : `I can't book right now — the platform couldn't verify its safety stop, so it pauses spending as a precaution (not your limits). Nothing was charged. Try again in a few minutes.`;
   }
+  // spend_not_enabled: UNREACHABLE for travel post-decouple (2026-06-12 — booking
+  // no longer requires the autonomous-spending switch; session-required categories
+  // satisfy the mandate structurally). Reachable only against a stale server still
+  // running the pre-decouple gate, so the copy is honest about both states and
+  // never sends a hotel-booker to flip the autonomy switch as if it were required.
   if (reason === "spend_not_enabled") {
-    return `I can't book — autonomous spending is turned off for me. Nothing was charged. Turn it on in your dashboard (Spending settings) and ask me again.`;
+    return `I couldn't book — the platform declined the spend (a spending-permission check). Nothing was charged. This usually clears on its own; ask me to book it again in a few minutes. If it keeps happening, check your dashboard's Spending settings and category controls.`;
   }
   // THE FUNDING ASK (Finding 2, north-star ruling 2026-06-12) — the gate with no
   // UI: it speaks. Motivation first, exact need, exact path, no charge, no shame.

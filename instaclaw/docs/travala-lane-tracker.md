@@ -64,6 +64,49 @@ bird's-eye audit (a silently-dropped item, now restored). Status: HELD.
   consumed nonce) — monitor via `frontier_spend_events`; no code.
 - whoami/logout exposure — skipped with stated reasons in the Part-1 inventory.
 
+## 2026-06-12 PM — THE TRAVEL DECOUPLE: booking freed from frontier_spend_enabled (SHIPPED)
+
+Cooper ruled + GO'd same day: **hotel booking is not autonomous spending** — the
+user taps approve on the exact room and price before a dollar moves, so the
+autonomous-spend mandate (`frontier_spend_enabled`, the §8.7 opt-in) added zero
+protection to travel and only blocked funded users. Proven first (full gate
+trace + airtight tap proof), then shipped:
+
+- `spendMandateSatisfied(vm, category)` (lib/frontier-spend-optin.ts) — the gate
+  exemption, keyed on the SAME `SESSION_REQUIRED_CATEGORIES` SoT that drives the
+  unforgeable-tap requirement, so exemption and guarantee cannot drift apart.
+- `blocksUnmandatedReserve` (lib/frontier-authz.ts) — belt-and-braces: without
+  the standing mandate, only mode AND reason both saying human-approved-session
+  may reserve (field agreement = second independent guard). Graceful: re-mints
+  the tap instead of erroring.
+- Load-bearing invariant documented at the SoT (frontier-policy.ts): every
+  session-required category MUST have a $0-just-do-it band layer. Guarded by
+  `scripts/_test-frontier-session-decouple.ts` — 133 assertions: the invariant
+  under adversarial overrides, the full behavior matrix (incl. ceiling/privacy/
+  drain-with-tap, daily ceiling, category-override exclusion), the lying-agent
+  discrimination test C1–C11, the belt-and-braces futures D1–D6.
+- **Fresh-eyes find (decouple consequence, fixed in the same change):**
+  revoke-spend's already-off early return skipped interdiction — post-decouple a
+  never-opted-in VM CAN hold a live tapped travel hold, so the panic link would
+  have falsely said "no action was needed." Now ALWAYS interdicts, honest copy.
+- Agent brain: SKILL.md down to TWO requirements (funded wallet + the tap) with
+  an explicit "never send a user to Spending settings to book a hotel";
+  booking-flow.md gate list rewritten (3 real gates + history note);
+  spend_not_enabled narration honest-generic (unreachable post-decouple), the
+  every-deny-says-nothing-was-charged invariant kept (the nonce suite enforces it).
+- Dashboard card API: prereqsMet = wallet only; the stale "Pro/Power + autonomous
+  spend" message corrected. spend-settings docblock updated for accuracy.
+- Hold metadata `mandate: "standing_optin" | "session_only"` — Rule-27
+  observability for the decoupled population in frontier_transactions.metadata.
+- Canary runbook Stage 1 RETIRED for the booking leg, with the **abort-lever
+  change documented loudly**: flag-disarm no longer stops travel; the levers are
+  the kill switch, the per-VM category override (Gate-1 hard deny), and
+  revoke-link interdiction (which now works on the already-off path).
+- Proven unchanged: every other category still requires the opt-in
+  (per-category asserted: exemption ⟺ session-required); hard denies bind even
+  with a tap; empty wallet → the funding ask before any tap is requested.
+- Ceremony: tsc clean + 7 suites / 376 assertions green (direct exit codes).
+
 ## 2026-06-12 PM — Trips discovery reversal: BUILT + APPROVED, push HELD, COUPLED to the fleet flip
 
 Cooper ruled (2026-06-12 PM): the Trips sidebar item shows for EVERYONE (presence

@@ -136,6 +136,39 @@ export interface AuthorizationDecision {
 
 const round6 = (x: number) => Math.round(x * 1e6) / 1e6;
 
+/**
+ * Belt-and-braces reserve guard for the travel decouple (2026-06-12): when the
+ * owner has NOT granted the standing autonomous-spend mandate
+ * (frontier_spend_enabled), the ONLY decision allowed to reserve a hold is a
+ * fresh browser-session approval. Everything else — autonomous, forgeable-bool,
+ * any future authorizing branch — is blocked.
+ *
+ * This is deliberately REDUNDANT with the structural guarantees (the $0
+ * just-do-it bands + disallowForgeableApproval make a non-session authorization
+ * unreachable for session-required categories today). It exists for the future
+ * engineer: if someone adds a category to SESSION_REQUIRED_CATEGORIES without a
+ * $0-band layer (the invariant test will scream, but tests can be skipped), or
+ * adds a new authorizing branch to decideAuthorization, this guard still stands
+ * between an un-mandated spend and a reserved hold.
+ *
+ * FIELD AGREEMENT (the second cheap insurance): we don't trust the reason
+ * string alone — mode AND reason must BOTH say "human-approved session". A
+ * corrupted/partial decision (e.g. a refactor that keeps the reason but changes
+ * the mode, or vice versa) fails the check and blocks.
+ *
+ * Pure. Tested in scripts/_test-frontier-session-decouple.ts.
+ */
+export function blocksUnmandatedReserve(
+  decision: Pick<AuthorizationDecision, "authorized" | "mode" | "reason">,
+  standingMandate: boolean,
+): boolean {
+  if (standingMandate) return false; // owner granted standing authority — normal rules
+  if (!decision.authorized) return false; // nothing to reserve — nothing to block
+  const sessionAuthorized =
+    decision.mode === "human_approved" && decision.reason === "human_approved_session";
+  return !sessionAuthorized;
+}
+
 export function decideAuthorization(input: AuthorizationInput): AuthorizationDecision {
   const { evaluation, standing, reserveAwareSpentTodayUsd, amountUsd, categoryKnown } = input;
 

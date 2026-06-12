@@ -3,25 +3,32 @@
 Detailed mechanics behind the two scripts. The agent does not need this for a
 normal booking; consult it for edge cases, errors, and recovery.
 
-## The two gates (why a booking can be refused)
+## The three gates (why a booking can be refused)
 
 A booking proceeds only if ALL of these hold. The scripts surface the exact
 reason; relay it to the user, don't improvise around it.
 
-1. **`travala_booking_enabled` (per agent, the Travel Agent card toggle)** —
-   fail-closed. Absent/false ⇒ booking off. Reason string:
-   `travala_booking_not_enabled`.
-2. **Global booking kill switch** — an operator emergency stop. Reason:
-   `travala_booking_kill_switch`.
-3. **Frontier spend gate** (`/api/agent-economy/authorize`, category `travel`) —
+(History, so stale errors don't confuse you: the per-VM `travala_booking_enabled`
+card toggle was retired from the booking path 2026-06-12, and booking was
+decoupled from the `frontier_spend_enabled` "autonomous spending" switch the same
+day — booking is human-approved spending, not autonomous spending, so neither
+switch gates it. The gates that remain are the meaningful ones.)
+
+1. **Operator kill switches** — emergency stops, fleet-wide, fail-closed.
+   Reasons: `travala_booking_kill_switch`, `spend_kill_switch` (+ their
+   `_unverifiable` variants when the platform can't read its own brake).
+2. **Frontier spend gate** (`/api/agent-economy/authorize`, category `travel`) —
    travel is a SESSION-REQUIRED category: the spend must be within the user's
-   travel ceiling AND the user must approve it from their **browser session** (the
-   dashboard tap). A chat "yes" / the forgeable `human_approved` bool does NOT
-   authorize travel — by design (a hijacked agent can't forge it). `outcome:"deny"`
-   = over the ceiling (can't override); `outcome:"ask_first"` /
-   `reason:"needs_session_approval"` = the script returns an `approval_url` for the
-   user to tap, then you resume with `--retry --request-id <id>`.
-4. **Funded Bankr USDC wallet** — the on-chain transfer needs USDC on Base.
+   travel ceiling ($1200/booking, $3000/day) AND the user must approve it from
+   their **browser session** (the dashboard tap). A chat "yes" / the forgeable
+   `human_approved` bool does NOT authorize travel — by design (a hijacked agent
+   can't forge it). `outcome:"deny"` = over the ceiling / category switched off
+   in the user's Spending category controls (can't override); `outcome:"ask_first"`
+   / `reason:"needs_session_approval"` = the script returns an `approval_url` for
+   the user to tap, then you resume with `--retry --request-id <id>`.
+3. **Funded Bankr USDC wallet** — the on-chain transfer needs USDC on Base. An
+   underfunded wallet is refused BEFORE the tap is ever requested
+   (`would_drain_wallet` — the narration carries the exact amount + address).
 
 ## What happens under the hood (you never do these by hand)
 

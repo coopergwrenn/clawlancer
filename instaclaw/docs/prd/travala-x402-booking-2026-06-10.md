@@ -413,3 +413,13 @@ The 2026-06-10 blocker (travel category shipped without its ceiling) is **closed
 **Honest caveat (proven-vs-assuming):** Travala's public README does not contain a single literal sentence about the `m2m-payment/book` URL's headers (it's a runtime `next_action` target, not separately documented). The confirmation rests on (a) the x402 protocol mandating payment-header-only auth, and (b) Travala documenting that the pay step uses the standard X-PAYMENT-only Coinbase client. That is a strong, self-consistent, documented contract — NOT "the docs are silent." Confidence: **high.**
 
 **Code impact:** `travala-book.mjs` step 4 now codes the one real contract — POST the dual `PAYMENT-SIGNATURE`/`X-PAYMENT` headers (x402-canonical, both names), **no Bearer**. The prior defensive `payment_endpoint_requires_auth` 401 special-case + "route through the backend" fork is **removed**; a 401 is now a normal `pay_http_401` error (and would be an unexpected protocol violation, not a "needs a Bearer" signal). The references error-table row is updated accordingly.
+
+> **RECONCILIATION ADDENDUM (2026-06-12 PM — THE TRAVEL DECOUPLE, canon):** hotel
+> booking no longer requires `frontier_spend_enabled`. Cooper's ruling: booking is
+> human-approved spending, not autonomous spending — the §8.7 standing mandate gates
+> a different power. Session-required categories (SESSION_REQUIRED_CATEGORIES)
+> satisfy the mandate structurally via `spendMandateSatisfied`
+> (lib/frontier-spend-optin.ts); the per-booking unforgeable session tap remains the
+> consent on every spend, hard limits (ceiling/drain/privacy/category-ban) bind even
+> with a tap, and `blocksUnmandatedReserve` (lib/frontier-authz.ts) backstops the
+> reserve. Any §-text below implying booking needs the spend opt-in is superseded.

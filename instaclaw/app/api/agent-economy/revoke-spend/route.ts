@@ -74,8 +74,31 @@ export async function GET(req: NextRequest) {
   }
 
   if (vm.frontier_spend_enabled !== true) {
-    // Already off (or never on) — idempotent success.
-    return htmlPage("Spending is off", "Autonomous spending for this agent is already turned off. No action was needed.", 200);
+    // Already off (or never on) — idempotent for the FLAG, but NOT a no-op anymore.
+    // Travel decouple (2026-06-12): session-required categories (travel) reserve
+    // holds WITHOUT the standing opt-in (the per-spend session tap is their mandate),
+    // so a never-opted-in VM can have live pending holds. Pre-decouple this early
+    // return was airtight ("no opt-in ⇒ no holds possible"); post-decouple, skipping
+    // interdiction here would make the panic link falsely report "no action was
+    // needed" while a tapped travel hold stays live. So: ALWAYS interdict. Same
+    // atomic status='pending' flip; settle's CAS then blocks any in-flight pay from
+    // settling. Honest copy reports what was actually cancelled.
+    const { holds: lateInterdicted, errored } = await runInterdiction(supabase, v.vmId);
+    if (errored) {
+      logger.warn("revoke-spend: interdiction (already-off path) failed (best-effort)", {
+        route: "agent-economy/revoke-spend", vmId: v.vmId,
+      });
+    }
+    if (lateInterdicted.length > 0) {
+      const events = buildInterdictionEvents(v.vmId, (vm.assigned_to as string | null) ?? null, lateInterdicted);
+      after(() => Promise.all(events.map((ev) => recordSpendEvent(supabase, ev))));
+      return htmlPage(
+        "Spending is off",
+        `Autonomous spending was already turned off. We also cancelled ${lateInterdicted.length} in-flight spend hold${lateInterdicted.length === 1 ? "" : "s"} that ${lateInterdicted.length === 1 ? "was" : "were"} still pending.`,
+        200,
+      );
+    }
+    return htmlPage("Spending is off", "Autonomous spending for this agent is already turned off. No in-flight spends were pending.", 200);
   }
 
   // (1) FUTURE-spend gate — the existing master opt-in. Flip first; if this fails

@@ -69,6 +69,11 @@ function prereqView(vm: Record<string, unknown>, walletFundedUsd: number | null)
   // Starter included; no tier gate anywhere in the travel lane). Field kept so
   // older card clients reading prereqs don't break.
   const tierOk = true;
+  // spendEnabled: INFORMATIONAL ONLY since the 2026-06-12 travel decouple — booking
+  // no longer requires the autonomous-spending switch (travel is session-required:
+  // every booking is approved by the user's browser tap, so the standing autonomy
+  // mandate is irrelevant to it). Field kept so older card clients don't break,
+  // but it no longer participates in prereqsMet.
   const spendEnabled = isFrontierSpendEnabled(vm as { frontier_spend_enabled?: boolean | null });
   const walletProvisioned = !!vm.bankr_evm_address;
   return {
@@ -77,8 +82,10 @@ function prereqView(vm: Record<string, unknown>, walletFundedUsd: number | null)
     spendEnabled,
     walletProvisioned,
     walletFundedUsd, // null = unknown (RPC flaky) — advisory only
-    // hard server gate (funding is advisory, not gated)
-    prereqsMet: tierOk && spendEnabled && walletProvisioned,
+    // hard server gate (funding is advisory, not gated): the only real prereq is a
+    // provisioned wallet — funding and the per-booking tap are asked at the moment
+    // they matter, in chat (the north-star ruling).
+    prereqsMet: walletProvisioned,
   };
 }
 
@@ -118,7 +125,7 @@ export async function POST(req: NextRequest) {
           error: "prereqs_not_met",
           prereqs,
           message:
-            "Booking needs a Pro or Power plan, autonomous spend enabled, and a provisioned wallet first.",
+            "Booking needs a provisioned agent wallet first. (Every plan can book; funding and the per-booking approval are asked in chat at the moment they matter.)",
         },
         { status: 409 },
       );

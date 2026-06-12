@@ -11,8 +11,11 @@
  * dashboard), NOT by gateway token (that's the agent-side authorize route).
  *
  * Default-OFF / fail-closed semantics live in lib/frontier-spend-optin.ts.
- * The authorize gate denies spend when this is false (deny: spend_not_enabled),
- * so a user who never visits this page is protected by construction.
+ * The authorize gate denies AUTONOMOUS-capable spend when this is false (deny:
+ * spend_not_enabled), so a user who never visits this page is protected by
+ * construction. SESSION-REQUIRED categories (travel) are exempt since the
+ * 2026-06-12 decouple — their only money path is the per-spend browser tap,
+ * which is stronger consent than this standing switch (spendMandateSatisfied).
  *
  * Migration dependency: the frontier_spend_enabled column ships in
  * supabase/pending_migrations/20260603190000_vm_frontier_spend_enabled.sql.

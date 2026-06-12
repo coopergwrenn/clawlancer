@@ -85,9 +85,9 @@ import { resolveEffectivePolicy } from "@/lib/frontier-overrides-db";
 import { loadVmStanding, LedgerReadError } from "@/lib/frontier-standing-db";
 import type { CreditStanding } from "@/lib/frontier-standing";
 import { HOLD_TTL_MS, SPEND_WINDOW_MS } from "@/lib/frontier-ledger-db";
-import { decideAuthorization } from "@/lib/frontier-authz";
+import { decideAuthorization, blocksUnmandatedReserve } from "@/lib/frontier-authz";
 import { frontierSpendKillState } from "@/lib/frontier-kill-switch";
-import { isFrontierSpendEnabled } from "@/lib/frontier-spend-optin";
+import { isFrontierSpendEnabled, spendMandateSatisfied } from "@/lib/frontier-spend-optin";
 import { evaluateApproval } from "@/lib/frontier-approvals";
 import {
   lookupApproval,
@@ -384,12 +384,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── User opt-in gate (default OFF, FAIL-CLOSED): autonomous spend is a user-owned
-  // setting — an agent may spend its human's money ONLY if the owner explicitly enabled
-  // it for this agent (`instaclaw_vms.frontier_spend_enabled`). Absent / null / false /
-  // unreadable ⇒ deny. Checked before the pipeline (no standing/budget logic runs until
-  // the user has opted in). This is the §8.7 "mandate"; see lib/frontier-spend-optin.ts. ──
-  if (!isFrontierSpendEnabled(vm)) {
+  // ── User mandate gate (default OFF, FAIL-CLOSED): autonomous spend is a user-owned
+  // setting — an agent may spend its human's money on its own initiative ONLY if the
+  // owner explicitly enabled it (`instaclaw_vms.frontier_spend_enabled`). Absent / null /
+  // false / unreadable ⇒ deny. Checked before the pipeline. This is the §8.7 "mandate".
+  //
+  // TRAVEL DECOUPLE (ruled 2026-06-12): SESSION-REQUIRED categories (travel) are exempt
+  // from the STANDING mandate because their only money path is the PER-SPEND mandate —
+  // the unforgeable browser-session tap ($0 just-do-it bands + disallowForgeable make
+  // every other authorizing branch unreachable; see lib/frontier-spend-optin.ts
+  // spendMandateSatisfied for the full reasoning + the drift guards). Hotel booking is
+  // not autonomous spending: the human approves the exact room and price before a
+  // dollar moves. Defense in depth: the blocksUnmandatedReserve guard below refuses to
+  // reserve ANY non-session-approved spend when the standing mandate is absent. ──
+  const standingMandate = isFrontierSpendEnabled(vm);
+  if (!spendMandateSatisfied(vm, v.category)) {
     after(() =>
       recordSpendEvent(supabase, {
         decision_point: "authorize", vm_id: vmId, owner_id: ownerId, verdict: "deny",
@@ -539,6 +548,29 @@ export async function POST(req: NextRequest) {
     tier,
   });
 
+  // ── Belt-and-braces (travel decouple, 2026-06-12): without the standing mandate,
+  // ONLY a session-approved decision may reserve. Structurally unreachable today
+  // (session-required categories can't authorize any other way — the invariant test
+  // asserts it), but this guard outlives refactors: a future session-required
+  // category with non-$0 bands, or a new authorizing branch in decideAuthorization,
+  // still cannot reserve an un-mandated spend. Resolution is graceful: mint the
+  // approval and hand the human the tap, exactly like a normal ask_first. ──
+  if (blocksUnmandatedReserve(decision, standingMandate)) {
+    const approval = await mintPendingApproval(supabase, {
+      vmId, ownerId, requestId: v.request_id,
+      amountUsd: v.amount_usd, category: v.category, counterparty: counterpartyLabel, nowMs,
+    });
+    after(() => recordSpendEvent(supabase, spendEvent("ask", { reason: "needs_session_approval" })));
+    return NextResponse.json(
+      {
+        authorized: false, mode: null, ...commonBody,
+        outcome: "ask_first", reason: "needs_session_approval",
+        ...(approval ? { approval_url: approval.approvalUrl, approval_id: approval.approvalId } : {}),
+      },
+      { status: 200 },
+    );
+  }
+
   // ── Not authorized: a valid business answer (ask the human / hard no). No hold. ──
   if (!decision.authorized) {
     // On ask_first (human-resolvable — a session approval converts ANY ask_first to
@@ -593,6 +625,12 @@ export async function POST(req: NextRequest) {
         : decision.reason === "human_approved_session"
           ? "session"
           : "forgeable",
+    // Which user mandate authorized this hold (travel decouple observability):
+    // "standing_optin" = frontier_spend_enabled was on; "session_only" = the owner
+    // never granted standing authority — this spend exists purely because of a
+    // fresh session tap. Queryable in frontier_transactions.metadata for the
+    // decoupled-population coverage view (Rule 27).
+    mandate: standingMandate ? "standing_optin" : "session_only",
     endpoint: v.endpoint,
     category: v.category,
     tags: v.tags,

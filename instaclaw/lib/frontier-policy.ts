@@ -327,6 +327,19 @@ export const ALL_CATEGORIES: readonly SpendCategory[] = [
  * $1200 booking by setting one forgeable boolean, because phase-1 honors the forgeable
  * bool above the threshold. With it, only a session approval converts a travel ask_first
  * to authorized — the $0-just-do-it safety becomes unforgeable, today, not just post-flip.
+ *
+ * ⚠ LOAD-BEARING INVARIANT (travel decouple, 2026-06-12): membership here EXEMPTS the
+ * category from the frontier_spend_enabled standing mandate (spendMandateSatisfied in
+ * lib/frontier-spend-optin.ts) — safe ONLY because a session-required category has NO
+ * autonomous path. So: **every category added to this set MUST have a band layer that
+ * pins justDoItPerTx and justDoItPerDay to $0** (the travelBands pattern — hardcoded 0,
+ * ignoring overrides). Adding a category WITHOUT a $0-band layer would let an agent
+ * spend it autonomously with neither the opt-in nor a tap. Three guards stand against
+ * that mistake: (1) the invariant test in scripts/_test-frontier-session-decouple.ts
+ * fails the suite the moment a member has non-$0 bands; (2) frontier-authz
+ * .blocksUnmandatedReserve refuses to reserve any non-session-approved spend when the
+ * standing mandate is absent — runtime backstop even if the test is skipped; (3) this
+ * comment. Do not add a member without its $0-band layer in evaluateSpend.
  */
 export const SESSION_REQUIRED_CATEGORIES: readonly SpendCategory[] = ["travel"];
 

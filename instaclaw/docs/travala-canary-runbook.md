@@ -13,7 +13,9 @@ Subject VM (the canary): **vm-1043**
 - IP = `45.33.95.220`, user `openclaw`, health `healthy`, cv `128`
 - wallet (`bankr_evm_address`, the EIP-3009 `from`) = `0xd998a6dc14e5ec290b2a9f201d6a6c82a1dd38c4`
 - `assigned_to` = `59dcf829-22d0-4db5-8890-d9cde788b576`
-- the money gate currently **OFF** (`frontier_spend_enabled=false`; the per-VM booking toggle was retired 2026-06-12 — spend opt-in + the per-booking tap are the gates)
+- `frontier_spend_enabled=false` and it can STAY false (travel decouple, 2026-06-12 PM:
+  booking never needs the autonomous-spend mandate — the funded wallet + the per-booking
+  session tap are the complete gates; the per-VM booking toggle was retired the same day)
 
 Operator access (CLAUDE.md bootstrap):
 ```bash
@@ -111,28 +113,34 @@ stays). No DB state touched.
 
 ---
 
-## STAGE 1 — Arm (NO money yet; flips the two gates ON)
+## STAGE 1 — Arm (RETIRED for the booking leg, 2026-06-12 travel decouple)
 
-A flag-only update — it does NOT trip the F4 lifecycle trigger (that fires on
-`assigned_to`/`status` change, not pure-column writes).
+**The booking leg needs NO flag.** Travel was decoupled from
+`frontier_spend_enabled` (the autonomous-spend mandate) because travel has no
+autonomous path — its only money path is the per-booking browser-session tap,
+which is the consent. A funded wallet + the tap is the complete arming state;
+this stage is now a no-op for booking and the canary proceeds straight to
+Stage 2. (Arm the flag only if this canary run ALSO exercises an autonomous
+category — not the booking leg.)
 
-```bash
-curl -s -X PATCH "$SB/instaclaw_vms?id=eq.0f64ac86-69d2-45f4-ac2d-a488714c4d0d" \
-  -H "apikey: $SRK" -H "Authorization: Bearer $SRK" -H "Content-Type: application/json" -H "Prefer: return=representation" \
-  -d '{"frontier_spend_enabled": true}' | python3 -m json.tool
-```
-**Expected:** the row echoed back with `"frontier_spend_enabled": true`. (The travala
-toggle is retired — one flag arms the canary; the per-booking tap stays the consent.)
+**⚠ ABORT-LEVER CHANGE (load-bearing):** disarming `frontier_spend_enabled` no
+longer blocks travel — do NOT rely on it as the booking abort. The abort levers
+for the booking leg are:
 
-**Abort here:** disarm (below) — instantly removes the booking capability.
-**Blast radius:** vm-1043 can now book + spend until disarmed. No money moved yet.
-**Cleanup / DISARM (also the abort lever for every later pre-pay stage):**
-```bash
-curl -s -X PATCH "$SB/instaclaw_vms?id=eq.0f64ac86-69d2-45f4-ac2d-a488714c4d0d" \
-  -H "apikey: $SRK" -H "Authorization: Bearer $SRK" -H "Content-Type: application/json" \
-  -d '{"frontier_spend_enabled": false}'
-```
-**Seams observed:** none.
+1. **Pre-tap / any stage:** the global kill switch (below) — instant, fleet-wide.
+   For a single-VM stop without fleet impact: tighten the canary VM's per-VM
+   category override to exclude `travel` (a Gate-1 hard deny even a tap cannot
+   override):
+   `POST /api/agent-economy/policy` (session) or direct
+   `instaclaw_frontier_policy_overrides` upsert excluding "travel" from
+   allowed_categories.
+2. **Post-tap, pre-pay (a live hold):** the revoke link / revoke-spend route —
+   post-decouple it interdicts pending holds EVEN when the flag is already off
+   (the already-off path now runs interdiction; fixed in the same change).
+3. **Any time:** `travala_booking_kill_switch` (the global abort, next block).
+
+**Seams observed:** the old Stage-1 flag-arm + flag-disarm pair is preserved in
+git history (pre-decouple revisions) if a historical re-read is ever needed.
 
 > **GLOBAL EMERGENCY ABORT (any stage, instant, fleet-wide, no deploy):** engage the kill switch.
 > ```sql
