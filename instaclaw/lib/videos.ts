@@ -66,3 +66,11 @@ export interface VideoQuotas {
   pack_clips: number;
   seed_available: boolean;
 }
+
+/** Month-jump index entry — the navigation map of the library (counts match
+ *  the gallery's base WHERE, unaffected by the active filter/search). */
+export interface MonthEntry {
+  key: string; // YYYY-MM
+  label: string; // "June 2026"
+  count: number;
+}
