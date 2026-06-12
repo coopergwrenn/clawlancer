@@ -2,8 +2,15 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { CreditCard, Check, ArrowRight } from "lucide-react";
+import { CreditCard, Check, ArrowRight, Zap, Film, Clapperboard, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
+import {
+  MESSAGE_PACKS,
+  MEDIA_PACKS,
+  VIDEO_PACKS,
+  TOOLROUTER_PACKS,
+  type CatalogPack,
+} from "@/lib/billing-catalog";
 
 const tiers = [
   {
@@ -82,6 +89,12 @@ export default function BillingPage() {
   const [selectedTier, setSelectedTier] = useState<string>("pro");
   const [apiMode, setApiMode] = useState<"all_inclusive" | "byok">("all_inclusive");
   const [error, setError] = useState("");
+  // Hub state (active-sub view): balances + pack purchase.
+  const [msgBalance, setMsgBalance] = useState<number | null>(null);
+  const [mediaBal, setMediaBal] = useState<number | null>(null);
+  const [videoClips, setVideoClips] = useState<number | null>(null);
+  const [buying, setBuying] = useState<string | null>(null);
+  const [buyError, setBuyError] = useState("");
 
   useEffect(() => {
     fetch("/api/billing/status")
@@ -89,7 +102,48 @@ export default function BillingPage() {
       .then((data) => setBillingStatus(data))
       .catch(() => {})
       .finally(() => setFetching(false));
+    // Balances for the hub — fail-soft, each independent.
+    fetch("/api/vm/usage")
+      .then((r) => r.json())
+      .then((d) => setMsgBalance(typeof d.creditBalance === "number" ? d.creditBalance : 0))
+      .catch(() => {});
+    fetch("/api/credits/media")
+      .then((r) => r.json())
+      .then((d) => setMediaBal(typeof d.balance === "number" ? d.balance : 0))
+      .catch(() => {});
+    fetch("/api/credits/video")
+      .then((r) => r.json())
+      .then((d) => setVideoClips(typeof d.clips === "number" ? d.clips : 0))
+      .catch(() => {});
   }, []);
+
+  async function handleBuy(packId: string) {
+    setBuying(packId);
+    setBuyError("");
+    try {
+      const res = await fetch("/api/billing/credit-pack", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pack: packId }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        setBuyError(err.error || `Checkout failed (${res.status}). Please try again.`);
+        setBuying(null);
+        return;
+      }
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setBuyError("Stripe checkout URL not received. Please try again.");
+        setBuying(null);
+      }
+    } catch {
+      setBuyError("Network error. Please check your connection and try again.");
+      setBuying(null);
+    }
+  }
 
   const isActive =
     billingStatus?.subscription?.status === "active" &&
@@ -163,10 +217,107 @@ export default function BillingPage() {
     );
   }
 
-  // Active subscription — show existing portal button
-  if (isActive) {
+  // ── Pack row (shared by all catalog sections; credits-page idiom) ──
+  function renderPackRows(packs: CatalogPack[]) {
     return (
-      <div className="space-y-10" data-tour="page-billing">
+      <div className="grid gap-2.5">
+        {packs.map((pack) => (
+          <button
+            key={pack.id}
+            onClick={() => handleBuy(pack.id)}
+            disabled={buying !== null}
+            className="glass rounded-xl p-4 text-left cursor-pointer transition-all disabled:opacity-50"
+            style={{
+              border: pack.best ? "1.5px solid rgba(220,103,67,0.3)" : "1px solid var(--border)",
+              background: pack.best ? "rgba(220,103,67,0.03)" : undefined,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.boxShadow =
+                "0 2px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.08)";
+              e.currentTarget.style.transform = "translateY(-1px)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.boxShadow = "";
+              e.currentTarget.style.transform = "";
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm font-semibold">{pack.title}</span>
+                <span className="text-xs block" style={{ color: "var(--muted)" }}>
+                  {pack.note} · {pack.perUnit}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {pack.best && (
+                  <span
+                    className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                    style={{
+                      background:
+                        "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+                      color: "#fff",
+                    }}
+                  >
+                    Best Value
+                  </span>
+                )}
+                <span
+                  className="text-sm font-bold px-3 py-1.5 rounded-lg"
+                  style={{
+                    background: pack.best ? "linear-gradient(135deg, #c75a34, #DC6743)" : "rgba(0,0,0,0.05)",
+                    color: pack.best ? "#fff" : "var(--accent)",
+                    boxShadow: pack.best ? "0 1px 3px rgba(199,90,52,0.3)" : undefined,
+                  }}
+                >
+                  {buying === pack.id ? "..." : pack.price}
+                </span>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  function catalogSection(
+    icon: React.ReactNode,
+    title: string,
+    sub: string,
+    packs: CatalogPack[],
+  ) {
+    return (
+      <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
+        <div className="flex items-center gap-2.5 mb-1">
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg, rgba(199,90,52,0.1), rgba(220,103,67,0.1))" }}
+          >
+            {icon}
+          </div>
+          <h2 className="text-lg font-normal" style={{ fontFamily: "var(--font-serif)" }}>
+            {title}
+          </h2>
+        </div>
+        <p className="text-xs mb-5 ml-[42px]" style={{ color: "var(--muted)" }}>
+          {sub}
+        </p>
+        {renderPackRows(packs)}
+      </div>
+    );
+  }
+
+  // Active subscription — THE MONEY HUB (rebuilt 2026-06-12, ruled): current
+  // plan + status at top, all balances, then the COMPLETE purchasable catalog
+  // inline (every credit class — the audit's orphaned-shelf finding closed by
+  // the premium-searches section), and the Stripe-portal block demoted to the
+  // bottom as the utility it is.
+  if (isActive) {
+    const tierName = billingStatus?.subscription?.tier
+      ? billingStatus.subscription.tier.charAt(0).toUpperCase() + billingStatus.subscription.tier.slice(1)
+      : "Active";
+    const paymentStatus = billingStatus?.subscription?.paymentStatus;
+    return (
+      <div className="space-y-8" data-tour="page-billing">
         <div>
           <h1
             className="text-3xl sm:text-4xl font-normal tracking-[-0.5px]"
@@ -175,19 +326,94 @@ export default function BillingPage() {
             Billing
           </h1>
           <p className="text-base mt-2" style={{ color: "var(--muted)" }}>
-            Manage your subscription and payment details.
+            Your plan, balances, and everything you can add to your agent.
           </p>
-          {/* D6 flywheel — cross-link to Credits & balances */}
-          <Link
-            href="/dashboard/credits"
-            className="inline-flex items-center gap-1.5 text-sm mt-3 transition-opacity hover:opacity-70"
-            style={{ color: "var(--muted)" }}
-          >
-            Credits &amp; balances
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
         </div>
 
+        {/* ── Current plan + status ── */}
+        <div className="glass rounded-xl p-6" style={{ border: "1px solid var(--border)" }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs mb-1" style={{ color: "var(--muted)" }}>
+                Current plan
+              </p>
+              <p className="text-2xl font-normal" style={{ fontFamily: "var(--font-serif)" }}>
+                {tierName}
+              </p>
+            </div>
+            <span
+              className="text-xs font-semibold px-3 py-1 rounded-full"
+              style={
+                paymentStatus === "past_due"
+                  ? { background: "rgba(220,103,67,0.12)", color: "var(--accent)" }
+                  : { background: "rgba(34,197,94,0.1)", color: "#16a34a" }
+              }
+            >
+              {paymentStatus === "past_due" ? "Payment issue" : "Active"}
+            </span>
+          </div>
+          {paymentStatus === "past_due" && (
+            <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>
+              There is a payment issue with your subscription. Update your card in the
+              Stripe portal below to keep everything running.
+            </p>
+          )}
+        </div>
+
+        {/* ── Balances ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[
+            { icon: <Zap className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />, label: "message units", value: msgBalance },
+            { icon: <Film className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />, label: "media credits", value: mediaBal },
+            { icon: <Clapperboard className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />, label: "premium videos", value: videoClips },
+          ].map((b) => (
+            <div key={b.label} className="glass rounded-xl p-4" style={{ border: "1px solid var(--border)" }}>
+              <div className="flex items-center gap-2">
+                {b.icon}
+                <span className="text-2xl font-semibold tracking-tight">
+                  {b.value === null ? "–" : b.value.toLocaleString()}
+                </span>
+                <span className="text-xs" style={{ color: "var(--muted)" }}>
+                  {b.label}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── The complete catalog ── */}
+        {catalogSection(
+          <Zap className="w-4 h-4" style={{ color: "var(--accent)" }} />,
+          "Message Units",
+          "Top up after your daily limit. Never expire, used automatically.",
+          MESSAGE_PACKS,
+        )}
+        {catalogSection(
+          <Film className="w-4 h-4" style={{ color: "var(--accent)" }} />,
+          "Media Credits",
+          "For AI video, image, and audio generation. Never expire.",
+          MEDIA_PACKS,
+        )}
+        {catalogSection(
+          <Clapperboard className="w-4 h-4" style={{ color: "var(--accent)" }} />,
+          "Cinematic Video Packs",
+          "Premium text-to-video in widescreen 16:9, from 99¢ a video. Your first one is free: just ask your agent for a video.",
+          VIDEO_PACKS,
+        )}
+        {catalogSection(
+          <Sparkles className="w-4 h-4" style={{ color: "var(--accent)" }} />,
+          "Premium Searches",
+          "Web search, browser automation, and deep research for your agent.",
+          TOOLROUTER_PACKS,
+        )}
+
+        {buyError && (
+          <p className="text-sm text-center" style={{ color: "var(--error)" }}>
+            {buyError}
+          </p>
+        )}
+
+        {/* ── Manage subscription (the utility, at the bottom where it belongs) ── */}
         <div data-tour="page-billing-card" className="glass rounded-xl p-6 space-y-4">
           <p className="text-sm" style={{ color: "var(--muted)" }}>
             Manage your subscription, update payment methods, and view invoices
