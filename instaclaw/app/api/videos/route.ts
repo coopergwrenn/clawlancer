@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (!vm) {
-      const empty: { quotas: VideoQuotas; renders: RenderItem[]; next_cursor: null } = {
+      const empty: { quotas: VideoQuotas; renders: RenderItem[]; months: never[]; next_cursor: null } = {
         quotas: {
           free: { used: 0, cap: freeCapForTier(null) },
           plan: null,
@@ -76,6 +76,7 @@ export async function GET(req: NextRequest) {
           seed_available: true,
         },
         renders: [],
+        months: [],
         next_cursor: null,
       };
       return NextResponse.json(empty, { headers: NO_CACHE_HEADERS });
@@ -119,22 +120,54 @@ export async function GET(req: NextRequest) {
     // ── Renders (gallery) ───────────────────────────────────────────────
     const cursor = req.nextUrl.searchParams.get("cursor");
     const filter = req.nextUrl.searchParams.get("filter"); // all | premium | quick
-    let q = supabase
-      .from("instaclaw_video_transactions")
-      .select("request_id, endpoint, status, is_free, created_at, metadata")
-      .eq("vm_id", vm.id)
+    const search = (req.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 120);
+    const monthParam = req.nextUrl.searchParams.get("month"); // YYYY-MM
+
+    // Filters are SERVER-SIDE (scale redesign): a "Premium" page of 24 mixed
+    // rows used to come back part-empty because the filter ran in JS after
+    // the fetch. In-query filters give full pages + true pagination, and they
+    // compose with search + month-jump as plain params.
+    const videoModels = Object.values(HF_MODELS).filter((m) => m.kind !== "image");
+    const premiumEndpoints = videoModels.filter((m) => m.hfCostCredits >= 13).map((m) => m.endpoint);
+    const quickEndpoints = videoModels.filter((m) => m.hfCostCredits < 13).map((m) => m.endpoint);
+
+    const dayAgoISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    /** The shared WHERE for both the page query and the months index — the
+     *  jump-menu counts must match what the gallery actually shows.
+     *  (supabase-js builder generics are hostile to pass-through helpers;
+     *  `any` in, same builder out.) */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const applyBaseWhere = (query: any) => {
+      let out = query.eq("vm_id", vm.id);
+      // Image-kind renders excluded AT THE QUERY (pagination-starvation guard).
+      for (const m of Object.values(HF_MODELS)) {
+        if (m.kind === "image") out = out.neq("endpoint", m.endpoint);
+      }
+      // Failed rows only within their 24h honesty window (same starvation logic).
+      out = out.or(`status.neq.failed,created_at.gte.${dayAgoISO}`);
+      return out;
+    };
+
+    let q = applyBaseWhere(
+      supabase
+        .from("instaclaw_video_transactions")
+        .select("request_id, endpoint, status, is_free, created_at, metadata"),
+    )
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE + 1);
-    // Image-kind renders are excluded AT THE QUERY (not just the JS filter):
-    // a heavy soul-image user could otherwise fill a whole page with filtered
-    // rows, emptying `visible` and halting pagination before their videos.
-    for (const m of Object.values(HF_MODELS)) {
-      if (m.kind === "image") q = q.neq("endpoint", m.endpoint);
+    if (filter === "premium") q = q.in("endpoint", premiumEndpoints);
+    if (filter === "quick") q = q.in("endpoint", quickEndpoints);
+    if (search) {
+      // Escape LIKE wildcards in user input; match anywhere in the prompt.
+      const pattern = `%${search.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+      q = q.ilike("metadata->>prompt", pattern);
     }
-    // Failed rows only count within their 24h honesty window — same
-    // starvation logic (a burst of old failures could fill a page).
-    const dayAgoISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    q = q.or(`status.neq.failed,created_at.gte.${dayAgoISO}`);
+    if (monthParam && /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam)) {
+      const [yy, mm] = monthParam.split("-").map(Number);
+      const start = new Date(Date.UTC(yy, mm - 1, 1)).toISOString();
+      const end = new Date(Date.UTC(yy, mm, 1)).toISOString();
+      q = q.gte("created_at", start).lt("created_at", end);
+    }
     if (cursor) q = q.lt("created_at", cursor);
     const { data: rows, error: rowsErr } = await q;
     if (rowsErr) {
@@ -143,18 +176,46 @@ export async function GET(req: NextRequest) {
     }
 
     const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-    const premiumSlugs = new Set(
-      Object.values(HF_MODELS).filter((m) => m.hfCostCredits >= 13).map((m) => m.endpoint),
-    );
-    const visible = (rows ?? []).filter((r) => {
+    type Row = { request_id: string; endpoint: string; status: string; is_free: boolean; created_at: string; metadata: RenderMetadata | null };
+    // Defense-in-depth re-check (delisted slugs etc.) — the query already did
+    // the heavy lifting, so this almost never drops anything.
+    const visible = ((rows ?? []) as Row[]).filter((r) => {
       if (!isVideoKind(r.endpoint)) return false;
       if (r.status === "failed" && Date.parse(r.created_at) < dayAgo) return false;
-      if (filter === "premium" && !premiumSlugs.has(r.endpoint)) return false;
-      if (filter === "quick" && premiumSlugs.has(r.endpoint)) return false;
       return true;
     });
     const hasMore = (rows ?? []).length > PAGE_SIZE;
     const pageRows = visible.slice(0, PAGE_SIZE);
+
+    // ── Months index (the jump menu's map of the library) ──────────────
+    // One timestamps-only query with the SAME base WHERE as the gallery, so
+    // counts match what the user sees under "All time". Unfiltered by
+    // filter/q/month on purpose — it's a navigation map of the LIBRARY, not
+    // of the current view. Bounded at 5000 rows (timestamps only, ~150KB
+    // worst case; the design ceiling is 1000 videos).
+    const { data: stamps } = await applyBaseWhere(
+      supabase.from("instaclaw_video_transactions").select("created_at"),
+    )
+      .order("created_at", { ascending: false })
+      .range(0, 4999);
+    const monthMap = new Map<string, number>();
+    for (const s of stamps ?? []) {
+      const d = new Date(s.created_at);
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+      monthMap.set(key, (monthMap.get(key) ?? 0) + 1);
+    }
+    const months = [...monthMap.entries()].map(([key, count]) => {
+      const [yy, mm] = key.split("-").map(Number);
+      return {
+        key,
+        label: new Date(Date.UTC(yy, mm - 1, 1)).toLocaleDateString("en-US", {
+          month: "long",
+          year: "numeric",
+          timeZone: "UTC",
+        }),
+        count,
+      };
+    });
 
     // ── Lazy URL hydration for legacy settled rows ──────────────────────
     const cloudKey = process.env.HIGGSFIELD_CLOUD_KEY;
@@ -186,7 +247,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const renders: RenderItem[] = pageRows.map((r) => {
+    const renders: RenderItem[] = pageRows.map((r: Row) => {
       const meta = (r.metadata ?? {}) as RenderMetadata;
       return {
         request_id: r.request_id,
@@ -203,6 +264,7 @@ export async function GET(req: NextRequest) {
       {
         quotas,
         renders,
+        months,
         next_cursor: hasMore && pageRows.length > 0 ? pageRows[pageRows.length - 1].created_at : null,
       },
       { headers: NO_CACHE_HEADERS },

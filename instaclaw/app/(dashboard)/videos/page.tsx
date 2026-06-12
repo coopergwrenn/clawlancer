@@ -1,35 +1,41 @@
 "use client";
 
 /**
- * /videos — the flagship video surface (stage 1 of the parked design).
+ * /videos — the flagship video surface (stage 1 + the scale re-architecture).
  *
  * The page a $44.99/mo subscriber sees when they think "where are my
- * videos." Three movements:
+ * videos" — designed to hold at 10 videos AND at 1,000:
  *   ① the quota band — three pools (free daily / plan monthly / banked
- *     packs) + the seed chip, one honest picture;
- *   ② the gallery — every render as a living card: hover wakes it (150ms
+ *     packs) + the seed chip. THE STORE'S FRONT DOOR: every money CTA opens
+ *     the BuySheet in place (Runway's credits-chip move — the buy path is
+ *     anchored to the quota readout, never to gallery length). When the
+ *     band scrolls away, the sticky MoneyBar docks so the buy button is on
+ *     screen at video #250. The old bottom shelf is deleted.
+ *   ② the gallery — every render a living card: hover wakes it (150ms
  *     intent delay, muted), pending renders BREATHE in place (the animated
- *     -75deg glass sheen is the shimmer — house material, not skeleton
- *     gray), the lightbox celebrates the verbatim prompt as the artifact;
- *   ③ the shelf — the video pack cards + plan card (catalog single-source),
- *     on-page checkout per the routing rule (this page is the seller).
+ *     -75deg glass sheen), the lightbox celebrates the verbatim prompt.
+ *     AT SCALE: LazyMount keeps live <video> elements ~viewport-sized
+ *     regardless of pages loaded (the keystone); month-jump + prompt-search
+ *     + server-side filters are the finding tools (Google Photos' date
+ *     jump, Midjourney's prompt search); sticky month headers keep you
+ *     oriented; Show-more pages at 24 (manual — no infinite-scroll war
+ *     with the end-of-library buying moment).
  *
  * Craft sources: the real .glass recipe (-75deg sheen, 4-layer shadow,
  * blur(2px)), Instrument Serif display, coral #DC6743, the signature
- * cubic-bezier(0.23,1,0.32,1). Patterns stolen from the masters: Sora's
- * library scrub/lightbox, Midjourney's prompt-as-artifact, Runway's date
- * grouping — and where our taste differs: uniform 16:9 calm over masonry,
- * provenance chips over per-render cost numbers.
+ * cubic-bezier(0.23,1,0.32,1). Where our taste differs from the masters:
+ * uniform 16:9 calm over masonry, provenance chips over per-render cost.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Clapperboard, Zap, Package, Download, Copy, X, Check, Gift, Film,
+  Clapperboard, Zap, Package, Download, Copy, X, Gift, Film,
+  Search, ChevronDown, Plus,
 } from "lucide-react";
 import { useToast, ToastViewport } from "@/components/ui/toast";
 import { VIDEO_PACKS, type CatalogPack } from "@/lib/billing-catalog";
-import type { RenderItem, VideoQuotas } from "@/lib/videos";
+import type { MonthEntry, RenderItem, VideoQuotas } from "@/lib/videos";
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 
@@ -38,20 +44,39 @@ const EASE = [0.23, 1, 0.32, 1] as const;
 interface VideosPayload {
   quotas: VideoQuotas;
   renders: RenderItem[];
+  months: MonthEntry[];
   next_cursor: string | null;
 }
 
-function useVideos(filter: string) {
+/** filter / q / month all compose as server params — the view is whatever the
+ *  query says, and "Show more" pages within it (same composed WHERE). */
+function useVideos(filter: string, q: string, month: string | null) {
   const [data, setData] = useState<VideosPayload | null>(null);
   const [more, setMore] = useState<RenderItem[]>([]);
+  const [moreCursor, setMoreCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+
+  const params = useCallback(
+    (cursor?: string) => {
+      const p = new URLSearchParams({ filter });
+      if (q) p.set("q", q);
+      if (month) p.set("month", month);
+      if (cursor) p.set("cursor", cursor);
+      return p.toString();
+    },
+    [filter, q, month],
+  );
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`/api/videos?filter=${filter}`);
-      if (r.ok) { setData(await r.json()); setMore([]); }
+      const r = await fetch(`/api/videos?${params()}`);
+      if (r.ok) {
+        setData(await r.json());
+        setMore([]);
+        setMoreCursor(null);
+      }
     } catch { /* page renders skeleton; next poll retries */ }
-  }, [filter]);
+  }, [params]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -64,26 +89,38 @@ function useVideos(filter: string) {
     return () => clearInterval(t);
   }, [hasPending, load]);
 
+  // next_cursor comes from the SERVER on every page (the client no longer
+  // derives it from the last visible row — server-side filters mean the last
+  // visible row IS the true cursor, but the server already knows that).
   const loadMore = useCallback(async () => {
-    const cursor = more.length
-      ? more[more.length - 1]?.created_at
-      : data?.next_cursor;
+    const cursor = moreCursor ?? data?.next_cursor;
     if (!cursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const r = await fetch(`/api/videos?filter=${filter}&cursor=${encodeURIComponent(cursor)}`);
+      const r = await fetch(`/api/videos?${params(cursor)}`);
       if (r.ok) {
         const j: VideosPayload = await r.json();
         setMore((m) => [...m, ...j.renders]);
+        setMoreCursor(j.next_cursor);
       }
     } finally { setLoadingMore(false); }
-  }, [data, more, filter, loadingMore]);
+  }, [data, moreCursor, params, loadingMore]);
 
   const renders = useMemo(
     () => [...(data?.renders ?? []), ...more],
     [data, more],
   );
-  return { quotas: data?.quotas ?? null, renders, loaded: data !== null, loadMore, hasMore: !!data?.next_cursor, loadingMore, reload: load };
+  const hasMore = moreCursor !== null ? true : !!data?.next_cursor && more.length === 0;
+  return {
+    quotas: data?.quotas ?? null,
+    months: data?.months ?? [],
+    renders,
+    loaded: data !== null,
+    loadMore,
+    hasMore,
+    loadingMore,
+    reload: load,
+  };
 }
 
 /* ── ① the quota band ──────────────────────────────────────────────────── */
@@ -223,6 +260,48 @@ function QuotaBand({
 }
 
 /* ── ② the gallery ─────────────────────────────────────────────────────── */
+
+/** Virtualization-lite — THE piece that makes 1,000 videos actually work.
+ *  Every gallery card is a <video preload="metadata">; mounting hundreds of
+ *  them = hundreds of range requests + decoder pressure = jank. LazyMount
+ *  keeps the card's BOX in the grid always (layout never shifts) but only
+ *  mounts the real children within ~600px of the viewport, two-way: scroll
+ *  far past a card and its video unmounts again (the browser cache makes
+ *  re-approach cheap). Live <video> count stays ~viewport-sized regardless
+ *  of how many pages are loaded. */
+function LazyMount({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setNear(true); // no observer support — degrade to always-mounted
+      return;
+    }
+    const obs = new IntersectionObserver(
+      ([entry]) => setNear(entry.isIntersecting),
+      { rootMargin: "600px 0px 600px 0px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className="w-full aspect-video">
+      {near ? (
+        children
+      ) : (
+        // The dormant box — same glass family as the pending card, zero media.
+        <div
+          className="w-full h-full rounded-xl"
+          style={{
+            background: "linear-gradient(-75deg, rgba(0,0,0,0.05), rgba(0,0,0,0.08), rgba(0,0,0,0.05))",
+            boxShadow: "rgba(0,0,0,0.06) 0px 2px 4px 0px",
+          }}
+        />
+      )}
+    </div>
+  );
+}
 
 const PROVENANCE_CHIP: Record<string, { text: string; always?: boolean }> = {
   seed: { text: "on us", always: true },
@@ -611,77 +690,200 @@ function EmptyState({ seedAvailable }: { seedAvailable: boolean }) {
   );
 }
 
-/* ── ③ the shelf (catalog single-source) ───────────────────────────────── */
+/* ── ③ the buy sheet — the store, anchored to the quota readout ─────────── */
 
-function Shelf({
-  plan, buying, onBuy,
+/** The seller, decoupled from gallery length (the Runway credits-chip move:
+ *  the quota readout IS the buy entry). Every money CTA on the page opens
+ *  this overlay; the old bottom shelf is gone. Same handleBuy → same
+ *  credit-pack route → same return_to → same toast. Zero new money logic. */
+function BuySheet({
+  plan, buying, onBuy, onClose,
 }: {
   plan: VideoQuotas["plan"];
   buying: string | null;
   onBuy: (id: string) => void;
+  onClose: () => void;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
+  }, [onClose]);
+
   return (
-    <div className="space-y-4">
-      {!plan && (
-        <div className="glass rounded-xl p-5" style={{ border: "1px solid rgba(220,103,67,0.25)" }}>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-            <div>
-              <p className="text-base" style={{ fontFamily: "var(--font-serif)" }}>
-                Video Creator Plan
-              </p>
-              <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-                42 premium videos every month · $1.07 a video, our best rate · cancel anytime
-              </p>
-            </div>
-            <button
-              onClick={() => onBuy("video_plan_monthly")}
-              disabled={buying !== null}
-              className="shrink-0 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer disabled:opacity-50"
-              style={{
-                background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
-                boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px",
-                color: "#fff",
-              }}
-            >
-              {buying === "video_plan_monthly" ? "Opening checkout..." : "Subscribe · $44.99/mo"}
-            </button>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.25, ease: EASE }}
+      className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+      style={{ background: "rgba(20,18,16,0.45)", backdropFilter: "blur(10px)" }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.96, y: 10 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.97, y: 6 }}
+        transition={{ duration: 0.35, ease: EASE }}
+        className="w-full max-w-lg rounded-2xl p-6 space-y-4"
+        style={{
+          background: "var(--background)",
+          boxShadow: "rgba(0,0,0,0.3) 0px 24px 80px 0px",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-2xl font-normal tracking-[-0.5px]" style={{ fontFamily: "var(--font-serif)" }}>
+              More videos
+            </h2>
+            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+              Premium text-to-video in widescreen 16:9. Plan videos always get used first.
+            </p>
           </div>
-        </div>
-      )}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {VIDEO_PACKS.map((pack: CatalogPack) => (
           <button
-            key={pack.id}
-            onClick={() => onBuy(pack.id)}
-            disabled={buying !== null}
-            className="glass rounded-xl p-4 text-left cursor-pointer transition-all disabled:opacity-50"
-            style={{
-              border: pack.best ? "1.5px solid rgba(220,103,67,0.3)" : "1px solid var(--border)",
-              background: pack.best ? "rgba(220,103,67,0.03)" : undefined,
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = ""; }}
+            onClick={onClose}
+            aria-label="Close"
+            className="p-2 -mr-2 -mt-1 rounded-lg cursor-pointer transition-opacity hover:opacity-60"
+            style={{ color: "var(--muted)" }}
           >
-            <div className="flex items-center justify-between">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {!plan && (
+          <div className="glass rounded-xl p-4" style={{ border: "1px solid rgba(220,103,67,0.25)" }}>
+            <div className="flex items-center gap-3 justify-between">
               <div>
-                <span className="text-sm font-semibold">{pack.title}</span>
-                <span className="text-xs block" style={{ color: "var(--muted)" }}>
-                  {pack.perUnit}
-                </span>
+                <p className="text-base" style={{ fontFamily: "var(--font-serif)" }}>
+                  Video Creator Plan
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
+                  42 premium videos monthly · $1.07 a video · cancel anytime
+                </p>
               </div>
-              <span
-                className="text-sm font-bold px-3 py-1.5 rounded-lg"
+              <button
+                onClick={() => onBuy("video_plan_monthly")}
+                disabled={buying !== null}
+                className="shrink-0 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer disabled:opacity-50"
                 style={{
-                  background: pack.best ? "linear-gradient(135deg, #c75a34, #DC6743)" : "rgba(0,0,0,0.05)",
-                  color: pack.best ? "#fff" : "var(--accent)",
+                  background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+                  boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(220,103,67,0.35) 0px 4px 16px 0px",
+                  color: "#fff",
                 }}
               >
-                {buying === pack.id ? "..." : pack.price}
-              </span>
+                {buying === "video_plan_monthly" ? "Opening..." : "$44.99/mo"}
+              </button>
             </div>
-          </button>
-        ))}
-      </div>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {VIDEO_PACKS.map((pack: CatalogPack) => (
+            <button
+              key={pack.id}
+              onClick={() => onBuy(pack.id)}
+              disabled={buying !== null}
+              className="glass rounded-xl p-4 w-full text-left cursor-pointer transition-all disabled:opacity-50"
+              style={{
+                border: pack.best ? "1.5px solid rgba(220,103,67,0.3)" : "1px solid var(--border)",
+                background: pack.best ? "rgba(220,103,67,0.03)" : undefined,
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-semibold">{pack.title}</span>
+                  <span className="text-xs block" style={{ color: "var(--muted)" }}>
+                    {pack.perUnit}{pack.best ? " · most popular" : ""}
+                  </span>
+                </div>
+                <span
+                  className="text-sm font-bold px-3 py-1.5 rounded-lg"
+                  style={{
+                    background: pack.best ? "linear-gradient(135deg, #c75a34, #DC6743)" : "rgba(0,0,0,0.05)",
+                    color: pack.best ? "#fff" : "var(--accent)",
+                  }}
+                >
+                  {buying === pack.id ? "..." : pack.price}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {plan && (
+          <p className="text-xs text-center" style={{ color: "var(--muted)" }}>
+            Your plan renews automatically · manage it on the billing page
+          </p>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/* ── the sticky money bar — Runway's credits chip in our material ────────── */
+
+/** Docks at the top of the viewport once the quota band scrolls away, so the
+ *  buy path is ON SCREEN at video #250. Sticky inside a zero-height wrapper:
+ *  no layout cost at rest, no fixed-position coupling to the shell's rail
+ *  width (the document scrolls on this route; sticky just works). */
+function MoneyBar({
+  quotas, visible, onGetMore,
+}: {
+  quotas: VideoQuotas;
+  visible: boolean;
+  onGetMore: () => void;
+}) {
+  const plan = quotas.plan;
+  const freeLeft = Math.max(quotas.free.cap - quotas.free.used, 0);
+  return (
+    <div className="sticky top-3 z-30 h-0" aria-hidden={!visible}>
+      <motion.div
+        initial={false}
+        animate={visible ? { opacity: 1, y: 0 } : { opacity: 0, y: -10 }}
+        transition={{ duration: 0.25, ease: EASE }}
+        className="rounded-xl px-4 py-2 flex items-center gap-3"
+        style={{
+          // NOT the bare .glass recipe — this bar floats over BUSY video
+          // frames, so it needs a nearly-opaque cream base + strong blur to
+          // keep the balances legible (the 2px glass blur drowns here).
+          background: "rgba(248,247,244,0.92)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          border: "1px solid var(--border)",
+          pointerEvents: visible ? "auto" : "none",
+          boxShadow: "rgba(0,0,0,0.10) 0px 6px 24px 0px, rgba(255,255,255,0.5) 0px 1px 0px 0px inset",
+        }}
+      >
+        <span className="text-xs flex items-center gap-3 min-w-0" style={{ color: "var(--muted)" }}>
+          <span className="inline-flex items-center gap-1 shrink-0">
+            <Zap className="w-3 h-3" style={{ color: "var(--accent)" }} />
+            {freeLeft}<span className="hidden sm:inline"> free</span>
+          </span>
+          {plan && (
+            <span className="inline-flex items-center gap-1 shrink-0">
+              <Clapperboard className="w-3 h-3" style={{ color: "var(--accent)" }} />
+              {plan.clips_remaining}<span className="hidden sm:inline"> plan</span>
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1 shrink-0">
+            <Package className="w-3 h-3" style={{ color: "var(--accent)" }} />
+            {quotas.pack_clips}<span className="hidden sm:inline"> banked</span>
+          </span>
+        </span>
+        <button
+          onClick={onGetMore}
+          className="ml-auto shrink-0 px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all hover:opacity-90 inline-flex items-center gap-1"
+          style={{
+            background: "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+            boxShadow: "rgba(255,255,255,0.2) 0px 2px 2px 0px inset, rgba(220,103,67,0.3) 0px 3px 12px 0px",
+            color: "#fff",
+          }}
+        >
+          <Plus className="w-3 h-3" /> Get more videos
+        </button>
+      </motion.div>
     </div>
   );
 }
@@ -696,11 +898,35 @@ const FILTERS = [
 
 export default function VideosPage() {
   const [filter, setFilter] = useState("all");
-  const { quotas, renders, loaded, loadMore, hasMore, loadingMore } = useVideos(filter);
+  // Search: raw input debounces into the applied query (300ms) — the server
+  // does the matching (Midjourney's lesson: prompt search IS the finding tool).
+  const [searchInput, setSearchInput] = useState("");
+  const [q, setQ] = useState("");
+  const [month, setMonth] = useState<string | null>(null);
+  const { quotas, months, renders, loaded, loadMore, hasMore, loadingMore } = useVideos(filter, q, month);
   const [open, setOpen] = useState<RenderItem | null>(null);
   const [buying, setBuying] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [jumpOpen, setJumpOpen] = useState(false);
   const { toast, showToast, dismissToast } = useToast();
-  const shelfRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setQ(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // The money bar docks when the quota band scrolls out of view.
+  const bandRef = useRef<HTMLDivElement | null>(null);
+  const [bandVisible, setBandVisible] = useState(true);
+  useEffect(() => {
+    const el = bandRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(([e]) => setBandVisible(e.isIntersecting), {
+      rootMargin: "-8px 0px 0px 0px",
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [quotas === null]); // re-arm once the band actually mounts
 
   async function handleBuy(packId: string) {
     setBuying(packId);
@@ -747,18 +973,22 @@ export default function VideosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const scrollToShelf = () =>
-    shelfRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  const openSheet = useCallback(() => setSheetOpen(true), []);
 
-  // month grouping
+  // month grouping (within whatever view the server returned). UTC on purpose:
+  // the API's months index + month-jump boundaries are UTC, so the headers,
+  // their counts, and the jump menu all agree on which month a video is in.
   const groups = useMemo(() => {
     const map = new Map<string, RenderItem[]>();
     for (const r of renders) {
-      const k = new Date(r.created_at).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+      const k = new Date(r.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
       (map.get(k) ?? map.set(k, []).get(k)!).push(r);
     }
     return [...map.entries()];
   }, [renders]);
+
+  const viewIsFiltered = filter !== "all" || q !== "" || month !== null;
+  const activeMonthLabel = month ? months.find((m) => m.key === month)?.label ?? month : null;
 
   return (
     <div className="space-y-8" data-tour="page-videos">
@@ -774,13 +1004,15 @@ export default function VideosPage() {
         </p>
       </div>
 
-      {/* ① quota band */}
+      {/* ① quota band — the store's front door (every CTA opens the sheet) */}
       {quotas ? (
-        <QuotaBand
-          quotas={quotas}
-          onShopClick={scrollToShelf}
-          hideSeedChip={loaded && renders.length === 0 && filter === "all"}
-        />
+        <div ref={bandRef}>
+          <QuotaBand
+            quotas={quotas}
+            onShopClick={openSheet}
+            hideSeedChip={loaded && renders.length === 0 && !viewIsFiltered}
+          />
+        </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[0, 1, 2].map((i) => (
@@ -789,13 +1021,19 @@ export default function VideosPage() {
         </div>
       )}
 
-      {/* ② gallery — the true EmptyState only when "All" is genuinely empty;
-          a filtered zero keeps the chips mounted (no way-back trap) */}
-      {loaded && renders.length === 0 && filter === "all" ? (
+      {/* the sticky money bar — buy without scrolling, at any library size */}
+      {quotas && (
+        <MoneyBar quotas={quotas} visible={!bandVisible} onGetMore={openSheet} />
+      )}
+
+      {/* ② gallery — the true EmptyState only when the unfiltered library is
+          genuinely empty; a filtered zero keeps the controls mounted */}
+      {loaded && renders.length === 0 && !viewIsFiltered ? (
         <EmptyState seedAvailable={quotas?.seed_available ?? true} />
       ) : (
         <div className="space-y-6">
-          <div className="flex items-center gap-2">
+          {/* controls: filters · month jump · prompt search */}
+          <div className="flex items-center gap-2 flex-wrap">
             {FILTERS.map((f) => (
               <button
                 key={f.id}
@@ -810,20 +1048,124 @@ export default function VideosPage() {
                 {f.label}
               </button>
             ))}
+
+            {/* month jump (Google Photos' date-jump, simplified to months) */}
+            {months.length > 1 && (
+              <div className="relative">
+                <button
+                  onClick={() => setJumpOpen((o) => !o)}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all inline-flex items-center gap-1"
+                  style={
+                    month
+                      ? { background: "rgba(220,103,67,0.12)", color: "var(--accent)" }
+                      : { background: "rgba(0,0,0,0.05)", color: "var(--muted)" }
+                  }
+                >
+                  {activeMonthLabel ?? "All time"}
+                  <ChevronDown className="w-3 h-3" style={{ transform: jumpOpen ? "rotate(180deg)" : undefined, transition: "transform 0.2s" }} />
+                </button>
+                <AnimatePresence>
+                  {jumpOpen && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setJumpOpen(false)} />
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.18, ease: EASE }}
+                        className="absolute left-0 top-full mt-1.5 z-40 rounded-xl py-1.5 min-w-[200px] max-h-72 overflow-y-auto"
+                        style={{
+                          background: "var(--background)",
+                          border: "1px solid var(--border)",
+                          boxShadow: "rgba(0,0,0,0.12) 0px 10px 36px 0px",
+                        }}
+                      >
+                        <button
+                          onClick={() => { setMonth(null); setJumpOpen(false); }}
+                          className="w-full text-left px-3.5 py-1.5 text-xs cursor-pointer transition-colors hover:bg-black/[0.04]"
+                          style={{ color: month === null ? "var(--accent)" : "var(--foreground)" }}
+                        >
+                          All time
+                        </button>
+                        {months.map((m) => (
+                          <button
+                            key={m.key}
+                            onClick={() => { setMonth(m.key); setJumpOpen(false); }}
+                            className="w-full text-left px-3.5 py-1.5 text-xs cursor-pointer transition-colors hover:bg-black/[0.04] flex items-center justify-between gap-4"
+                            style={{ color: month === m.key ? "var(--accent)" : "var(--foreground)" }}
+                          >
+                            {m.label}
+                            <span className="tabular-nums" style={{ color: "var(--muted)" }}>{m.count}</span>
+                          </button>
+                        ))}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {/* prompt search — your memory of a clip IS its prompt */}
+            <div className="relative ml-auto w-full sm:w-auto">
+              <Search
+                className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                style={{ color: "var(--muted)" }}
+              />
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search your prompts"
+                className="w-full sm:w-52 sm:focus:w-64 pl-9 pr-8 py-1.5 rounded-full text-xs outline-none transition-all"
+                style={{
+                  background: "rgba(0,0,0,0.05)",
+                  color: "var(--foreground)",
+                  border: "1px solid transparent",
+                }}
+                onFocus={(e) => { e.currentTarget.style.border = "1px solid rgba(220,103,67,0.4)"; e.currentTarget.style.background = "var(--background)"; }}
+                onBlur={(e) => { e.currentTarget.style.border = "1px solid transparent"; e.currentTarget.style.background = "rgba(0,0,0,0.05)"; }}
+              />
+              {searchInput && (
+                <button
+                  onClick={() => setSearchInput("")}
+                  aria-label="Clear search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer transition-opacity hover:opacity-60"
+                  style={{ color: "var(--muted)" }}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           {loaded && renders.length === 0 && (
             <p className="text-sm py-6 text-center" style={{ color: "var(--muted)" }}>
-              {filter === "premium"
-                ? "No premium videos yet · your cinematic renders will land here"
-                : "No quick clips yet · free image-to-video clips will land here"}
+              {q
+                ? <>Nothing matches &ldquo;{q}&rdquo; · try fewer words</>
+                : month
+                  ? "No videos in this month for the current filter"
+                  : filter === "premium"
+                    ? "No premium videos yet · your cinematic renders will land here"
+                    : "No quick clips yet · free image-to-video clips will land here"}
             </p>
           )}
 
-          {groups.map(([month, items]) => (
-            <div key={month} className="space-y-3">
-              <h2 className="text-sm font-medium" style={{ color: "var(--muted)" }}>
-                {month}
+          {groups.map(([monthLabel, items]) => (
+            <div key={monthLabel} className="space-y-3">
+              {/* sticky month header (Google Photos) — pinned under the money
+                  bar while its section scrolls, so you always know WHEN you are */}
+              <h2
+                className="text-sm font-medium sticky top-[60px] z-20 py-1 -my-1 backdrop-blur-sm rounded-md inline-block px-1.5 -ml-1.5"
+                style={{ color: "var(--muted)", background: "rgba(248,247,244,0.85)" }}
+              >
+                {monthLabel}
+                {/* The library-index count is honest for the unfiltered flow
+                    AND for month-jump alone (the index IS per-month truth);
+                    under a filter/search, the loaded items are all we know. */}
+                <span className="ml-1.5 tabular-nums" style={{ opacity: 0.6 }}>
+                  {filter !== "all" || q !== ""
+                    ? items.length
+                    : months.find((m) => m.label === monthLabel)?.count ?? items.length}
+                </span>
               </h2>
               <div
                 className="grid gap-4"
@@ -836,7 +1178,9 @@ export default function VideosPage() {
                     ) : item.status === "failed" ? (
                       <FailedCard key={item.request_id} item={item} />
                     ) : (
-                      <RenderCard key={item.request_id} item={item} onOpen={() => setOpen(item)} />
+                      <LazyMount key={item.request_id}>
+                        <RenderCard item={item} onOpen={() => setOpen(item)} />
+                      </LazyMount>
                     ),
                   )}
                 </AnimatePresence>
@@ -856,22 +1200,35 @@ export default function VideosPage() {
               </button>
             </div>
           )}
+
+          {/* the end of the library — a natural buying moment */}
+          {loaded && !hasMore && renders.length > 0 && (
+            <div className="flex flex-col items-center gap-2 py-4">
+              <p className="text-xs" style={{ color: "var(--muted)" }}>
+                that&apos;s everything
+              </p>
+              <button
+                onClick={openSheet}
+                className="px-4 py-2 rounded-lg text-sm cursor-pointer transition-all hover:opacity-70 inline-flex items-center gap-1.5"
+                style={{ color: "var(--accent)" }}
+              >
+                <Plus className="w-3.5 h-3.5" /> Get more videos
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      {/* ③ the shelf */}
-      <div ref={shelfRef} className="pt-2 space-y-3">
-        <div>
-          <h2 className="text-xl font-normal" style={{ fontFamily: "var(--font-serif)" }}>
-            More videos
-          </h2>
-          <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
-            Premium text-to-video in widescreen 16:9. Your monthly plan videos always get used first.
-          </p>
-        </div>
-        <Shelf plan={quotas?.plan ?? null} buying={buying} onBuy={handleBuy} />
-      </div>
-
+      <AnimatePresence>
+        {sheetOpen && (
+          <BuySheet
+            plan={quotas?.plan ?? null}
+            buying={buying}
+            onBuy={handleBuy}
+            onClose={() => setSheetOpen(false)}
+          />
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {open && <Lightbox item={open} onClose={() => setOpen(null)} />}
       </AnimatePresence>
