@@ -1,28 +1,29 @@
 # Changelog — generated 2026-06-12
 
-Window: `7c3ac59ce163ed22cf15a0be92654cc20ddb9f05` → `HEAD` (HEAD = `436ea0ec`)
+Window: `436ea0ecc950c673160b07cbab494a2db121dbb6` → `HEAD` (HEAD = `0bc4fb1e`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 436ea0ecc950c673160b07cbab494a2db121dbb6 -->
+<!-- LAST_GENERATED_SHA: 0bc4fb1e7b04d217b26a9e5f267b5ed59dae3983 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Infrastructure:** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
 
-- `436ea0ec` 2026-06-12 — feat(videos): launch-readiness search quality — word-AND matching + the empty-search trust signal [2 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `32180dac` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `0bc4fb1e` 2026-06-12 — fix(travala): pre-canary deep audit — the approval re-arm, book-path 2am fields, flip reorder, stale docblocks [7 files] _(multi: [infrastructure, docs])_
+- `d05c8d86` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -30,13 +31,13 @@ Total commits: 2
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
+
+- `0bc4fb1e` 2026-06-12 — fix(travala): pre-canary deep audit — the approval re-arm, book-path 2am fields, flip reorder, stale docblocks [7 files] _(multi: [infrastructure, docs])_
+
+### Feature (user-facing) (0)
 
 _(none)_
-
-### Feature (user-facing) (1)
-
-- `436ea0ec` 2026-06-12 — feat(videos): launch-readiness search quality — word-AND matching + the empty-search trust signal [2 files] _(ai-assisted)_
 
 ### Edge City partner (0)
 
@@ -44,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `32180dac` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `d05c8d86` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
 
-## AI-assisted commits (1)
+## Multi-category commits (1)
 
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+These touch more than one category root and are listed in every applicable section above.
 
-- `436ea0ec` 2026-06-12 — feat(videos): launch-readiness search quality — word-AND matching + the empty-search trust signal
+- `0bc4fb1e` 2026-06-12 — [infrastructure, docs] — fix(travala): pre-canary deep audit — the approval re-arm, book-path 2am fields, flip reorder, stale docblocks
 
 ## Appendix — every commit (chronological)
 
-- `32180dac` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
-- `436ea0ec` 2026-06-12 — feat(videos): launch-readiness search quality — word-AND matching + the empty-search trust signal [2 files] _(ai-assisted)_
+- `d05c8d86` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `0bc4fb1e` 2026-06-12 — fix(travala): pre-canary deep audit — the approval re-arm, book-path 2am fields, flip reorder, stale docblocks [7 files] _(multi: [infrastructure, docs])_
