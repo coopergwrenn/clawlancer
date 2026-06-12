@@ -1,20 +1,20 @@
 # Changelog — generated 2026-06-12
 
-Window: `e440b4d5d4717a82617ae2ddfd033678d37966ec` → `HEAD` (HEAD = `52ea2f1b`)
-Total commits: 3
+Window: `52ea2f1b17d91a7a74ce15903dc37067440525d2` → `HEAD` (HEAD = `80f2c196`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 52ea2f1b17d91a7a74ce15903dc37067440525d2 -->
+<!-- LAST_GENERATED_SHA: 80f2c196c6910fe0f81d4bf7d982e1c3d6dee4e1 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 2
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 2
-- Merge commits: 1
+- **Docs / PRD only:** 2
+- AI-assisted commits (co-authored): 1
+- Merge commits: 0
 
 ## What changed for users
 
@@ -22,9 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `a9e705b3` 2026-06-12 — feat(video-plan A): the discrimination gate — Finding 1 closed BEFORE purchasability exists [3 files] _(ai-assisted)_
-- `52ea2f1b` 2026-06-12 — merge: video-plan discrimination gate (Finding 1) — live before purchasability [0 files] _(ai-assisted; merge)_
-- `51982783` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `7c932ec1` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `80f2c196` 2026-06-12 — docs(frontier): Stage-0 tap resolved — session-mint route (reassign is impossible) [1 files] _(ai-assisted)_
 
 ## By category
 
@@ -32,10 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (2)
+### Infrastructure (0)
 
-- `a9e705b3` 2026-06-12 — feat(video-plan A): the discrimination gate — Finding 1 closed BEFORE purchasability exists [3 files] _(ai-assisted)_
-- `52ea2f1b` 2026-06-12 — merge: video-plan discrimination gate (Finding 1) — live before purchasability [0 files] _(ai-assisted; merge)_
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -45,19 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `51982783` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `7c932ec1` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `80f2c196` 2026-06-12 — docs(frontier): Stage-0 tap resolved — session-mint route (reassign is impossible) [1 files] _(ai-assisted)_
 
-## AI-assisted commits (2)
+## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `a9e705b3` 2026-06-12 — feat(video-plan A): the discrimination gate — Finding 1 closed BEFORE purchasability exists
-- `52ea2f1b` 2026-06-12 — merge: video-plan discrimination gate (Finding 1) — live before purchasability
+- `80f2c196` 2026-06-12 — docs(frontier): Stage-0 tap resolved — session-mint route (reassign is impossible)
 
 ## Appendix — every commit (chronological)
 
-- `51982783` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
-- `a9e705b3` 2026-06-12 — feat(video-plan A): the discrimination gate — Finding 1 closed BEFORE purchasability exists [3 files] _(ai-assisted)_
-- `52ea2f1b` 2026-06-12 — merge: video-plan discrimination gate (Finding 1) — live before purchasability [0 files] _(ai-assisted; merge)_
+- `7c932ec1` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `80f2c196` 2026-06-12 — docs(frontier): Stage-0 tap resolved — session-mint route (reassign is impossible) [1 files] _(ai-assisted)_
