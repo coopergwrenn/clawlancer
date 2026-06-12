@@ -33,8 +33,10 @@
  *                to baseURL+path with next_action.body → read settlement tx.
  *   5. SETTLE  — /api/agent-economy/settle (flip the hold, record the outcome).
  *
- * Gating: the per-VM `travala_booking_enabled` toggle (fail-closed; default off)
- * still gates the backend book-quote (no token minted without it). The frontier §6
+ * Gating (2026-06-12 north-star ruling): the door is open — book-quote is gated
+ * only by the operator kill switch. The MONEY gates are the frontier layer's:
+ * spend opt-in, the per-booking session tap, the funded wallet (the funding ask
+ * + paywall narrations in denyNarrationFor), and the §6 ceiling. The frontier §6
  * travel ceiling is LIVE (f8b79d9e) — a real-priced hotel under the per-tx ceiling
  * authorizes once the user taps; over the ceiling hard-denies. First real run is
  * the P3 vm-1043 canary — a separate, explicit go.
@@ -258,10 +260,11 @@ async function main() {
   const q = await backend("book-quote", gatewayToken, { packageId, sessionId, customer, agentId: args["agent-id"] || undefined });
   if (q.status !== 200) fail("quote_failed", { status: q.status, detail: q.json });
   if (q.json?.gated) {
+    // gated now means exactly one thing: the operator paused booking fleet-wide
+    // (the per-VM toggle was removed 2026-06-12 — the money gates live in the
+    // frontier layer and speak through denyNarrationFor below).
     return out({ ok: false, gated: true, reason: q.json.reason,
-      narration: q.json.reason === "travala_booking_not_enabled"
-        ? "Booking isn't turned on for this agent yet. Enable the Travel Agent card first."
-        : "Booking is paused fleet-wide right now (operator stop). Try again later." });
+      narration: "Booking is paused platform-wide right now (an operator stop, not your account). Nothing was charged. Try again later." });
   }
   if (!q.json?.ok || !q.json.next_action || !Array.isArray(q.json.paymentRequirements)) {
     fail("quote_unexpected", { detail: q.json });

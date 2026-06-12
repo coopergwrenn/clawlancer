@@ -7,8 +7,11 @@
  * brand-new, money-moving capability, so it ships OFF and stays OFF until the
  * owner deliberately turns it on:
  *
- *   1. PER-VM OPT-IN — `instaclaw_vms.travala_booking_enabled` (the "Travel Agent"
- *      card toggle, item J). FAIL-CLOSED: anything other than an explicit boolean
+ *   1. PER-VM OPT-IN — `instaclaw_vms.travala_booking_enabled`. RETIRED from the
+ *      booking path 2026-06-12 (north-star ruling): book-quote no longer reads it;
+ *      the column is inert and the skills-page toggle goes informational. Kept
+ *      here only for the legacy /api/skills/travala-booking surface. Historical
+ *      semantics: FAIL-CLOSED — anything other than an explicit boolean
  *      `true` (undefined column, null, false, missing row) means NOT enabled. This
  *      is the user-owned switch — the agent may book ONLY if its owner flipped it
  *      on for that agent (each VM has its own wallet; the user owns the toggle).

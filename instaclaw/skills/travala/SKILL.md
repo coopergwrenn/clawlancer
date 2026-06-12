@@ -11,19 +11,28 @@ description: >-
   — never invent payment logic, never sign a transfer yourself.
 ---
 
-## STOP — Is This Skill Set Up?
+## STOP — What Booking Actually Needs (the money is gated, not the door)
 
-Booking spends the user's real money, so it is OFF by default and double-gated.
-Before attempting a booking, know these two switches (you cannot flip them):
+Searching is free for every user, always: no setup, no wallet, no plan. Never tell
+a user to enable anything before searching, and never pre-screen them yourself —
+attempt the flow, and relay the platform's answer at the moment it appears. The
+platform gates the MONEY, and it speaks through the booking script's narrations.
+The real requirements, each asked at the moment it matters:
 
-1. **The "Travel Agent" card toggle** (`travala_booking_enabled`, per agent) must
-   be ON. If a `book-quote` comes back `gated / travala_booking_not_enabled`, tell
-   the user: *"Booking isn't enabled for me yet — turn on the Travel Agent card at
-   instaclaw.io and make sure your wallet's funded, then I can book."* Do NOT try
-   to work around it.
-2. **Autonomous spend** (the frontier gate) must allow a travel-sized charge. A
-   booking that returns `authorized:false / outcome:"deny"` means the spend ceiling
-   for travel isn't open yet — tell the user plainly; do not retry or improvise.
+1. **A paid plan (Pro or Power) for autonomous booking.** Searching and quoting
+   stay free for everyone, including Starter. If a booking attempt is denied for
+   the plan, the script's narration IS the moment: it is proud of the search it
+   just did, honest that autonomous booking starts at Pro, and names the upgrade
+   path. Relay it as-is. Never apologize for it, never say "unfortunately".
+2. **Autonomous spending turned on** (one-time, dashboard → Spending settings).
+   The `spend_not_enabled` narration names the path. Relay as-is.
+3. **A funded agent wallet** (USDC on Base). The `would_drain_wallet` narration
+   gives the exact amount needed and the full wallet address. Relay as-is.
+4. **A one-tap dashboard approval for THIS booking** — every booking, every time.
+   That tap is the consent; a chat "yes" is never enough (see Rule 2).
+
+A `gated` response now means exactly one thing: the operator paused booking
+platform-wide (an emergency stop). Relay plainly and suggest trying later.
 
 **NEVER** build your own Travala client, sign a USDC transfer, call `travala_book`
 directly, write `.env` files, or construct an X-PAYMENT by hand. The platform
@@ -146,8 +155,8 @@ If a booking wasn't made through you (no record on this agent), you can't cancel
      over the travel limit, spending paused by the operator, autonomous spending
      turned off, or a booking attempt that was already finalized/revoked. Relay that
      narration as-is — it names the real remedy. Do not retry or improvise.
-   - **`gated`** — booking isn't enabled for this agent / paused fleet-wide (see the
-     STOP section). Relay plainly.
+   - **`gated`** — the operator paused booking platform-wide (emergency stop; see
+     the STOP section). Relay plainly and suggest trying later.
 
 4. **Recovery / status** is built in: any `--retry` checks `book-status` first, so a
    booking that already went through is never charged twice. Always resume with
@@ -202,7 +211,7 @@ a way to change dates in place — that's cancel-and-rebook (Rule 5).
 - "book / reserve / pay for that hotel" → **Travala** (this skill, real money,
   consent-always).
 
-If booking isn't enabled (STOP section), you can still plan the whole trip with
+If booking is denied (plan, spending, funding — STOP section), you can still plan the whole trip with
 StableTravel and hand the user direct links to book themselves.
 
 <!-- SKILL_SENTINEL: travala-book.mjs consent-always frontier-rail -->

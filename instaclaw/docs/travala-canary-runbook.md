@@ -13,7 +13,7 @@ Subject VM (the canary): **vm-1043**
 - IP = `45.33.95.220`, user `openclaw`, health `healthy`, cv `128`
 - wallet (`bankr_evm_address`, the EIP-3009 `from`) = `0xd998a6dc14e5ec290b2a9f201d6a6c82a1dd38c4`
 - `assigned_to` = `59dcf829-22d0-4db5-8890-d9cde788b576`
-- both gates currently **OFF** (`travala_booking_enabled=false`, `frontier_spend_enabled=false`)
+- the money gate currently **OFF** (`frontier_spend_enabled=false`; the per-VM booking toggle was retired 2026-06-12 — spend opt-in + the per-booking tap are the gates)
 
 Operator access (CLAUDE.md bootstrap):
 ```bash
@@ -109,9 +109,10 @@ A flag-only update — it does NOT trip the F4 lifecycle trigger (that fires on
 ```bash
 curl -s -X PATCH "$SB/instaclaw_vms?id=eq.0f64ac86-69d2-45f4-ac2d-a488714c4d0d" \
   -H "apikey: $SRK" -H "Authorization: Bearer $SRK" -H "Content-Type: application/json" -H "Prefer: return=representation" \
-  -d '{"travala_booking_enabled": true, "frontier_spend_enabled": true}' | python3 -m json.tool
+  -d '{"frontier_spend_enabled": true}' | python3 -m json.tool
 ```
-**Expected:** the row echoed back with `"travala_booking_enabled": true` and `"frontier_spend_enabled": true`.
+**Expected:** the row echoed back with `"frontier_spend_enabled": true`. (The travala
+toggle is retired — one flag arms the canary; the per-booking tap stays the consent.)
 
 **Abort here:** disarm (below) — instantly removes the booking capability.
 **Blast radius:** vm-1043 can now book + spend until disarmed. No money moved yet.
@@ -119,7 +120,7 @@ curl -s -X PATCH "$SB/instaclaw_vms?id=eq.0f64ac86-69d2-45f4-ac2d-a488714c4d0d" 
 ```bash
 curl -s -X PATCH "$SB/instaclaw_vms?id=eq.0f64ac86-69d2-45f4-ac2d-a488714c4d0d" \
   -H "apikey: $SRK" -H "Authorization: Bearer $SRK" -H "Content-Type: application/json" \
-  -d '{"travala_booking_enabled": false}'
+  -d '{"frontier_spend_enabled": false}'
 ```
 **Seams observed:** none.
 

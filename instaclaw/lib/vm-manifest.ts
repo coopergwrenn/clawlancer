@@ -2839,6 +2839,11 @@ export const VM_MANIFEST = {
     // docs/prd/travala-x402-booking-2026-06-10.md §14.
     { skillName: "travala", localPath: "scripts/travala-search.mjs", remotePath: "scripts/travala-search.mjs" },
     { skillName: "travala", localPath: "scripts/travala-book.mjs", remotePath: "scripts/travala-book.mjs" },
+    // Finding 1 (2026-06-12 full-funnel audit): without these two, the rollout
+    // would ship an agent that can book but not cancel — the announce verb made
+    // false on every VM. Inert until the held rollout bump (Rule 64).
+    { skillName: "travala", localPath: "scripts/travala-cancel.mjs", remotePath: "scripts/travala-cancel.mjs" },
+    { skillName: "travala", localPath: "scripts/travala-manage.mjs", remotePath: "scripts/travala-manage.mjs" },
   ] as ManifestExtraSkillFile[],
 
   // ── Cron jobs ──

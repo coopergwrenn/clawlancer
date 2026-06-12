@@ -11,8 +11,10 @@
  * Ops:
  *   - search-hotel / search-package — PUBLIC Travala tools (mcp:read, no token).
  *       No booking gates: discovery is free and reveals no money path.
- *   - book-quote — gated (kill switch + per-VM travala_booking_enabled, both
- *       fail-checked). Mints mcp:book, calls travala_book, returns the 402.
+ *   - book-quote — gated by the global kill switch ONLY (2026-06-12 north-star
+ *       ruling: the per-VM toggle is gone; spend opt-in + the per-booking session
+ *       tap + the funded wallet are the real money gates, asked in chat at the
+ *       moment they matter). Mints mcp:book, calls travala_book, returns the 402.
  *   - book-status — read-only recovery (G). NOT gated by the booking toggle: a
  *       status check exists precisely to AVOID a double charge after a failed
  *       pay, so it must work even if booking was just turned off / killed.
@@ -24,10 +26,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 import { getSupabase } from "@/lib/supabase";
-import {
-  isTravalaBookingEnabled,
-  travalaBookingKillState,
-} from "@/lib/travala-kill-switch";
+import { travalaBookingKillState } from "@/lib/travala-kill-switch";
 import {
   mintTravalaToken,
   mcpToolsCall,
@@ -324,13 +323,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
       { status: 200 },
     );
   }
-  // Gate 1 (per-VM opt-in, FAIL-CLOSED) — the "Travel Agent" card toggle.
-  if (!isTravalaBookingEnabled(vm)) {
-    return NextResponse.json(
-      { ok: false, gated: true, reason: "travala_booking_not_enabled" },
-      { status: 200 },
-    );
-  }
+  // Gate 1 (the per-VM travala_booking_enabled toggle) was REMOVED here on
+  // 2026-06-12 (north-star ruling): the door is open; the MONEY is gated where it
+  // belongs — the frontier spend opt-in, the per-booking unforgeable session tap
+  // (SESSION_REQUIRED travel), the funded wallet, the ceiling, and the kill
+  // switches above. A door toggle added no protection those layers don't already
+  // provide, and it cost the free demo. The column is inert (no migration).
 
   const args = (body.arguments as Record<string, unknown>) ?? body;
   // Minimal shape guard — travala_book needs the package + session + a guest.
