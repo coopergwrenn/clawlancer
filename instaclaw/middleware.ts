@@ -102,6 +102,7 @@ export default auth((req) => {
     "/api/admin/privacy-override", // X-Admin-Key header auth — legal-compliance kill switch for Maximum Privacy Mode
     "/api/admin/delete-user-archives", // X-Admin-Key header auth — GDPR Article 17 right-to-erasure for freeze-v2 archives (PRD §16.5). Prefix-matches /[userId].
     "/api/admin/reconcile-vm", // X-Admin-Key header auth — on-demand single-VM reconcile (Phase 2c stages + canary scripts)
+    "/api/admin/backfill-video-prompts", // X-Admin-Key header auth — one-shot legacy video-prompt backfill via the HF status echo (2026-06-12 audit). Idempotent; HIGGSFIELD_CLOUD_KEY is Vercel-only so this MUST run deployed.
     "/api/admin/telegram-shared-bot-webhook", // X-Admin-Key header auth — read/register the @myinstaclaw_bot webhook. Lives here because TELEGRAM_SHARED_BOT_TOKEN is Sensitive-flagged in Vercel so the equivalent local script can't read it.
     "/api/bankr/maintenance", // Public read-only — surfaces the Bankr maintenance flag to unauthenticated client surfaces (marketing /token page). Returns { maintenance: boolean }; no side effects. See app/api/bankr/maintenance/route.ts + lib/bankr-maintenance.ts.
     "/api/partner/tag", // Self-auth: handles both logged-in (updates user/VM record) and logged-out (sets cookie for next signup) cases; validates partner against VALID_PARTNERS allow-list
