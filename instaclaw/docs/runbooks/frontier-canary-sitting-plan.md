@@ -19,43 +19,61 @@ drills includes the credibility of the canary itself.** Every decision below is 
 - wallet (`bankr_evm_address`) = `0xd998a6dc14e5ec290b2a9f201d6a6c82a1dd38c4` ← **fund THIS** (vm-1043's own Bankr wallet; verify on basescan before sending).
 - both gates start **OFF**; Stage 1 arms them; Stage 11 disarms.
 
-### ⛔ STAGE 0 PRECONDITION — OWNERSHIP (close before funding; verified 2026-06-12 from rows)
+### ⛔ STAGE 0 PRECONDITION — THE APPROVAL TAP (settled 2026-06-12; route PROVEN end-to-end)
 
-The three accounts, quoted from `instaclaw_users` / `instaclaw_vms`:
+**The facts (quoted from `instaclaw_users` / `instaclaw_vms`):** vm-1043 is owned by a **TEST account** `cooper-v122-canary@instaclaw.test` (user `59dcf829`, `partner=edge_city`), NOT by Cooper. The fund target `0xd998…38c4` is that test VM's Bankr wallet (already holds ~$5 from prior testing — you top it up). Cooper's own dashboard wallet `0xe1e0…54f3` is vm-050's (`timmy`); the two are different VMs, NOT a primary/CDP pair.
 
-| account (login) | user id | owns | that VM's Bankr wallet |
-|---|---|---|---|
-| `cooper-v122-canary@instaclaw.test` (TEST acct, `partner=edge_city`, no real mailbox) | `59dcf829-22d0-4db5-8890-d9cde788b576` | **vm-1043** (the canary) | `0xd998…38c4` (the fund target) |
-| `coopgwrenn@gmail.com` (Cooper's real login) | `4e0213b3-c9e8-4812-9385-827786900b66` | vm-050 (`timmytimmytimbot`) | `0xe1e0…54f3` (what Cooper sees in HIS dashboard) |
+**Why a reassign is impossible:** `instaclaw_vms.assigned_to` has a UNIQUE constraint (`instaclaw_vms_assigned_to_key`) — **one VM per user.** Both of Cooper's Google logins are capped (`coopgwrenn@gmail.com`→vm-050; `coopergrantwrenn@gmail.com`→vm-1075 founder VM). `coop@valtlabs.com` is not a user. So vm-1043 cannot be reassigned to Cooper without orphaning a primary VM (rejected). See `reference_one_vm_per_user_constraint` (memory) for the full map.
 
-**The hole this closes:** vm-1043 is owned by the TEST account, NOT Cooper. The two wallets are different VMs, NOT a primary/CDP pair (vm-050's CDP is `0x748568…2830`, unrelated). The canary was put on a separate VM **and** a separate account; the separate-account half was never reconciled against "who taps the approval."
+**Why the booking needs an owner session anyway:** travel is `SESSION_REQUIRED` (Rule 79). `/api/agent-economy/authorize` derives `ownerId = vm.assigned_to` (route line 316); `/api/agent-economy/approve` requires a NextAuth session and 404s unless `approval.owner_id === session.user.id` (lines 13, 74). The approval can be minted ONLY from a browser session owning vm-1043 = the test account.
 
-**Why this BLOCKS the booking:** the per-booking travel approval is **session-rooted and owner-scoped**. `/api/agent-economy/authorize` derives `ownerId = vm.assigned_to` (route line 316); `/api/agent-economy/approve` requires a NextAuth browser session and 404s unless `approval.owner_id === session.user.id` (route lines 13, 74). Travel is `SESSION_REQUIRED` (Rule 79) — only a session approval authorizes it, never the forgeable bool. **Net: the booking's approval can be minted ONLY from a browser logged into vm-1043's owner. Today that is the `.test` account Cooper cannot log into.** Logged in as `coopgwrenn@gmail.com`, Cooper gets a 404 — he cannot see or approve the spend.
+**THE PROVEN ROUTE — session-mint (zero reassign, zero DB mutation, F2 fully preserved).** Mint a real NextAuth session for the test account via the production `openai-device-code` Credentials provider (`lib/auth.ts` + `lib/openai-signup-token.ts`), then drive it into a browser. Demonstrated live 2026-06-12: mint → NextAuth csrf+callback → `__Secure-authjs.session-token` → `/api/auth/session` returns `{id:59dcf829, email:cooper-v122-canary@instaclaw.test, partner:edge_city}`; session-authed `/api/agent-economy/spend-settings` returns vm-1043's wallet `0xd998…38c4` + balance. **No new code, no approval created.** Why this preserves the F2 proof: it is a real human, in a real browser, tapping a real session-rooted owner-scoped approval — F2 doesn't care WHICH account, only that the forgeable bool can't substitute for a session. The session belongs to vm-1043's owner; that IS the proof.
 
-**Resolution — REQUIRED before Stage 1 (pick one; A recommended):**
+```bash
+# === SESSION MINT (operator-side; the 60s TTL is one-shot HERE, NOT on Cooper) ===
+TESTUSER="59dcf829-22d0-4db5-8890-d9cde788b576"; JAR=$(mktemp)
+# 1. mint a signupToken for the test account (inline HMAC; same shape as signSignupToken, aud=openai-signup, 60s)
+SIGNUP_TOKEN=$(node -e '
+  const crypto=require("crypto"), fs=require("fs");
+  for (const l of fs.readFileSync("/Users/cooperwrenn/wild-west-bots/instaclaw/.env.local","utf8").split("\n")){
+    const m=l.match(/^([^#=]+)=(.*)$/); if(m&&!process.env[m[1].trim()]) process.env[m[1].trim()]=m[2].trim().replace(/^["\x27]|["\x27]$/g,"");
+  }
+  const s=process.env.NEXTAUTH_SECRET;
+  const b64url=(x)=>Buffer.from(x,"utf-8").toString("base64").replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
+  const p={sub:process.argv[1],jti:crypto.randomBytes(16).toString("hex"),aud:"openai-signup"};
+  const pB64=b64url(JSON.stringify(p)); const exp=Math.floor(Date.now()/1000)+60;
+  console.log(pB64+"."+exp+"."+crypto.createHmac("sha256",s).update(pB64+"."+exp).digest("hex"));
+' "$TESTUSER")
+# 2. csrf  3. callback (exchanges the 60s token for a ~30-DAY session cookie)
+CSRF=$(curl -s -c "$JAR" https://instaclaw.io/api/auth/csrf | python3 -c 'import json,sys;print(json.load(sys.stdin)["csrfToken"])')
+curl -s -b "$JAR" -c "$JAR" -X POST "https://instaclaw.io/api/auth/callback/openai-device-code" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "csrfToken=$CSRF" --data-urlencode "signupToken=$SIGNUP_TOKEN" \
+  --data-urlencode "callbackUrl=https://instaclaw.io/dashboard" --data-urlencode "json=true" -o /dev/null
+# 4. PROVE the session is the test account (read-only; never creates an approval)
+curl -s -b "$JAR" https://instaclaw.io/api/auth/session | python3 -m json.tool   # EXPECT id=59dcf829, email=cooper-v122-canary@instaclaw.test
+# 5. extract the cookie VALUE to hand to Cooper's browser (30-day; no time pressure):
+COOKIE=$(awk '/__Secure-authjs.session-token/{print $7}' "$JAR"); echo "SESSION COOKIE: $COOKIE"
+rm -f "$JAR"
+```
 
-- **Option A (recommended): reassign vm-1043's owner to `coopgwrenn@gmail.com`.** A bare `assigned_to` flip is sufficient and clean — `authorize` reads `ownerId` straight from `assigned_to`, so the approval becomes mintable from Cooper's real session. Wallet is per-VM → fund target unchanged. Blast radius stays vm-1043 (NOT vm-050) → the isolation rationale holds. Both accounts are `partner=edge_city` → no partner drift. **Do it as a direct DB PATCH, NOT the `/assign` flow** (which would re-run `configureOpenClaw` and could wipe state). Reversible — flip back in Stage 11.
+**Get the cookie into Cooper's browser (no new code) — use a SEPARATE profile to avoid colliding with his real coopgwrenn login (one session-token per domain):**
+1. Open a **fresh Chrome profile or an Incognito window** (NOT the profile where Cooper is logged in as coopgwrenn — they share one cookie slot and would clobber each other).
+2. Navigate to `https://instaclaw.io` (so the cookie domain exists).
+3. DevTools (F12) → Application → Cookies → `https://instaclaw.io` → add cookie: name `__Secure-authjs.session-token`, value `<COOKIE>`, domain `instaclaw.io`, path `/`, **Secure ✓**, **HttpOnly ✓**, SameSite `Lax`. (HttpOnly+Secure is why devtools is required — a bookmarklet can't set it.)
+4. Reload → confirm logged in as the test account (dashboard shows the test agent; or open `/api/auth/session`).
+5. Keep this window open for the tap. The cookie is valid ~30 days — zero race.
 
-  ```bash
-  # APPLY (operator, after Cooper's go):
-  curl -s -X PATCH "$SB/instaclaw_vms?id=eq.$VM1043" -H "apikey: $SRK" -H "Authorization: Bearer $SRK" \
-    -H "Content-Type: application/json" -d '{"assigned_to":"4e0213b3-c9e8-4812-9385-827786900b66"}'
-  curl -s "$SB/instaclaw_vms?id=eq.$VM1043&select=assigned_to" -H "apikey: $SRK" -H "Authorization: Bearer $SRK"
-  #   EXPECT [{"assigned_to":"4e0213b3-c9e8-4812-9385-827786900b66"}]  ← Cooper now owns vm-1043.
-  # REVERT (Stage 11, after the canary):
-  #   PATCH assigned_to back to "59dcf829-22d0-4db5-8890-d9cde788b576".
-  ```
+> **Optional cleaner consume (NOT built — needs Cooper's review per his standing rule):** a dev-gated `/canary-login?t=<signupToken>` page (~15 lines) that calls `signIn("openai-device-code",{signupToken})` so Cooper opens one URL instead of using devtools. Reintroduces the 60s race (Cooper must open within 60s of mint) and adds an auth-adjacent surface to review + remove. The devtools-cookie path above is the zero-new-code default; build the page only if Cooper asks.
 
-- **Option B: log in as the test account.** `.test` email has no real mailbox (no magic link). Viable only if a seeded password / admin-impersonate path exists. Not confirmed; skip unless one is found.
-- **Option C: run the canary on vm-050.** Rejected — vm-050 is Cooper's primary agent (`timmy`); arming real-money frontier spend + firing brake drills against it is exactly the blast radius the separate-VM design avoids.
+**The booking email** is a FREE PARAMETER (`book` op `customer` object, route line 341) — not tied to the owner account. Use `coopgwrenn@gmail.com`; the voucher lands in Cooper's real inbox.
 
-**The booking email (the guest/voucher inbox) is a FREE PARAMETER** passed in the `book` op's `customer` object at booking time (route line 341) — it is NOT tied to the VM's owner account. `coopgwrenn@gmail.com` works as the guest email under any owning account.
-
-**Stage 0 ownership checklist (all must be true before Stage 1):**
-1. vm-1043's `assigned_to` = `coopgwrenn@gmail.com`'s user id (`4e0213b3…`) — via Option A, Cooper-approved.
-2. Fund `0xd998…38c4` (vm-1043's Bankr wallet) — **as late as practical** before the booking (Bankr key is on the VM; "unarmed" guards the authorize path, not raw signing).
-3. Booking `customer.email` = `coopgwrenn@gmail.com` (free param; voucher lands in Cooper's real inbox).
-4. Cooper logged into `instaclaw.io` as `coopgwrenn@gmail.com` for the in-browser approval tap.
+**Stage 0 checklist (all true before Stage 1):**
+1. Operator minted + proved the test-account session; handed Cooper the `__Secure-authjs.session-token` value.
+2. Cooper imported it into a **separate browser profile/incognito**, confirmed `/api/auth/session` = test account.
+3. Funded `0xd998…38c4` (vm-1043's wallet) — **as late as practical** (Bankr key is on the VM; "unarmed" guards the authorize path, not raw signing).
+4. Booking `customer.email` = `coopgwrenn@gmail.com`.
+5. NO reassign occurred — vm-1043 stays owned by the test account; nothing to revert in Stage 11.
 
 ```bash
 # Bootstrap (one-time per session)
@@ -351,9 +369,9 @@ curl -s "$SB/instaclaw_vms?id=eq.$VM1043&select=frontier_spend_enabled,travala_b
 curl -s "$SB/frontier_transactions?vm_id=eq.$VM1043&status=eq.pending&direction=eq.spend&select=id,created_at" -H "apikey: $SRK" -H "Authorization: Bearer $SRK" # expect [] (or terminalize any to 'failed')
 # R4: coverage script clean (incl. the revoked-but-paid gap = 0 if D2b ran + reconciled)
 npx tsx /Users/cooperwrenn/wild-west-bots-tier0/instaclaw/scripts/_coverage-frontier.ts; echo "exit=$?"                                                          # expect "✓ healthy" exit 0
-# R5: revert the Stage-0 ownership reassign (ONLY if Option A was applied) — return vm-1043 to the test acct.
-curl -s -X PATCH "$SB/instaclaw_vms?id=eq.$VM1043" -H "apikey: $SRK" -H "Authorization: Bearer $SRK" -H "Content-Type: application/json" -d '{"assigned_to":"59dcf829-22d0-4db5-8890-d9cde788b576"}'
-curl -s "$SB/instaclaw_vms?id=eq.$VM1043&select=assigned_to" -H "apikey: $SRK" -H "Authorization: Bearer $SRK"                                                   # expect [{"assigned_to":"59dcf829-..."}]
+# R5: ownership — NOTHING to revert. The session-mint route (Stage 0) does NO reassign;
+#     vm-1043 stayed owned by the test account throughout. Cooper just closes the
+#     incognito/test-account browser window (the session cookie self-expires in ~30 days).
 ```
 
 **Update `PRD §2.2` (the living e2e ledger) with the results — Rule 72:**
