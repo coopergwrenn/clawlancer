@@ -68,6 +68,38 @@ the agent narration says booking is paused by the operator. Search/cancel/manage
 **Abort/undo:** `UPDATE instaclaw_admin_settings SET bool_value=false, updated_at=now() WHERE setting_key='travala_booking_kill_switch';`
 **Release condition:** §4 step 4 (the flip window), or temporarily during the §2 canary window.
 
+### ✅ STEP 0 EXECUTED — 2026-06-12 23:11:28 UTC
+
+- **F1 re-proven immediately before engaging** (fresh census regenerated from the
+  live VM list): 151 VMs → 144 NO · **4 YES (vm-1107, vm-777, vm-950, vm-956 —
+  identical cohort)** · 3 ERR (vm-626, vm-771, vm-917, same three).
+- **No-in-flight proof on the cohort:** 0 pending holds, **0 holds EVER**
+  (frontier_transactions), 0 approvals (any status), 0 rows in
+  instaclaw_travala_bookings table-wide. Nothing stranded by the block.
+- **Tourniquet ruling — GLOBAL switch over per-VM category overrides**, because:
+  (a) the F1 cohort GROWS — every freshly-configured VM extracts the skill
+  (stepSkills is ungated per-skill), so a surgical override would need to chase
+  new VMs forever (guaranteed drift; the Rule-14-class partial-fix trap);
+  (b) the per-VM override writes platform-operator state into the USER's policy
+  surface (ownership pollution + a lift that must merge around genuine user
+  prefs); (c) the 147 NO-VMs need no protection — "surgical" protects nothing
+  the global switch doesn't; (d) the switch is purpose-built (fail-closed,
+  zero user-surface footprint, one-row lift).
+- **Engaged** via admin_settings upsert (notes name this runbook + the cohort).
+- **Verified live:** book-quote (canary VM gateway token) →
+  `{"ok":false,"gated":true,"reason":"travala_booking_kill_switch"}`;
+  search-hotel NOT gated (reached Travala's MCP); cancel/manage ungated by
+  design (code-verified; no live probe possible at 0 bookings).
+- **THE LIFT (for the §2 canary window, and §4 step 4):**
+  ```sql
+  UPDATE instaclaw_admin_settings SET bool_value=false, updated_at=now(),
+    notes='canary window lift (re-engage on any stage failure)'
+  WHERE setting_key='travala_booking_kill_switch';
+  ```
+  Re-engage = the §1 upsert above. During a canary lift the F1 cohort is
+  bookable — keep the window short and operator-attended; optionally re-census
+  first so the watched set is current.
+
 ---
 
 ## §2 — GATE A: the canary (MUST pass before any flip)
