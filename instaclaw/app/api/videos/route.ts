@@ -231,14 +231,22 @@ export async function GET(req: NextRequest) {
           signal: AbortSignal.timeout(8000),
         });
         if (!res.ok) continue;
-        const body = (await res.json()) as { video?: { url?: string } };
+        const body = (await res.json()) as { video?: { url?: string }; prompt?: string };
         const url = body?.video?.url;
-        if (url) {
-          meta.video_url = url;
+        // Opportunistic prompt pickup (2026-06-12 audit): legacy rows predate
+        // the gate's prompt persistence; when HF's status echoes the submitted
+        // prompt, heal it alongside the URL. No-op when absent.
+        const echoedPrompt =
+          typeof meta.prompt !== "string" && typeof body?.prompt === "string" && body.prompt.trim()
+            ? body.prompt.slice(0, 2000)
+            : null;
+        if (url || echoedPrompt) {
+          if (url) meta.video_url = url;
+          if (echoedPrompt) meta.prompt = echoedPrompt;
           // Cache back (best-effort merge) so the next view skips the fetch.
           await supabase
             .from("instaclaw_video_transactions")
-            .update({ metadata: { ...meta, video_url: url } })
+            .update({ metadata: { ...meta } })
             .eq("vm_id", vm.id)
             .eq("request_id", r.request_id);
         }

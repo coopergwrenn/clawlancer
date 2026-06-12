@@ -52,6 +52,7 @@ interface VideosPayload {
  *  query says, and "Show more" pages within it (same composed WHERE). */
 function useVideos(filter: string, q: string, month: string | null) {
   const [data, setData] = useState<VideosPayload | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [more, setMore] = useState<RenderItem[]>([]);
   const [moreCursor, setMoreCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -67,6 +68,9 @@ function useVideos(filter: string, q: string, month: string | null) {
     [filter, q, month],
   );
 
+  // A failed initial load must NOT strand the user on the skeleton forever
+  // (the pending-poll only runs once data exists, so nothing would retry).
+  // loadError surfaces an honest retry state instead.
   const load = useCallback(async () => {
     try {
       const r = await fetch(`/api/videos?${params()}`);
@@ -74,8 +78,13 @@ function useVideos(filter: string, q: string, month: string | null) {
         setData(await r.json());
         setMore([]);
         setMoreCursor(null);
+        setLoadError(false);
+      } else {
+        setLoadError(true);
       }
-    } catch { /* page renders skeleton; next poll retries */ }
+    } catch {
+      setLoadError(true);
+    }
   }, [params]);
 
   useEffect(() => { load(); }, [load]);
@@ -127,6 +136,7 @@ function useVideos(filter: string, q: string, month: string | null) {
     months: data?.months ?? [],
     renders,
     loaded: data !== null,
+    loadError: loadError && data === null, // only the never-loaded case strands the page
     loadMore,
     hasMore,
     loadingMore,
@@ -326,6 +336,10 @@ function RenderCard({ item, onOpen }: { item: RenderItem; onOpen: () => void }) 
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hovered, setHovered] = useState(false);
   const [duration, setDuration] = useState<number | null>(null);
+  // Stored HF URLs age out upstream eventually — a 403'd src paints a silent
+  // black card. onError flips it to the same honest expired state a NULL url
+  // gets (the audit's dead-URL walk).
+  const [srcDead, setSrcDead] = useState(false);
 
   const wake = () => {
     setHovered(true);
@@ -362,7 +376,7 @@ function RenderCard({ item, onOpen }: { item: RenderItem; onOpen: () => void }) 
         transition: "transform 0.3s cubic-bezier(0.23,1,0.32,1), box-shadow 0.3s cubic-bezier(0.23,1,0.32,1)",
       }}
     >
-      {item.video_url ? (
+      {item.video_url && !srcDead ? (
         <video
           ref={videoRef}
           // #t=0.001 media fragment: forces Chrome to paint the first frame
@@ -373,6 +387,7 @@ function RenderCard({ item, onOpen }: { item: RenderItem; onOpen: () => void }) 
           playsInline
           preload="metadata"
           onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+          onError={() => setSrcDead(true)}
           className="absolute inset-0 w-full h-full object-cover"
         />
       ) : (
@@ -449,6 +464,10 @@ function PendingCard({ item }: { item: RenderItem }) {
   }, [item.created_at]);
   const m = Math.floor(elapsed / 60);
   const s = elapsed % 60;
+  // Past an hour the raw m:ss form reads absurd ("1786:26"). The sweeper
+  // releases any orphaned hold at ~90 min, so >1h is already exceptional —
+  // show an honest hours form for the brief window one can exist.
+  const elapsedLabel = m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}:${String(s).padStart(2, "0")}`;
 
   return (
     <motion.div
@@ -475,7 +494,7 @@ function PendingCard({ item }: { item: RenderItem }) {
         <Clapperboard className="w-5 h-5" style={{ color: "var(--accent)" }} />
         <span className="text-sm font-medium">rendering</span>
         <span className="text-xs tabular-nums" style={{ color: "var(--muted)" }}>
-          {m}:{String(s).padStart(2, "0")} · {m >= 5 ? "taking longer than usual, still working" : "usually 2 to 5 min"}
+          {elapsedLabel} · {m >= 5 ? "taking longer than usual, still working" : "usually 2 to 5 min"}
         </span>
       </div>
       {item.prompt && (
@@ -496,7 +515,7 @@ function PendingCard({ item }: { item: RenderItem }) {
   );
 }
 
-function FailedCard({ item }: { item: RenderItem }) {
+function FailedCard({ item, onCopied }: { item: RenderItem; onCopied: () => void }) {
   return (
     <motion.div
       layout
@@ -514,6 +533,23 @@ function FailedCard({ item }: { item: RenderItem }) {
       <span className="text-xs" style={{ color: "var(--muted)" }}>
         you weren&apos;t charged · ask your agent to try again
       </span>
+      {/* retry, one step: the prompt rides the clipboard to the agent — the
+          agent stays the author (no on-page composer), but the user never
+          has to retype their words. */}
+      {item.prompt && (
+        <button
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(item.prompt!);
+              onCopied();
+            } catch { /* clipboard denied — the card copy already says what to do */ }
+          }}
+          className="mt-1 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all hover:opacity-80 inline-flex items-center gap-1.5"
+          style={{ background: "rgba(0,0,0,0.05)", color: "var(--foreground)" }}
+        >
+          <Copy className="w-3 h-3" /> Copy prompt
+        </button>
+      )}
     </motion.div>
   );
 }
@@ -522,6 +558,7 @@ function FailedCard({ item }: { item: RenderItem }) {
 
 function Lightbox({ item, onClose }: { item: RenderItem; onClose: () => void }) {
   const { toast, showToast, dismissToast } = useToast();
+  const [srcDead, setSrcDead] = useState(false); // dead/aged-out URL → honest expired state
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -546,8 +583,12 @@ function Lightbox({ item, onClose }: { item: RenderItem; onClose: () => void }) 
   }
   async function copyPrompt() {
     if (!item.prompt) return;
-    await navigator.clipboard.writeText(item.prompt).catch(() => {});
-    showToast({ message: "Prompt copied. Text it to your agent with your tweak." });
+    try {
+      await navigator.clipboard.writeText(item.prompt);
+      showToast({ message: "Prompt copied. Text it to your agent with your tweak." });
+    } catch {
+      showToast({ message: "Couldn't copy. Long-press the prompt to copy it manually.", variant: "error" });
+    }
   }
 
   return (
@@ -572,13 +613,14 @@ function Lightbox({ item, onClose }: { item: RenderItem; onClose: () => void }) 
           className="rounded-2xl overflow-hidden"
           style={{ background: "#000", boxShadow: "rgba(0,0,0,0.45) 0px 24px 80px 0px" }}
         >
-          {item.video_url ? (
+          {item.video_url && !srcDead ? (
             <video
               src={item.video_url}
               controls
               autoPlay
               loop
               playsInline
+              onError={() => setSrcDead(true)}
               className="w-full max-h-[68vh] object-contain"
             />
           ) : (
@@ -914,7 +956,7 @@ export default function VideosPage() {
   const [searchInput, setSearchInput] = useState("");
   const [q, setQ] = useState("");
   const [month, setMonth] = useState<string | null>(null);
-  const { quotas, months, renders, loaded, loadMore, hasMore, loadingMore } = useVideos(filter, q, month);
+  const { quotas, months, renders, loaded, loadError, loadMore, hasMore, loadingMore, reload } = useVideos(filter, q, month);
   const [open, setOpen] = useState<RenderItem | null>(null);
   const [buying, setBuying] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -1024,7 +1066,7 @@ export default function VideosPage() {
             hideSeedChip={loaded && renders.length === 0 && !viewIsFiltered}
           />
         </div>
-      ) : (
+      ) : loadError ? null : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[0, 1, 2].map((i) => (
             <div key={i} className="glass rounded-xl h-[104px] animate-pulse" style={{ border: "1px solid var(--border)" }} />
@@ -1037,9 +1079,26 @@ export default function VideosPage() {
         <MoneyBar quotas={quotas} visible={!bandVisible} onGetMore={openSheet} />
       )}
 
+      {/* honest failure state — a 500/network failure on the initial load
+          must offer a way forward, never a skeleton forever */}
+      {loadError && (
+        <div className="flex flex-col items-center gap-2 py-10">
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            Couldn&apos;t load your videos
+          </p>
+          <button
+            onClick={reload}
+            className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all hover:opacity-80"
+            style={{ background: "rgba(0,0,0,0.05)", color: "var(--foreground)" }}
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
       {/* ② gallery — the true EmptyState only when the unfiltered library is
           genuinely empty; a filtered zero keeps the controls mounted */}
-      {loaded && renders.length === 0 && !viewIsFiltered ? (
+      {loadError ? null : loaded && renders.length === 0 && !viewIsFiltered ? (
         <EmptyState seedAvailable={quotas?.seed_available ?? true} />
       ) : (
         <div className="space-y-6">
@@ -1187,7 +1246,11 @@ export default function VideosPage() {
                     item.status === "pending" ? (
                       <PendingCard key={item.request_id} item={item} />
                     ) : item.status === "failed" ? (
-                      <FailedCard key={item.request_id} item={item} />
+                      <FailedCard
+                        key={item.request_id}
+                        item={item}
+                        onCopied={() => showToast({ message: "Prompt copied. Text it to your agent to retry." })}
+                      />
                     ) : (
                       <LazyMount key={item.request_id}>
                         <RenderCard item={item} onOpen={() => setOpen(item)} />
