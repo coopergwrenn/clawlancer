@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-12
 
-Window: `b1ac0475084555fca81235761fdacd25ac610df2` → `HEAD` (HEAD = `17c53525`)
+Window: `17c535256dc310c969e656170cb28b2089736ba4` → `HEAD` (HEAD = `a51660b7`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 17c535256dc310c969e656170cb28b2089736ba4 -->
+<!-- LAST_GENERATED_SHA: a51660b7f749b689e58772eb53d9da4e6a0e7168 -->
 
 ## Summary
 
@@ -22,14 +22,14 @@ _None in this window._
 
 ## What changed under the hood
 
-- `17c53525` 2026-06-12 — feat(travala): the gate dies — door open, money gated where it belongs (Q2 ruling) [8 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
-- `a871d740` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `a51660b7` 2026-06-12 — feat(trips): the travel lane's first user-facing surface — receipts want a page [10 files] _(multi: [reconciler, infrastructure, feature, edge]; ai-assisted)_
+- `cc2cf964` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
 ### Reconciler / manifest (1)
 
-- `17c53525` 2026-06-12 — feat(travala): the gate dies — door open, money gated where it belongs (Q2 ruling) [8 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `a51660b7` 2026-06-12 — feat(trips): the travel lane's first user-facing surface — receipts want a page [10 files] _(multi: [reconciler, infrastructure, feature, edge]; ai-assisted)_
 
 ### Infrastructure (0)
 
@@ -45,21 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `a871d740` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `cc2cf964` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `17c53525` 2026-06-12 — [reconciler, infrastructure, docs] — feat(travala): the gate dies — door open, money gated where it belongs (Q2 ruling)
+- `a51660b7` 2026-06-12 — [reconciler, infrastructure, feature, edge] — feat(trips): the travel lane's first user-facing surface — receipts want a page
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `17c53525` 2026-06-12 — feat(travala): the gate dies — door open, money gated where it belongs (Q2 ruling)
+- `a51660b7` 2026-06-12 — feat(trips): the travel lane's first user-facing surface — receipts want a page
 
 ## Appendix — every commit (chronological)
 
-- `a871d740` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
-- `17c53525` 2026-06-12 — feat(travala): the gate dies — door open, money gated where it belongs (Q2 ruling) [8 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `cc2cf964` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `a51660b7` 2026-06-12 — feat(trips): the travel lane's first user-facing surface — receipts want a page [10 files] _(multi: [reconciler, infrastructure, feature, edge]; ai-assisted)_
