@@ -21,7 +21,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendTelegramMessageWithButton, discoverTelegramChatId } from "@/lib/telegram";
-import { signRevokeToken, APPROVAL_TTL_MS, type ApprovalRow } from "@/lib/frontier-approvals";
+import { signRevokeToken, APPROVAL_TTL_MS, shouldRearmApproval, type ApprovalRow } from "@/lib/frontier-approvals";
 import { logger } from "@/lib/logger";
 
 const APP_URL =
@@ -87,9 +87,44 @@ export async function mintPendingApproval(
   supabase: SupabaseClient,
   a: MintArgs,
 ): Promise<{ approvalId: string; approvalUrl: string } | null> {
-  // Reuse an existing row if present (don't clobber an in-flight approval/denial).
+  // Reuse an existing LIVE row if present (don't clobber an in-flight approval/
+  // denial, and never reset a live pending row's TTL — the in-turn 5s poll mints
+  // on every pass). But a DEAD row (expired / denied / lazily-past-TTL) must be
+  // RE-ARMED, not reused: the table is unique on (vm_id, request_id), so this row
+  // is the request_id's only approval forever — handing back a dead row's URL
+  // deadlocks the booking permanently (the >15-min-tap bug, pre-canary audit
+  // 2026-06-12). Re-arm = fresh pending + fresh TTL + the CURRENT spend identity
+  // (a retry may have re-priced; the page must show what the user is approving,
+  // and approvalMatchesSpend binds against these fields). Money still cannot
+  // move without a fresh owner-session tap. NEVER re-arms consumed (terminal —
+  // a consumed request_id already has its hold; authorize answers idempotently
+  // before any mint). See frontier-approvals.shouldRearmApproval.
   const existing = await lookupApproval(supabase, a.vmId, a.requestId);
   if (existing) {
+    if (!shouldRearmApproval(existing, a.nowMs)) {
+      return { approvalId: existing.id, approvalUrl: `${APP_URL}/economy/approve?id=${existing.id}` };
+    }
+    const { data: rearmed, error: rearmErr } = await supabase
+      .from(APPROVALS_TABLE)
+      .update({
+        status: "pending_approval",
+        amount_usd: a.amountUsd,
+        category: a.category,
+        counterparty: a.counterparty,
+        expires_at: new Date(a.nowMs + APPROVAL_TTL_MS).toISOString(),
+        approved_at: null,
+      })
+      .eq("id", existing.id)
+      .neq("status", "consumed") // CAS belt: never resurrect a consumed row, even in a race
+      .select("id")
+      .maybeSingle();
+    if (rearmErr || !rearmed) {
+      // Raced to consumed, or the write failed — degrade to the old behavior
+      // (return the existing row's URL; visible, never silent) and log it.
+      logger.warn("frontier approval re-arm failed; returning existing row", {
+        route: "frontier-approval-io", code: rearmErr?.code ?? "raced_or_gone",
+      });
+    }
     return { approvalId: existing.id, approvalUrl: `${APP_URL}/economy/approve?id=${existing.id}` };
   }
   const expiresAt = new Date(a.nowMs + APPROVAL_TTL_MS).toISOString();

@@ -384,8 +384,9 @@ const OPS_LOG_TEXT_MAX = 400;
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 
 export function buildTravalaOpsLog(input: {
-  op: "manage-booking" | "cancel-booking";
-  step: 1 | 2;
+  op: "manage-booking" | "cancel-booking" | "book-quote" | "book-record";
+  /** The OTP leg for cancel/manage; absent for the book ops (no OTP there). */
+  step?: 1 | 2;
   vmId: string;
   bookingId: string;
   /** classifyToolResult state (or "token_mint_failed" for the pre-MCP failure). */
@@ -402,7 +403,7 @@ export function buildTravalaOpsLog(input: {
   const upstream = raw.length > OPS_LOG_TEXT_MAX ? `${raw.slice(0, OPS_LOG_TEXT_MAX)}…` : raw;
   return {
     op: input.op,
-    step: input.step,
+    ...(input.step !== undefined ? { step: input.step } : {}),
     vm_id: input.vmId,
     booking_id: input.bookingId,
     state: input.state,

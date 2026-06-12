@@ -190,3 +190,43 @@ export function verifyRevokeToken(value: string | undefined | null, nowMs: numbe
   }
   return { ok: true, vmId: payload.vm };
 }
+
+/**
+ * Should mintPendingApproval RE-ARM (reset to a fresh pending_approval) an
+ * existing row instead of reusing it as-is?
+ *
+ * THE DEADLOCK THIS KILLS (2026-06-12 pre-canary audit): request_id is
+ * single-use by design (the deterministic pay nonce derives from it), and the
+ * approvals table is unique on (vm_id, request_id) — so each booking attempt
+ * has exactly ONE approval row, forever. Before this, mintPendingApproval
+ * reused ANY existing row, including a dead one: a user who tapped after the
+ * 15-min TTL (or denied, then changed their mind) got the SAME dead row's URL
+ * on every re-authorize, the approve POST correctly 409'd it, and the booking
+ * was permanently unbookable under its request_id — while the script's
+ * narration promised "I'll send a fresh one if it expires." Re-arming the row
+ * (fresh TTL + the CURRENT spend identity) makes that promise true.
+ *
+ * Re-arm is SAFE because money never moves on a re-armed row without a fresh
+ * human tap: pending_approval authorizes nothing; the approve POST requires
+ * the owner's live browser session; identity binding (approvalMatchesSpend)
+ * re-checks amount/category/counterparty at authorize time.
+ *
+ * NEVER re-arm "consumed": consumed means this request_id already authorized a
+ * reserve — the hold exists, so authorize answers idempotently long before any
+ * mint. Resurrecting a consumed row could only ever be a bug amplifier.
+ *
+ *   live pending (fresh)        -> false (reuse as-is; the 5s in-turn poll must
+ *                                  NOT keep resetting the TTL)
+ *   approved (fresh)            -> false (it will authorize on this very call)
+ *   consumed                    -> false (terminal, see above)
+ *   expired / denied            -> true  (the dead-end states)
+ *   pending/approved PAST TTL   -> true  (lazily-expired — same dead end)
+ *
+ * Pure. Tested in scripts/_test-frontier-session-decouple.ts (block E).
+ */
+export function shouldRearmApproval(row: ApprovalRow, nowMs: number): boolean {
+  if (row.status === "consumed") return false;
+  if (row.status === "expired" || row.status === "denied") return true;
+  // pending_approval / approved: dead only if past TTL (incl. unparseable expiry).
+  return isApprovalExpired(row, nowMs);
+}

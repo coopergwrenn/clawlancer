@@ -37,16 +37,21 @@
  *     UPDATE instaclaw_admin_settings SET bool_value=false, updated_at=now()
  *     WHERE setting_key='travala_booking_kill_switch';
  *
- * The booking backend (/api/travala book-quote) checks BOTH on every call: the
- * emergency kill first (cheap, fleet-wide), then the per-VM opt-in. Either gate
- * shut ⇒ no token is minted, no booking 402 is returned.
+ * HISTORY (both halves of the original two-opt-in design are RETIRED):
+ *   - 2026-06-12 AM (north-star ruling): the per-VM travala_booking_enabled
+ *     toggle was removed from book-quote — the door is open; the money is gated
+ *     where it matters. isTravalaBookingEnabled below survives ONLY for the
+ *     dashboard card API's informational view; the column is inert.
+ *   - 2026-06-12 PM (the travel decouple): frontier_spend_enabled no longer
+ *     gates travel either — booking is human-approved spending, not autonomous
+ *     spending (lib/frontier-spend-optin.ts spendMandateSatisfied).
  *
- * NOTE: these gates govern BOOKING (the money move). They are orthogonal to the
- * frontier spend gate, which the same booking ALSO passes through (the agent's
- * pay leg calls /authorize with category:"travel"). Booking therefore requires
- * BOTH travala_booking_enabled AND frontier_spend_enabled — by design, two
- * deliberate user opt-ins for a capability that spends real money on a real
- * merchant. See instaclaw/docs/prd/travala-x402-booking-2026-06-10.md §5, §14-F.
+ * What ACTUALLY gates booking now: the global kill switch below (operator
+ * emergency stop, checked first on every book-quote, fail-closed) + the
+ * frontier travel evaluation (the per-booking unforgeable session tap, the
+ * funded wallet via the drain guard, the $1200/$3000 ceilings, privacy mode,
+ * the per-VM category override). See docs/prd/travala-fleet-flip-runbook and
+ * skills/travala/references/booking-flow.md "The three gates".
  */
 import type { getSupabase } from "@/lib/supabase";
 import { readKillSwitchState, type KillSwitchState } from "@/lib/kill-switch-core";

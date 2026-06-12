@@ -12,9 +12,11 @@
  *   - search-hotel / search-package — PUBLIC Travala tools (mcp:read, no token).
  *       No booking gates: discovery is free and reveals no money path.
  *   - book-quote — gated by the global kill switch ONLY (2026-06-12 north-star
- *       ruling: the per-VM toggle is gone; spend opt-in + the per-booking session
- *       tap + the funded wallet are the real money gates, asked in chat at the
- *       moment they matter). Mints mcp:book, calls travala_book, returns the 402.
+ *       ruling: the per-VM toggle is gone; and per the same-day travel DECOUPLE,
+ *       the frontier spend opt-in does NOT gate booking either — the real money
+ *       gates are the per-booking unforgeable session tap + the funded wallet +
+ *       the $1200/$3000 travel ceilings, asked/enforced at the moment they
+ *       matter). Mints mcp:book, calls travala_book, returns the 402.
  *   - book-status — read-only recovery (G). NOT gated by the booking toggle: a
  *       status check exists precisely to AVOID a double charge after a failed
  *       pay, so it must work even if booking was just turned off / killed.
@@ -171,6 +173,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
       snapshot: (a.snapshot as TravalaBookingSnapshot) ?? null,
     });
     if (!rec.recorded) {
+      logOpsNonOk(buildTravalaOpsLog({
+        op: "book-record", vmId: vm.id as string, bookingId: rec.bookingId ?? "",
+        state: "record_failed", upstreamText: rec.reason,
+      }));
       // PARTIAL-FAILURE: the booking is REAL (paid, irreversible) but untracked —
       // uncancellable through the agent until backfilled. Alert the operator
       // (per VM+package dedup) so it's visible beyond the user-driven --retry path.
@@ -356,11 +362,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
     );
   }
   // Gate 1 (the per-VM travala_booking_enabled toggle) was REMOVED here on
-  // 2026-06-12 (north-star ruling): the door is open; the MONEY is gated where it
-  // belongs — the frontier spend opt-in, the per-booking unforgeable session tap
-  // (SESSION_REQUIRED travel), the funded wallet, the ceiling, and the kill
-  // switches above. A door toggle added no protection those layers don't already
-  // provide, and it cost the free demo. The column is inert (no migration).
+  // 2026-06-12 (north-star ruling), and the frontier spend opt-in was DECOUPLED
+  // from travel the same day: the door is open; the MONEY is gated where it
+  // belongs — the per-booking unforgeable session tap (SESSION_REQUIRED travel),
+  // the funded wallet, the $1200/$3000 ceilings, and the kill switches above.
+  // A door toggle added no protection those layers don't already provide, and
+  // it cost the free demo. The column is inert (no migration).
 
   const args = (body.arguments as Record<string, unknown>) ?? body;
   // Minimal shape guard — travala_book needs the package + session + a guest.
@@ -376,6 +383,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
 
   const tok = await mintTravalaToken("mcp:read mcp:book");
   if (!tok.ok || !tok.access_token) {
+    logOpsNonOk(buildTravalaOpsLog({
+      op: "book-quote", vmId: vm.id as string, bookingId: "",
+      state: "token_mint_failed", upstreamStatus: tok.status ?? null,
+    }));
     return NextResponse.json(
       { error: "travala_token_mint_failed", detail: tok.status, http_code: tok.http_code },
       { status: 502 },
@@ -385,6 +396,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
   const r = await mcpToolsCall(tok.access_token, "travala_book", args);
   if (!r.ok) {
     // 401 here would mean the minted token lacks mcp:book or the wall moved.
+    logOpsNonOk(buildTravalaOpsLog({
+      op: "book-quote", vmId: vm.id as string, bookingId: "",
+      state: "travala_book_failed", upstreamStatus: r.http_code ?? null, upstreamText: r.error,
+    }));
     return NextResponse.json(
       { error: "travala_book_failed", detail: r.error, http_code: r.http_code },
       { status: 502 },
@@ -393,6 +408,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ op: string
 
   const quote = extractBookQuote(r.result);
   if (!quote.ok) {
+    logOpsNonOk(buildTravalaOpsLog({
+      op: "book-quote", vmId: vm.id as string, bookingId: "",
+      state: "quote_parse_failed", upstreamText: quote.error,
+    }));
     return NextResponse.json(
       { error: "travala_quote_parse_failed", detail: quote.error },
       { status: 502 },

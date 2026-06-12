@@ -37,7 +37,7 @@ import {
 } from "../lib/frontier-policy";
 import { decideAuthorization, blocksUnmandatedReserve, type AuthorizationInput } from "../lib/frontier-authz";
 import { spendMandateSatisfied, isFrontierSpendEnabled } from "../lib/frontier-spend-optin";
-import { evaluateApproval, approvalMatchesSpend, type ApprovalRow } from "../lib/frontier-approvals";
+import { evaluateApproval, approvalMatchesSpend, shouldRearmApproval, type ApprovalRow } from "../lib/frontier-approvals";
 import type { CreditStanding } from "../lib/frontier-standing";
 
 let passed = 0;
@@ -363,6 +363,42 @@ for (const [v, want] of [[true, true], [false, false], [null, false], [undefined
   check(`D6: isFrontierSpendEnabled(${String(v)}) === ${want}`, isFrontierSpendEnabled({ frontier_spend_enabled: v }) === want);
 }
 check("D6: isFrontierSpendEnabled(no vm) === false", isFrontierSpendEnabled(null) === false);
+
+/* ── E. THE RE-ARM DECISION — the >15-min-tap deadlock stays dead ──────────── */
+// request_id is single-use (the pay nonce derives from it) and the approvals
+// table is unique on (vm_id, request_id) — so each booking has exactly ONE
+// approval row forever. shouldRearmApproval decides when mint may RESET that
+// row to a fresh pending instead of handing back a dead one (the deadlock).
+
+{
+  const row = (over: Partial<ApprovalRow>): ApprovalRow => ({
+    status: "pending_approval", amount_usd: 84.5, category: "travel",
+    counterparty: "https://travel-mcp.travala.com/mcp",
+    expires_at: new Date(NOW + 60_000).toISOString(), ...over,
+  });
+  // The quiet cases — a live flow must NEVER be clobbered:
+  check("E1: live pending → NO re-arm (the 5s poll must not reset the TTL)", shouldRearmApproval(row({}), NOW) === false);
+  check("E1: fresh approved → NO re-arm (it authorizes on this very call)", shouldRearmApproval(row({ status: "approved" }), NOW) === false);
+  // The dead-end states the fix exists for:
+  check("E2: expired status → re-arm (the >15-min-tap deadlock)", shouldRearmApproval(row({ status: "expired" }), NOW) === true);
+  check("E2: denied → re-arm (changed-mind path; deny still binds until a fresh tap)", shouldRearmApproval(row({ status: "denied" }), NOW) === true);
+  check("E2: pending PAST TTL (lazily expired) → re-arm", shouldRearmApproval(row({ expires_at: new Date(NOW - 1).toISOString() }), NOW) === true);
+  check("E2: approved PAST TTL (tapped, never resumed) → re-arm", shouldRearmApproval(row({ status: "approved", expires_at: new Date(NOW - 1).toISOString() }), NOW) === true);
+  check("E2: corrupt expiry on pending → re-arm (fail-safe expiry)", shouldRearmApproval(row({ expires_at: "not-a-date" }), NOW) === true);
+  // The hard line — consumed is terminal in EVERY timing:
+  check("E3: consumed, fresh → NEVER re-arm", shouldRearmApproval(row({ status: "consumed" }), NOW) === false);
+  check("E3: consumed, past TTL → NEVER re-arm", shouldRearmApproval(row({ status: "consumed", expires_at: new Date(NOW - 1).toISOString() }), NOW) === false);
+  // Composition with the authorize verdict: every re-arm-eligible row is one
+  // evaluateApproval already refuses (the fix can't widen consent — a dead row
+  // never authorized anything, before or after re-arm).
+  for (const dead of [row({ status: "expired" }), row({ status: "denied" }), row({ expires_at: new Date(NOW - 1).toISOString() })]) {
+    check(`E4: re-arm-eligible (${dead.status}) is non-authorizing pre-re-arm`,
+      evaluateApproval(dead, { amountUsd: 84.5, category: "travel" as SpendCategory, counterparty: "https://travel-mcp.travala.com/mcp" }, NOW) === "none");
+  }
+  // And a re-armed row (fresh pending) is PENDING — still not authorizing:
+  check("E4: post-re-arm shape (fresh pending) → pending, not approved",
+    evaluateApproval(row({}), { amountUsd: 84.5, category: "travel" as SpendCategory, counterparty: "https://travel-mcp.travala.com/mcp" }, NOW) === "pending");
+}
 
 /* ── verdict ───────────────────────────────────────────────────────────────── */
 console.log(`\n${failed === 0 ? "ALL PASS" : "FAILURES"}: ${passed} passed, ${failed} failed`);

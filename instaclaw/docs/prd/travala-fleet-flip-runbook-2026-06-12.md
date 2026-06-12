@@ -172,94 +172,68 @@ investigate before deferring.
 
 ## §4 — THE FLIP (one window, strict order — a coupled thing never ships before its dependency)
 
-> The ordering principle: **server code first (already live), then the skill +
-> the link together, then the gate opens.** The Trips link must never be
-> visible while the skill is absent (dead promise), and booking must never be
-> reachable before the canary proved it (the kill switch holds until last).
+> **REORDERED by the 2026-06-12 pre-canary audit.** The original plan pushed the
+> Trips commit and the manifest bump together — but the link goes live the
+> moment the deploy is Ready while the skill drain takes ~2–3h, leaving a
+> 2–3-hour window where every dashboard shows Trips and most agents lack the
+> skill: the exact dead-promise the coupling rule exists to prevent. The fix is
+> ORDER, not atomicity: **capability first, proof second, link last.** When the
+> link appears, every VM already has the skill and booking is already proven
+> live in production.
 
-**Step 1 — rebase + gate the held Trips commit.**
-```bash
-cd /Users/cooperwrenn/wild-west-bots-travala
-git fetch origin main && git rebase origin/main        # held commit rides to a new SHA — record it
-cd instaclaw && npx tsc --noEmit > /tmp/tsc.out 2>&1; echo "exit=$?"   # must be 0
-```
-Expected: clean rebase (the commit is code-only by design — the coupling docs
-live on main). Proof: tsc exit 0. Abort: nothing pushed yet.
+**Step 1 — the manifest bump ALONE (ships the skill fleet-wide, still dark).**
+- Edit `lib/vm-manifest.ts`: `version: 128` → `129`; add the v129 changelog
+  entry in CLAUDE.md (travel skill fleet-wide via skillsFromRepo +
+  extraSkillFiles; no config keys, no systemd changes, no gateway restarts —
+  a pure-content bump). Cooper's Rule-64 approval, then push (a plain main
+  push — the held Trips commit is NOT in this one).
+- Proof: deploy Ready (`vercel inspect --logs` shows the SHA); reconcile drain
+  begins next tick. Booking stays dark (kill switch); the Trips link stays
+  hidden (the presence gate is still live on prod).
+- **The drain gate:** ~2–3h at CONFIG_AUDIT_BATCH_SIZE=3. Re-run the census →
+  **151/151 YES** for `travala-book.mjs`, AND spot-check 5 VMs for all four
+  scripts + SKILL.md containing "exactly two" (current content, not a stale
+  early copy). Any VM stuck >4h → cv-bump-blocked triage (Rule 40). Do NOT
+  proceed until the census passes.
+- Abort: revert the bump commit. Files already landed are inert (switch is on).
 
-**Step 2 — the manifest bump (ships the skill fleet-wide).**
-- Edit `lib/vm-manifest.ts`: `version: 128` → `129`.
-- Add the changelog entry in CLAUDE.md's Manifest Version Changelog (v129 —
-  travel skill fleet-wide: travala SKILL.md + references via skillsFromRepo,
-  4 scripts via extraSkillFiles; no config keys, no systemd changes, **no
-  gateway restarts required** — a pure-content bump; the reconciler's other
-  steps run idempotently).
-- Commit on the same branch, ON TOP of the rebased Trips commit.
+**Step 2 — open the money path and PROVE it (link still hidden).**
+- Release the kill switch:
+  ```sql
+  UPDATE instaclaw_admin_settings SET bool_value=false, updated_at=now(),
+    notes='fleet flip: canary passed, drain complete, travel live'
+  WHERE setting_key='travala_booking_kill_switch';
+  ```
+- **Prod-verify the BOOKING leg before any user can discover it:** one real
+  end-to-end booking on a designated VM (vm-1043 or Cooper's) — ask → quote →
+  tap at /economy/approve → paid → ref → the receipt row visible on /trips by
+  direct URL. Plus the empty-wallet spot-check on a $0 VM (the funding ask,
+  full address, no tap offered).
+- Abort: re-engage the switch (instant); the link never went up, so the
+  degraded state is invisible.
 
-**Step 3 — ONE push, both commits (the coupling made atomic).**
-```bash
-git push origin HEAD:main
-```
-Expected: Vercel builds; deploy → Ready (~3 min). Proof:
-`vercel inspect <deploy-url> --logs | grep Cloning` shows the pushed SHA (or a
-descendant changelog commit); `git merge-base --is-ancestor <trips-sha> origin/main`.
-**From this moment:** the Trips link renders for every dashboard user → the
-first-run surface is the promise. The skill begins reaching VMs on the next
-reconcile tick. Booking is STILL dark (kill switch).
-Abort lever: `git revert` both commits + push (the link disappears again;
-cv-129 VMs that already got files keep them — harmless inert files while the
-switch is engaged).
+**Step 3 — the link goes live LAST (the discovery surface).**
+- `cd` the travala worktree; `git fetch && git rebase origin/main` (the held
+  Trips commit rides to its final SHA — Rule-84 tsc gate), then push.
+- Proof: deploy Ready; then the surface prod-verify with SCREENSHOTS: minted
+  zero-booking session → the Trips item in the live sidebar; /trips renders
+  the first-run discovery surface (hero, chips, trust loop, ghost) on the real
+  theme; 390px holds; `?prefill=` seeds-never-sends.
+- Update the coupling records (tracker + memory) to the final SHA, flip the
+  tracker entry to SHIPPED (Rule 72).
+- Abort: `git revert <trips-sha>` — the link disappears; booking (already
+  proven) is untouched.
 
-**Step 4 — release the kill switch (booking goes live).**
-Only after step 3's deploy is Ready AND the skill drain has begun:
-```sql
-UPDATE instaclaw_admin_settings SET bool_value=false, updated_at=now(),
-  notes='fleet flip 2026-06-1X: canary passed, travel live'
-WHERE setting_key='travala_booking_kill_switch';
-```
-Expected: book-quote serves 402 quotes again. Proof: one quote through the
-canary VM. Re-engage = the same UPDATE with `true` (the instant rollback for
-ANY booking-side failure from here on).
-
-**Step 5 — watch the drain (skill → 151 VMs).**
-reconcile-fleet picks up `cv<129` next tick; `CONFIG_AUDIT_BATCH_SIZE=3` at
-3-min cadence → expect **~2–3h** to drain. Proof (the coverage gate, Rule 27):
-re-run the §0 census script — expect 151/151 YES for `travala-book.mjs` AND
-spot-check 5 VMs for **all four** scripts + SKILL.md containing
-"exactly two" (the post-decouple requirements section — proves current content,
-not a stale early copy). Any VM stuck >4h: standard reconcile triage
-(cv-bump-blocked logs, Rule 40).
-
-**Step 6 — the MANDATORY prod-verify gate (screenshots, not assumptions).**
-1. Mint a zero-booking session (the trips walkthrough harness) → screenshot:
-   the **Trips item in the live sidebar**; **/trips renders the first-run
-   surface** (hero, chips, trust loop, ghost) on the real theme; **390px** holds.
-2. **One real end-to-end booking** on a designated VM (vm-1043 or Cooper's):
-   ask → quote → tap at /economy/approve → paid → booking ref → the receipt
-   ROW appears on /trips (screenshot the live card). This is the only proof
-   the whole chain (skill → decoupled authorize → tap → pay → record → Trips)
-   composes in production for a normal user.
-3. Empty-wallet UX spot-check on a $0 wallet VM: the funding-ask narration
-   (exact amount + full address). No tap should be offered before funding.
-If ANY of these fail → step 4's re-engage (booking dark again) while the link
-stays up — the first-run surface stands on its own (search is free) — fix, then
-re-release. The link-without-booking state is degraded but honest (search
-works); if the failure is in the SURFACE instead, revert the Trips commit.
-
-**Step 7 — post-flip hygiene.**
+**Step 4 — post-flip hygiene.**
 - Rule 7 snapshot prompt to Cooper (manifest bumped → base snapshot stale).
-- Update this doc + the lane tracker: flip date, final SHAs, census result,
-  prod-verify screenshot refs (Rule 72).
-- vm-1043 cleanup per canary runbook Stage 0 (optional).
-- Re-probe vm-626/771/917 (the census ERRs).
+- Update this doc with flip date, final SHAs, census output, prod-verify
+  screenshot refs. vm-1043 cleanup per canary runbook Stage 0 (optional).
+- Re-probe the census ERR VMs (vm-626/771/917).
 
-**Step 8 — announce (ONLY after step 6 passes).**
-Launch copy goes through Rule 55 (`/launch` — both viral playbooks, receipts,
-weapons check). Recommended pre-announce fast-follow from the tracker:
-**#10 per-VM quote rate cap** (auto-on hardening — cheap, protects the shared
-Travala OAuth client at announce-driven volume) and **#7 structured
-cancel/manage error logs** (the 2am fields for launch week).
-
----
+**Step 5 — announce (ONLY after step 3's surface verify passes).**
+Launch copy via Rule 55 (`/launch`). Recommended pre-announce fast-follows:
+**#10 per-VM quote rate cap** (build during the canary soak so flip-day ships
+no new code) and the skill-card copy flip (§6).
 
 ## §5 — ROLLBACK MATRIX (which lever for which failure)
 
@@ -290,6 +264,12 @@ book-quote (before any 402 exists) and the tap sits before any signature.
 - `travala_booking_enabled` column is inert (no migration to run; card API only).
 - Tracker ship-afters #4–#10 ride post-flip (priority: #10 + #7 pre-announce,
   #6 deadline reminders = the flagship fast-follow, #9 fed by canary stage 6).
+- 2026-06-12 pre-canary audit shipped: the approval RE-ARM (the >15-min-tap /
+  denied-then-changed-mind deadlock is dead — mintPendingApproval resets a dead
+  row with fresh TTL + current spend identity; consumed never re-arms), the
+  book-quote/book-record TRAVALA_OPS_NON_OK logs (the book path now has the
+  same 2am fields as cancel/manage), and the stale two-opt-in docblocks
+  corrected (travala-kill-switch.ts + the op route header).
 - Held-commit coupling records (tracker + memory) must be updated to the FINAL
   Trips SHA after the step-1 rebase (the SHA changes again — same discipline as
   3c19f5d7 → 84cfbf86).
