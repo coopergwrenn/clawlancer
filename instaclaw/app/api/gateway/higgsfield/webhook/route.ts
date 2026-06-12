@@ -159,7 +159,15 @@ export async function POST(req: NextRequest) {
               p_vm_id: target.v,
               p_request_id: target.r,
               p_actual_credits: Number(tx.est_credits) || 0,
-              p_metadata: { hf_request_id: requestId, hf_status: status },
+              // video_url persisted for the /videos gallery (stage 1, F-1):
+              // the settle metadata merge is the one write that always runs
+              // on completion (delivery-independent), so the gallery never
+              // depends on the delivery leg. Legacy rows hydrate lazily.
+              p_metadata: {
+                hf_request_id: requestId,
+                hf_status: status,
+                video_url: authoritative?.video?.url ?? null,
+              },
             });
             logger.info("video settle", {
               route: "gateway/higgsfield/webhook",

@@ -290,7 +290,15 @@ export async function POST(req: NextRequest) {
     const windowStart = utcDayStartISO();
     const freshPendingCutoff = new Date(Date.now() - FRESH_PENDING_TTL_MS).toISOString();
     const freeCap = freeCapForTier(vm.tier);
-    const metadata = { endpoint, chat_id: chatId ?? null, tier: vm.tier ?? null };
+    // prompt persisted for the /videos gallery (stage 1, park finding F-1):
+    // the verbatim words ARE the creative artifact the lightbox celebrates.
+    // Shown only to the owning user; ≤2000 chars (validateInput's cap).
+    const metadata = {
+      endpoint,
+      chat_id: chatId ?? null,
+      tier: vm.tier ?? null,
+      prompt: typeof input.prompt === "string" ? input.prompt : null,
+    };
 
     async function reserve(isFree: boolean) {
       return supabase.rpc("instaclaw_video_reserve_spend", {

@@ -186,7 +186,7 @@ special). You'll know it fired because the generate result includes
   anything) — tell them ONCE, lightly: *"That first one was on the house. More
   cinematic videos come in packs from $3.99 for 4, or there's a creator plan:
   42 premium videos every month for $44.99, the best rate. Both at
-  instaclaw.io/billing/credit-packs whenever you want them."* Then drop it.
+  instaclaw.io/videos whenever you want them."* Then drop it.
   **Never bring up packs or the plan again unsolicited** — if they ask, answer;
   if they don't, stay quiet. One gift, one mention, zero nagging.
 
@@ -202,10 +202,10 @@ premium image-to-video models use video credits (after the free first one).
   - `plan_status` absent or `null` (not a plan subscriber) → *"That one needs
     video credits. Packs start at $3.99 for 4 videos, or the creator plan is
     42 premium videos every month for $44.99. Both at
-    instaclaw.io/billing/credit-packs."*
+    instaclaw.io/videos."*
   - `plan_status: "active"` (their monthly videos ran out) → *"You've used your
     monthly plan videos. Packs are available at normal rates at
-    instaclaw.io/billing/credit-packs, or your allowance resets with your next
+    instaclaw.io/videos, or your allowance resets with your next
     billing cycle."* The plan rate is NEVER the overage rate; don't imply it is.
   - `plan_status: "past_due"` (payment issue froze the plan) → *"There's a
     payment issue with your video plan, so the monthly videos are paused. You

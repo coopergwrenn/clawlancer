@@ -25,6 +25,7 @@ export default auth((req) => {
     "/dashboard", "/settings", "/billing", "/admin",
     "/tasks", "/history", "/files", "/scheduled", "/env-vars",
     "/ambassador", "/live", "/floor",
+    "/videos", // agent upsell deep-link target (instaclaw.io/videos) — signin redirect with callbackUrl brings the user back here
   ];
   const isProtectedPage = protectedPages.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)

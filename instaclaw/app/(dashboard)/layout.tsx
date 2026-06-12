@@ -25,6 +25,7 @@ import {
   MapPin,
   Waves,
   Coins,
+  Clapperboard,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { motion } from "motion/react";
@@ -35,17 +36,21 @@ import { useNavMode } from "@/components/dashboard/use-nav-mode";
 import { SidebarShell } from "@/components/dashboard/sidebar-shell";
 import { DashboardGateOverlay } from "@/components/dashboard/dashboard-gate-overlay";
 
-// Primary items — the daily-use operational core, always visible. Kept to FIVE
-// so the eye lands on what users actually reach for every session, not a wall
-// of tabs. Order: home → interact → monitor → configure → engage. Skills sits
-// ahead of Earn (it's the target of the ToolRouter-announcement traffic). The
-// Floor + Edge City moved into the "···" overflow — features users explore, not
-// daily workflow. Routes are UNCHANGED, so all deep links keep working.
+// Primary items — the daily-use operational core, always visible. Kept tight
+// (six) so the eye lands on what users actually reach for every session, not a
+// wall of tabs. Order: home → interact → monitor → create → configure → engage.
+// Skills sits ahead of Earn (it's the target of the ToolRouter-announcement
+// traffic). Videos sits after Skills — it's the AI-video gallery + the video
+// money surface (packs/plan), a daily-return destination once a user has
+// rendered anything (videos-page stage 1, 2026-06-12). The Floor + Edge City
+// moved into the "···" overflow — features users explore, not daily workflow.
+// Routes are UNCHANGED, so all deep links keep working.
 const primaryNav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tourKey: "nav-dashboard" },
   { href: "/tasks", label: "Command Center", icon: MessageSquare, tourKey: "nav-command-center" },
   { href: "/heartbeat", label: "Heartbeat", icon: Heart, tourKey: "nav-heartbeat" },
   { href: "/skills", label: "Skills", icon: Puzzle, tourKey: "nav-skills" },
+  { href: "/videos", label: "Videos", icon: Clapperboard, tourKey: "nav-videos" },
   { href: "/earn", label: "Earn", icon: TrendingUp, tourKey: "nav-earn" },
 ];
 
