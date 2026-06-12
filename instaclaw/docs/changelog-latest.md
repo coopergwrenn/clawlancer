@@ -1,15 +1,15 @@
 # Changelog — generated 2026-06-12
 
-Window: `dfcadde72ee33c6958324dc3d369eb86e08c65cc` → `HEAD` (HEAD = `b1ac0475`)
+Window: `b1ac0475084555fca81235761fdacd25ac610df2` → `HEAD` (HEAD = `17c53525`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: b1ac0475084555fca81235761fdacd25ac610df2 -->
+<!-- LAST_GENERATED_SHA: 17c535256dc310c969e656170cb28b2089736ba4 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
@@ -22,18 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `b1ac0475` 2026-06-12 — feat(travala): the funding ask + the paywall moment — the gate with no UI speaks [2 files] _(ai-assisted)_
-- `ff240c16` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `17c53525` 2026-06-12 — feat(travala): the gate dies — door open, money gated where it belongs (Q2 ruling) [8 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+- `a871d740` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `17c53525` 2026-06-12 — feat(travala): the gate dies — door open, money gated where it belongs (Q2 ruling) [8 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (1)
-
-- `b1ac0475` 2026-06-12 — feat(travala): the funding ask + the paywall moment — the gate with no UI speaks [2 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `ff240c16` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `a871d740` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `17c53525` 2026-06-12 — [reconciler, infrastructure, docs] — feat(travala): the gate dies — door open, money gated where it belongs (Q2 ruling)
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `b1ac0475` 2026-06-12 — feat(travala): the funding ask + the paywall moment — the gate with no UI speaks
+- `17c53525` 2026-06-12 — feat(travala): the gate dies — door open, money gated where it belongs (Q2 ruling)
 
 ## Appendix — every commit (chronological)
 
-- `ff240c16` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
-- `b1ac0475` 2026-06-12 — feat(travala): the funding ask + the paywall moment — the gate with no UI speaks [2 files] _(ai-assisted)_
+- `a871d740` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `17c53525` 2026-06-12 — feat(travala): the gate dies — door open, money gated where it belongs (Q2 ruling) [8 files] _(multi: [reconciler, infrastructure, docs]; ai-assisted)_
