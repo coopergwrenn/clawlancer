@@ -9,6 +9,7 @@ import { SkillOrb } from "@/components/skill-orb";
 import { resolveSkillOrb, CATEGORY_COLORS } from "@/lib/skill-orb-mapping";
 import { PremiumToolsSkillCard } from "@/components/dashboard/premium-tools-skill-card";
 import { TravelAgentSkillCard } from "@/components/dashboard/travel-agent-skill-card";
+import { TripsPresenceLink } from "@/components/dashboard/trips-presence-link";
 
 // ── Types ────────────────────────────────────────────
 
@@ -483,7 +484,12 @@ export default function SkillsPage() {
               (prominent, near the top) and Commerce (first card, beside E-Commerce
               / Virtuals aGDP). Presentational only — see the component header. */}
           {(activeCategory === "all" || activeCategory === "commerce") && (
-            <TravelAgentSkillCard />
+            <div className="flex flex-col">
+              <TravelAgentSkillCard />
+              {/* presence-based /trips entry — separate component so the held
+                  Phase-4 card swap never collides with it (trips spec (c)). */}
+              <TripsPresenceLink />
+            </div>
           )}
           <AnimatePresence mode="popLayout">
             {filteredSkills.map((skill, i) => (

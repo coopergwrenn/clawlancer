@@ -23,6 +23,7 @@ import {
   Settings,
   Key,
   MapPin,
+  Luggage,
   Award,
   Sparkles,
   Mail,
@@ -464,6 +465,7 @@ function SidebarNav({
   collapsed,
   toggle,
   isEdge,
+  hasTrips,
   email,
   variant = "rail",
   onNewSession,
@@ -476,6 +478,9 @@ function SidebarNav({
   collapsed: CollapseMap;
   toggle: (key: string) => void;
   isEdge: boolean;
+  // Trips (travel lane): presence-based — true only when the user has at least
+  // one booking row (fetched once in SidebarShellInner; trips spec, 2026-06-12).
+  hasTrips: boolean;
   email: string;
   // "rail" = desktop aside (shows the status strip under the logo, §2.3).
   // "drawer" = mobile off-canvas (the mobile top bar owns the strip instead, so
@@ -559,6 +564,15 @@ function SidebarNav({
           <NavRow
             item={{ href: "/edge/dashboard", label: "Edge City", icon: MapPin, tourKey: "nav-edge-city" }}
             active={pathname === "/edge/dashboard"}
+            heartbeatHealth={heartbeatHealth}
+            pillId={pillId}
+          />
+        )}
+
+        {hasTrips && (
+          <NavRow
+            item={{ href: "/trips", label: "Trips", icon: Luggage, tourKey: "nav-trips" }}
+            active={pathname === "/trips"}
             heartbeatHealth={heartbeatHealth}
             pillId={pillId}
           />
@@ -715,6 +729,32 @@ function SidebarShellInner({
   const { collapsed, toggle } = useCollapseState();
   const isDesktop = useIsDesktop();
   const isEdge = session?.user?.partner === "edge_city";
+
+  // Trips presence (travel lane, 2026-06-12): the nav item exists only when the
+  // user has at least one booking row. One cheap head-count fetch per session,
+  // sessionStorage-cached so the hot sidebar never refetches on navigation.
+  // Fail-quiet: on any error the item simply doesn't render (read-only surface).
+  const [hasTrips, setHasTrips] = useState(false);
+  useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem("ic_trips_presence");
+      if (cached !== null) {
+        setHasTrips(cached === "1");
+        return;
+      }
+    } catch { /* storage unavailable — fall through to fetch */ }
+    let alive = true;
+    fetch("/api/skills/travala-trips?presence=1", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { count?: number } | null) => {
+        if (!alive) return;
+        const has = !!j && typeof j.count === "number" && j.count > 0;
+        setHasTrips(has);
+        try { sessionStorage.setItem("ic_trips_presence", has ? "1" : "0"); } catch { /* best-effort */ }
+      })
+      .catch(() => { /* fail-quiet */ });
+    return () => { alive = false; };
+  }, []);
   const email = session?.user?.email ?? "";
   const pillId = "sidebar-active-pill";
 
@@ -819,6 +859,7 @@ function SidebarShellInner({
             collapsed={collapsed}
             toggle={toggle}
             isEdge={isEdge}
+            hasTrips={hasTrips}
             email={email}
             onNewSession={handleNewSession}
           />
@@ -944,6 +985,7 @@ function SidebarShellInner({
                   collapsed={collapsed}
                   toggle={toggle}
                   isEdge={isEdge}
+                  hasTrips={hasTrips}
                   email={email}
                   variant="drawer"
                   onNewSession={handleNewSession}

@@ -3139,6 +3139,22 @@ function CommandCenterInner() {
     [activeTab, sendMessage, createTask]
   );
 
+  // Deep-link prefill (?prefill= — the Trips card's chat handoff, spec D3).
+  // SEED the composer, NEVER auto-send: the user pressing send themselves is the
+  // consent (the agent stays the actor; the page is a window). One-shot — the
+  // param is stripped after seeding so refresh doesn't re-seed.
+  const prefillConsumed = useRef(false);
+  useEffect(() => {
+    if (prefillConsumed.current) return;
+    const p = searchParams.get("prefill");
+    if (!p) return;
+    prefillConsumed.current = true;
+    setChatInput(p.slice(0, 2000));
+    requestAnimationFrame(() => inputRef.current?.focus());
+    router.replace("/tasks", { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   // Connector status helpers
   const isTelegramConnected = connectorInfo.channelsEnabled.includes("telegram") && !!connectorInfo.telegramBotUsername;
   const isDiscordConnected = connectorInfo.hasDiscord && connectorInfo.channelsEnabled.includes("discord");
