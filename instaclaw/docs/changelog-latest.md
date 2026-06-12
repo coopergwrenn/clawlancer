@@ -1,28 +1,29 @@
 # Changelog — generated 2026-06-12
 
-Window: `a2b4c28f341f6e34a4f4c51117e031bf680add0f` → `HEAD` (HEAD = `192e2e91`)
+Window: `192e2e91e2d0d1f1868d800c5675ba5cc8011d5c` → `HEAD` (HEAD = `02b40dc4`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 192e2e91e2d0d1f1868d800c5675ba5cc8011d5c -->
+<!-- LAST_GENERATED_SHA: 02b40dc4aa408d80e7b50d7561d87ef4dabd11c5 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
 - **Infrastructure:** 0
-- **Feature (user-facing):** 1
+- **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- **Docs / PRD only:** 2
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
 
-- `192e2e91` 2026-06-12 — fix(videos): dedupe renders across poll/load-more race + honest end-of-results copy [1 files] _(ai-assisted)_
+_None in this window._
 
 ## What changed under the hood
 
-- `a852afd0` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `4c38d648` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `02b40dc4` 2026-06-12 — docs(travala): THE fleet-flip runbook — proven current state + the complete ordered sequence [1 files]
 
 ## By category
 
@@ -34,25 +35,20 @@ _(none)_
 
 _(none)_
 
-### Feature (user-facing) (1)
+### Feature (user-facing) (0)
 
-- `192e2e91` 2026-06-12 — fix(videos): dedupe renders across poll/load-more race + honest end-of-results copy [1 files] _(ai-assisted)_
+_(none)_
 
 ### Edge City partner (0)
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `a852afd0` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
-
-## AI-assisted commits (1)
-
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
-
-- `192e2e91` 2026-06-12 — fix(videos): dedupe renders across poll/load-more race + honest end-of-results copy
+- `4c38d648` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `02b40dc4` 2026-06-12 — docs(travala): THE fleet-flip runbook — proven current state + the complete ordered sequence [1 files]
 
 ## Appendix — every commit (chronological)
 
-- `a852afd0` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
-- `192e2e91` 2026-06-12 — fix(videos): dedupe renders across poll/load-more race + honest end-of-results copy [1 files] _(ai-assisted)_
+- `4c38d648` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `02b40dc4` 2026-06-12 — docs(travala): THE fleet-flip runbook — proven current state + the complete ordered sequence [1 files]
