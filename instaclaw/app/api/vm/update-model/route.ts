@@ -3,12 +3,7 @@ import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { updateModel } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
-
-const ALLOWED_MODELS = [
-  "claude-haiku-4-5-20251001",
-  "claude-sonnet-4-6",
-  "claude-opus-4-6",
-];
+import { ALLOWED_MODEL_IDS as ALLOWED_MODELS } from "@/lib/model-registry";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,13 +22,6 @@ export async function POST(req: NextRequest) {
 
     const { model } = await req.json();
 
-    if (!model || !ALLOWED_MODELS.includes(model)) {
-      return NextResponse.json(
-        { error: "Invalid model. Must be one of: " + ALLOWED_MODELS.join(", ") },
-        { status: 400 }
-      );
-    }
-
     const supabase = getSupabase();
 
     const { data: vm } = await supabase
@@ -46,9 +34,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No VM assigned" }, { status: 404 });
     }
 
-    // SSH into VM and update model config
-    const success = await updateModel(vm, model);
+    // --- all-inclusive (credit): model pinning, DB-only ---
+    // The proxy is authoritative over the served model (it overrides
+    // parsedBody.model from pinned_model), so a credit pin is a pure DB write:
+    // NO SSH, NO gateway restart. We write pinned_model ONLY and NEVER
+    // default_model — the reconciler (stepEnforceModelPrimary) restarts the
+    // gateway on default_model drift, so writing it would interrupt the user's
+    // session. "automatic" (or empty) clears the pin -> NULL = content router.
+    if (vm.api_mode === "all_inclusive") {
+      let pinned: string | null;
+      if (!model || model === "automatic") {
+        pinned = null;
+      } else if (ALLOWED_MODELS.includes(model)) {
+        pinned = model;
+      } else {
+        return NextResponse.json(
+          { error: "Invalid model. Must be 'automatic' or one of: " + ALLOWED_MODELS.join(", ") },
+          { status: 400 }
+        );
+      }
+      const { error: pinErr } = await supabase
+        .from("instaclaw_vms")
+        .update({ pinned_model: pinned })
+        .eq("id", vm.id);
+      if (pinErr) {
+        return NextResponse.json({ error: "Failed to save model choice" }, { status: 500 });
+      }
+      return NextResponse.json({ updated: true, mode: "credit", pinned_model: pinned });
+    }
 
+    // --- BYOK / direct-provider: the on-disk primary IS the served model ---
+    // No router in this path (the proxy 403s non-all-inclusive), so the pick
+    // sticks only if we write it to the gateway's config over SSH.
+    if (!model || !ALLOWED_MODELS.includes(model)) {
+      return NextResponse.json(
+        { error: "Invalid model. Must be one of: " + ALLOWED_MODELS.join(", ") },
+        { status: 400 }
+      );
+    }
+
+    const success = await updateModel(vm, model);
     if (!success) {
       return NextResponse.json(
         { error: "Failed to update model on VM" },
@@ -56,13 +81,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Update DB record
     await supabase
       .from("instaclaw_vms")
       .update({ default_model: model })
       .eq("id", vm.id);
 
-    return NextResponse.json({ updated: true });
+    return NextResponse.json({ updated: true, mode: "byok" });
   } catch (err) {
     logger.error("Update model error", { error: String(err), route: "vm/update-model" });
     return NextResponse.json(

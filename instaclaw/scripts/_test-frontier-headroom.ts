@@ -92,12 +92,12 @@ const STARTER = DEFAULT_BANDS_BY_TIER.starter; // jdt 1/5, never 10/25, minWalle
     standing: { earnedDailyBudgetUsd: 5 },
     bands: STARTER,
     spentTodayUsd: 0,
-    walletBalanceUsd: 2, // == minWalletBalance
+    walletBalanceUsd: 0.1, // == minWalletBalance (flat $0.10 dust floor, #2a)
   });
   check("C: effectiveMaxToday = 0", h.effectiveMaxTodayUsd === 0);
   check("C: walletHeadroom = 0", h.walletHeadroomUsd === 0);
   check("C: binding = wallet", h.binding === "wallet");
-  check("C: gate(0.5) denies (drain)", gate("starter", { earned: 5, spent: 0, balance: 2, amount: 0.5 }) === "deny");
+  check("C: gate(0.5) denies (drain)", gate("starter", { earned: 5, spent: 0, balance: 0.1, amount: 0.5 }) === "deny");
 }
 
 // ── Scenario D: balance unreadable — never auto-spend blind ──

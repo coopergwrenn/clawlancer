@@ -8,7 +8,8 @@ import { logger } from "@/lib/logger";
 import { getProvider } from "@/lib/providers";
 import { bankrWalletLifecycle } from "@/lib/bankr-wallet-lifecycle";
 import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
-import { isUserBillableForVmAssignment } from "@/lib/billing-status";
+import { isUserBillableForVmAssignment, fetchBillingExempt, getBillingStatusVerified } from "@/lib/billing-status";
+import { getStripe } from "@/lib/stripe";
 import { deleteLinodeInstance } from "@/lib/vm-lifecycle-helpers";
 
 // Prevent Vercel CDN from caching per-user responses
@@ -1555,7 +1556,25 @@ else:
           .eq("assigned_to", sub.user_id)
           .single();
 
-        if (vm && vm.health_status !== "suspended") {
+        // billing_exempt guard (Rule 67 / vm-1075 2026-06-10): comp-exempt
+        // users keep their VM even past_due. Third inline suspend path —
+        // must consult billing_exempt like the webhook + suspend-check paths.
+        const pastDueExempt = await fetchBillingExempt(supabase, sub.user_id);
+
+        // F1 fail-closed: skip suspend on exempt OR unverifiable read.
+        if (vm && vm.health_status !== "suspended" && (pastDueExempt.exempt || !pastDueExempt.verified)) {
+          logger.info("health-check past_due: suspend SKIPPED — billing_exempt/unverifiable", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            userId: sub.user_id,
+            exempt: pastDueExempt.exempt,
+            verified: pastDueExempt.verified,
+            exemptReason: pastDueExempt.exemptReason,
+          });
+        }
+
+        // Destroy only on a CONFIRMED not-exempt read.
+        if (vm && vm.health_status !== "suspended" && !pastDueExempt.exempt && pastDueExempt.verified) {
           try {
             // Stop the gateway
             await stopGateway(vm);
@@ -1653,6 +1672,25 @@ else:
         .single();
       if ((vmCredits?.credit_balance ?? 0) > 0) continue;
 
+      // billing_exempt guard (Rule 67 / vm-1075 2026-06-10): comp-exempt users
+      // keep their VM even with no sub + 0 credits. This is the path that was
+      // re-hibernating vm-1075 every 2 min (health-check runs */2) after its
+      // sub was canceled — the third inline suspend path, now consulting the
+      // source of truth like the webhook + suspend-check Pass 2 paths.
+      const noSubExempt = await fetchBillingExempt(supabase, vm.assigned_to);
+      // F1 fail-closed: skip hibernate on exempt OR unverifiable read.
+      if (noSubExempt.exempt || !noSubExempt.verified) {
+        logger.info("health-check no-sub: hibernate SKIPPED — billing_exempt/unverifiable", {
+          route: "cron/health-check",
+          vmId: vm.id,
+          userId: vm.assigned_to,
+          exempt: noSubExempt.exempt,
+          verified: noSubExempt.verified,
+          exemptReason: noSubExempt.exemptReason,
+        });
+        continue;
+      }
+
       // No subscription or canceled, AND no credits — hibernate (not suspend)
       try {
         const { data: fullVm } = await supabase
@@ -1731,10 +1769,43 @@ else:
     .not("suspended_at", "is", null)
     .not("assigned_to", "is", null);
 
+  const reclaimStripe = staleSupended?.length ? getStripe() : null;
   if (staleSupended?.length) {
     for (const vm of staleSupended) {
       const daysSuspended = (Date.now() - new Date(vm.suspended_at).getTime()) / (1000 * 60 * 60 * 24);
       if (daysSuspended < RECLAIM_AFTER_DAYS) continue;
+
+      // Rule 14 + billing_exempt guard (2026-06-10 audit). The 30-day reclaim
+      // is the single most destructive action in the system: wipeVMForNextUser
+      // (irreversible filesystem wipe) + instaclaw_reclaim_vm + bankr wallet
+      // suspend, and the Linode delete on the terminate branch. It previously
+      // ran with NO billing check at all (only an edge_city partner gate on the
+      // terminate branch) — so a billing_exempt founder VM, or ANY paying /
+      // credits / partner / all_inclusive user whose wake failed and left
+      // health_status='suspended', would be irreversibly wiped at 30 days.
+      // Stripe-verified per Rule 14; fail-CLOSED (skip on unverifiable — never
+      // destroy data when we couldn't confirm the customer isn't paying).
+      if (vm.assigned_to && reclaimStripe) {
+        const reclaimBilling = await getBillingStatusVerified(supabase, reclaimStripe, vm.id);
+        // Finding B (2026-06-11 audit): getBillingStatusVerified's internal
+        // exempt-read is grant-side (fetchBillingExempt's `verified` is discarded
+        // by classify), so for an exempt-ONLY user (no sub/credits/partner —
+        // e.g. a comp founder VM) a transient exempt-read blip yields
+        // isPaying=false and this irreversible wipe would proceed. Add a direct
+        // verified check so the wipe fails CLOSED on an unverifiable exemption.
+        const reclaimExempt = await fetchBillingExempt(supabase, vm.assigned_to);
+        if (!reclaimBilling || reclaimBilling.isPaying || !reclaimExempt.verified) {
+          logger.info("30-day reclaim SKIPPED — billing-protected / unverifiable (fail-closed)", {
+            route: "cron/health-check",
+            vmId: vm.id,
+            vmName: vm.name,
+            isPaying: reclaimBilling?.isPaying ?? null,
+            exemptVerified: reclaimExempt.verified,
+            reasons: reclaimBilling?.reasons ?? ["unverifiable"],
+          });
+          continue;
+        }
+      }
 
       // Safety gate: NEVER terminate edge_city VMs even in flag-on mode.
       // Edge Esmeralda is sponsor-funded; partner VMs stay alive through

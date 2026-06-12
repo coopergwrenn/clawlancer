@@ -72,11 +72,11 @@ expect("starter $0.90 with $24.50 already today (agg 25.40 > never_day 25) → d
 expect("starter $0.50 with $24.50 today (agg 25.00 == never_day, not over) → ask_first", "starter",
   { ...ok(), amountUsd: 0.5, spentTodayUsd: 24.5 }, "ask_first");
 
-// ── Drain guard (floor enforced regardless of band) ──
-expect("starter $0.50 jdt-sized but balance $2.40 (would leave $1.90 < $2 floor) → deny", "starter",
-  { ...ok(), amountUsd: 0.5, walletBalanceUsd: 2.4 }, "deny", "would_drain_wallet");
-expect("starter $0.50 with balance exactly $2.50 (leaves $2.00 == floor, ok) → just_do_it", "starter",
-  { ...ok(), amountUsd: 0.5, walletBalanceUsd: 2.5 }, "just_do_it");
+// ── Drain guard at the flat $0.10 dust floor (#2a, 2026-06-09) ──
+expect("2a.1 starter $0.10 spend, balance $0.15 (would leave $0.05 < $0.10 dust floor) → deny", "starter",
+  { ...ok(), amountUsd: 0.1, walletBalanceUsd: 0.15 }, "deny", "would_drain_wallet");
+expect("2a.2 starter $0.30 spend, balance $0.50 (leaves $0.20 ≥ $0.10; floor must not over-deny) → just_do_it", "starter",
+  { ...ok(), amountUsd: 0.3, walletBalanceUsd: 0.5 }, "just_do_it");
 
 // ── Unknown balance never auto-approves ──
 expect("starter $0.50 jdt-sized but balance unknown → ask_first (downgrade)", "starter",
@@ -138,8 +138,12 @@ expect("negative spentToday → deny", "starter", { ...ok(), amountUsd: 1, spent
   t("override cannot raise neverPerTx", clampOverrides(base, { neverPerTx: 999 }).neverPerTx === 50);
   // raise the wallet floor — allowed
   t("override raises minWalletBalance", clampOverrides(base, { minWalletBalance: 40 }).minWalletBalance === 40);
-  // attempt to LOWER the floor — ignored
-  t("override cannot lower minWalletBalance", clampOverrides(base, { minWalletBalance: 1 }).minWalletBalance === 10);
+  // #2b floor reversal: the wallet reserve is now USER-LOWERABLE below the tier
+  // default, down to 0 ("spend it all"); negative/non-finite still fail safe to base
+  // (full coverage in scripts/_test-frontier-floor-reversal.ts).
+  t("override below base 0.10 LOWERS the floor (#2b floor reversal)", clampOverrides(base, { minWalletBalance: 0.05 }).minWalletBalance === 0.05);
+  t("override 0 sets the floor to 0 (#2b spend-it-all)", clampOverrides(base, { minWalletBalance: 0 }).minWalletBalance === 0);
+  t("negative floor override fails safe to base (#2b)", clampOverrides(base, { minWalletBalance: -5 }).minWalletBalance === base.minWalletBalance);
   // coherence: lowering neverPerTx below justDoItPerTx re-coerces jdt down
   const c = clampOverrides(base, { neverPerTx: 3 });
   t("ceiling below jdt re-coerces just_do_it ≤ never (per-tx)", c.justDoItPerTx === 3 && c.neverPerTx === 3);
@@ -147,10 +151,10 @@ expect("negative spentToday → deny", "starter", { ...ok(), amountUsd: 1, spent
   t("ceiling below jdt re-coerces just_do_it ≤ never (daily)", c2.justDoItPerDay === 10 && c2.neverPerDay === 10);
   // invalid override values fall back to base (never less safe)
   t("negative override ignored", clampOverrides(base, { neverPerTx: -5 }).neverPerTx === 50);
-  t("NaN override ignored", clampOverrides(base, { minWalletBalance: NaN }).minWalletBalance === 10);
+  t("NaN override ignored", clampOverrides(base, { minWalletBalance: NaN }).minWalletBalance === 0.1);
   // empty override = base unchanged
   const e = clampOverrides(base, {});
-  t("empty override = base", e.neverPerTx === 50 && e.minWalletBalance === 10);
+  t("empty override = base", e.neverPerTx === 50 && e.minWalletBalance === 0.1);
 })();
 
 // ── evaluateSpend honors overrides end-to-end ──
@@ -174,6 +178,16 @@ expect(
   "deny",
   "would_drain_wallet",
 );
+
+// ── #2a flat-floor: the $0.10 dust floor flows through evaluateSpend for EVERY tier
+//    (pro/power were $10/$25 — these spends were drain-denied pre-#2a, now pass), and the
+//    hard ceiling is unaffected by the floor change. ──
+expect("2a.3 pro $1 spend, balance $5 (leaves $4 ≥ $0.10; was deny at old $10 floor) → just_do_it", "pro",
+  { ...ok(), amountUsd: 1, walletBalanceUsd: 5 }, "just_do_it");
+expect("2a.3 power $1 spend, balance $5 (leaves $4 ≥ $0.10; was deny at old $25 floor) → just_do_it", "power",
+  { ...ok(), amountUsd: 1, walletBalanceUsd: 5 }, "just_do_it");
+expect("2a.4 hard per-tx ceiling unaffected by the floor change: starter $11 > neverPerTx $10 → deny", "starter",
+  { ...ok(), amountUsd: 11, walletBalanceUsd: 10_000 }, "deny", "exceeds_per_tx_ceiling");
 
 console.log(`\nfrontier-policy: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

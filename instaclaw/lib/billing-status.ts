@@ -34,6 +34,21 @@ export type BillingStatus = {
     stripePaymentStatus: string | null;
     /** True ONLY if we verified against Stripe API, not just local DB. */
     stripeSubVerified: boolean;
+    /**
+     * True ONLY when a Stripe subscription EXISTED but the live retrieve FAILED
+     * (outage) — the non-paying signal is untrustworthy. Distinct from
+     * stripeSubVerified=false on a no-sub user (nothing to verify → reliable).
+     * Destructive callers MUST treat true as "do not act" (Lesson 2). Default false.
+     */
+    stripeUnreachable: boolean;
+    /**
+     * True when the comp/founder billing_exempt read was a CLEAN read (verified).
+     * False when that read errored — the exemption status is unknown, so a
+     * destructive caller must fail-closed (a blip could be hiding an exempt
+     * account). Mirrors fetchBillingExempt's `verified`. Default true (the
+     * unassigned path + legacy callers have nothing to verify).
+     */
+    compExemptVerified: boolean;
     /** Set when verified=true and Stripe disagrees with local DB. */
     stripeDriftDetected: boolean;
     creditBalance: number;
@@ -78,6 +93,8 @@ export async function getBillingStatus(
         stripeSubStatus: null,
         stripePaymentStatus: null,
         stripeSubVerified: false,
+        stripeUnreachable: false,
+        compExemptVerified: true,
         stripeDriftDetected: false,
         creditBalance: 0,
         partner: null,
@@ -104,7 +121,78 @@ export async function getBillingStatus(
     return bT - aT;
   })[0] ?? null;
 
-  return classify(vm, sub, /* verified */ false, /* drift */ false);
+  // Path 0 input: comp/founder exemption on the owning account.
+  const { exempt, exemptReason, verified: exemptVerified } = await fetchBillingExempt(supabase, vm.assigned_to);
+
+  return classify(vm, sub, /* verified */ false, /* drift */ false, exempt, exemptReason, exemptVerified);
+}
+
+/**
+ * Fetch the owning account's comp/founder exemption (instaclaw_users.billing_exempt).
+ * Never throws. Returns THREE signals so both fail directions are correct
+ * (this primitive has a DUAL ROLE — read both paragraphs before "fixing" it):
+ *
+ *   - `exempt`   : true only on a CLEAN read of billing_exempt=true.
+ *   - `verified` : true when the read succeeded (row OR no-row). false on a
+ *                  read ERROR / exception (unverifiable).
+ *   - `exemptReason`: the reason string, or an "unverifiable_*" sentinel on error.
+ *
+ * On an ERROR/exception, `exempt` stays FALSE and `verified` is FALSE. This is
+ * the SAME fail-closed principle expressed in opposite values for the two
+ * caller families:
+ *
+ *   GRANT side — classify() Path 0 (`if (exempt) isPaying=true`), via
+ *   getBillingStatus / getBillingStatusVerified. These IGNORE `verified` and
+ *   read `exempt`, which stays FALSE on error → a transient DB hiccup can never
+ *   accidentally GRANT isPaying to a non-exempt account. Fail-closed on grant.
+ *   (Worst case: a real comp account is briefly classified non-exempt by these
+ *   read paths — cushioned by the destructive consumers' own fail-closed null
+ *   guards + grace windows.) DO NOT make these read `verified`.
+ *
+ *   DESTROY side — the suspend/hibernate guards (`if (!exempt) { suspend }`).
+ *   These MUST read `verified`: destroy only on `(!exempt && verified)` — i.e.
+ *   a CONFIRMED not-exempt read — and skip on `(exempt || !verified)`. A
+ *   transient DB hiccup (verified=false) can never permit a suspend of a
+ *   protected VM. Fail-closed on destroy. (2026-06-11: this is the F1 fix —
+ *   the root primitive under the 2026-06-10 vm-1075 downtime, where the old
+ *   collapsed `{exempt:false}` on error let a blip suspend a comp founder VM.)
+ *
+ * Same principle (a DB blip is never allowed to harm a protected account),
+ * opposite values (grant wants exempt:false, destroy wants !verified) — which
+ * is exactly why the signal is split into `exempt` + `verified` rather than
+ * one boolean. The Pass-2 Rule-14 consolidation should FOLD this `verified`
+ * pattern in, not replace it.
+ */
+export async function fetchBillingExempt(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ exempt: boolean; exemptReason: string | null; verified: boolean }> {
+  try {
+    const { data, error } = await supabase
+      .from("instaclaw_users")
+      .select("billing_exempt, billing_exempt_reason")
+      .eq("id", userId)
+      .maybeSingle();
+    // Read ERROR — unverifiable. Destroy side fails closed via verified=false;
+    // grant side stays exempt=false (no false grant). Split from the no-row
+    // case below (maybeSingle cleanly distinguishes error from zero rows).
+    if (error) {
+      return { exempt: false, exemptReason: "unverifiable_read_error", verified: false };
+    }
+    // Clean read, NO row — genuinely not exempt. Correct to proceed.
+    if (!data) {
+      return { exempt: false, exemptReason: null, verified: true };
+    }
+    // Clean read with a row.
+    return {
+      exempt: (data as { billing_exempt?: boolean }).billing_exempt === true,
+      exemptReason: (data as { billing_exempt_reason?: string | null }).billing_exempt_reason ?? null,
+      verified: true,
+    };
+  } catch {
+    // Exception (network/timeout/client throw) — unverifiable.
+    return { exempt: false, exemptReason: "unverifiable_exception", verified: false };
+  }
 }
 
 /**
@@ -132,6 +220,10 @@ export async function getBillingStatusVerified(
   if (vmErr || !vm) return null;
   if (!vm.assigned_to) return getBillingStatus(supabase, vmId);
 
+  // Path 0 input: comp/founder exemption on the owning account. Fetched once,
+  // threaded into every classify() branch below.
+  const { exempt, exemptReason, verified: exemptVerified } = await fetchBillingExempt(supabase, vm.assigned_to);
+
   const { data: subs } = await supabase
     .from("instaclaw_subscriptions")
     .select("*")
@@ -146,10 +238,10 @@ export async function getBillingStatusVerified(
     return bT - aT;
   })[0] ?? null;
 
-  // No local sub → just classify on credits/partner. Stripe verification
-  // doesn't apply (no sub_id to retrieve).
+  // No local sub → just classify on credits/partner/exemption. Stripe
+  // verification doesn't apply (no sub_id to retrieve).
   if (!localSub?.stripe_subscription_id) {
-    return classify(vm, localSub, /* verified */ false, /* drift */ false);
+    return classify(vm, localSub, /* verified */ false, /* drift */ false, exempt, exemptReason, exemptVerified);
   }
 
   // Hit Stripe for ground truth.
@@ -170,8 +262,10 @@ export async function getBillingStatusVerified(
   }
 
   if (!stripeSub) {
-    // Verification failed. Classify on local DB but flag unverified.
-    return classify(vm, localSub, /* verified */ false, /* drift */ false);
+    // Verification failed AND a stripe_subscription_id existed → the non-paying
+    // signal is untrustworthy. Flag stripeUnreachable=true (7th→8th arg) so
+    // destructive callers fail-closed (Lesson 2).
+    return classify(vm, localSub, /* verified */ false, /* drift */ false, exempt, exemptReason, exemptVerified, /* unreachable */ true);
   }
 
   // Detect DB drift: when Stripe says one thing and our DB says another.
@@ -199,11 +293,27 @@ export async function getBillingStatusVerified(
     canceled_at: stripeSub.canceled_at ? new Date(stripeSub.canceled_at * 1000).toISOString() : null,
   };
 
-  return classify(vm, synth, /* verified */ true, drift);
+  return classify(vm, synth, /* verified */ true, drift, exempt, exemptReason, exemptVerified);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function classify(vm: any, sub: any, verified: boolean, drift: boolean): BillingStatus {
+function classify(
+  vm: any,
+  sub: any,
+  verified: boolean,
+  drift: boolean,
+  // billing_exempt lives on instaclaw_users (the owning account), NOT the vm
+  // row — the callers fetch it and thread it in. Defaults false so callers
+  // that haven't been updated (or the unassigned path) behave as before.
+  billingExempt = false,
+  billingExemptReason: string | null = null,
+  // True when the billing_exempt read was a clean read (mirrors
+  // fetchBillingExempt's `verified`). Default true: the unassigned path + any
+  // legacy caller has nothing to verify.
+  compExemptVerified = true,
+  // True ONLY in the stripe-retrieve-failed branch (sub existed, Stripe down).
+  stripeUnreachable = false,
+): BillingStatus {
   const reasons: string[] = [];
   let isPaying = false;
 
@@ -214,6 +324,17 @@ function classify(vm: any, sub: any, verified: boolean, drift: boolean): Billing
   const partner = vm.partner ?? null;
   const apiMode = vm.api_mode ?? null;
   const tier = vm.tier ?? null;
+
+  // Path 0: comp/founder exemption (instaclaw_users.billing_exempt). Replaces
+  // the hardcoded PROTECTED_USER_IDS set in vm-lifecycle. Checked FIRST so a
+  // comp account is paying regardless of sub/credit state — and so every
+  // billing-gated path (guard, freeze, reaper, suspend-check) honors it
+  // through this single source of truth. See migration
+  // 20260610210000_user_billing_exempt.sql.
+  if (billingExempt) {
+    isPaying = true;
+    reasons.push(billingExemptReason ? `comp_exempt_${billingExemptReason}` : "comp_exempt");
+  }
 
   // Path 1: active or trialing Stripe sub, payment current
   if (subStatus && ["active", "trialing"].includes(subStatus) && !canceledAt && paymentStatus !== "past_due") {
@@ -263,6 +384,8 @@ function classify(vm: any, sub: any, verified: boolean, drift: boolean): Billing
       stripeSubStatus: subStatus,
       stripePaymentStatus: paymentStatus,
       stripeSubVerified: verified,
+      stripeUnreachable,
+      compExemptVerified,
       stripeDriftDetected: drift,
       creditBalance,
       partner,
@@ -270,6 +393,46 @@ function classify(vm: any, sub: any, verified: boolean, drift: boolean): Billing
       tier,
     },
   };
+}
+
+/**
+ * Freeze-safety verdict, built on the SoT (Rule 14 + Rule 82). The canonical
+ * billing gate for EVERY destructive freeze/delete path — never re-implement
+ * billing classification at the call site (that anti-pattern is exactly what
+ * Rule 14 exists to kill; it was found live in the freeze gate on 2026-06-11).
+ *
+ * Composes ONE coherent predicate over getBillingStatusVerified, which already
+ * folds the comp/founder exemption (Path 0) AND every revenue source into
+ * isPaying and verifies against Stripe. Three mutually-exclusive states:
+ *   - "paying":      isPaying by ANY source — active/trialing sub, past_due-in-
+ *                    grace, credits, partner, all-inclusive tier, OR a verified
+ *                    comp-exemption. NEVER act — caller skips THIS vm.
+ *   - "unverifiable":the VM row was unreadable, OR a Stripe sub existed but its
+ *                    live retrieve failed (stripeUnreachable), OR the comp-exempt
+ *                    read errored (compExemptVerified=false). The non-paying
+ *                    signal is untrustworthy → caller MUST skip ALL candidates
+ *                    THIS TICK. Fail-closed on BOTH the Stripe AND the exempt
+ *                    read — an outage on either must never cause a destructive
+ *                    spree on possibly-paying / possibly-comp customers (Lesson 2).
+ *   - "freezable":   reliably non-paying AND both reads were trustworthy. Safe.
+ *
+ * Requires a Stripe client (verified path). Call AFTER the cheap local gates
+ * (status/health/activity) so Stripe is only hit for genuine survivors.
+ */
+export type FreezeBillingVerdict = "paying" | "freezable" | "unverifiable";
+
+export async function classifyFreezeBilling(
+  supabase: SupabaseClient,
+  stripe: Stripe,
+  vmId: string,
+): Promise<FreezeBillingVerdict> {
+  const bs = await getBillingStatusVerified(supabase, stripe, vmId);
+  if (bs === null) return "unverifiable"; // couldn't read the VM row
+  if (bs.isPaying) return "paying"; // any revenue source incl verified comp-exemption
+  // !isPaying — trust it ONLY if BOTH reads were trustworthy.
+  if (bs.details.stripeUnreachable) return "unverifiable"; // sub existed, Stripe down
+  if (!bs.details.compExemptVerified) return "unverifiable"; // comp-exempt read errored
+  return "freezable";
 }
 
 /**
@@ -291,21 +454,41 @@ function classify(vm: any, sub: any, verified: boolean, drift: boolean): Billing
  * they go from /auth → /onboarding/done with no Stripe round-trip, so they
  * never have a subscription row, and every retry pass skipped them.
  *
- * Never throws — returns { billable: false, reason: "lookup_error" } on
- * any DB error. Callers should default to skipping the user (same as
- * "no payment signal") so a transient DB hiccup doesn't accidentally
- * provision free VMs to canceled users.
+ * Never throws. Returns { billable, reason, verified }:
+ *   - On a CLEAN read (incl. a genuine "not billable" result like
+ *     no_payment_signal / stripe_canceled), `verified` is TRUE.
+ *   - On a read ERROR / exception, `billable` stays FALSE and `verified` is
+ *     FALSE (unverifiable).
+ *
+ * `verified` exists because callers have OPPOSITE polarity and must fail
+ * closed in their own direction (2026-06-11, sibling of the F1 fix):
+ *   - CONSTRUCTIVE callers — `if (!billable) skip` to gate provision/configure
+ *     (process-pending Pass 1/3/3b, health-check stuck-deploy). These IGNORE
+ *     `verified`: billable=false on error → skip the constructive action =
+ *     already fail-closed (don't provision/configure on a blip). UNCHANGED.
+ *   - DESTRUCTIVE-direction caller — vm-lifecycle's hibernating→suspended
+ *     transition (`if (billable) skip-transition`). This MUST read `verified`:
+ *     skip the transition on `(billable || !verified)` so a blip can't advance
+ *     a protected VM toward reclaim. Fail-closed on destroy.
+ * DO NOT make the constructive callers read `verified` — that would flip them
+ * to provision/configure on a blip (the polarity bug). Check the gate
+ * direction at every new call site before relying on `verified`.
  */
 export async function isUserBillableForVmAssignment(
   supabase: SupabaseClient,
   userId: string,
-): Promise<{ billable: boolean; reason: string }> {
-  // 1. Partner gate (cheap, hits instaclaw_users only). Partner-tagged users
-  //    are sponsored; they're billable regardless of Stripe state.
+): Promise<{ billable: boolean; reason: string; verified: boolean }> {
+  // 0/1. Comp-exempt + partner gate (cheap, hits instaclaw_users only).
+  //    billing_exempt users (founder / family / partner-comp) are billable
+  //    regardless of Stripe state — Path 0, same as getBillingStatus.classify.
+  //    Partner-tagged users are sponsored; billable regardless of Stripe state.
+  //    Without the billing_exempt check here, vm-lifecycle's hibernating→suspended
+  //    transition (the only caller) would still suspend an exempt user whose
+  //    sub is canceled and who has no partner (the 2026-06-10 vm-1075 class).
   try {
     const { data: user, error: userErr } = await supabase
       .from("instaclaw_users")
-      .select("partner")
+      .select("partner, billing_exempt, billing_exempt_reason")
       .eq("id", userId)
       .maybeSingle();
     if (userErr) {
@@ -313,18 +496,26 @@ export async function isUserBillableForVmAssignment(
         userId,
         error: userErr.message,
       });
-      return { billable: false, reason: "user_lookup_error" };
+      return { billable: false, reason: "user_lookup_error", verified: false };
     }
-    const partner = (user as { partner?: string | null } | null)?.partner ?? null;
+    const u = user as {
+      partner?: string | null;
+      billing_exempt?: boolean;
+      billing_exempt_reason?: string | null;
+    } | null;
+    if (u?.billing_exempt === true) {
+      return { billable: true, reason: `comp_exempt_${u.billing_exempt_reason ?? "unknown"}`, verified: true };
+    }
+    const partner = u?.partner ?? null;
     if (partner) {
-      return { billable: true, reason: `partner_${partner}` };
+      return { billable: true, reason: `partner_${partner}`, verified: true };
     }
   } catch (err) {
     logger.warn("isUserBillableForVmAssignment: user lookup threw", {
       userId,
       error: err instanceof Error ? err.message : String(err),
     });
-    return { billable: false, reason: "user_lookup_exception" };
+    return { billable: false, reason: "user_lookup_exception", verified: false };
   }
 
   // 2. Subscription gate. Active or trialing → billable.
@@ -339,21 +530,24 @@ export async function isUserBillableForVmAssignment(
         userId,
         error: subErr.message,
       });
-      return { billable: false, reason: "sub_lookup_error" };
+      return { billable: false, reason: "sub_lookup_error", verified: false };
     }
     const status = (sub as { status?: string | null } | null)?.status ?? null;
     if (status && ["active", "trialing"].includes(status)) {
-      return { billable: true, reason: `stripe_${status}` };
+      return { billable: true, reason: `stripe_${status}`, verified: true };
     }
+    // Clean read, genuinely not billable (no sub / canceled / past_due / etc.)
+    // → verified TRUE so the destructive-direction caller proceeds as today.
     return {
       billable: false,
       reason: status ? `stripe_${status}` : "no_payment_signal",
+      verified: true,
     };
   } catch (err) {
     logger.warn("isUserBillableForVmAssignment: sub lookup threw", {
       userId,
       error: err instanceof Error ? err.message : String(err),
     });
-    return { billable: false, reason: "sub_lookup_exception" };
+    return { billable: false, reason: "sub_lookup_exception", verified: false };
   }
 }

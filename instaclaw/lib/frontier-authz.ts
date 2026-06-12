@@ -64,8 +64,52 @@ export interface AuthorizationInput {
   reserveAwareSpentTodayUsd: number;
   /** The proposed spend, USD. */
   amountUsd: number;
-  /** Did the human approve THIS spend? (Lifts the autonomy gate, not hard denies.) */
-  humanApproved: boolean;
+  /**
+   * LEGACY forgeable approval signal (the raw `human_approved` body bool). Kept for
+   * backward-compat with callers/tests that predate the tiered model. When the
+   * tiered fields below are absent, this alone reproduces the original behavior
+   * (honored at any amount). New callers should pass `humanApprovedForgeable`
+   * explicitly instead. (Lifts the autonomy gate, not hard denies.)
+   */
+  humanApproved?: boolean;
+  /**
+   * The raw `human_approved` body bool, named for what it is: FORGEABLE. The agent
+   * can set it (the gateway token authenticates the VM, not the human's intent). In
+   * the tiered model it is honored only below `justDoItPerTxUsd` once the flip lands;
+   * before the flip it is honored at all amounts (phase 1, zero break). When honored
+   * it yields reason "human_approved" -> the route fires the notify+revoke surface.
+   */
+  humanApprovedForgeable?: boolean;
+  /**
+   * UNFORGEABLE approval: a matching, fresh, identity-bound `approved` row exists in
+   * instaclaw_frontier_spend_approvals (the human approved THIS spend from their
+   * browser session). Honored at ALL amounts -- it is the strict superset of
+   * authority. Yields reason "human_approved_session" -> no notification (the user
+   * just approved in-browser).
+   */
+  sessionApproved?: boolean;
+  /**
+   * The tier's just_do_it per-tx band (evaluation.effectiveBands.justDoItPerTx) -- the
+   * calibrated autonomy line that is the Model-C threshold. amount >= this is "above
+   * threshold". Absent -> Infinity -> nothing is ever above threshold -> legacy
+   * behavior (forgeable honored everywhere).
+   */
+  justDoItPerTxUsd?: number;
+  /**
+   * The phase-3 flip (env FRONTIER_REQUIRE_SESSION_APPROVAL_ABOVE_THRESHOLD). When
+   * true, a forgeable approval at/above the threshold no longer authorizes -- it
+   * returns ask_first reason "needs_session_approval". Default false = phase 1.
+   */
+  requireSessionAboveThreshold?: boolean;
+  /**
+   * When true, the FORGEABLE approval (humanApprovedForgeable) must NEVER authorize
+   * this spend at any amount -- only a session approval can. Set for consent-always,
+   * session-grade categories (travel; lib/frontier-policy.isSessionRequiredCategory),
+   * INDEPENDENT of requireSessionAboveThreshold (the global flip). This makes the
+   * $0-just-do-it travel safety unforgeable today, not just post-flip. Default false
+   * (every other category keeps the flip-gated behavior). Red-team F2 (2026-06-10).
+   */
+  disallowForgeableApproval?: boolean;
   /**
    * Could the purchase's capability category be identified? An unidentifiable
    * category is not auto-spendable (it isn't a known-safe kind) but isn't banned
@@ -93,8 +137,19 @@ export interface AuthorizationDecision {
 const round6 = (x: number) => Math.round(x * 1e6) / 1e6;
 
 export function decideAuthorization(input: AuthorizationInput): AuthorizationDecision {
-  const { evaluation, standing, reserveAwareSpentTodayUsd, amountUsd, humanApproved, categoryKnown } =
-    input;
+  const { evaluation, standing, reserveAwareSpentTodayUsd, amountUsd, categoryKnown } = input;
+
+  // Tiered approval inputs, with legacy-preserving defaults. When the tiered fields
+  // are absent (pre-tiered callers/tests), `forgeable` falls back to the legacy
+  // `humanApproved`, `threshold` is Infinity (nothing is "above"), and the flip is
+  // off -- so the logic reduces EXACTLY to the original "humanApproved honored at any
+  // amount" behavior.
+  const sessionApproved = input.sessionApproved ?? false;
+  const forgeable = input.humanApprovedForgeable ?? input.humanApproved ?? false;
+  const justDoItPerTxUsd = input.justDoItPerTxUsd ?? Infinity;
+  const requireSessionAboveThreshold = input.requireSessionAboveThreshold ?? false;
+  const disallowForgeable = input.disallowForgeableApproval ?? false;
+  const aboveThreshold = amountUsd >= justDoItPerTxUsd;
 
   const earned = standing.earnedDailyBudgetUsd;
   const projected = reserveAwareSpentTodayUsd + amountUsd;
@@ -108,15 +163,36 @@ export function decideAuthorization(input: AuthorizationInput): AuthorizationDec
     return { authorized: false, mode: null, outcome: "deny", reason: evaluation.reason, ...base };
   }
 
-  // ── Gate 3 (checked before the autonomy gate): human in the loop. ──
-  // Hard denies are already handled above; the human's authority lifts only the
-  // autonomy gate (ask_first band, unknown category, earned-budget ceiling).
-  if (humanApproved) {
+  // ── Gate 3 (checked before the autonomy gate): human in the loop, tiered. ──
+  // Hard denies are already handled above; a human approval lifts only the autonomy
+  // gate (ask_first band, unknown category, earned-budget ceiling), never a hard limit.
+  //
+  // Two tiers (Model C). Session approval is unforgeable (a matching browser-session
+  // approval row), so it is honored at ANY amount. The forgeable raw bool is honored
+  // below the threshold always, and above the threshold ONLY until the flip lands.
+  if (sessionApproved) {
     return {
       authorized: true,
       mode: "human_approved",
       outcome: "just_do_it",
-      reason: "human_approved",
+      reason: "human_approved_session",
+      ...base,
+    };
+  }
+  if (forgeable) {
+    // F2: a session-grade category (travel) NEVER honors the forgeable bool -- only a
+    // session approval (handled above) can authorize it, at any amount, regardless of
+    // the global flip. Otherwise the phase-3 flip governs: post-flip, the forgeable bool
+    // no longer suffices at/above the calibrated autonomy line.
+    if (disallowForgeable || (aboveThreshold && requireSessionAboveThreshold)) {
+      // The agent's word is not enough -- only the human's browser session speaks.
+      return { authorized: false, mode: null, outcome: "ask_first", reason: "needs_session_approval", ...base };
+    }
+    return {
+      authorized: true,
+      mode: "human_approved",
+      outcome: "just_do_it",
+      reason: "human_approved", // forgeable-honored -> the route fires notify + revoke
       ...base,
     };
   }
@@ -144,6 +220,19 @@ export function decideAuthorization(input: AuthorizationInput): AuthorizationDec
       reason: "exceeds_earned_budget",
       ...base,
     };
+  }
+
+  // 2e. Velocity-anomaly ask (Slice B #5b). A burst of brand-new counterparties in
+  //     the rolling window (frontier-ledger TrackRecord.anomalyFlag — the farming /
+  //     compromised-agent signal, surfaced explicitly on CreditStanding) raises
+  //     friction even within earned budget. ADDITIVE-ONLY: reached only on the
+  //     otherwise-autonomous path (¬deny via Gate 1, ¬human via Gate 3, just_do_it +
+  //     known category, AND within earned via 2c above), and returns ONLY ask_first
+  //     — it never authorizes and never denies. Being downstream of 2c it cannot
+  //     bypass the earned-budget keystone (an over-budget spend already returned at
+  //     2c). A clean agent (anomalyFlag !== true) falls through to 2d byte-identically.
+  if (standing.anomalyFlag === true) {
+    return { authorized: false, mode: null, outcome: "ask_first", reason: "velocity_anomaly", ...base };
   }
 
   // 2d. Within policy AND within earned autonomy → the agent acts on its own.

@@ -36,12 +36,7 @@ import { ChatGPTConnectModal } from "@/components/dashboard/chatgpt-connect-moda
 import { DesktopThumbnail } from "@/components/dashboard/desktop-thumbnail";
 import { EdgeCityCard } from "@/components/dashboard/edge-city-card";
 import { useSession } from "next-auth/react";
-
-const MODEL_OPTIONS = [
-  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-  { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
-];
+import { MODEL_OPTIONS_WITH_VENDOR as MODEL_OPTIONS } from "@/lib/model-registry";
 
 const CREDIT_PACKS = [
   { id: "50", credits: 50, price: "$5" },

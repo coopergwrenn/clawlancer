@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { SESSIONS_CHANGED_EVENT } from "@/components/dashboard/use-sessions";
 import { useNavMode } from "@/components/dashboard/use-nav-mode";
+import { ClaudeLogo } from "@/components/icons/claude-logo";
+import { ModelBrowserModal } from "@/components/model-browser-modal";
+import { getModelEntry } from "@/lib/model-registry";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ChevronLeft,
@@ -212,12 +215,7 @@ function ToolOrb({ tool, size = 28 }: { tool: string; size?: number }) {
 }
 
 /* ─── Model Options ──────────────────────────────────────── */
-
-const MODEL_OPTIONS = [
-  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
-  { id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
-  { id: "claude-opus-4-6", label: "Opus 4.6" },
-];
+/* MODEL_OPTIONS now sourced from lib/model-registry (single source of truth). */
 
 /* ─── Types ───────────────────────────────────────────────── */
 
@@ -818,13 +816,10 @@ function ChatEmptyState({
           <button
             key={a.label}
             onClick={() => onChipClick(a.prefill)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
-            style={{
-              background: "rgba(255,255,255,0.45)",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
-              border: "1px solid rgba(0,0,0,0.06)",
-              color: "var(--foreground)",
-            }}
+            // Material: shipped .glass-filter-pill (same as the composer suggestion
+            // chips). Empty-state has no refresh/shimmer — static glass; geometry stays
+            // in Tailwind. Label color moves --foreground → class #6b7280 muted.
+            className="glass-filter-pill flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer active:scale-[0.98]"
           >
             {a.label}
           </button>
@@ -2170,8 +2165,11 @@ function CommandCenterInner() {
   const [currentModel, setCurrentModel] = useState("claude-sonnet-4-6");
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [updatingModel, setUpdatingModel] = useState(false);
-  const modelPickerRef = useRef<HTMLDivElement>(null);
-  const modelPickerRef2 = useRef<HTMLDivElement>(null);
+  // BYOK vs all-inclusive gates the model browser's content (fail-closed to
+  // credit). Read from the /api/vm/status payload below; stays null + loading
+  // until it resolves, so the modal shows only models a credit user can get.
+  const [apiMode, setApiMode] = useState<"byok" | "all_inclusive" | null>(null);
+  const [apiModeLoading, setApiModeLoading] = useState(true);
 
   // Plus menu
   const [showPlusMenu, setShowPlusMenu] = useState(false);
@@ -2304,9 +2302,17 @@ function CommandCenterInner() {
         const res = await fetch("/api/vm/status");
         if (res.ok) {
           const data = await res.json();
-          if (data.vm?.model) setCurrentModel(data.vm.model);
-          else if (data.model) setCurrentModel(data.model);
           if (data.vm) {
+            const vmApiMode = data.vm.apiMode ?? null;
+            // Credit (all_inclusive): the picker selects on the pinned model, or
+            // "automatic" when nothing is pinned. BYOK: the on-disk model IS the
+            // served model. (pinned_model is never written on all-inclusive's
+            // default_model, so it's the only source of truth for the pin.)
+            setCurrentModel(
+              vmApiMode === "all_inclusive"
+                ? (data.vm.pinnedModel ?? "automatic")
+                : (data.vm.model ?? "claude-sonnet-4-6")
+            );
             setConnectorInfo({
               channelsEnabled: data.vm.channelsEnabled ?? [],
               hasDiscord: data.vm.hasDiscord ?? false,
@@ -2314,29 +2320,25 @@ function CommandCenterInner() {
               gmailConnected: data.vm.gmailConnected ?? false,
               telegramBotUsername: data.vm.telegramBotUsername ?? null,
             });
+            setApiMode(vmApiMode);
+          } else if (data.model) {
+            setCurrentModel(data.model);
           }
         }
       } catch {
         // Non-fatal
+      } finally {
+        // Resolve the gate either way: on success apiMode is set; on error/absent
+        // it stays null, and the modal fail-closes to the credit choices.
+        setApiModeLoading(false);
       }
     })();
   }, []);
 
-  // Close model picker on outside click
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node) &&
-        (!modelPickerRef2.current || !modelPickerRef2.current.contains(e.target as Node))
-      ) {
-        setShowModelPicker(false);
-      }
-    }
-    if (showModelPicker) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [showModelPicker]);
+  // (Model picker outside-click handler removed: the ModelBrowserModal owns its
+  // own dismissal via its backdrop onClose. A document-level outside-click here
+  // would fire on clicks INSIDE the modal, since the modal renders outside the
+  // trigger's wrapper, and close it the instant a row is tapped.)
 
   // Close plus menu on outside click
   useEffect(() => {
@@ -2415,7 +2417,13 @@ function CommandCenterInner() {
 
   async function handleModelChange(newModel: string) {
     setUpdatingModel(true);
-    setShowModelPicker(false);
+    // VISUAL DISMISSAL ONLY — delayed ~120ms so the chosen row's spring "confirm"
+    // (the existing whileTap bounce + the row lighting up to the new selection:
+    // coral pill + Claude-orange logo + check) is perceptible before the popover
+    // exit-animates (AnimatePresence). Selection state stays IMMEDIATE: setCurrentModel
+    // + the /api/vm/update-model persist below are unchanged. The check still tracks the
+    // real currentModel; we only smooth the dismissal, never gate the selection on it.
+    setTimeout(() => setShowModelPicker(false), 120);
     const prev = currentModel;
     setCurrentModel(newModel);
     try {
@@ -2431,6 +2439,17 @@ function CommandCenterInner() {
       setUpdatingModel(false);
     }
   }
+
+  // Trigger-pill label. Credit users: "Automatic" when nothing is pinned, else
+  // the pinned model's display name (the picker honors any pin now). BYOK: the
+  // picked model's display name. Mirrors the modal's selection source so the
+  // pill always names exactly what the agent will run.
+  const triggerLabel =
+    apiMode === "byok"
+      ? getModelEntry(currentModel)?.displayName ?? "Sonnet 4.6"
+      : currentModel === "automatic"
+        ? "Automatic"
+        : getModelEntry(currentModel)?.displayName ?? "Automatic";
 
   // ─── Task polling ─────────────────────────────────────
 
@@ -3128,105 +3147,72 @@ function CommandCenterInner() {
   // Shared plus menu content
   const plusMenuContent = (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95, y: 4 }}
+      initial={{ opacity: 0, scale: 0.96, y: 4 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95, y: 4 }}
+      exit={{ opacity: 0, scale: 0.96, y: 4 }}
       transition={{ type: "spring", stiffness: 500, damping: 30 }}
-      className="absolute bottom-full left-0 mb-1.5 rounded-xl py-1.5 min-w-[240px] z-50"
+      /* Direction A command surface. Opaque popover over scrolling content
+         (background var(--card) — NOT translucent, no bleed) + glass 3-layer shadow.
+         Rows are motion.button with an iOS-style spring press (whileTap scale + spring
+         overshoot-settle). Active row = LIT coral glass (sheen + gradient + raised
+         depth), still opaque. All tokens; no .liquid-glass-card. */
+      className="absolute bottom-full left-0 mb-1.5 rounded-2xl p-1.5 min-w-[256px] z-50"
       style={{
         background: "var(--card)",
-        border: "1px solid var(--border)",
-        boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+        boxShadow:
+          "0 1px 2px rgba(0,0,0,0.04), " +
+          "0 12px 32px -8px rgba(0,0,0,0.18), " +
+          "0 0 0 1px rgba(0,0,0,0.05)",
       }}
     >
       {/* Add files */}
-      <button
-        onClick={() => { fileInputRef.current?.click(); }}
-        className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center gap-2.5"
+      <motion.button onClick={() => { fileInputRef.current?.click(); }} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 500, damping: 18, mass: 0.85 }}
+        className="w-full rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors flex items-center gap-2.5"
         style={{ color: "var(--foreground)" }}
         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-      >
-        <FileText className="w-4 h-4" style={{ color: "var(--muted)" }} />
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+        <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(0,0,0,0.05)" }}><FileText className="w-4 h-4" style={{ color: "var(--muted)" }} /></span>
         Add files or photos
-      </button>
-
-      <div className="my-1 mx-3" style={{ borderTop: "1px solid var(--border)" }} />
-
+      </motion.button>
+      <div className="my-1 mx-2" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }} />
       {/* Deep research toggle */}
-      <button
-        onClick={() => setDeepResearchEnabled((v) => !v)}
-        className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
-        style={{
-          color: deepResearchEnabled ? "#7c3aed" : "var(--foreground)",
-          background: deepResearchEnabled ? "rgba(124,58,237,0.08)" : "transparent",
-        }}
+      <motion.button onClick={() => setDeepResearchEnabled((v) => !v)} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 500, damping: 18, mass: 0.85 }}
+        className="w-full rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
+        style={{ color: deepResearchEnabled ? "var(--accent)" : "var(--foreground)", background: deepResearchEnabled ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent", boxShadow: deepResearchEnabled ? "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -1px 0 rgba(220,103,67,0.12), 0 1px 3px -1px rgba(220,103,67,0.20)" : "none" }}
         onMouseEnter={(e) => { if (!deepResearchEnabled) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = deepResearchEnabled ? "rgba(124,58,237,0.08)" : "transparent"; }}
-      >
-        <span className="flex items-center gap-2.5">
-          <Telescope className="w-4 h-4" />
-          Deep research
-        </span>
+        onMouseLeave={(e) => { e.currentTarget.style.background = deepResearchEnabled ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent"; }}>
+        <span className="flex items-center gap-2.5"><span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors" style={{ background: deepResearchEnabled ? "rgba(220,103,67,0.14)" : "rgba(0,0,0,0.05)" }}><Telescope className="w-4 h-4" style={{ color: deepResearchEnabled ? "var(--accent)" : "var(--muted)" }} /></span>Deep research</span>
         {deepResearchEnabled && <Check className="w-3.5 h-3.5" />}
-      </button>
-
+      </motion.button>
       {/* Web search toggle */}
-      <button
-        onClick={() => setWebSearchEnabled((v) => !v)}
-        className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
-        style={{
-          color: webSearchEnabled ? "#2563eb" : "var(--foreground)",
-          background: webSearchEnabled ? "rgba(37,99,235,0.08)" : "transparent",
-        }}
+      <motion.button onClick={() => setWebSearchEnabled((v) => !v)} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 500, damping: 18, mass: 0.85 }}
+        className="w-full rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
+        style={{ color: webSearchEnabled ? "var(--accent)" : "var(--foreground)", background: webSearchEnabled ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent", boxShadow: webSearchEnabled ? "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -1px 0 rgba(220,103,67,0.12), 0 1px 3px -1px rgba(220,103,67,0.20)" : "none" }}
         onMouseEnter={(e) => { if (!webSearchEnabled) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = webSearchEnabled ? "rgba(37,99,235,0.08)" : "transparent"; }}
-      >
-        <span className="flex items-center gap-2.5">
-          <Globe className="w-4 h-4" />
-          Web search
-        </span>
+        onMouseLeave={(e) => { e.currentTarget.style.background = webSearchEnabled ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent"; }}>
+        <span className="flex items-center gap-2.5"><span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors" style={{ background: webSearchEnabled ? "rgba(220,103,67,0.14)" : "rgba(0,0,0,0.05)" }}><Globe className="w-4 h-4" style={{ color: webSearchEnabled ? "var(--accent)" : "var(--muted)" }} /></span>Web search</span>
         {webSearchEnabled && <Check className="w-3.5 h-3.5" />}
-      </button>
-
-      {/* Use my style toggle */}
-      <button
-        onClick={() => { if (connectorInfo.gmailConnected) setUseMyStyleEnabled((v) => !v); }}
-        className="w-full text-left px-3.5 py-2.5 text-sm transition-colors flex items-center justify-between"
-        style={{
-          color: !connectorInfo.gmailConnected ? "var(--muted)" : useMyStyleEnabled ? "var(--accent)" : "var(--foreground)",
-          background: useMyStyleEnabled ? "rgba(220,103,67,0.08)" : "transparent",
-          cursor: connectorInfo.gmailConnected ? "pointer" : "default",
-          opacity: connectorInfo.gmailConnected ? 1 : 0.5,
-        }}
+      </motion.button>
+      {/* Use my style toggle (disabled when no gmail — NO press bounce) */}
+      <motion.button onClick={() => { if (connectorInfo.gmailConnected) setUseMyStyleEnabled((v) => !v); }}
+        whileTap={connectorInfo.gmailConnected ? { scale: 0.96 } : undefined} transition={{ type: "spring", stiffness: 500, damping: 18, mass: 0.85 }}
+        className="w-full rounded-lg px-2 py-1.5 text-sm transition-colors flex items-center justify-between"
+        style={{ color: !connectorInfo.gmailConnected ? "var(--muted)" : useMyStyleEnabled ? "var(--accent)" : "var(--foreground)", background: useMyStyleEnabled ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent", boxShadow: useMyStyleEnabled ? "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -1px 0 rgba(220,103,67,0.12), 0 1px 3px -1px rgba(220,103,67,0.20)" : "none", cursor: connectorInfo.gmailConnected ? "pointer" : "default", opacity: connectorInfo.gmailConnected ? 1 : 0.5 }}
         onMouseEnter={(e) => { if (connectorInfo.gmailConnected && !useMyStyleEnabled) e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = useMyStyleEnabled ? "rgba(220,103,67,0.08)" : "transparent"; }}
-      >
-        <span className="flex items-center gap-2.5">
-          <Pencil className="w-4 h-4" />
-          Use my style
-          {!connectorInfo.gmailConnected && <span className="text-[10px] ml-1">(connect Gmail)</span>}
-        </span>
+        onMouseLeave={(e) => { e.currentTarget.style.background = useMyStyleEnabled ? "linear-gradient(180deg, rgba(220,103,67,0.07), rgba(220,103,67,0.15))" : "transparent"; }}>
+        <span className="flex items-center gap-2.5"><span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors" style={{ background: useMyStyleEnabled ? "rgba(220,103,67,0.14)" : "rgba(0,0,0,0.05)" }}><Pencil className="w-4 h-4" style={{ color: useMyStyleEnabled ? "var(--accent)" : "var(--muted)" }} /></span>Use my style{!connectorInfo.gmailConnected && <span className="text-[10px] ml-1">(connect Gmail)</span>}</span>
         {useMyStyleEnabled && <Check className="w-3.5 h-3.5" />}
-      </button>
-
-      <div className="my-1 mx-3" style={{ borderTop: "1px solid var(--border)" }} />
-
+      </motion.button>
+      <div className="my-1 mx-2" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }} />
       {/* Connectors */}
-      <button
-        onClick={() => setShowConnectorsSubmenu((v) => !v)}
-        className="w-full text-left px-3.5 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
+      <motion.button onClick={() => setShowConnectorsSubmenu((v) => !v)} whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 500, damping: 18, mass: 0.85 }}
+        className="w-full rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors flex items-center justify-between"
         style={{ color: "var(--foreground)" }}
         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.04)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-      >
-        <span className="flex items-center gap-2.5">
-          <Link2 className="w-4 h-4" style={{ color: "var(--muted)" }} />
-          Connectors
-        </span>
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+        <span className="flex items-center gap-2.5"><span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(0,0,0,0.05)" }}><Link2 className="w-4 h-4" style={{ color: "var(--muted)" }} /></span>Connectors</span>
         <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showConnectorsSubmenu ? "rotate-90" : ""}`} style={{ color: "var(--muted)" }} />
-      </button>
-
+      </motion.button>
       <AnimatePresence>
         {showConnectorsSubmenu && (
           <motion.div
@@ -3244,15 +3230,12 @@ function CommandCenterInner() {
             ].map((c) => (
               <div
                 key={c.name}
-                className="flex items-center justify-between px-6 py-1.5 text-xs"
+                className="flex items-center justify-between px-7 py-1.5 text-xs"
                 style={{ color: "var(--muted)" }}
               >
                 <span>{c.name}</span>
                 <span className="flex items-center gap-1.5">
-                  <span
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ background: c.connected ? "#22c55e" : "var(--border)" }}
-                  />
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: c.connected ? "#22c55e" : "var(--border)" }} />
                   {c.connected ? "Connected" : "Not connected"}
                 </span>
               </div>
@@ -3263,17 +3246,9 @@ function CommandCenterInner() {
     </motion.div>
   );
 
-  // Toggle indicator pills (shown above input when toggles are active)
-  // Glass pill style matching suggestion chips
-  const glassPillStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,0.6)",
-    backdropFilter: "blur(8px)",
-    WebkitBackdropFilter: "blur(8px)",
-    boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
-    border: "1px solid rgba(0,0,0,0.06)",
-    color: "var(--muted)",
-  };
-
+  // Toggle indicator pills (shown above input when toggles are active).
+  // Material is the shipped .glass-filter-pill (same family as the suggestion chips);
+  // each pill keeps its brand-colored icon + × remove button + framer enter/exit.
   const togglePills = (hasAnyToggle || attachedFile) ? (
     <div className="flex items-center gap-1.5 pb-1.5 flex-wrap px-1">
       <AnimatePresence>
@@ -3283,8 +3258,7 @@ function CommandCenterInner() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
-            style={glassPillStyle}
+            className="glass-filter-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
           >
             <Telescope className="w-3 h-3" style={{ color: "#7c3aed" }} />
             Deep research
@@ -3297,8 +3271,7 @@ function CommandCenterInner() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
-            style={glassPillStyle}
+            className="glass-filter-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
           >
             <Globe className="w-3 h-3" style={{ color: "#4285F4" }} />
             Web search
@@ -3311,8 +3284,7 @@ function CommandCenterInner() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
-            style={glassPillStyle}
+            className="glass-filter-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
           >
             <Pencil className="w-3 h-3" style={{ color: "var(--accent)" }} />
             My style
@@ -3325,8 +3297,7 @@ function CommandCenterInner() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
-            style={glassPillStyle}
+            className="glass-filter-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
           >
             <FileText className="w-3 h-3" style={{ color: "#34A853" }} />
             <span className="max-w-[120px] truncate">{attachedFile.name}</span>
@@ -3346,11 +3317,12 @@ function CommandCenterInner() {
           setShowModelPicker(false);
           if (showPlusMenu) setShowConnectorsSubmenu(false);
         }}
-        className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 active:scale-95"
-        style={{
-          background: showPlusMenu ? "var(--accent)" : "rgba(0,0,0,0.06)",
-          color: showPlusMenu ? "#fff" : "var(--muted)",
-        }}
+        // Rest + hover: the shipped single-element liquid glass (.glass-filter-pill,
+        // same material/rim/timing as the filter pills above) — geometry stays in
+        // Tailwind, the class is material-only. Open state keeps the coral "engaged"
+        // affordance (inline background wins over the class's frost gradient).
+        className="glass-filter-pill w-7 h-7 rounded-full flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
+        style={showPlusMenu ? { background: "var(--accent)", color: "#fff" } : undefined}
       >
         <Plus className={`w-4 h-4 transition-transform ${showPlusMenu ? "rotate-45" : ""}`} strokeWidth={2.5} />
       </button>
@@ -3772,17 +3744,20 @@ function CommandCenterInner() {
                           <button
                             key={a.label}
                             onClick={() => !isRefreshingChips && handleChipClick(a.prefill)}
-                            className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.97]"
+                            // Material: shipped .glass-filter-pill (same as tasks-composer
+                            // chips). whitespace-nowrap + geometry stay in Tailwind. During
+                            // refresh the inline shimmer background overrides the class frost
+                            // so the re-roll glow + fade-in are preserved. Label color moves
+                            // --foreground → class #6b7280 muted.
+                            className="glass-filter-pill shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium whitespace-nowrap cursor-pointer active:scale-[0.97]"
                             style={{
-                              background: isRefreshingChips
-                                ? "linear-gradient(90deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.5) 40%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0.5) 60%, rgba(255,255,255,0.5) 100%)"
-                                : "rgba(255,255,255,0.6)",
-                              backgroundSize: isRefreshingChips ? "200% 100%" : undefined,
-                              backdropFilter: "blur(8px)",
-                              boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
-                              border: "1px solid rgba(0,0,0,0.06)",
-                              color: isRefreshingChips ? "var(--muted)" : "var(--foreground)",
-                              whiteSpace: "nowrap",
+                              ...(isRefreshingChips
+                                ? {
+                                    background:
+                                      "linear-gradient(90deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.5) 40%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0.5) 60%, rgba(255,255,255,0.5) 100%)",
+                                    backgroundSize: "200% 100%",
+                                  }
+                                : {}),
                               opacity: isRefreshingChips ? 0.7 : 1,
                               animation: isRefreshingChips
                                 ? `chip-shimmer 1.5s ease-in-out infinite ${i * 0.15}s`
@@ -3797,19 +3772,16 @@ function CommandCenterInner() {
                         <button
                           onClick={refreshChips}
                           disabled={isRefreshingChips}
-                          className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 disabled:cursor-default"
-                          style={{
-                            background: "rgba(255,255,255,0.5)",
-                            backdropFilter: "blur(8px)",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
-                            border: "1px solid rgba(0,0,0,0.06)",
-                          }}
+                          // Same shipped .glass-filter-pill material as the composer "+" /
+                          // tasks ↻ — a circular glass button. Icon inherits #6b7280 at rest,
+                          // flips to accent + spins on re-roll. Disabled + re-roll unchanged.
+                          className="glass-filter-pill shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer active:scale-95 disabled:cursor-default"
                           title="Refresh suggestions"
                         >
                           <RotateCw
                             className="w-3 h-3"
                             style={{
-                              color: isRefreshingChips ? "var(--accent)" : "var(--muted)",
+                              color: isRefreshingChips ? "var(--accent)" : undefined,
                               animation: isRefreshingChips ? "refresh-spin 0.7s linear infinite" : undefined,
                             }}
                           />
@@ -3823,9 +3795,15 @@ function CommandCenterInner() {
                     <div
                       className="rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 flex items-center gap-2 sm:gap-3"
                       style={{
-                        background: "rgba(255,255,255,0.8)",
-                        backdropFilter: "blur(12px)",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)",
+                        // RAISED — opaque white card lifted off the page (mirrors the tasks
+                        // composer): lit-from-above gradient + soft downward ambient + rim.
+                        // OPAQUE: the old rgba(255,255,255,0.8)+blur(12px) was bleed-prone and
+                        // read flat; removed. NOT .liquid-glass-card.
+                        background: "linear-gradient(180deg, #ffffff 0%, #fcfbf9 100%)",
+                        boxShadow:
+                          "0 1px 2px rgba(0,0,0,0.05), " +
+                          "0 10px 28px -8px rgba(0,0,0,0.14), " +
+                          "0 0 0 1px rgba(0,0,0,0.045)",
                       }}
                     >
                       {plusButton}
@@ -3846,54 +3824,40 @@ function CommandCenterInner() {
                         disabled={isSending}
                       />
                       <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-                        <div className="relative" ref={modelPickerRef}>
+                        <div className="relative">
+                          {/* Desktop: considered glass-pill trigger (shipped
+                              .glass-filter-pill material, same family as the "+" and
+                              suggestion chips in this toolbar). Opens the model browser;
+                              the label crossfades on change. */}
                           <button
-                            onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
-                            className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
-                            style={{ color: "var(--muted)" }}
+                            onClick={() => { setShowModelPicker(true); setShowPlusMenu(false); }}
+                            className="glass-filter-pill hidden sm:inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-full text-[11px] font-medium cursor-pointer active:scale-[0.98]"
+                            style={{ color: "var(--foreground)" }}
+                            title="Choose model"
                           >
-                            <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}</span>
-                            <ChevronDown className="w-3 h-3" />
+                            <AnimatePresence mode="wait" initial={false}>
+                              <motion.span
+                                key={triggerLabel}
+                                initial={{ opacity: 0, y: 5 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -5 }}
+                                transition={{ duration: 0.15, ease: "easeOut" }}
+                                className="inline-block"
+                              >
+                                {triggerLabel}
+                              </motion.span>
+                            </AnimatePresence>
+                            <ChevronDown className="w-3 h-3" style={{ color: "var(--muted)" }} />
                           </button>
+                          {/* Mobile: compact glass circle, same material. */}
                           <button
-                            onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
-                            className="flex sm:hidden items-center justify-center w-7 h-7 rounded-lg cursor-pointer transition-colors hover:opacity-70"
+                            onClick={() => { setShowModelPicker(true); setShowPlusMenu(false); }}
+                            className="glass-filter-pill flex sm:hidden items-center justify-center w-7 h-7 rounded-full cursor-pointer active:scale-95"
                             style={{ color: "var(--muted)" }}
-                            title={MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}
+                            title={triggerLabel}
                           >
                             <ChevronDown className="w-3.5 h-3.5" />
                           </button>
-                          {showModelPicker && (
-                            <div
-                              className="absolute bottom-full right-0 mb-1.5 rounded-xl py-1.5 min-w-[160px] z-50"
-                              style={{
-                                background: "var(--card)",
-                                border: "1px solid var(--border)",
-                                boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-                              }}
-                            >
-                              {MODEL_OPTIONS.map((m) => (
-                                <button
-                                  key={m.id}
-                                  onClick={() => handleModelChange(m.id)}
-                                  className="w-full text-left px-3.5 py-2 text-xs cursor-pointer transition-colors flex items-center justify-between"
-                                  style={{
-                                    color: m.id === currentModel ? "var(--accent)" : "var(--foreground)",
-                                    background: m.id === currentModel ? "rgba(220,103,67,0.08)" : "transparent",
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    if (m.id !== currentModel) e.currentTarget.style.background = "rgba(0,0,0,0.04)";
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.background = m.id === currentModel ? "rgba(220,103,67,0.08)" : "transparent";
-                                  }}
-                                >
-                                  {m.label}
-                                  {m.id === currentModel && <Check className="w-3.5 h-3.5" />}
-                                </button>
-                              ))}
-                            </div>
-                          )}
                         </div>
                         <button
                           className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 active:scale-95"
@@ -3905,10 +3869,16 @@ function CommandCenterInner() {
                         <button
                           onClick={handleSubmit}
                           disabled={isSending || !chatInput.trim()}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 disabled:opacity-30 disabled:scale-95"
-                          style={{ background: "var(--accent)" }}
+                          // Send: glass circle (reuse .glass-filter-pill, mirrors the "+" /
+                          // tasks send) that ARMS coral when actionable. Disable-gate
+                          // preserved EXACTLY (isSending || !trim()); the arm visual = the
+                          // not-disabled state (chatInput.trim() && !isSending) so coral shows
+                          // only when a send can fire. Arrow inherits currentColor. Behavior
+                          // identical: handleSubmit + the isSending||!trim() gate unchanged.
+                          className="glass-filter-pill w-7 h-7 rounded-full flex items-center justify-center shrink-0 cursor-pointer active:scale-95 disabled:cursor-default"
+                          style={chatInput.trim() && !isSending ? { background: "var(--accent)", color: "#fff" } : undefined}
                         >
-                          <ArrowUp className="w-4 h-4" style={{ color: "#ffffff" }} strokeWidth={2.5} />
+                          <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
                         </button>
                       </div>
                     </div>
@@ -3956,14 +3926,19 @@ function CommandCenterInner() {
               <button
                 key={action.label}
                 onClick={() => handleChipClick(action.prefill)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs whitespace-nowrap cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+                // Material: shipped .glass-filter-pill (frost + 0.18 rim + 0.2s hover) —
+                // geometry stays in Tailwind. During refresh the inline shimmer background
+                // overrides the class frost (inline wins) so the re-roll glow + fade-in
+                // animations are preserved unchanged.
+                className="glass-filter-pill flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs whitespace-nowrap cursor-pointer active:scale-[0.98]"
                 style={{
-                  background: isRefreshingChips
-                    ? "linear-gradient(90deg, rgba(255,255,255,0.45) 0%, rgba(0,0,0,0.03) 50%, rgba(255,255,255,0.45) 100%)"
-                    : "rgba(255,255,255,0.45)",
-                  backgroundSize: isRefreshingChips ? "200% 100%" : undefined,
-                  border: "1px solid rgba(0,0,0,0.06)",
-                  color: isRefreshingChips ? "var(--muted)" : "var(--muted)",
+                  ...(isRefreshingChips
+                    ? {
+                        background:
+                          "linear-gradient(90deg, rgba(255,255,255,0.45) 0%, rgba(0,0,0,0.03) 50%, rgba(255,255,255,0.45) 100%)",
+                        backgroundSize: "200% 100%",
+                      }
+                    : {}),
                   opacity: isRefreshingChips ? 0.7 : 1,
                   animation: isRefreshingChips
                     ? `chip-shimmer 1.5s ease-in-out infinite ${i * 0.15}s`
@@ -3978,19 +3953,16 @@ function CommandCenterInner() {
             <button
               onClick={refreshChips}
               disabled={isRefreshingChips}
-              className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:scale-105 active:scale-95 disabled:cursor-default"
-              style={{
-                background: "rgba(255,255,255,0.5)",
-                backdropFilter: "blur(8px)",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
-                border: "1px solid rgba(0,0,0,0.06)",
-              }}
+              // Same shipped .glass-filter-pill material as the composer "+" — a circular
+              // glass button. Icon inherits the class's #6b7280 at rest; flips to accent
+              // (coral) + spins while re-rolling. Disabled + re-roll behavior unchanged.
+              className="glass-filter-pill shrink-0 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer active:scale-95 disabled:cursor-default"
               title="Refresh suggestions"
             >
               <RotateCw
                 className="w-3 h-3"
                 style={{
-                  color: isRefreshingChips ? "var(--accent)" : "var(--muted)",
+                  color: isRefreshingChips ? "var(--accent)" : undefined,
                   animation: isRefreshingChips ? "refresh-spin 0.7s linear infinite" : undefined,
                 }}
               />
@@ -4003,9 +3975,18 @@ function CommandCenterInner() {
           <div
             className="rounded-2xl px-3 py-2.5 sm:px-5 sm:py-3.5 flex items-center gap-2 sm:gap-3"
             style={{
-              background: "rgba(255,255,255,0.8)",
-              backdropFilter: "blur(12px)",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)",
+              // RAISED — an opaque white card lifted off the warm #f8f7f4 page, the same
+              // upward elevation language as the lit active-tool pill + the "+" popover.
+              // Lit-from-above surface gradient (bright top catches light → faint warm-shadow
+              // bottom) + a soft downward-biased ambient drop (the float) + whisper rim.
+              // OPAQUE on purpose: this sits over scrolling content, so no translucency — the
+              // old rgba(255,255,255,0.8)+blur(12px) was bleed-prone AND read flat; gone now.
+              // FLAGGED inline refinement — intentionally NOT .liquid-glass-card.
+              background: "linear-gradient(180deg, #ffffff 0%, #fcfbf9 100%)",
+              boxShadow:
+                "0 1px 2px rgba(0,0,0,0.05), " +
+                "0 10px 28px -8px rgba(0,0,0,0.14), " +
+                "0 0 0 1px rgba(0,0,0,0.045)",
             }}
           >
             {plusButton}
@@ -4025,54 +4006,39 @@ function CommandCenterInner() {
               style={{ color: "var(--foreground)" }}
             />
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-              <div className="relative" ref={modelPickerRef2}>
+              <div className="relative">
+                {/* Desktop: considered glass-pill trigger (shipped .glass-filter-pill
+                    material, same family as the "+" and suggestion chips). Opens the
+                    model browser; the label crossfades on change. */}
                 <button
-                  onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
-                  className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors hover:opacity-70"
-                  style={{ color: "var(--muted)" }}
+                  onClick={() => { setShowModelPicker(true); setShowPlusMenu(false); }}
+                  className="glass-filter-pill hidden sm:inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-full text-[11px] font-medium cursor-pointer active:scale-[0.98]"
+                  style={{ color: "var(--foreground)" }}
+                  title="Choose model"
                 >
-                  <span>{MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}</span>
-                  <ChevronDown className="w-3 h-3" />
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.span
+                      key={triggerLabel}
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="inline-block"
+                    >
+                      {triggerLabel}
+                    </motion.span>
+                  </AnimatePresence>
+                  <ChevronDown className="w-3 h-3" style={{ color: "var(--muted)" }} />
                 </button>
+                {/* Mobile: compact glass circle, same material. */}
                 <button
-                  onClick={() => { setShowModelPicker(!showModelPicker); setShowPlusMenu(false); }}
-                  className="flex sm:hidden items-center justify-center w-7 h-7 rounded-lg cursor-pointer transition-colors hover:opacity-70"
+                  onClick={() => { setShowModelPicker(true); setShowPlusMenu(false); }}
+                  className="glass-filter-pill flex sm:hidden items-center justify-center w-7 h-7 rounded-full cursor-pointer active:scale-95"
                   style={{ color: "var(--muted)" }}
-                  title={MODEL_OPTIONS.find((m) => m.id === currentModel)?.label ?? "Sonnet 4.6"}
+                  title={triggerLabel}
                 >
                   <ChevronDown className="w-3.5 h-3.5" />
                 </button>
-                {showModelPicker && (
-                  <div
-                    className="absolute bottom-full right-0 mb-1.5 rounded-xl py-1.5 min-w-[160px] z-50"
-                    style={{
-                      background: "var(--card)",
-                      border: "1px solid var(--border)",
-                      boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-                    }}
-                  >
-                    {MODEL_OPTIONS.map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => handleModelChange(m.id)}
-                        className="w-full text-left px-3.5 py-2 text-xs cursor-pointer transition-colors flex items-center justify-between"
-                        style={{
-                          color: m.id === currentModel ? "var(--accent)" : "var(--foreground)",
-                          background: m.id === currentModel ? "rgba(220,103,67,0.08)" : "transparent",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (m.id !== currentModel) e.currentTarget.style.background = "rgba(0,0,0,0.04)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = m.id === currentModel ? "rgba(220,103,67,0.08)" : "transparent";
-                        }}
-                      >
-                        {m.label}
-                        {m.id === currentModel && <Check className="w-3.5 h-3.5" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
               <button
                 className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 active:scale-95"
@@ -4084,10 +4050,17 @@ function CommandCenterInner() {
               <button
                 onClick={handleSubmit}
                 disabled={!chatInput.trim()}
-                className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 cursor-pointer transition-all hover:opacity-80 disabled:opacity-30 disabled:scale-95"
-                style={{ background: chatInput.trim() ? "var(--accent)" : "var(--accent)" }}
+                // Send: glass circle (reuse .glass-filter-pill, mirrors the "+") that ARMS
+                // coral when there's text — empty = calm glass "ready & waiting" (never the
+                // old faded square), text = confident coral fill. Arm is inline accent on
+                // chatInput.trim() (same technique as the "+" open state); the class's 0.2s
+                // background-color/color transition carries the glass→coral fade — no new
+                // timing. Arrow inherits currentColor (#6b7280 glass → #fff armed). Behavior
+                // identical: handleSubmit + disabled empty-gate unchanged.
+                className="glass-filter-pill w-7 h-7 rounded-full flex items-center justify-center shrink-0 cursor-pointer active:scale-95 disabled:cursor-default"
+                style={chatInput.trim() ? { background: "var(--accent)", color: "#fff" } : undefined}
               >
-                <ArrowUp className="w-4 h-4" style={{ color: "#ffffff" }} strokeWidth={2.5} />
+                <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
               </button>
             </div>
           </div>
@@ -4095,6 +4068,19 @@ function CommandCenterInner() {
       )}
 
       {/* Chat input is now inside the two-panel layout */}
+
+      {/* Model browser - one shared instance for both composers (chat + tasks),
+          a fixed overlay so placement here is purely structural. apiMode gates
+          credit vs BYOK (fail-closed to credit while loading); onSelect reuses
+          the proven handleModelChange persist path verbatim. */}
+      <ModelBrowserModal
+        open={showModelPicker}
+        onClose={() => setShowModelPicker(false)}
+        apiMode={apiMode}
+        loading={apiModeLoading}
+        currentModel={currentModel}
+        onSelect={handleModelChange}
+      />
     </div>
   );
 }

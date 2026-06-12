@@ -12,6 +12,7 @@ import { thawVM } from "@/lib/vm-freeze-thaw";
 import { markThawPendingForV2User } from "@/lib/freeze-v2-thaw-entry";
 import { wakeIfHibernating } from "@/lib/wake-vm";
 import { clearStaleAuthCacheForUser } from "@/lib/auth-cache";
+import { fetchBillingExempt } from "@/lib/billing-status";
 import { randomUUID } from "node:crypto";
 
 // Give the function enough time for background processing via after().
@@ -332,14 +333,57 @@ async function processEvent(event: any) {
 
       if (!userId || !tier) break;
 
-      // Create or update subscription record
+      // 2026-06-10 fix: retrieve the Stripe subscription so we write the REAL
+      // status + period fields. The pre-fix upsert hardcoded status="active"
+      // with null current_period_start/end. Same root behind two bugs found
+      // 2026-06-10: (a) a trialing sub showed "active" in our DB (status
+      // drift vs Stripe), and (b) null period fields can mislead Rule-14
+      // grace-window classification (lib/billing-status.ts). subscription.created
+      // usually backfills these, but Stripe event ordering/delivery isn't
+      // guaranteed, so we populate authoritatively at the source. Mirrors the
+      // resolution in the customer.subscription.created handler below.
+      const subId = session.subscription as string | null;
+      let subStatus = "active";
+      let periodStartIso: string | null = null;
+      let periodEndIso: string | null = null;
+      let trialEndIso: string | null = null;
+      if (subId) {
+        try {
+          const sub = await getStripe().subscriptions.retrieve(subId);
+          subStatus = sub.status ?? "active";
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ps = (sub as any).current_period_start as number | undefined;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const pe = (sub as any).current_period_end as number | undefined;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const te = (sub as any).trial_end as number | undefined;
+          if (ps) periodStartIso = new Date(ps * 1000).toISOString();
+          if (pe) periodEndIso = new Date(pe * 1000).toISOString();
+          else if (te) periodEndIso = new Date(te * 1000).toISOString();
+          if (te) trialEndIso = new Date(te * 1000).toISOString();
+        } catch (err) {
+          logger.error("checkout.session.completed: failed to retrieve subscription for period fields — falling back to active+null", {
+            route: "billing/webhook",
+            subscriptionId: subId,
+            error: String(err),
+          });
+          // Fall through with active + null periods (prior behavior).
+          // customer.subscription.created will backfill the period fields.
+        }
+      }
+
+      // Create or update subscription record. Real status + periods when the
+      // retrieve succeeded; graceful active+null fallback otherwise.
       await supabase.from("instaclaw_subscriptions").upsert(
         {
           user_id: userId,
           tier,
-          stripe_subscription_id: session.subscription as string,
+          stripe_subscription_id: subId,
           stripe_customer_id: session.customer as string,
-          status: "active",
+          status: subStatus,
+          ...(periodStartIso ? { current_period_start: periodStartIso } : {}),
+          ...(periodEndIso ? { current_period_end: periodEndIso } : {}),
+          ...(trialEndIso ? { trial_ends_at: trialEndIso } : {}),
           payment_status: "current",
         },
         { onConflict: "user_id" }
@@ -1179,6 +1223,15 @@ async function processEvent(event: any) {
           })
           .eq("user_id", sub.user_id);
 
+        // Rule 67 / billing_exempt guard: a comp-exempt user (founder, family,
+        // partner-comp) whose Stripe sub is canceled MUST keep their VM running.
+        // The sub-row update above is accounting truth; the VM-mutation block
+        // below (telegram clear + gateway stop + suspend) is destructive and is
+        // skipped for exempt users. Without this, canceling an exempt user's sub
+        // suspends their agent within ~3s (the 2026-06-10 vm-1075 incident — this
+        // handler is the inline suspend path that never consulted billing_exempt).
+        const cancelExempt = await fetchBillingExempt(supabase, sub.user_id);
+
         // Stamp the VM with last_assigned_to so we can find it for future migration
         // if the user re-subscribes and gets a different VM
         const { data: userVm } = await supabase
@@ -1187,7 +1240,47 @@ async function processEvent(event: any) {
           .eq("assigned_to", sub.user_id)
           .single();
 
-        if (userVm) {
+        // Finding A (2026-06-11 audit): the two assets in this block fail-closed
+        // in OPPOSITE directions. The VM is irreplaceable data → on uncertainty
+        // KEEP it (F1, the destroy block below stays gated `!exempt && verified`).
+        // frontier_spend_enabled is a re-grantable money permission → on
+        // uncertainty REVOKE it (F4: cheap to restore, expensive to wrongly
+        // retain). So the spend-revoke is split out here, gated only on
+        // `!exempt` — revoke unless CONFIRMED exempt. Composed: confirmed
+        // non-payer → suspend + revoke; confirmed exempt → keep + keep; blip →
+        // VM kept (F1) + spend revoked (F4), each asset closed in its direction.
+        // (Was entangled inside the F1-gated destroy block via 5f809339, so a
+        // blip skipped the revoke and a canceled non-payer held live spend.)
+        if (userVm && !cancelExempt.exempt) {
+          await supabase
+            .from("instaclaw_vms")
+            .update({ frontier_spend_enabled: false })
+            .eq("id", userVm.id)
+            .not("status", "in", '("terminated","destroyed","failed")');
+          logger.info("subscription.deleted: frontier_spend_enabled revoked (revoke unless confirmed-exempt)", {
+            route: "billing/webhook",
+            vmId: userVm.id,
+            userId: sub.user_id,
+            exemptVerified: cancelExempt.verified,
+          });
+        }
+
+        // F1 fail-closed: skip the destructive VM-mutation on exempt OR on an
+        // unverifiable exempt-read (verified=false) — a DB blip must never
+        // suspend a protected VM. Log the skip loudly so a blip-skip is visible.
+        if (userVm && (cancelExempt.exempt || !cancelExempt.verified)) {
+          logger.info("subscription.deleted: VM suspend SKIPPED — billing_exempt/unverifiable", {
+            route: "billing/webhook",
+            vmId: userVm.id,
+            userId: sub.user_id,
+            exempt: cancelExempt.exempt,
+            verified: cancelExempt.verified,
+            exemptReason: cancelExempt.exemptReason,
+          });
+        }
+
+        // Destroy only on a CONFIRMED not-exempt read.
+        if (userVm && !cancelExempt.exempt && cancelExempt.verified) {
           // Stamp last_assigned_to and clear telegram fields
           // (releases unique constraint so a future VM can reuse the token)
           await supabase
@@ -1197,6 +1290,9 @@ async function processEvent(event: any) {
               telegram_bot_token: null,
               telegram_bot_username: null,
               telegram_chat_id: null,
+              // (frontier_spend_enabled:false moved OUT of this F1-gated block to
+              //  its own !exempt-gated update above — Finding A. Money permission
+              //  revokes on uncertainty; irreplaceable VM keeps on uncertainty.)
             })
             .eq("id", userVm.id);
 
@@ -1247,7 +1343,7 @@ async function processEvent(event: any) {
           .eq("id", sub.user_id)
           .single();
 
-        if (user?.email) {
+        if (user?.email && !cancelExempt.exempt && cancelExempt.verified) {
           try {
             await sendCanceledEmail(user.email);
           } catch (emailErr) {

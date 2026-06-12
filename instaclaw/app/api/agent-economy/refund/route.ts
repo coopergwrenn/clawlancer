@@ -29,7 +29,8 @@
  *
  * PRD: instaclaw/docs/prd/agent-economy-os-2026-05-12.md §6.7, §9.2, §10.1
  */
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { recordSpendEvent } from "@/lib/frontier-spend-log";
 import { getSupabase } from "@/lib/supabase";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 
@@ -100,6 +101,16 @@ export async function POST(req: NextRequest) {
   }
 
   if (flipped && flipped.length === 1) {
+    // Tier-0 A: this call won the settled→refunded flip — log it once. (The
+    // idempotent-already-refunded return below is NOT logged; the winner records it.)
+    // Best-effort, post-response, never blocks.
+    after(() =>
+      recordSpendEvent(supabase, {
+        decision_point: "refund", vm_id: vmId, owner_id: (vm.assigned_to as string) ?? null,
+        verdict: "refund_queued", reason: reason ? `refund: ${reason}` : "refund",
+        transaction_id: transactionId,
+      }),
+    );
     // We are the single winner — queue the on-chain refund for the worker.
     const { error: queueErr } = await supabase.from("frontier_settlement_retry_queue").insert({
       transaction_id: transactionId,

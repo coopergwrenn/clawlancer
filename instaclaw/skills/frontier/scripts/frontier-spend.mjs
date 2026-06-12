@@ -48,6 +48,7 @@ import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import {
   selectPaymentRequirement, buildAuthorization, buildTransferTypedData, buildXPaymentHeader,
+  nonceForRequest,
   inferCategory, tagsFromResource, newRequestId, supplierSlug, mergeSupplierRecord,
   supplierTrust, serializeSupplierRecord, parseSupplierRecord, renderHiredSpecialist,
   usdcToUsd, USDC_BASE_ADDRESS, CATEGORY_NAMES, selectSupplier, buildSupplierCandidates,
@@ -375,7 +376,10 @@ async function main() {
   try {
     if (!bankrKey || !wallet) throw new Error("bankr_not_configured");
     const authorizationMsg = buildAuthorization({
-      from: wallet, to: payTo, amountAtomic, nonceHex: "0x" + randomBytes(32).toString("hex"),
+      // Deterministic nonce from request_id → on-chain exactly-once on retry
+      // (USDC authorizationState reverts a 2nd submit of the same nonce). See
+      // frontier-spend-core.mjs nonceForRequest. Never randomBytes here.
+      from: wallet, to: payTo, amountAtomic, nonceHex: nonceForRequest(requestId, wallet),
       nowSec: Math.floor(Date.now() / 1000), maxTimeoutSeconds: requirement.maxTimeoutSeconds,
     });
     const typedData = buildTransferTypedData(authorizationMsg, { asset, name: requirement.extra?.name, version: requirement.extra?.version });

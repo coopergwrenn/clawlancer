@@ -1,18 +1,18 @@
-# Changelog — generated 2026-06-07
+# Changelog — generated 2026-06-12
 
-Window: `e13b46ad9bb746c691874875fdceb7de21c8dfc8` → `HEAD` (HEAD = `b16e93c4`)
+Window: `a8e2964efb5778a6b339da21bc9d9fd1b3632219` → `HEAD` (HEAD = `1f3301ca`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: b16e93c467623d6a3bac31b70c9970af2618fce7 -->
+<!-- LAST_GENERATED_SHA: 1f3301ca8137b5dabb97d1b8553956edbcca2869 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `b16e93c4` 2026-06-07 — test(frontier): GAP-4 — lock /economy read-path logic (gate + row→shape mappers) [6 files] _(multi: [infrastructure, feature]; ai-assisted)_
-- `d34b5ed8` 2026-06-07 — chore(changelog): auto-update [skip ci] [2 files]
+- `043a23e0` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `1f3301ca` 2026-06-12 — docs(frontier): PRD reconciliation rulings — hardening registry, living e2e ledger, brake-drills sitting plan, prior-art followups [3 files] _(ai-assisted)_
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `b16e93c4` 2026-06-07 — test(frontier): GAP-4 — lock /economy read-path logic (gate + row→shape mappers) [6 files] _(multi: [infrastructure, feature]; ai-assisted)_
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -43,23 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `d34b5ed8` 2026-06-07 — chore(changelog): auto-update [skip ci] [2 files]
-
-## Multi-category commits (1)
-
-These touch more than one category root and are listed in every applicable section above.
-
-- `b16e93c4` 2026-06-07 — [infrastructure, feature] — test(frontier): GAP-4 — lock /economy read-path logic (gate + row→shape mappers)
+- `043a23e0` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `1f3301ca` 2026-06-12 — docs(frontier): PRD reconciliation rulings — hardening registry, living e2e ledger, brake-drills sitting plan, prior-art followups [3 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `b16e93c4` 2026-06-07 — test(frontier): GAP-4 — lock /economy read-path logic (gate + row→shape mappers)
+- `1f3301ca` 2026-06-12 — docs(frontier): PRD reconciliation rulings — hardening registry, living e2e ledger, brake-drills sitting plan, prior-art followups
 
 ## Appendix — every commit (chronological)
 
-- `d34b5ed8` 2026-06-07 — chore(changelog): auto-update [skip ci] [2 files]
-- `b16e93c4` 2026-06-07 — test(frontier): GAP-4 — lock /economy read-path logic (gate + row→shape mappers) [6 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `043a23e0` 2026-06-11 — chore(changelog): auto-update [skip ci] [2 files]
+- `1f3301ca` 2026-06-12 — docs(frontier): PRD reconciliation rulings — hardening registry, living e2e ledger, brake-drills sitting plan, prior-art followups [3 files] _(ai-assisted)_

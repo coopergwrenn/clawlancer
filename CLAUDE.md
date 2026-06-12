@@ -292,6 +292,23 @@ if (status.isPaying) { /* serve */ }
 
 **Companion lesson (DB drift from Stripe):** `getBillingStatusVerified` queries Stripe API directly. Local DB `instaclaw_subscriptions` can drift (webhook delivery hiccups, race conditions). Trust Stripe over local DB when about to take action a paying customer would notice. The `2026-05-02` Doug Rathell wake bug had a sub showing `current_period_end` 24 days in the past — local DB lied; Stripe said active.
 
+**"Import the SoT or it doesn't ship" — proven SEVEN times in one day (2026-06-10):** every billing-gated path consults the single classifier (`getBillingStatus*` / `classify()` / `billing_exempt`) — NEVER an inline sub / credit / partner / tier check. Across 2026-06-10 the discipline (and the cost of skipping it) surfaced on seven distinct paths, each one a surface that would have mis-gated a paying-or-exempt user on its own hand-rolled logic.
+
+Four where consulting the SoT was load-bearing:
+1. **Free-cap counter** — the daily-message cap reads exemption from the SoT, not a re-derived "is this user free."
+2. **Webhook `customer.subscription.deleted` suspend** — confirms non-paying via the SoT before suspending (credits / partner / all-inclusive can keep a deleted-sub user paying).
+3. **suspend-check Pass 2** — classify before suspend, never inline sub-status.
+4. **Frontier spend gate (red-team F4)** — agent-economy spend authorization gates on the SoT, not a local payment check.
+
+Three MORE found bypassing the SoT by onboarding's parking audit (commits `82be994a` + `59672546`), all writers of the suspend/hibernate state:
+5. **health-check `past_due`→suspend** — suspended on raw payment_status, ignoring the SoT's 7-day grace + credits + partner + all-inclusive.
+6. **health-check no-sub→hibernate** — hibernated on "no active sub" without consulting the SoT; **ran every 2 minutes and re-suspended vm-1075 (the founder VM) ten minutes after a "recovered" report.**
+7. **vm-lifecycle's shared `isUserBillableForVmAssignment` helper** — a second, parallel billing classifier that drifted from the SoT (the exact "reinvented per-call" failure Rule 14 exists to kill).
+
+**The method rule this incident proved (grep the whole class, fix in one pass):** a SoT-bypass fix is NOT complete until **every writer of that state has been grepped and the whole class guarded in one pass.** Patching only the named paths is how a founder VM went down twice in one night — the first fix named 2 suspend/hibernate writers; **5 existed.** When you find one inline billing check, `grep` for every site that writes the same state (suspend / hibernate / freeze / cap) and guard all of them together; a partial fix leaves a 2-minute cron to re-break the customer you just "recovered."
+
+The rule going forward: **any new path that gates on payment/exemption status imports the SoT, or it doesn't ship.** If the classifier is missing a case, add it there (per the Detection note above), then call it — never branch inline, and never stand up a second classifier (item 7). An inline check is the bug regardless of whether it happens to be correct today.
+
 ### 15. Three Sleep States — All Wake Paths Must Handle BOTH `hibernating` AND `suspended`
 
 The codebase has three sleep states for VMs:
@@ -1476,6 +1493,45 @@ Rule: <new R<N> | existing R<N> | none-mapped>.
 | `HighCPU` (>90% for 5m) | `journalctl --user -u openclaw-gateway -n 200` | Runaway tool loop, prompt injection (Rule 25), browser zombie | Restart gateway; investigate prompt context |
 | `HighMemory` (>90% for 5m) | `du -sh ~/.openclaw/sessions/*` | Bloated session (Rule 30 territory) | In-place compact; never archive (Rule 30) |
 | `RestartStorm` (>10/h) | Boot times + journal | Rule 16 / Rule 34 (rollback path) | Address journal cause; do NOT loop fixes |
+
+### Frontier spend incidents (the money rail) — pointer + stop-the-bleeding
+
+For any incident where an agent is spending USDC it shouldn't, a revoke didn't stop a
+spend, a refund didn't land, or the spend rail is denying everything: the full runbook is
+**`instaclaw/docs/runbooks/frontier-spend-ir.md`** — ten scenarios, each with a tested
+detection query, diagnosis branches, exact remediation SQL, and blast radius. (Kept as a
+sibling doc, not inlined here, because it's ~400 lines of incident SQL needed only during a
+specific incident; the entry point lives here so a cold terminal finds it.)
+
+**The one thing to internalize before reading it — the trust ladder:** the spend rail is
+**non-custodial** (the agent signs its own Bankr-wallet payment; we never hold the money).
+So `frontier_spend_events` = what we *decided*, `frontier_transactions` = what the agent
+*told us*, and **only Base mainnet (basescan) = what actually moved.** When the DB is clean
+but money's gone, the agent went around the rail — reconcile against the chain (runbook S3).
+
+**30-second triage:** unexplained spend → S1 (trace) then S3 (chain); kill-switch-on but
+spending → S2; spend on-chain but ledger empty → S3; "[P1] spend rail BLIND" alert → S4;
+revoke didn't interdict → S5; refund stalled → S6; trace empty but money moved → S7
+(the verdict log itself is down); double-charge → S8; coverage invariant fired → S9.
+
+**STOP THE BLEEDING (P0 — engage first, diagnose second).** Decision rule: ≥1 confirmed
+unauthorized spend, or a malicious supplier, or you can't yet tell the blast radius →
+engage. Reversible; when unsure, engage. Read live: `npx tsx instaclaw/scripts/_coverage-frontier.ts`.
+```sql
+-- ENGAGE the frontier spend kill switch (denies EVERY spend, fleet-wide, next call):
+INSERT INTO instaclaw_admin_settings (setting_key, bool_value, notes)
+VALUES ('frontier_spend_kill_switch', true, 'IR: <why> — <who>, <when>')
+ON CONFLICT (setting_key) DO UPDATE SET bool_value = true, updated_at = now(), notes = EXCLUDED.notes;
+-- RELEASE:
+UPDATE instaclaw_admin_settings SET bool_value = false, updated_at = now()
+WHERE setting_key = 'frontier_spend_kill_switch';
+```
+Blast radius of engaging: every `frontier_spend_enabled=true` VM is denied
+(`reason=spend_kill_switch`) until released; does NOT reverse in-flight on-chain payments,
+and does NOT stop hotel bookings — engage `travala_booking_kill_switch` (same upsert/UPDATE
+shape; the row doesn't exist in prod yet so engage *creates* it) if hotels are the vector.
+The kill switch is non-custodial-blind too: it stops the authorize path, not an agent
+bypassing the rail — for that, freeze the VM (stop its gateway). Full detail: the runbook.
 
 ### Anti-patterns — never do these
 
@@ -4183,7 +4239,136 @@ Any PR that adds or changes a tracked component but doesn't touch the tracking d
 - **Rule 27** (coverage queries): build the visibility before you need it; same spirit — keep the source of truth current, not reconstructed under pressure.
 - **Rule 56** (a migration file is a *promise* about prod reality): docs and files must faithfully describe the real state, not an aspiration.
 
-### Rule 73 — Shared core libs are NEVER copy-targets across branches; cherry-pick the diff onto current main
+### Rule 73 — Cross-terminal dependency probes assert the DECISION, not just validation
+
+When you probe another terminal's surface (an API, a gate, a category, a policy) to confirm a dependency is ready, the probe MUST assert the **decision** — the real outcome and its reason for a realistic input — never merely that the request validated or returned 200. A 200 means "the request was well-formed," NOT "the thing I depend on will actually allow / deny / route correctly." Reading a validation pass as a decision is how a half-broken dependency reads as done.
+
+**The incident (2026-06-10):** a category probe read "category validates (200)" as done, and the consumer treated the dependency as shipped — while every real booking through that category **hard-denied**. The 200 was schema validation; the decision (allow vs deny) was the opposite of what the probe implied. The ceiling probe and the frontier F2 probe are the correct pattern (they assert outcome + reason on a real value); the category probe is the named anti-pattern.
+
+**Mandatory pattern:** a dependency probe sends a realistic value and asserts the returned **decision + reason** (e.g., `allow=true reason=within_ceiling`, or `denied reason=session_required`), not the HTTP status. If you can't see the decision in the probe output, you have not verified the dependency.
+
+**Banned:** treating 200 / "validates" / "parses" as proof a gate will permit (or deny) the real case; "the endpoint is up" as a stand-in for "the endpoint decides correctly."
+
+**Detection:** any "X is ready / shipped" claim backed only by a status code or a validation pass, with no quoted decision+reason on a realistic input, is a Rule 73 violation.
+
+### Rule 74 — Multi-part specs: announce each load-bearing part as shipped / not, verify each against code
+
+When a spec has more than one load-bearing part (category + ceiling; suppress + dedup; render + deliver), a "shipped" announcement MUST enumerate **each part** explicitly as shipped or not-shipped. The consumer of that announcement verifies **each part against the shipped code**, never against the announcement.
+
+**The incident (2026-06-10):** half-shipped specs read as complete because the announcement said "done" while only one of two load-bearing parts had actually landed. The reader trusted the summary; the missing part silently failed in production until someone read the code.
+
+**Mandatory pattern:** ship announcements for multi-part specs carry a per-part checklist (`category: shipped`, `ceiling: NOT shipped — follow-up`). The consumer confirms each part by reading the code / commit, not the announcement. If you can't enumerate the parts, you don't yet understand the spec well enough to call it shipped.
+
+**Banned:** a single "shipped ✅" for a multi-part spec; consuming a dependency off an announcement without per-part code verification.
+
+**Detection:** if a spec names ≥2 load-bearing parts and the ship note doesn't list each with a shipped/not marker, the note is incomplete — read the code for each part before depending on it. Pairs with Rule 73 (verify the decision, not the claim).
+
+### Rule 75 — Webhook delivery to a user claims delivery via atomic CAS before sending
+
+Any webhook (or job) that **delivers** an artifact to a user MUST claim the delivery via an atomic compare-and-swap keyed on the **render / request id** BEFORE the outbound send. Delivery dedup is a **separate concern** from settle / payment dedup — both are required, and one does not cover the other. A retry that re-enters the handler after a successful send must lose the CAS and skip the re-send.
+
+**The incident (2026-06-10):** double-deliveries because the only idempotency guard was on settlement, not on the user-visible delivery. A webhook retry re-sent the artifact even though the payment had already settled exactly once.
+
+**Mandatory pattern:** `CAS(delivered_at = now() WHERE render_id = ? AND delivered_at IS NULL)` — only send if the CAS won the row. Keep settle-dedup and delivery-dedup as distinct guards on distinct keys (settlement id vs render/request id). Claim before send, never after.
+
+**Banned:** relying on settle / payment idempotency to prevent double-delivery; sending before claiming; sharing one idempotency key across both concerns.
+
+**Detection:** any user-delivering webhook whose only dedup is on the settlement/payment key is a Rule 75 gap. The fail-open exception on the claim RPC itself is governed by Rule 77.
+
+### Rule 76 — Webhook delivery branches on model KIND from the registry; never assume the asset type
+
+A delivery path that handles outputs from multiple models MUST branch on the **model kind read from the registry** (image vs video vs audio) to choose the send method, container, and mime — never ship an asset under an assumed type.
+
+**The incident (2026-06-10):** an image asset was delivered as an `.mp4` because the delivery path assumed the lane's output was video. The registry knows each model's output kind; the code didn't consult it and mislabeled the artifact.
+
+**Mandatory pattern:** look up `model.kind` (or the registry's declared output type) and switch delivery (mime, container, send API, filename extension) on it. Default-deny / loud-error on an unknown kind — never guess.
+
+**Banned:** hardcoding the asset type or extension in a multi-model delivery path; "it's the video lane so it must be mp4"; inferring kind from the lane name instead of the registry.
+
+**Detection:** any delivery path that emits a fixed container/extension while serving more than one model is a Rule 76 candidate — confirm it reads kind from the registry.
+
+### Rule 77 — Fail loud over silent fallback; the ONE sanctioned fail-open is the delivery-claim RPC
+
+The default posture is **fail-loud**: when an operation can't do the right thing, surface the error — never silently fall back to a degraded path that hides the failure. (Companion to Rule 10's "no `|| true`" and Rule 39's critical-vs-optional classification.)
+
+**The one sanctioned exception — fail-OPEN on the delivery-claim CAS RPC (Rule 75):** if the delivery-claim RPC itself *errors* (an actual RPC/transport failure — NOT a clean "already claimed" result), proceed with the send. Rationale: a **rare duplicate clip beats a dropped clip** — the user-visible cost of an occasional double-send is far lower than silently swallowing a paid render when the dedup store is briefly unreachable. This is the only place fail-open is correct, and it MUST be documented inline with this exact reasoning wherever it appears.
+
+**Banned:** silent fallback anywhere else; fail-open without the documented reasoning; citing this exception as precedent for any other "just continue on error" path. A clean "already claimed" is still a hard skip — only RPC *failure* fails open.
+
+**Detection:** any `catch { /* continue */ }` (or equivalent swallow-and-proceed) that isn't the delivery-claim RPC — with the documented duplicate-beats-dropped reasoning — is a Rule 77 violation.
+
+### Rule 78 — Backend gateway calls pin their session explicitly; nonce harness at every OpenClaw upgrade
+
+Any backend code that POSTs to a VM gateway's OpenAI-compat endpoint (`/v1/chat/completions`, `/v1/responses`) and expects multi-turn memory MUST send an explicit, stable session identity — `body.user` (→ session key `agent:main:openai-user:<user>`) or header `x-openclaw-session-key` (used verbatim). Default / implicit session keying is **undefined, version-dependent gateway behavior** and MUST NOT be relied on.
+
+**The incident (INC-20260610, fix a993ce25):** `forwardInboundToVm` (the iMessage / telegram-shared-bot relay) sent only the new message with no `user`/session key. OpenClaw **2026.4.26** happened to route two sequential calls to one session (verified vm-1028, 2026-05-27), but the **2026.5.22** upgrade changed `resolveSessionKey` to mint `openai:${randomUUID()}` per request when no `user` is supplied → every inbound message became a fresh context-free session = total per-message amnesia (agent saw only "webchat" sessions; MEMORY.md never populated). The relay relied on undefined behavior and the upgrade changed it under us — a Rule-65-class regression. The web dashboard (`chat/send`) is exempt by a *different valid design*: it replays the full `messages[]` history every call, so the gateway session is irrelevant.
+
+**Mandatory patterns:**
+1. A stateful relay (sends only the new message, relies on the gateway to restore history) MUST pin `user` or `x-openclaw-session-key`. A history-replay path (full `messages[]` every call) is exempt. Also send `x-openclaw-message-channel: <channel>` so the session is labeled correctly, not the default "webchat."
+2. **Nonce harness is a required canary gate at every OpenClaw upgrade, before fleet rollout.** Against the canary gateway, in the relay's exact request shape (no body history): (a) call 1 plants a nonce, a *separate* call 2 must recall it; (b) confirm the session landed in `agent:main:openai-user:<user>`, not `openai:<uuid>`; (c) rapid-fire two concurrent same-session requests — both must 200 and serialize cleanly (no `EmbeddedAttemptSessionTakeoverError`, no interleave). Any failure HALTS the upgrade — session-keying or concurrency semantics changed upstream.
+
+**Banned:** a stateful relay with no `user` / `x-openclaw-session-key`; trusting default gateway session keying across versions; rolling an OpenClaw upgrade to fleet without running the nonce harness on the canary first.
+
+**Detection:** grep the backend for gateway `/v1/chat/completions` (and `/v1/responses`) fetches; each must carry `user` or `x-openclaw-session-key`, or replay full history like `chat/send`. Full incident: `instaclaw/docs/incidents/2026-06-10-imessage-session-amnesia-INC-20260610.md`.
+
+### Rule 79 — Consent-always categories are unforgeable by construction
+
+Session-grade / consent-always categories live in a fixed set (`SESSION_REQUIRED_CATEGORIES`) that **never honors the forgeable boolean**, independent of any global flag flip. The protection is structural — membership in the set — not a runtime check that a forged payload or a mis-set global flag can bypass.
+
+**The incident (red-team, 2026-06-10):** a high-value category's protection hinged on a forgeable bool / a global flag the red-team could flip. The fix made membership in `SESSION_REQUIRED_CATEGORIES` the gate, which by construction ignores the bool — so no flip, forge, or global flag can downgrade it.
+
+**Mandatory pattern:** any new high-value category joins `SESSION_REQUIRED_CATEGORIES` **at creation**, not after a red-team finds the gap. The set is the gate; the forgeable bool is, at most, advisory for non-session categories and is never the thing protecting a high-value path.
+
+**Banned:** gating a high-value category on a forgeable bool or a global flag; adding the category first and "hardening it later"; protection that any single flag flip can remove.
+
+**Detection:** for each high-value category, confirm it is a member of `SESSION_REQUIRED_CATEGORIES` and that its protection does not depend on a bool/flag an attacker could set. If it does, that's a Rule 79 violation.
+
+### Rule 80 — Quality / parity bars come from records, not memory
+
+When replacing or deprecating a lane (a model, a provider, a feature), the parity bar is **what the old lane ACTUALLY served — quoted from transaction / render records** — not what anyone remembers it serving. Memory inflates or deflates; the records are ground truth.
+
+**The incident (2026-06-10, kling-vs-seedance):** a lane replacement was sized against a *remembered* quality bar. The transaction records showed the old lane had actually been serving something different, so the parity target was wrong until the records were pulled and quoted.
+
+**Mandatory pattern:** before swapping a lane, query the records for what it actually delivered (model, resolution, duration, success rate, cost) and set parity against that quoted data. Put the quoted numbers in the PRD / decision so the bar is auditable.
+
+**Banned:** "the old lane did X" from memory as the parity bar; sizing a replacement without quoting the prior lane's real output from records.
+
+**Detection:** any lane-replacement decision whose parity target isn't backed by quoted record data is a Rule 80 gap — pull the records before committing the swap.
+
+### Rule 81 — Defaults are chosen, not inherited
+
+Every user-facing default (model, tier, quality, provider, route) gets an **explicit ruling with the cost table in front of you**. A default is a decision someone makes on purpose — not whatever the cheapest, first, or alphabetically-earliest option happens to be.
+
+**The incident (2026-06-10):** the cheapest model was the default because nobody had decided otherwise — an inherited default no one actually chose, with real cost / quality consequences on every user-facing turn.
+
+**Mandatory pattern:** when a default exists or is introduced, put the options plus a cost / quality table in front of you and make an explicit ruling, and record it (PRD, comment, or rule). "It defaulted to the cheapest / first" is not a decision.
+
+**Banned:** shipping a user-facing default by inheritance or accident; "that's just what it was set to" as justification for a default.
+
+**Detection:** for each user-facing default, there should be a recorded ruling with the cost/quality tradeoff. If the only reason it's the default is "inherited," revisit it with the cost table.
+
+### Rule 82 — Fix the whole CLASS, not the instance: grep every producer + consumer, and re-audit from deployed state before declaring "done"
+
+When you find a primitive that returns a billing / exemption / protection / safety signal consumed by a destructive or state-advancing path and it has the wrong fail behavior (fails OPEN — error/uncertainty lets the destructive action proceed), the bug is almost never one function. It is a CLASS. Fixing only the instance in front of you and declaring the class closed is the single most repeated mistake — it produces a parade of "found another one" after every "done."
+
+**The 2026-06-10/11 chain (the proof):** the vm-1075 P0 (a billing_exempt founder VM suspended on cancel) was "fixed" by guarding 2 suspend paths. A self-audit then found the same fail-open on the 30-day reclaim + Pass-6 wipe (F2/F3, irreversible). Those "closed the class." A harder audit found the same shape in two SIBLING primitives gating freeze/reclaim (`isUserBillableForVmAssignment`, `fetchBillingExemptUserIds`). Those "closed the class." A final adversarial audit from deployed main found a FOURTH (`getBillingStatusVerified`'s `verified` discarded → irreversible wipes) plus a cross-lane composition hole (a sibling lane's `frontier_spend_enabled:false` entangled inside the fail-closed guard). **Ten fixes; four found by auditing past "done."** Every premature "closed" was sincere and wrong.
+
+**Mandatory pattern:**
+
+1. **Grep every PRODUCER.** `grep` the codebase for every function returning the signal (every fn whose return feeds an `if` that suspends/hibernates/wipes/reclaims/freezes/revokes/transitions). Enumerate them ALL with their fail-on-error behavior in a table. The list comes back "all verified fail-closed, with evidence per entry" or you found the next one — both are wins; only the first is done.
+2. **Grep every CONSUMER, and check POLARITY at each call site before flipping.** The same primitive is consumed by gates of OPPOSITE polarity: `if (!signal) destroy` (fail-open if signal-false-on-error) vs `if (signal) skip-constructive` (already fail-closed; flipping it BREAKS it — it would provision/configure on a blip). Quote the gate at each site; flip only the destructive-direction ones. Assuming uniform shape is how polarity bugs ship (the 2026-06-11 `isUserBillableForVmAssignment` had 1 destructive caller among 5; flipping all 5 would have provisioned non-payers on a blip).
+3. **Distinguish the three return states** — clean-positive, clean-negative (genuinely-not-protected → proceed), and UNVERIFIABLE (error/exception → fail-closed). Collapsing error into clean-negative IS the bug. Use a `verified` signal (e.g. `{exempt, verified}`, `{ids, verified}`, `{billable, verified}`) when one primitive serves both a GRANT-side consumer (wants signal-false-on-error, no false grant) and a DESTROY-side consumer (wants skip-on-unverifiable) — the two need the same fail-closed PRINCIPLE in OPPOSITE VALUES, which one boolean can't express. Threading `verified` onto the shared status object (so every current AND future destructive consumer is covered) beats per-consumer patches that let the class silently re-open.
+4. **Assets in one write can fail-closed in OPPOSITE directions.** Irreplaceable data (a VM, a session, memory) → keep on uncertainty. A re-grantable permission (spend authority, a token) → revoke on uncertainty (cheap to restore, expensive to wrongly retain). When a block mutates both, split it so each asset is gated in its own direction. (Finding A: `frontier_spend_enabled:false` had to leave the VM-keep guard and revoke on `!confirmed-exempt`.)
+5. **The fix isn't done until you've re-audited from DEPLOYED state.** Re-derive from `origin/main` + the live DB + a live probe — never re-read your own report and call it verified. The end-of-day adversarial audit (hostile re-trace of the full day's diffs as if reviewing a stranger's PR, an interaction trace of overlapping files, and this grep-the-class sweep) is proven practice: it earned its commission three times in one day.
+
+**Banned:**
+- Declaring a fail-open / SoT-bypass class "closed" after patching the instance that surfaced it, without the producer+consumer grep.
+- Flipping a primitive's fail direction without checking polarity at every call site.
+- "Proven" for a fix whose destroy-direction was only checked by construction/tsc and never observed executing on a real candidate — say "proven-by-construction" and carry it as a known assumption.
+- Trusting your own prior report as evidence of deployed state.
+
+**Detection:** any PR fixing a fail-open on a destructive path must include (a) the producer table with per-fn fail behavior, (b) the consumer/polarity list, (c) a `verified`-style three-state return where a primitive is dual-role, (d) a re-audit-from-deployed step. If it patches one call site and stops, it's a Rule 82 violation — the class is still open.
+### Rule 83 — Shared core libs are NEVER copy-targets across branches; cherry-pick the diff onto current main
 
 Any source file that more than one lane/branch touches — `lib/telegram.ts`, `lib/billing-status.ts`, `lib/vm-reconcile.ts`, `lib/ssh.ts`, `lib/vm-manifest.ts`, `package.json`, `CLAUDE.md`, and any other widely-shared core lib — is **NEVER** the target of a wholesale file copy from a feature branch. `git checkout <branch> -- <shared-file>` (and `git restore --source=<branch> <shared-file>`, `cp` from another worktree, etc.) overwrite the CURRENT main version with whatever STALE snapshot the branch forked from — silently reverting every other lane's intervening changes to that file. To bring a shared-file change from a branch onto main, you **cherry-pick the DIFF** (the specific hunks your lane added) onto main's current version: a 3-way merge / `git cherry-pick`, an explicit `git diff <base>..<branch> -- <file> | git apply`, or a hand-applied Edit of just your hunks. Never the whole file.
 
@@ -4213,10 +4398,10 @@ Any merge/PR that modifies a shared core lib must show, in its description or co
 
 #### Related rules
 
-- **Rule 74** (directly-captured tsc gate): the clobber above shipped because the push gate read a script's printed conclusion instead of a real tsc exit code. The two rules are the paired halves of "merge a shared file safely."
+- **Rule 84** (directly-captured tsc gate): the clobber above shipped because the push gate read a script's printed conclusion instead of a real tsc exit code. The two rules are the paired halves of "merge a shared file safely."
 - **Rule 23** (lying-DB / stale-cache): same root shape — acting on a stale snapshot of shared state instead of current ground truth.
 
-### Rule 74 — Every push gates on a directly-captured `tsc` exit code, never a script's printed conclusion
+### Rule 84 — Every push gates on a directly-captured `tsc` exit code, never a script's printed conclusion
 
 Before any `git push` of TypeScript changes, the build gate MUST be a `tsc` exit code captured DIRECTLY into a variable with `$?` read IMMEDIATELY after the command, with NO pipe between `tsc` and the capture. The decision to push is made on that integer, never on a string a script printed, never on the tail of piped output, never on a human-read "looks clean."
 
@@ -4267,9 +4452,8 @@ Any batched merge/push script must contain a literal `EXIT=$?` (or equivalent) o
 
 #### Related rules
 
-- **Rule 73** (shared-file clobber ban): the paired half — the 2026-06-11 telegram.ts clobber reached main because this gate read a printed conclusion instead of a real exit code.
+- **Rule 83** (shared-file clobber ban): the paired half — the 2026-06-11 telegram.ts clobber reached main because this gate read a printed conclusion instead of a real exit code.
 - **Rule 10** (verify every config set; no `|| true`): same discipline — read ground truth (re-read the value / the exit integer), never "we tried" or "it printed OK."
-
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.

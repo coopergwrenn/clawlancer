@@ -43,6 +43,7 @@ export async function GET() {
       telegram_bot_username: string | null;
       configure_attempts: number | null;
       default_model: string | null;
+      pinned_model: string | null;
       api_mode: string | null;
       system_prompt: string | null;
       channels_enabled: string[] | null;
@@ -58,7 +59,7 @@ export async function GET() {
       created_via: string | null;
     }>(supabase, session.user.id, {
       columns:
-        "id, ip_address, gateway_url, control_ui_url, gateway_token, status, health_status, last_health_check, assigned_at, telegram_bot_username, configure_attempts, default_model, api_mode, system_prompt, channels_enabled, discord_bot_token, brave_api_key, agdp_enabled, bankr_wallet_id, bankr_evm_address, bankr_token_address, bankr_token_symbol, bankr_token_image_url, tokenization_platform, created_via",
+        "id, ip_address, gateway_url, control_ui_url, gateway_token, status, health_status, last_health_check, assigned_at, telegram_bot_username, configure_attempts, default_model, pinned_model, api_mode, system_prompt, channels_enabled, discord_bot_token, brave_api_key, agdp_enabled, bankr_wallet_id, bankr_evm_address, bankr_token_address, bankr_token_symbol, bankr_token_image_url, tokenization_platform, created_via",
     });
 
     if (vm) {
@@ -217,6 +218,7 @@ export async function GET() {
           telegramBotUsername: vm.telegram_bot_username,
           configureAttempts: vm.configure_attempts ?? 0,
           model: vm.default_model ?? null,
+          pinnedModel: vm.pinned_model ?? null,
           apiMode: vm.api_mode ?? null,
           systemPrompt: vm.system_prompt ?? null,
           channelsEnabled: vm.channels_enabled ?? ["telegram"],

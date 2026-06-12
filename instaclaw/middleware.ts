@@ -48,6 +48,7 @@ export default auth((req) => {
   const selfAuthAPIs = [
     "/api/auth",
     "/api/x402/facilitator", // x402 facilitator proxy — own auth via X-X402-Proxy-Secret header; relays verify/settle to CDP facilitator with CDP creds held backend-side (VMs never hold CDP_API_KEY_SECRET)
+    "/api/travala", // Travala booking bridge — own auth via Authorization: Bearer or X-Gateway-Token (gateway token → vm row). Backend mints the Travala mcp:book OAuth token (TRAVALA_OAUTH_CLIENT_SECRET held backend-side; VMs never hold it) and returns the 402 next_action to the VM, which signs+pays with its Bankr wallet. book-quote is fail-closed gated on travala_booking_enabled + the global kill switch. See app/api/travala/[op]/route.ts.
     "/api/billing/webhook",
     "/api/cron",
     "/api/vm/configure",
@@ -115,7 +116,9 @@ export default auth((req) => {
     "/api/agent-economy/refund", // Authorization: Bearer or X-Gateway-Token (seller VM refunds a buyer). Atomic settled→refunded compare-and-set prevents double-refund; queues an on-chain refund for the worker (no funds move in-API). See app/api/agent-economy/refund/route.ts.
     "/api/agent-economy/authorize", // Authorization: Bearer or X-Gateway-Token (Frontier spend gate). vm_id from token never body. Reads the VM's track record → earned budget → policy → decision; reserves an authorized spend as a pending hold (idempotent on (vm_id, request_id)). No value moves — the wallet/chain is the financial backstop. See app/api/agent-economy/authorize/route.ts.
     "/api/agent-economy/settle", // Authorization: Bearer or X-Gateway-Token (Frontier spend settle — closes the feedback loop). vm_id from token. Atomic pending→settled|failed compare-and-set; records tx_hash (claim) + result_used (§7.3.2). Amount immutable from authorize. See app/api/agent-economy/settle/route.ts.
+    "/api/agent-economy/settings", // Authorization: Bearer or X-Gateway-Token (agent-facing economy-settings write path). vm_id from token never body. STRUCTURALLY tighten-only: every field is combined monotonic-toward-safe against current effective (lib/frontier-settings-monotonic); loosenings apply to nothing and route to the session-authed dashboard. ON is dashboard-only. See app/api/agent-economy/settings/route.ts.
     "/api/agent/toolrouter/record-usage", // Authorization: Bearer or X-Gateway-Token (K.4 wrapper reports a ToolRouter tool call from each VM). vm_id + user_id resolved from token, NEVER body. Idempotent on trace_id via consume RPC. See app/api/agent/toolrouter/record-usage/route.ts.
+    "/api/agent-economy/revoke-spend", // HMAC token auth (signed over vm_id with NEXTAUTH_SECRET; verifyRevokeToken). One-tap revoke link from the forgeable-spend detection notification; DISABLES frontier_spend_enabled (fail-safe direction). Not session-authed by design — disabling spend is safe; the HMAC makes the link unforgeable by the agent. See app/api/agent-economy/revoke-spend/route.ts.
     "/api/webhook/index-encounter", // X-Index-Signature HMAC-SHA256 auth (Index Network opportunity.accepted webhook → matchpool_outcomes INSERT)
   ];
 

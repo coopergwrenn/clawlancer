@@ -47,6 +47,7 @@
 
 import { logger } from "./logger";
 import { verifyToolRouterApiKey } from "./toolrouter-client";
+import { mintTravalaToken } from "./travala-mcp";
 
 const PROBE_TIMEOUT_MS = 10_000;
 
@@ -452,6 +453,68 @@ async function verifyBankrPartnerKey(value: string): Promise<VerifierResult> {
   return { ok: true, status: "ok" };
 }
 
+/**
+ * TRAVALA_OAUTH_CLIENT_SECRET — the confidential OAuth client secret for the
+ * Travala booking MCP (client_credentials grant). Pairs with
+ * TRAVALA_OAUTH_CLIENT_ID. The secret is NON-EXPIRING (Travala issues
+ * `client_secret_expires_at:0`), so rotation is a deliberate operator action —
+ * see the rotation runbook below.
+ *
+ * Verify = shape check (opaque, non-empty, no whitespace — Rule 6 trailing-\n
+ * corruption is the classic failure) + a LIVE client_credentials mint smoke
+ * test (expect a 200 Bearer scoped mcp:book). The mint reads the client_id from
+ * env and the secret under test as the override, so this proves the
+ * (client_id, secret) pair actually works against Travala right now.
+ *
+ * ROTATION (the secret can't be deleted — Travala issued no RFC 7592 mgmt
+ * token; the procedure executed 2026-06-10 is the reference):
+ *   1. Register a fresh DCR client at https://travel-mcp.travala.com/oauth/register
+ *      (scopes mcp:read mcp:book, contacts help@instaclaw.io).
+ *   2. printf '<new_secret>' | npx vercel env add TRAVALA_OAUTH_CLIENT_SECRET production
+ *      printf '<new_client_id>' | npx vercel env add TRAVALA_OAUTH_CLIENT_ID production
+ *      (Rule 6 — printf, never echo/<<<, both append a corrupting newline.)
+ *   3. Re-add the PREVIEW env vars too (the P0 CLI add didn't take for preview).
+ *   4. npx tsx scripts/_verify-partner-secrets.ts → confirm TRAVALA_* reports ok.
+ *   5. Redeploy so the new value reaches prod. The old client is orphaned-inert.
+ */
+async function verifyTravalaOAuthClientSecret(value: string): Promise<VerifierResult> {
+  if (!value) return { ok: false, status: "not_configured" };
+  if (/\s/.test(value) || value.length < 16) {
+    return {
+      ok: false,
+      status: "shape_invalid",
+      error:
+        "TRAVALA_OAUTH_CLIENT_SECRET must be an opaque ≥16-char string with no " +
+        "whitespace (a trailing newline from echo/<<< is the usual culprit — Rule 6).",
+    };
+  }
+  if (!process.env.TRAVALA_OAUTH_CLIENT_ID) {
+    return {
+      ok: false,
+      status: "shape_invalid",
+      error: "TRAVALA_OAUTH_CLIENT_ID is not set — the secret can't be verified without its client_id pair.",
+    };
+  }
+  // Live smoke test: mint a token with this exact secret. mintTravalaToken maps
+  // transport/auth failures to a parallel vocabulary; translate to VerifierStatus.
+  const r = await mintTravalaToken("mcp:read mcp:book", value);
+  if (r.ok && r.access_token) {
+    return { ok: true, status: "ok", http_code: r.http_code };
+  }
+  switch (r.status) {
+    case "auth_failed":
+      return { ok: false, status: "auth_failed", http_code: r.http_code, body_prefix: r.error };
+    case "endpoint_5xx":
+      return { ok: false, status: "endpoint_5xx", http_code: r.http_code };
+    case "not_configured":
+      return { ok: false, status: "not_configured" };
+    case "unreachable":
+      return { ok: false, status: "unreachable", error: r.error };
+    default:
+      return { ok: false, status: "endpoint_other", http_code: r.http_code, body_prefix: r.error };
+  }
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Registry
 // ────────────────────────────────────────────────────────────────────────────
@@ -507,6 +570,11 @@ export const SECRET_VERIFIERS: SecretVerifier[] = [
     envKey: "TOOLROUTER_API_KEY",
     label: "ToolRouter platform API key (shape + /health + /v1/endpoints smoke test)",
     verify: verifyToolRouterApiKey,
+  },
+  {
+    envKey: "TRAVALA_OAUTH_CLIENT_SECRET",
+    label: "Travala booking OAuth client secret (shape + live client_credentials mcp:book mint)",
+    verify: verifyTravalaOAuthClientSecret,
   },
 ];
 

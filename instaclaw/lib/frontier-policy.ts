@@ -43,11 +43,18 @@ export interface TierBands {
   minWalletBalance: number;
 }
 
-/** Defaults straight from PRD §6.6. Non-staker. */
+/**
+ * Defaults from PRD §6.6 (non-staker), EXCEPT minWalletBalance — flattened to a
+ * flat $0.10 dust floor across all tiers (Slice B #2a, 2026-06-09). The wallet
+ * reserve is now a true dust floor; the §16.5 low-balance warning (a live,
+ * floor-relative Slice-A nudge — "about a day of spending left") is the runway
+ * protection, replacing the old hard $2/$10/$25 stop. Fleet-wide on deploy, not
+ * opt-in; benign direction (agent can spend nearer to empty) and reversible.
+ */
 export const DEFAULT_BANDS_BY_TIER: Record<FrontierTier, TierBands> = {
-  starter: { justDoItPerTx: 1, justDoItPerDay: 5, neverPerTx: 10, neverPerDay: 25, minWalletBalance: 2 },
-  pro: { justDoItPerTx: 5, justDoItPerDay: 25, neverPerTx: 50, neverPerDay: 200, minWalletBalance: 10 },
-  power: { justDoItPerTx: 20, justDoItPerDay: 100, neverPerTx: 200, neverPerDay: 1000, minWalletBalance: 25 },
+  starter: { justDoItPerTx: 1, justDoItPerDay: 5, neverPerTx: 10, neverPerDay: 25, minWalletBalance: 0.1 },
+  pro: { justDoItPerTx: 5, justDoItPerDay: 25, neverPerTx: 50, neverPerDay: 200, minWalletBalance: 0.1 },
+  power: { justDoItPerTx: 20, justDoItPerDay: 100, neverPerTx: 200, neverPerDay: 1000, minWalletBalance: 0.1 },
 };
 
 /** Stakers get 2x ceilings (caps), floor unchanged. */
@@ -57,23 +64,42 @@ const STAKER_CEILING_MULTIPLIER = 2;
 export type PolicyOverrides = Partial<Record<keyof TierBands, number>>;
 
 /**
- * Apply user overrides to a band set, TIGHTEN-ONLY. The dashboard can make an
- * agent more conservative than its paid bands, never more aggressive — ceilings
- * can only go DOWN, the wallet floor can only go UP. Loosening beyond the tier
- * (×staker) is gated behind tier/staking, not a free override. Invalid override
- * values (negative / non-finite / absent) silently fall back to the base (the
- * agent never ends up LESS safe because of a bad override).
+ * Apply user overrides to a band set. Direction by band:
+ *   - neverPerTx / neverPerDay (hard ceilings): TIGHTEN-ONLY (can only go DOWN).
+ *   - justDoItPerDay (the no-ask DAILY band): TIGHTEN-ONLY (can only go DOWN).
+ *   - justDoItPerTx (the per-tx no-ask line): USER-RAISABLE up to the hard per-tx
+ *     ceiling neverPerTx (Slice-B §5 ceiling reversal: "grant a ceiling, the agent
+ *     earns toward it"). Raising it widens only WILLINGNESS; the earned daily budget
+ *     (decideAuthorization gate 2c) is the real bound, so a high ceiling on a
+ *     low-earned agent still ASKS.
+ *   - minWalletBalance (the wallet reserve floor): USER-LOWERABLE down to 0 ("spend
+ *     it all") and raisable above the tier default, clamped to >= 0 via Math.max(0, ..)
+ *     so the EFFECTIVE floor is never negative (Slice-B #2b floor reversal). A
+ *     non-negative effective floor is load-bearing for evaluateSpend's would_drain
+ *     guard and frontier-headroom's walletHeadroom, both of which subtract it from
+ *     the balance.
+ * Invalid override values (negative / non-finite) fall back to the base via at()
+ * BEFORE the floor clamp, so a corrupt negative minWalletBalance fails SAFE to the
+ * tier default reserve (NOT to 0); absent overrides also fall back to base. The agent
+ * never ends up LESS safe because of a bad override.
  */
 export function clampOverrides(base: TierBands, ov: PolicyOverrides): TierBands {
   const at = (v: number | undefined, fallback: number): number =>
     typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : fallback;
   const neverPerTx = Math.min(base.neverPerTx, at(ov.neverPerTx, base.neverPerTx));
   const neverPerDay = Math.min(base.neverPerDay, at(ov.neverPerDay, base.neverPerDay));
-  const minWalletBalance = Math.max(base.minWalletBalance, at(ov.minWalletBalance, base.minWalletBalance));
-  // Re-coerce coherence: clamping a hard ceiling below the just-do-it band would
-  // leave just_do_it > never (auto-approve above the deny line). just_do_it must
-  // never exceed the hard ceiling.
-  const justDoItPerTx = Math.min(base.justDoItPerTx, at(ov.justDoItPerTx, base.justDoItPerTx), neverPerTx);
+  // Slice-B #2b: floor reversal. Math.max(0, ..) not Math.max(base, ..) so the user may
+  // lower the reserve to 0 ("spend it all"); at() still maps negative/non-finite to base
+  // (fail-safe), and the 0-floor keeps the effective reserve non-negative for the
+  // would_drain guard (evaluateSpend) and walletHeadroom (frontier-headroom).
+  const minWalletBalance = Math.max(0, at(ov.minWalletBalance, base.minWalletBalance));
+  // justDoItPerTx (the per-tx no-ask line) is USER-RAISABLE up to neverPerTx (§5
+  // ceiling reversal) — the `base` cap is intentionally ABSENT so an override may
+  // exceed the tier default. Math.min(neverPerTx, …) keeps it ≤ the hard per-tx
+  // ceiling, so just_do_it can never exceed the deny line (neverPerTx). It is safe to
+  // raise because the earned-budget gate (decideAuthorization 2c), which reads
+  // justDoItPerDay — NOT justDoItPerTx — is the binding autonomous-spend limit.
+  const justDoItPerTx = Math.min(neverPerTx, at(ov.justDoItPerTx, base.justDoItPerTx));
   const justDoItPerDay = Math.min(base.justDoItPerDay, at(ov.justDoItPerDay, base.justDoItPerDay), neverPerDay);
   return { justDoItPerTx, justDoItPerDay, neverPerTx, neverPerDay, minWalletBalance };
 }
@@ -139,6 +165,44 @@ export function effectiveBands(
   return overrides ? clampOverrides(staked, overrides) : staked;
 }
 
+// ── Category-scoped band layer: travel (ToolRouter StableTravel — §6) ──────────
+//
+// Real travel bookings (hotels, flights) exceed every tier's neverPerTx ($50 pro /
+// $200 power), which is a Gate-1 HARD DENY that human approval cannot override. So
+// the travel category needs its OWN ceiling, RAISED over the tier:
+//   - neverPerTx  $1200,  neverPerDay  $3000   (the raise — real bookings fit)
+//   - justDoItPerTx = justDoItPerDay = 0       (LOAD-BEARING: every travel booking
+//     goes through ask_first → human approval, NEVER autonomous; consent-always)
+//
+// Safety invariants (proven in scripts/_test-frontier-categories.ts):
+//   (a) RAISE layered over tier, NOT a loosening of tier bands — non-travel spends
+//       use the tier effectiveBands unchanged (the selection below keys on category).
+//   (b) Tighten-only with a hard cap: a user's neverPerTx/neverPerDay override clamps
+//       travel DOWN (a user's explicit per-tx hard ceiling binds travel too — no
+//       surprising allow), and min(TRAVEL_MAX, …) means an override can NEVER raise
+//       travel above $1200/$3000.
+//   (c) justDoItPerTx is hardcoded 0 and NEVER read from the override — justDoItPerTx
+//       is the one user-RAISABLE band (clampOverrides), so reading it here would let a
+//       raised-jdt override re-enable autonomous travel. It must not.
+// The wallet reserve floor (minWalletBalance) is inherited from the tier bands so the
+// drain guard + any reserve override still apply. The staker 2x multiplier is NOT
+// applied — the travel caps are absolute.
+export const TRAVEL_MAX_PER_TX = 1200;
+export const TRAVEL_MAX_PER_DAY = 3000;
+
+function travelBands(tierBands: TierBands, overrides?: PolicyOverrides | null): TierBands {
+  const at = (v: number | undefined, fallback: number): number =>
+    typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : fallback;
+  const ov = overrides ?? {};
+  return {
+    justDoItPerTx: 0, // (c) load-bearing — every travel spend → ask_first, never autonomous
+    justDoItPerDay: 0,
+    neverPerTx: Math.min(TRAVEL_MAX_PER_TX, at(ov.neverPerTx, TRAVEL_MAX_PER_TX)),
+    neverPerDay: Math.min(TRAVEL_MAX_PER_DAY, at(ov.neverPerDay, TRAVEL_MAX_PER_DAY)),
+    minWalletBalance: tierBands.minWalletBalance, // reserve floor unchanged (incl. user override)
+  };
+}
+
 /**
  * Evaluate a proposed spend against the tier's autonomy bands.
  *
@@ -146,15 +210,23 @@ export function effectiveBands(
  *   1. amount must be a positive finite number          → else deny(invalid_amount)
  *   2. privacy mode on                                  → deny(privacy_mode)
  *   3. counterparty required-but-unverified             → deny(unverified_counterparty)
+ *   3.5 category not in allowlist                       → deny(category_not_allowed)
  *   4. amount > neverPerTx                              → deny(exceeds_per_tx_ceiling)
  *   5. spentToday + amount > neverPerDay                → deny(exceeds_daily_ceiling)
  *   6. known balance and (balance - amount < minBal)   → deny(would_drain_wallet)
  *   7. amount < justDoItPerTx AND agg < justDoItPerDay  → just_do_it
  *      (but if balance is UNKNOWN, downgrade to ask_first — never auto-spend blind)
  *   8. otherwise                                        → ask_first
+ *
+ * The bands are CATEGORY-SCOPED: a category==="travel" spend uses the travelBands
+ * layer ($1200/$3000 ceiling, $0 just-do-it) above; every other category uses the
+ * tier effectiveBands exactly as before (no behavior change for non-travel spends).
  */
 export function evaluateSpend(tier: FrontierTier, ctx: SpendContext): SpendEvaluation {
-  const bands = effectiveBands(tier, ctx.isStaker ?? false, ctx.overrides);
+  const tierBands = effectiveBands(tier, ctx.isStaker ?? false, ctx.overrides);
+  // Category-scoped raise: travel gets its own ceiling + $0 just-do-it; all other
+  // categories keep the tier bands byte-for-byte.
+  const bands = ctx.category === "travel" ? travelBands(tierBands, ctx.overrides) : tierBands;
   const requireVerified = ctx.requireVerifiedCounterparty ?? true;
   const amount = ctx.amountUsd;
   const spentToday = ctx.spentTodayUsd;
@@ -237,15 +309,40 @@ export type SpendCategory =
   | "compute" // sandboxes, code execution, rendering
   | "market" // prediction markets, trading signals, on-chain market data
   | "media" // images, audio, video generation
+  | "travel" // flights, hotels, lodging, transport (ToolRouter StableTravel: stabletravel.*)
   | "agent" // hiring another agent's service (A2A)
   | "other";
 
 export const ALL_CATEGORIES: readonly SpendCategory[] = [
-  "data", "search", "inference", "compute", "market", "media", "agent", "other",
+  "data", "search", "inference", "compute", "market", "media", "travel", "agent", "other",
 ];
+
+/**
+ * Categories whose spends ALWAYS require UNFORGEABLE (session-rooted) human approval:
+ * the raw human_approved body bool must NEVER authorize them, independent of the global
+ * phase-3 flip (FRONTIER_REQUIRE_SESSION_APPROVAL_ABOVE_THRESHOLD). These are the
+ * consent-always, high-value categories — travel (StableTravel bookings to $1200/tx).
+ * Paired with travelBands' $0 just-do-it (every travel spend → ask_first), this closes
+ * red-team F2: without it, a prompt-injected / token-stolen agent could authorize a
+ * $1200 booking by setting one forgeable boolean, because phase-1 honors the forgeable
+ * bool above the threshold. With it, only a session approval converts a travel ask_first
+ * to authorized — the $0-just-do-it safety becomes unforgeable, today, not just post-flip.
+ */
+export const SESSION_REQUIRED_CATEGORIES: readonly SpendCategory[] = ["travel"];
+
+/** True iff this category's spends require session-rooted approval (forgeable never suffices). */
+export function isSessionRequiredCategory(category: SpendCategory | null | undefined): boolean {
+  return category != null && SESSION_REQUIRED_CATEGORIES.includes(category);
+}
 
 /** Bazaar tag → category. First match wins; unknown tags → null (caller defaults to "other"). */
 const TAG_CATEGORY_RULES: ReadonlyArray<[RegExp, SpendCategory]> = [
+  // travel FIRST: ToolRouter endpoint ids like `flights_search` / `hotels_search`
+  // contain "search", so the search rule below would otherwise swallow them. Placing
+  // travel first makes any flight/hotel/lodging tag classify as travel regardless of
+  // co-occurring substrings. (Explicit category:"travel" from the caller still wins —
+  // this mapping is only the tags-fallback path.)
+  [/flight|hotel|airfare|airline|lodging|hostel|motel|itinerary|stabletravel|travel/i, "travel"],
   [/price|feed|market[_-]?cap|ticker|ohlc|telemetry|weather|dataset|data\b/i, "data"],
   [/search|scrape|crawl|serp|web[_-]?search|intelligence|lookup/i, "search"],
   [/inference|llm|gpt|llama|mistral|embedding|model|completion|gpu/i, "inference"],
@@ -270,12 +367,24 @@ export function mapTagsToCategory(tags: string[] | null | undefined): SpendCateg
  * adjacency) is OFF by default at every tier — buying trading signals/DeFi actions
  * is the category most likely to cause harm, so it requires deliberate opt-in.
  * The human can widen or narrow this from the dashboard (stored as an override).
+ *
+ * "travel" (ToolRouter StableTravel: flights/hotels/lodging) is allowed at pro + power,
+ * NOT starter. The reasoning: a category absent from the allowlist is a Gate-1 HARD
+ * DENY (category_not_allowed) that even a human approval cannot override per-spend AND
+ * the override is tighten-only (a missing category can never be re-added) — so to make
+ * travel usable AT ALL it must live in the default. The risk of a large autonomous
+ * travel spend is handled by the AMOUNT gates, not categorical exclusion: a booking
+ * over justDoItPerTx bounces to ask_first → session-rooted human approval (the
+ * human_approved hardening). Starter (the minimal tier — only data/search/agent, no
+ * inference/compute/media either) is kept travel-free to preserve its locked-down
+ * posture; moving travel into starter is a one-line change if desired.
  */
 export const DEFAULT_ALLOWED_CATEGORIES_BY_TIER: Record<FrontierTier, readonly SpendCategory[]> = {
   starter: ["data", "search", "agent"],
-  pro: ["data", "search", "inference", "compute", "media", "agent"],
-  power: ["data", "search", "inference", "compute", "media", "agent", "other"],
+  pro: ["data", "search", "inference", "compute", "media", "travel", "agent"],
+  power: ["data", "search", "inference", "compute", "media", "travel", "agent", "other"],
   // "market" intentionally excluded from all defaults — opt-in only.
+  // "travel" included at pro + power (see docblock); excluded from starter by design.
 };
 
 /**

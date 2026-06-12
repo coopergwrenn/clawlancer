@@ -1193,3 +1193,34 @@ After Phase 4 ships and gbrain ships `snapshot_brain`:
 The vm-freeze-v2 build-out is complete.
 
 ---
+
+## G3 follow-up (deferred from the 2026-06-11 freeze production-readiness audit)
+
+**Frozen-state UX — launch requirement for when freeze-v2 makes freeze common.**
+
+The 2026-06-11 audit (verdict (b): freeze cron stays live) shipped G1 (SoT billing
+gate, Rule 14 + Rule 82) and G2 (`wake-paid-frozen` safety-net cron). G3 was
+deferred here because the mitigant is real today — frozen users went dark at
+*suspension* (40+ days before freeze), not at freeze, and resubscribe auto-thaws
+(billing webhook + the new safety cron). But once freeze-v2 makes freezing common
+(production VMs archived to R2 routinely), the silent UX becomes a launch blocker.
+
+Build with the v2 epic:
+
+1. **`/api/vm/status` must surface a `frozen` state.** Today it has no `frozen`
+   handling; a frozen VM keeps its `gateway_url` but `ip_address='0.0.0.0'`, so the
+   status route health-checks a dead IP and the dashboard shows a generic
+   down/broken agent — not "frozen." Add an explicit `frozen` status the dashboard
+   can branch on (check `status='frozen'` / `freeze_state` before the health probe).
+
+2. **Dashboard copy:** "Your agent is preserved — resubscribe to restore it." A
+   returning user must know resubscribe *restores* their agent (with memory/wallet
+   intact) rather than starting fresh. Currently nothing tells them.
+
+3. (optional) A one-time email at freeze time: "we've safely archived your agent;
+   resubscribe any time to bring it back." Not data-safety-critical, but closes the
+   "agent silently stopped existing" gap for the common-freeze world.
+
+Cross-ref: the audit findings + verdict are in the 2026-06-11 conversation; G1/G2
+shipped same day. This G3 item is the remaining piece, gated on freeze-v2 making
+freeze a common (not edge) event.

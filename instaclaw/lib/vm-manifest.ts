@@ -2829,6 +2829,16 @@ export const VM_MANIFEST = {
     // from the same dir on the VM. Fleet rollout is gated on a manifest version bump (Rule 64).
     { skillName: "frontier", localPath: "scripts/frontier-spend-core.mjs", remotePath: "scripts/frontier-spend-core.mjs" },
     { skillName: "frontier", localPath: "scripts/frontier-spend.mjs", remotePath: "scripts/frontier-spend.mjs" },
+    // Travala booking (Travel Agent skill). The search + book wrappers; built-ins
+    // only except a dynamic import of the frontier skill's payer core
+    // (~/.openclaw/skills/frontier/scripts/frontier-spend-core.mjs) — booking
+    // requires the frontier skill to be installed. SKILL.md + references/ auto-deploy
+    // via skillsFromRepo. Fleet rollout is gated on a manifest version bump + Cooper
+    // approval (Rule 64) AND the frontier §6 travel ceiling landing — DO NOT bump the
+    // manifest version for travala until both are green. See
+    // docs/prd/travala-x402-booking-2026-06-10.md §14.
+    { skillName: "travala", localPath: "scripts/travala-search.mjs", remotePath: "scripts/travala-search.mjs" },
+    { skillName: "travala", localPath: "scripts/travala-book.mjs", remotePath: "scripts/travala-book.mjs" },
   ] as ManifestExtraSkillFile[],
 
   // ── Cron jobs ──

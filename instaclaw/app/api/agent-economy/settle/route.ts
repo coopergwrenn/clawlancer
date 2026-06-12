@@ -62,7 +62,8 @@
  *
  * PRD: instaclaw/docs/PRD-frontier-economic-agency.md §2 (C-spend), §4 Phase 1 (W5)
  */
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { recordSpendEvent } from "@/lib/frontier-spend-log";
 import { getSupabase } from "@/lib/supabase";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 
@@ -288,13 +289,27 @@ export async function POST(req: NextRequest) {
   }
 
   if (flipped && flipped.length === 1) {
+    // Tier-0 A: this call won the flip — log the settle decision (the leg that
+    // carries tx_hash / latency / pay_error, completing "why did agent X spend $Y").
+    // Best-effort, post-response, never blocks. Idempotent-replay returns above are
+    // NOT logged (the winning flip already recorded the settle exactly once).
+    after(() =>
+      recordSpendEvent(supabase, {
+        decision_point: "settle", vm_id: vmId, owner_id: (vm.assigned_to as string) ?? null,
+        verdict: result === "success" ? "settle_success" : result === "disputed" ? "settle_disputed" : "settle_failed",
+        reason: `settle_${result}`, request_id: requestId, transaction_id: hold.id,
+        amount_usd: typeof hold.amount_usdc === "number" ? hold.amount_usdc : null,
+        tx_hash: txHash, latency_ms: latencyMs, pay_error: payError, protocol_fee_usd: protocolFee,
+      }),
+    );
     return NextResponse.json(
       { ok: true, hold_id: hold.id, status: intendedStatus, result_used: resultUsed, idempotent: false },
       { status: 200 },
     );
   }
 
-  // Lost the race — another settle flipped it between our read and our CAS.
+  // Lost the race — another settle flipped it between our read and our CAS, OR the
+  // human revoked the hold (Tier-0 G). NOT the hot path — only runs when the CAS lost.
   const { data: now } = await supabase
     .from("frontier_transactions")
     .select("status")
@@ -302,6 +317,20 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   if (now?.status === intendedStatus) {
     return NextResponse.json({ ok: true, hold_id: hold.id, status: now.status, idempotent: true }, { status: 200 });
+  }
+  // Reconciliation-gap signal: the agent tried to settle a hold the human already
+  // REVOKED. If it carried a tx_hash (it paid on-chain) this is the "revoked-but-
+  // on-chain-paid" window — money left, the hold can't settle. Emit it so spend-
+  // health coverage / the IR runbook can find it. Best-effort, post-response.
+  if (now?.status === "revoked") {
+    after(() =>
+      recordSpendEvent(supabase, {
+        decision_point: "settle", vm_id: vmId, owner_id: (vm.assigned_to as string) ?? null,
+        verdict: "deny", reason: "settle_on_revoked_hold", request_id: requestId, transaction_id: hold.id,
+        amount_usd: typeof hold.amount_usdc === "number" ? hold.amount_usdc : null,
+        tx_hash: txHash, pay_error: payError,
+      }),
+    );
   }
   return NextResponse.json(
     { error: `hold is now ${now?.status ?? "unknown"}; cannot settle as ${intendedStatus}` },

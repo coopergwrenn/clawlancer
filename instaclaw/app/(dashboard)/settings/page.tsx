@@ -27,6 +27,7 @@ import { BrowserExtensionSection } from "@/components/dashboard/browser-extensio
 import { DispatchRelaySection } from "@/components/dashboard/dispatch-relay-section";
 import { ConnectWorldWallet } from "@/components/dashboard/connect-world-wallet";
 import { ChatGPTConnectionSection } from "@/components/dashboard/chatgpt-connection-section";
+import { MODEL_OPTIONS_WITH_VENDOR as MODEL_OPTIONS } from "@/lib/model-registry";
 
 /**
  * 2026-05-22 FIX A — smart paste extractor for the Telegram bot token field.
@@ -36,11 +37,7 @@ import { ChatGPTConnectionSection } from "@/components/dashboard/chatgpt-connect
  */
 const BOT_TOKEN_EXTRACT_RE = /\d+:[A-Za-z0-9_-]{35,}/;
 
-const MODEL_OPTIONS = [
-  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-  { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
-];
+/* MODEL_OPTIONS sourced from lib/model-registry (single source of truth). */
 
 interface VMStatus {
   status: string;

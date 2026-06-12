@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Check, RotateCw, Tag, Lock, Sparkles, Hand, Wallet, TrendingUp, AlertTriangle } from "lucide-react";
 
 /**
@@ -16,9 +16,11 @@ import { Check, RotateCw, Tag, Lock, Sparkles, Hand, Wallet, TrendingUp, AlertTr
  * Three parts, one story:
  *   1. GAP-1 headline — "what your agent can spend on its own today" + WHY (the
  *      binding factor). The honest number; never implies more autonomy than real.
- *   2. GAP-2 ceilings — tighten-only no-ask thresholds (per purchase, per day).
- *      Framed as ceilings the agent grows TOWARD; the gate uses whichever is lower
- *      (the earned budget or your ceiling). Can never widen past the tier.
+ *   2. GAP-2 ceilings: the per-purchase no-ask line is bidirectional (raise it up
+ *      to the plan hard cap, or tighten it); the daily line is tighten-only. The
+ *      gate uses whichever is lower (the earned budget or your ceiling), so raising
+ *      a ceiling never widens the actual autonomous spend past what is earned, and
+ *      never past the tier hard cap.
  *   3. Categories — tighten-only allowlist (market stays approval-only by design).
  */
 
@@ -29,6 +31,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   compute: "Compute & sandboxes",
   market: "Trading & market data",
   media: "Image / audio / video",
+  travel: "Travel & lodging",
   agent: "Hiring other agents",
   other: "Other",
 };
@@ -78,6 +81,10 @@ export function EconomyPolicyControls() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [perTx, setPerTx] = useState<number>(0);
   const [perDay, setPerDay] = useState<number>(0);
+  // Reserve (minWalletBalance). Bidirectional (Slice B #2b): the control allows 0
+  // ("spend it all") up through any cushion; the gate floors the effective value at
+  // 0 at read (clampOverrides Math.max(0, ..)), so it is never negative.
+  const [reserve, setReserve] = useState<number>(0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
@@ -88,6 +95,7 @@ export function EconomyPolicyControls() {
     setSelected(new Set(d.allowed_categories));
     setPerTx(d.bands.justDoItPerTx);
     setPerDay(d.bands.justDoItPerDay);
+    setReserve(d.bands.minWalletBalance);
   }, []);
 
   const fetchPolicy = useCallback(async () => {
@@ -116,11 +124,91 @@ export function EconomyPolicyControls() {
     });
   }, []);
 
-  // Tighten-only clamp: [0, tier ceiling]. Typed values above the plan snap down.
+  // Clamp a typed band to [0, max]. For the per-tx line, max is the plan hard cap
+  // (raises allowed up to it); for the daily line, max is the tier default
+  // (tighten-only). Values above max snap down; negatives snap to 0.
   const clampBand = useCallback((v: number, max: number) => {
     if (!Number.isFinite(v) || v < 0) return 0;
     return Math.min(v, max);
   }, []);
+
+  // ── Pre-fill from an agent's /settings suggest deep link (?suggest=field:value).
+  //    The agent can only SUGGEST; this pre-fills the control in the UNSAVED state so
+  //    the human's explicit Save (session-authed) is the consent. The ?suggest value
+  //    is a public identifier, never a capability. FAIL QUIET: an unknown field, a
+  //    malformed value, or a change the page can't fulfil (a daily-line raise, which
+  //    is lower-only until the perDay-raisable change ships) is ignored silently --
+  //    no banner, no error, normal page. Never promise an action the page can't do. ──
+  const suggestRef = useRef<{ field: string; value: string } | null | undefined>(undefined);
+  const [suggestBanner, setSuggestBanner] = useState<{ field: string; value: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = new URLSearchParams(window.location.search).get("suggest");
+      const idx = raw ? raw.indexOf(":") : -1;
+      suggestRef.current = raw && idx > 0 ? { field: raw.slice(0, idx), value: raw.slice(idx + 1) } : null;
+    } catch {
+      suggestRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!data || !suggestRef.current) return;
+    const s = suggestRef.current;
+    suggestRef.current = null; // consume: apply at most once
+    const num = parseFloat(s.value);
+    let ok = false;
+    if (s.field === "minWalletBalance" && Number.isFinite(num) && num >= 0 && num < data.bands.minWalletBalance) {
+      setReserve(Math.max(0, num)); // a genuine reserve LOWER
+      ok = true;
+    } else if (
+      s.field === "justDoItPerTx" &&
+      Number.isFinite(num) &&
+      num > data.bands.justDoItPerTx &&
+      num <= data.bands.neverPerTx
+    ) {
+      setPerTx(clampBand(num, data.bands.neverPerTx)); // a genuine no-ask RAISE within the hard cap
+      ok = true;
+    } else if (s.field === "allowedCategories") {
+      const want = s.value.split(",").map((x) => x.trim());
+      const next = data.tier_default_categories.filter((c) => want.includes(c));
+      if (next.length > 0 && next.some((c) => !selected.has(c))) {
+        setSelected(new Set(next)); // re-enabling at least one category (an ADD)
+        ok = true;
+      }
+    }
+    if (ok) {
+      setSaved(false);
+      setSuggestBanner(s); // banner shows ONLY on a fulfilled suggestion
+    }
+    // else: fail quiet
+  }, [data, clampBand, selected]);
+
+  // The agent-suggestion banner copy (null = nothing to show). Reads the SAVED
+  // current values from `data`, so it states the real before/after.
+  const suggestMsg = useMemo<string | null>(() => {
+    if (!suggestBanner || !data) return null;
+    const b = suggestBanner;
+    const num = parseFloat(b.value);
+    if (b.field === "minWalletBalance") {
+      return num === 0
+        ? `Your agent suggested lowering your reserve to $0. At $0 it can spend the wallet all the way down to empty. Review and Save below to apply, or ignore to keep your current ${usd(data.bands.minWalletBalance)}.`
+        : `Your agent suggested lowering your reserve to ${usd(num)}. Review and Save below to apply, or ignore to keep your current ${usd(data.bands.minWalletBalance)}.`;
+    }
+    if (b.field === "justDoItPerTx") {
+      return `Your agent suggested raising its no-ask line to ${usd(num)} per purchase. It could then spend up to ${usd(num)} on a single purchase without checking with you. Review and Save to apply.`;
+    }
+    if (b.field === "allowedCategories") {
+      const labels = b.value
+        .split(",")
+        .map((x) => x.trim())
+        .filter((c) => data.tier_default_categories.includes(c))
+        .map((c) => CATEGORY_LABELS[c] ?? c)
+        .join(", ");
+      return `Your agent suggested re-enabling autonomous spending on: ${labels}. Review and Save to apply.`;
+    }
+    return null;
+  }, [suggestBanner, data]);
 
   const save = useCallback(async () => {
     if (!data) return;
@@ -130,12 +218,21 @@ export function EconomyPolicyControls() {
     setSaved(false);
     try {
       const td = data.tier_default_bands;
-      // Send a band only if it's tightened BELOW the tier ceiling; otherwise null
-      // (clear → tier default). Replace-semantics on the PUT means the never-bands
-      // + floor (which we don't expose) revert to the tier default — intended.
+      // Per-tx no-ask line is bidirectional: send it whenever it differs from the
+      // tier default (a raise up to the plan hard cap, or a tighten below default);
+      // null clears to the tier default. The gate clamps it at neverPerTx
+      // (clampOverrides), so a raise can never pass the hard deny line. The daily
+      // line stays tighten-only, so send it only when below the default.
+      // Replace-semantics: omitted bands and the floor (not exposed here) revert
+      // to the tier default, which is intended.
       const body = {
-        justDoItPerTx: perTx < td.justDoItPerTx ? perTx : null,
+        justDoItPerTx: perTx !== td.justDoItPerTx ? perTx : null,
         justDoItPerDay: perDay < td.justDoItPerDay ? perDay : null,
+        // Reserve is bidirectional (Slice B #2b): send it whenever it differs from
+        // the tier default (lower toward 0 to "spend it all", or raise for a bigger
+        // cushion); null clears to the tier default. The gate floors the effective
+        // value at 0 (clampOverrides Math.max(0, ..)).
+        minWalletBalance: reserve !== td.minWalletBalance ? reserve : null,
         allowed_categories: data.tier_default_categories.filter((c) => selected.has(c)),
       };
       const res = await fetch("/api/agent-economy/policy", {
@@ -157,15 +254,20 @@ export function EconomyPolicyControls() {
     } finally {
       setSaving(false);
     }
-  }, [data, perTx, perDay, selected, fetchPolicy]);
+  }, [data, perTx, perDay, reserve, selected, fetchPolicy]);
 
   const dirty = useMemo(() => {
     if (!data) return false;
     const catsDiff =
       selected.size !== data.allowed_categories.length ||
       data.allowed_categories.some((c) => !selected.has(c));
-    return catsDiff || perTx !== data.bands.justDoItPerTx || perDay !== data.bands.justDoItPerDay;
-  }, [data, selected, perTx, perDay]);
+    return (
+      catsDiff ||
+      perTx !== data.bands.justDoItPerTx ||
+      perDay !== data.bands.justDoItPerDay ||
+      reserve !== data.bands.minWalletBalance
+    );
+  }, [data, selected, perTx, perDay, reserve]);
 
   if (loading) {
     return (
@@ -212,6 +314,81 @@ export function EconomyPolicyControls() {
 
   return (
     <div className="glass rounded-2xl p-6 sm:p-7" style={{ border: "1px solid var(--border)" }}>
+      {/* ── The contract, in one sentence (§6) — funding + posture, read-only. ── */}
+      <div
+        className="rounded-xl p-5 mb-5"
+        style={{ background: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.05)" }}
+      >
+        <p className="text-[13px] leading-relaxed" style={{ color: "var(--foreground)" }}>
+          Your agent spends from a wallet <span className="font-medium">you fund</span> (we cover the
+          gas).{" "}
+          {data.bands.justDoItPerTx === 0 ? (
+            <>It asks before every purchase</>
+          ) : (
+            <>
+              It asks before any single purchase over{" "}
+              <span className="font-semibold" style={{ color: ACCENT }}>
+                {usd(data.bands.justDoItPerTx)}
+              </span>
+            </>
+          )}
+          {a && a.binding !== "spend_disabled" ? (
+            <>
+              , and stays within a daily allowance it earns (
+              <span className="font-semibold">{usd(a.earnedDailyBudgetUsd)}</span>/day so far)
+            </>
+          ) : (
+            <>, and stays within a daily allowance it earns</>
+          )}
+          .{" "}
+          {data.bands.minWalletBalance === 0 ? (
+            <>It holds nothing back in reserve.</>
+          ) : (
+            <>
+              It always keeps{" "}
+              <span className="font-semibold">{usd(data.bands.minWalletBalance)}</span> in reserve.
+            </>
+          )}
+        </p>
+      </div>
+
+      {/* ── Agent suggestion (from a /settings deep link). Pre-filled below, UNSAVED;
+          your Save is the consent. Shown only when the page could pre-fill it. ── */}
+      {suggestMsg && !saved && (
+        <div
+          className="rounded-xl p-3 mb-5 flex items-start gap-2"
+          style={{ background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)" }}
+        >
+          <Sparkles className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: "rgb(234,179,8)" }} />
+          <p className="text-[12px] leading-snug" style={{ color: "var(--foreground)" }}>
+            {suggestMsg}
+          </p>
+        </div>
+      )}
+
+      {/* ── Low-balance soft warning (§16.5): fires with runway (< ~1 day of the
+          earned budget left), above the hard floor. A nudge, not a block. ── */}
+      {a &&
+        a.binding !== "spend_disabled" &&
+        a.binding !== "balance_unknown" &&
+        a.walletBalanceUsd != null &&
+        a.walletHeadroomUsd > 0 &&
+        a.walletHeadroomUsd < a.earnedDailyBudgetUsd && (
+          <div
+            className="rounded-xl p-3 mb-5 flex items-start gap-2"
+            style={{ background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)" }}
+          >
+            <AlertTriangle
+              className="w-3.5 h-3.5 mt-0.5 shrink-0"
+              style={{ color: "rgb(234,179,8)" }}
+            />
+            <p className="text-[12px] leading-snug" style={{ color: "var(--foreground)" }}>
+              Running low — about a day of spending left. Top up the wallet when you get a chance and
+              your agent keeps handling things on its own.
+            </p>
+          </div>
+        )}
+
       {/* ── GAP-1: the honest "what it can spend on its own today" headline ── */}
       <div
         className="rounded-xl p-5 mb-6"
@@ -310,29 +487,66 @@ export function EconomyPolicyControls() {
         )}
       </div>
 
-      {/* ── GAP-2: tighten-only no-ask ceilings ── */}
+      {/* ── GAP-2: no-ask ceilings. Per-tx is bidirectional (raise to the plan cap
+          or tighten); daily is tighten-only. The gate binds the real autonomous
+          spend to the earned budget regardless. ── */}
       <div className="flex items-center gap-2 mb-1">
         <Hand className="w-4 h-4" style={{ color: "var(--muted)" }} />
         <h3 className="text-sm font-medium">Ask-first ceilings</h3>
       </div>
       <p className="text-[11px] mb-4 leading-snug" style={{ color: "var(--muted)" }}>
-        The most your agent will ever spend without asking. It grows toward these as it earns trust. The gate always
-        uses whichever is lower (what it&apos;s earned, or your ceiling). Lower these anytime; you can&apos;t raise them above your plan.
+        The most your agent spends without asking. It grows toward these as it earns trust, and the gate always
+        uses whichever is lower (what it&apos;s earned, or your ceiling). Raise the per-purchase line up to your
+        plan&apos;s hard cap, or pull it down to stay cautious. The daily line you can only tighten.
       </p>
+
+      {/* Presets (§6): one tap across the spectrum for the per-tx no-ask line.
+          "Ask me first" = 0 (most cautious). "Earned autonomy" = the tier default.
+          "Plan max" = the hard cap (neverPerTx). The gate still binds the actual
+          autonomous spend to what the agent has earned, so Plan max raises the
+          ceiling, not the spend. */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <PresetBtn
+          label="Ask me first"
+          active={perTx === 0}
+          onClick={() => {
+            setSaved(false);
+            setPerTx(0);
+          }}
+        />
+        <PresetBtn
+          label="Earned autonomy"
+          active={perTx === td.justDoItPerTx}
+          onClick={() => {
+            setSaved(false);
+            setPerTx(td.justDoItPerTx);
+          }}
+        />
+        <PresetBtn
+          label="Plan max"
+          active={perTx === data.bands.neverPerTx}
+          onClick={() => {
+            setSaved(false);
+            setPerTx(data.bands.neverPerTx);
+          }}
+        />
+      </div>
 
       <div className="grid sm:grid-cols-2 gap-3 mb-4">
         <BandInput
           label="Any single purchase over"
           value={perTx}
-          max={td.justDoItPerTx}
+          tierDefault={td.justDoItPerTx}
+          max={data.bands.neverPerTx}
           onChange={(v) => {
             setSaved(false);
-            setPerTx(clampBand(v, td.justDoItPerTx));
+            setPerTx(clampBand(v, data.bands.neverPerTx));
           }}
         />
         <BandInput
           label="Total daily spend over"
           value={perDay}
+          tierDefault={td.justDoItPerDay}
           max={td.justDoItPerDay}
           onChange={(v) => {
             setSaved(false);
@@ -341,11 +555,25 @@ export function EconomyPolicyControls() {
         />
       </div>
 
+      {/* ── Reserve (§16): bidirectional (Slice B #2b). The minimum the agent leaves
+          in the wallet; lower it toward $0 to let the agent spend the wallet down, or
+          raise it for a bigger cushion. The gate floors the effective value at 0. ── */}
+      <div className="mb-4">
+        <ReserveInput
+          value={reserve}
+          tierDefault={td.minWalletBalance}
+          onChange={(v) => {
+            setSaved(false);
+            setReserve(Math.max(0, Number.isFinite(v) ? v : 0));
+          }}
+        />
+      </div>
+
       <p className="text-[11px] mb-6 flex items-start gap-1.5" style={{ color: "var(--muted)" }}>
         <Lock className="w-3 h-3 mt-0.5 shrink-0" />
         <span>
           Hard limits (set by your {data.tier} plan, can&apos;t be exceeded): never over {usd(data.bands.neverPerTx)} per
-          purchase or {usd(data.bands.neverPerDay)} per day · always keep {usd(data.bands.minWalletBalance)} in the wallet.
+          purchase or {usd(data.bands.neverPerDay)} per day. Your reserve is yours to set, down to $0.
         </span>
       </p>
 
@@ -422,36 +650,102 @@ export function EconomyPolicyControls() {
 function BandInput({
   label,
   value,
+  tierDefault,
   max,
   onChange,
 }: {
   label: string;
   value: number;
+  tierDefault: number;
   max: number;
   onChange: (v: number) => void;
 }) {
-  const tightened = value < max;
+  // Color relative to the tier default: below = tightened (cautious, green), above
+  // = raised toward the plan cap (amber), exactly at = neutral. The daily line is
+  // passed tierDefault === max so it can only ever read tightened or neutral.
+  const cueColor =
+    value < tierDefault
+      ? "rgb(34,197,94)"
+      : value > tierDefault
+        ? "rgb(234,179,8)"
+        : "var(--foreground)";
   return (
     <label className="block rounded-xl p-3" style={{ background: "rgba(0,0,0,0.025)", border: "1px solid rgba(0,0,0,0.06)" }}>
       <span className="text-[11px] block mb-1.5" style={{ color: "var(--muted)" }}>
         Ask before {label}
       </span>
       <div className="flex items-center gap-1">
-        <span className="text-lg font-semibold" style={{ color: tightened ? "rgb(34,197,94)" : "var(--foreground)" }}>$</span>
+        <span className="text-lg font-semibold" style={{ color: cueColor }}>$</span>
         <input
           type="number"
           inputMode="decimal"
           min={0}
           max={max}
-          step={max <= 5 ? 0.25 : 1}
+          step={tierDefault <= 5 ? 0.25 : 1}
           value={value}
           onChange={(e) => onChange(parseFloat(e.target.value))}
           className="w-full bg-transparent text-lg font-semibold tracking-tight outline-none"
-          style={{ color: tightened ? "rgb(34,197,94)" : "var(--foreground)" }}
+          style={{ color: cueColor }}
         />
       </div>
       <span className="text-[10px]" style={{ color: "var(--muted)" }}>
         your plan allows up to {`$${max.toLocaleString("en-US", { maximumFractionDigits: 2 })}`}
+      </span>
+    </label>
+  );
+}
+
+/** A small posture preset pill (sets the per-tx ceiling to one end). */
+function PresetBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 cursor-pointer"
+      style={{
+        background: active ? "rgba(34,197,94,0.10)" : "rgba(0,0,0,0.04)",
+        border: active ? "1px solid rgba(34,197,94,0.30)" : "1px solid var(--border)",
+        color: active ? "rgb(21,128,61)" : "var(--foreground)",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/**
+ * The reserve control: bidirectional (Slice B #2b). The amount the agent leaves in
+ * the wallet: lower toward $0 to let it spend the wallet down ("spend it all"), or
+ * raise it for a bigger cushion. The gate floors the effective value at 0.
+ */
+function ReserveInput({ value, tierDefault, onChange }: { value: number; tierDefault: number; onChange: (v: number) => void }) {
+  // Inverted vs the ask-first lines: RAISING the reserve is the cautious direction
+  // (green); LOWERING it toward $0 leans in (amber); exactly at the default is neutral.
+  const cueColor =
+    value > tierDefault
+      ? "rgb(34,197,94)"
+      : value < tierDefault
+        ? "rgb(234,179,8)"
+        : "var(--foreground)";
+  return (
+    <label className="block rounded-xl p-3" style={{ background: "rgba(0,0,0,0.025)", border: "1px solid rgba(0,0,0,0.06)" }}>
+      <span className="text-[11px] block mb-1.5" style={{ color: "var(--muted)" }}>
+        Keep in reserve (your agent won&apos;t spend below this)
+      </span>
+      <div className="flex items-center gap-1">
+        <span className="text-lg font-semibold" style={{ color: cueColor }}>$</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          min={0}
+          step={tierDefault <= 5 ? 0.25 : 1}
+          value={value}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          className="w-full bg-transparent text-lg font-semibold tracking-tight outline-none"
+          style={{ color: cueColor }}
+        />
+      </div>
+      <span className="text-[10px]" style={{ color: "var(--muted)" }}>
+        set to $0 to let it spend the wallet down · your plan reserves {`$${tierDefault.toLocaleString("en-US", { maximumFractionDigits: 2 })}`} by default
       </span>
     </label>
   );

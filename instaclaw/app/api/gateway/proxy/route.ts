@@ -14,6 +14,8 @@ import { sendPerVmAlertDeduped } from "@/lib/admin-alert";
 import { trackProxy401, resetProxy401Count } from "@/lib/proxy-alert";
 import { repairCorruptedSession, type VMRecord } from "@/lib/ssh";
 import { routeModel, extractLastUserMessage, computeTierBudget, type RoutingContext, type RoutingDecision } from "@/lib/model-router";
+import { getRegistryCreditWeight, MODEL_TIER_BY_ID, getModelEntry } from "@/lib/model-registry";
+import { attachUsageScanner, parseUsageFromJson, hasAnyToken, isEmptyCompletionJson, type TokenUsage } from "@/lib/usage-tokens";
 import { TASK_EXECUTION_SUFFIX } from "@/lib/system-prompt";
 import { shouldFireCircuitBreaker, sendCircuitBreakerAlert, sendCronResumedNotification, resolveTelegramTarget } from "@/lib/cron-guard";
 import {
@@ -31,6 +33,13 @@ export const maxDuration = 300;
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MINIMAX_API_URL = "https://api.minimax.io/anthropic/v1/messages";
+
+// Empty-completion fallback (Guard 1, non-streaming). On an empty completion the
+// proxy retries ONCE on this model — but only when it's a strict DOWN-step in
+// cost from the requested model (enforced at the callsite), so the fallback is
+// never more expensive than what the user asked for. sonnet is the reliable
+// workhorse below fable/opus.
+const EMPTY_FALLBACK_MODEL = "claude-sonnet-4-6";
 
 /**
  * In-memory cache for the global daily-spend SELECT. Module-scoped so it
@@ -231,7 +240,7 @@ export async function POST(req: NextRequest) {
       // `assigned_to` added 2026-06-01 for The Floor: the proxy is the universal
       // perk-up trigger (most agents use their own bot and never hit our inbound
       // webhooks). recordMessageIn needs the owner user_id. (PRD §35.)
-      "id, assigned_to, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls, user_timezone, cron_breaker_active, telegram_bot_token, telegram_chat_id"
+      "id, assigned_to, ip_address, ssh_port, ssh_user, gateway_token, api_mode, tier, default_model, pinned_model, limit_notified_date, heartbeat_next_at, heartbeat_last_at, heartbeat_interval, heartbeat_cycle_calls, user_timezone, cron_breaker_active, telegram_bot_token, telegram_chat_id"
     );
     profile.vm_lookup_ms = Date.now() - lookupStart;
 
@@ -727,6 +736,29 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // --- Credit model pinning: honor a deliberate pin (grant-governed) ---
+    // A pinned model is served + billed EXACTLY as chosen, every message — no
+    // content-classification, no tier-budget downgrade. Resolved HERE: AFTER the
+    // heartbeat/virtuals/infra classification (so a pin never hijacks a
+    // background call) and BEFORE the governor (~line 858) so the grant bills the
+    // pin's true weight. The proxy is authoritative — setting parsedBody.model
+    // means the upstream Anthropic call (providerBody at ~1234, sent at ~1267)
+    // gets the pinned model regardless of the gateway's on-disk primary, so a pin
+    // needs NO SSH and NO gateway restart. NULL pinned_model = Automatic
+    // (today's content-routing, byte-identical). Set only for all-inclusive VMs;
+    // BYOK never reaches this proxy (403 above).
+    let pinnedModel: string | null = null;
+    {
+      const pin = (vm as VMRecord & { pinned_model?: string | null }).pinned_model;
+      if (pin && !isHeartbeat && !isVirtuals && !isInfrastructureCall) {
+        pinnedModel = pin;
+        requestedModel = pin;
+        if (parsedBody) {
+          parsedBody.model = pin;
+        }
+      }
+    }
+
     // --- THE FLOOR: perk-up trigger (PRD §35, 2026-06-01 proxy-coverage fix) ---
     // The proxy is the UNIVERSAL message-arrival signal: most agents use their
     // own Telegram bot / web / mini-app, whose messages never touch our inbound
@@ -985,6 +1017,19 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      // Pin-aware exhaustion: a user who pinned a model and hit their limit should
+      // see WHY (the pin's per-message cost), not a generic wall. No "credits left"
+      // number — the governor's exhausted branch doesn't return the running count,
+      // so it can't be computed accurately here.
+      if (pinnedModel) {
+        const pinWeight = getRegistryCreditWeight(pinnedModel);
+        const pinName = getModelEntry(pinnedModel)?.displayName ?? pinnedModel;
+        return friendlyAssistantResponse(
+          `${pinName} costs ${pinWeight} credits per message and you've reached today's limit. switch to Automatic to keep chatting, or pin a lighter model.`,
+          requestedModel,
+          isStreaming
+        );
+      }
       return friendlyAssistantResponse(
         `You've hit your daily message limit (${displayLimit}/${displayLimit}). Want to keep going? Grab more credits or upgrade your plan here:\n\nhttps://instaclaw.io/dashboard/billing`,
         requestedModel,
@@ -1011,6 +1056,19 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      // Pin-aware exhaustion: a user who pinned a model and hit their limit should
+      // see WHY (the pin's per-message cost), not a generic wall. No "credits left"
+      // number — the governor's exhausted branch doesn't return the running count,
+      // so it can't be computed accurately here.
+      if (pinnedModel) {
+        const pinWeight = getRegistryCreditWeight(pinnedModel);
+        const pinName = getModelEntry(pinnedModel)?.displayName ?? pinnedModel;
+        return friendlyAssistantResponse(
+          `${pinName} costs ${pinWeight} credits per message and you've reached today's limit. switch to Automatic to keep chatting, or pin a lighter model.`,
+          requestedModel,
+          isStreaming
+        );
+      }
       return friendlyAssistantResponse(
         `You've hit your daily message limit (${displayLimit}/${displayLimit}). Want to keep going? Grab more credits or upgrade your plan here:\n\nhttps://instaclaw.io/dashboard/billing`,
         requestedModel,
@@ -1039,7 +1097,21 @@ export async function POST(req: NextRequest) {
     // toggles, and per-tier budget (returned by the merged limit check RPC).
     // Advisory only — if routing throws, we proceed with the original model.
     let routingDecision: RoutingDecision | null = null;
-    if (!isHeartbeat && !isVirtuals && !isInfrastructureCall) {
+    if (pinnedModel) {
+      // Pinned model: bypass the content classifier ENTIRELY. A pin cannot be
+      // content-routed or budget-downgraded because it never enters routeModel —
+      // honest by construction (model-router.ts is byte-untouched). requestedModel
+      // + parsedBody.model are already the pin (set in the pre-governor block);
+      // routingDecision is set here only for usage telemetry + the tier-counter
+      // skip below. pinnedModel is non-null only when !isHeartbeat && !isVirtuals
+      // && !isInfrastructureCall (gated at the pre-governor block), so this branch
+      // never steals a background call.
+      routingDecision = {
+        model: pinnedModel,
+        tier: MODEL_TIER_BY_ID[pinnedModel] ?? 2,
+        reason: "pinned model (grant-governed)",
+      };
+    } else if (!isHeartbeat && !isVirtuals && !isInfrastructureCall) {
       try {
         // Read tier budget from the merged limit check result
         const tierBudget = computeTierBudget(tier, limitResult ? {
@@ -1056,6 +1128,21 @@ export async function POST(req: NextRequest) {
         const hasDeepResearch = systemPrompt.includes("DEEP RESEARCH");
         const hasWebSearch = systemPrompt.includes("WEB SEARCH");
 
+        // D1(B) CONTAINED: honor a deliberate Fable pick. requestedModel here is
+        // the pre-route picked/default model (the gateway sends the on-disk
+        // primary, which is the user's picked default_model). Fable is the ONLY
+        // model the auto-router won't reach, so a Fable default IS a deliberate
+        // pick - plumb it into the router's explicit path (served as Fable, the
+        // governor already bills 38 via step (a)). For EVERY other model this is
+        // undefined, so content-routing is untouched (the contained boundary).
+        // x-model-override (infra defense-in-depth, Rule 69) takes precedence.
+        const fablePicked = !hasModelOverride && requestedModel.toLowerCase().includes("fable");
+        const explicitReq = hasModelOverride
+          ? modelOverrideHeader!
+          : fablePicked
+            ? "claude-fable-5"
+            : undefined;
+
         const routingCtx: RoutingContext = {
           userMessage,
           messageCount: messages.length,
@@ -1065,14 +1152,7 @@ export async function POST(req: NextRequest) {
           isRecurringTask,
           toggles: { deepResearch: hasDeepResearch, webSearch: hasWebSearch },
           tierBudget,
-          // 2026-05-28 Rule 69 defense-in-depth: when a caller sends
-          // x-model-override, plumb it into the router so the router's
-          // existing respectExplicitModel() path takes precedence over
-          // content classification. Strip-thinking et al. now also send
-          // x-call-kind: infrastructure (handled by the early skip above),
-          // but this defense layer catches any future caller that sets
-          // x-model-override without remembering the call-kind header.
-          ...(hasModelOverride ? { explicitModelRequest: modelOverrideHeader! } : {}),
+          ...(explicitReq ? { explicitModelRequest: explicitReq } : {}),
         };
 
         routingDecision = routeModel(routingCtx);
@@ -1295,6 +1375,20 @@ export async function POST(req: NextRequest) {
         vmId: vm.id,
         payload: JSON.stringify(debugPayload),
       });
+    }
+
+    // DEV-ONLY test seam (empty-completion-guards discrimination proof). NEVER
+    // active in production — gated on NODE_ENV — and restricted to localhost so
+    // it can't redirect the upstream anywhere real. Lets the proof point the
+    // upstream at a local mock that returns controlled empty/non-empty Anthropic
+    // responses (real Anthropic won't reliably emit an empty completion). The
+    // override applies to the original fetch, the 5xx retry, AND the empty
+    // fallback, since they all reference providerUrl.
+    if (process.env.NODE_ENV !== "production") {
+      const mockUrl = req.headers.get("x-proxy-upstream-override");
+      if (mockUrl && mockUrl.startsWith("http://localhost")) {
+        providerUrl = mockUrl;
+      }
     }
 
     // 90-second timeout prevents infinite hang on large image payloads
@@ -1727,6 +1821,80 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // ── Empty-completion guards (incident 2026-06-10) ───────────────────────
+    // Shared state consumed by the usage-log insert + refund wiring + returns
+    // below. Declared at the success-path entry (finalProviderRes is 2xx).
+    let nonStreamingBufferedText: string | null = null; // non-streaming body, read once
+    let finalServedEmpty = false;          // FINAL outcome empty → full refund + friendly error
+    let pendingRefundWeight = 0;           // governor refund: partial on served-fallback, full on total-empty
+    const forensicEmptyAttempts: Array<{ model: string; weight: number }> = []; // empty attempts NOT captured by the served (1872) row — logged as output_tokens=0 / refunded so the empty-rate detector survives
+
+    // GUARD 1 (non-streaming only): empty → straight-to-fallback (down-only).
+    // Streaming gets Guard 2 (no-bill) but no transparent retry (deferred — see
+    // docs/streaming-empty-retry-canary). FAIL-OPEN: buffer the body FIRST, then
+    // run the empty/fallback logic in try/catch; any throw falls through to
+    // today's behavior (serve the buffered body, no refund) — never a new failure.
+    if (!isStreaming && finalProviderRes.status >= 200 && finalProviderRes.status < 300) {
+      try {
+        nonStreamingBufferedText = await finalProviderRes.text();
+        let parsed: unknown = null;
+        try { parsed = JSON.parse(nonStreamingBufferedText); } catch { parsed = null; }
+        if (parsed && isEmptyCompletionJson(parsed)) {
+          const chargedWeight = typeof limitResult?.cost_weight === "number" ? limitResult.cost_weight : getRegistryCreditWeight(finalModel);
+          const origModel = finalModel;
+          const origWeight = getRegistryCreditWeight(origModel);
+          const fbWeight = getRegistryCreditWeight(EMPTY_FALLBACK_MODEL);
+          // DOWN-ONLY gate: fall back ONLY when the requested model is strictly
+          // more expensive than sonnet, so the fallback is never an up-step
+          // (haiku/minimax/sonnet empties get no fallback → error + full refund).
+          if (origWeight > fbWeight) {
+            if (parsedBody) parsedBody.model = EMPTY_FALLBACK_MODEL;
+            const fbBody = parsedBody ? JSON.stringify(parsedBody) : body;
+            const fbAbort = new AbortController();
+            const fbTimeout = setTimeout(() => fbAbort.abort(), 90000);
+            let fbServed = false;
+            try {
+              const fbRes = await fetch(providerUrl, { method: "POST", headers: providerHeaders, body: fbBody, signal: fbAbort.signal });
+              clearTimeout(fbTimeout);
+              if (fbRes.ok) {
+                const fbText = await fbRes.text();
+                let fbParsed: unknown = null;
+                try { fbParsed = JSON.parse(fbText); } catch { fbParsed = null; }
+                if (fbParsed && !isEmptyCompletionJson(fbParsed)) {
+                  // fallback SERVED → reassign so the served (1872) row + token
+                  // capture attribute to sonnet; the orig empty gets a forensic row.
+                  nonStreamingBufferedText = fbText;
+                  finalProviderRes = fbRes;
+                  finalModel = EMPTY_FALLBACK_MODEL;
+                  fbServed = true;
+                  const sonnetCharge = fbWeight * (isToolContinuation ? 0.2 : 1);
+                  pendingRefundWeight = Math.max(0, chargedWeight - sonnetCharge); // bill once at sonnet weight
+                  forensicEmptyAttempts.push({ model: origModel, weight: origWeight });
+                  logger.warn("Empty completion → fallback served sonnet", { route: "gateway/proxy", vmId: vm.id, origModel, partialRefund: pendingRefundWeight });
+                }
+              }
+            } catch { clearTimeout(fbTimeout); }
+            if (!fbServed) {
+              // fallback also empty (or errored) → total failure. The served
+              // (1872) row stays the ORIG empty; the sonnet empty gets a forensic row.
+              forensicEmptyAttempts.push({ model: EMPTY_FALLBACK_MODEL, weight: fbWeight });
+              finalServedEmpty = true;
+              pendingRefundWeight = chargedWeight; // full refund
+              logger.warn("Empty completion → fallback also empty/failed", { route: "gateway/proxy", vmId: vm.id, origModel });
+            }
+          } else {
+            // down-only gate BLOCKS → no fallback; the 1872 row IS the orig empty.
+            finalServedEmpty = true;
+            pendingRefundWeight = chargedWeight; // full refund
+            logger.warn("Empty completion, fallback blocked (down-only gate) → refund + error", { route: "gateway/proxy", vmId: vm.id, origModel, origWeight, fbWeight });
+          }
+        }
+      } catch (guardErr) {
+        // FAIL-OPEN: serve the buffered body as today, no refund.
+        logger.error("Empty-completion guard error (failing open)", { route: "gateway/proxy", vmId: vm.id, error: String(guardErr) });
+      }
+    }
+
     // --- Usage already incremented atomically in instaclaw_check_and_increment above ---
     // No separate increment needed. The atomic RPC handled check + increment
     // in a single transaction with row lock (C5 fix).
@@ -1810,12 +1978,28 @@ export async function POST(req: NextRequest) {
         });
     }
 
-    // --- Per-call usage log (fire-and-forget) ---
+    // --- Per-call usage log (insert now; token columns filled by a deferred UPDATE) ---
+    // The row + attribution land immediately for EVERY call (unchanged
+    // behavior). Token columns are populated by recordTokenUsage() once the
+    // response body is consumed — streaming via the usage-scanner flush (in
+    // after()), non-streaming inline after parse. insert-then-update keeps the
+    // row guaranteed even if token capture fails, and is rollout-safe: the
+    // UPDATE no-ops cleanly before the migration columns exist. Logging is
+    // observability, NEVER a gate — nothing here can fail the user's response.
+    let recordTokenUsage: (u: TokenUsage | null) => Promise<void> | void = () => {};
+    // Guard 2 plumbing — hoisted so the streaming tee (below) can call them too.
+    // refundEmptyCharge: reverse the governor charge on an empty completion.
+    // flagServedRowRefunded: set billing_refunded=true on the served (1872) row.
+    let refundEmptyCharge: (weight: number) => void = () => {};
+    let flagServedRowRefunded: () => Promise<void> | void = () => {};
     {
       const logModel = finalModel || requestedModel || "unknown";
       const logTier = routingDecision?.tier ?? (logModel.includes("haiku") ? 1 : logModel.includes("sonnet") ? 2 : logModel.includes("opus") ? 3 : 1);
-      const logBaseCost = logTier === 1 ? 1 : logTier === 2 ? 4 : logTier === 3 ? 19 : 1;
-      if (logModel.includes("minimax")) { /* minimax = 0.2 */ }
+      // Model-aware weight (single source: registry). Byte-identical to the old
+      // tier->{1,4,19} map for haiku/sonnet/opus; correctly 38 for Fable. The
+      // minimax branch preserves the prior 0.2-always quirk verbatim so this
+      // change is byte-identical for every existing model (D1 step a).
+      const logBaseCost = getRegistryCreditWeight(logModel);
       const logCost = logModel.includes("minimax") ? 0.2 : isToolContinuation ? logBaseCost * 0.2 : logBaseCost;
       const callType = isInfrastructureCall ? "infrastructure" : isHeartbeat ? "heartbeat" : isVirtuals ? "virtuals" : isToolContinuation ? "tool_continuation" : "user";
 
@@ -1834,7 +2018,13 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      supabase
+      // Insert the attribution row immediately and capture its id (fire-and-
+      // forget — the promise is retained for the deferred token UPDATE, never
+      // awaited in the response path).
+      // Promise.resolve() upgrades supabase's PromiseLike to a real Promise so
+      // the deferred path can .then().catch() it safely.
+      const usageLogIdP: Promise<string | null> = Promise.resolve(
+        supabase
         .from("instaclaw_usage_log")
         .insert({
           vm_id: vm.id,
@@ -1846,7 +2036,9 @@ export async function POST(req: NextRequest) {
           routing_reason: routingDecision?.reason ?? null,
           prompt_hint: promptHint,
         })
-        .then(({ error: logErr }) => {
+        .select("id")
+        .single()
+        .then(({ data, error: logErr }) => {
           if (logErr) {
             // Don't log every insert failure — table might not exist yet during rollout
             if (!logErr.message.includes("does not exist")) {
@@ -1856,8 +2048,111 @@ export async function POST(req: NextRequest) {
                 error: String(logErr),
               });
             }
+            return null;
           }
-        });
+          return (data as { id: string } | null)?.id ?? null;
+        }),
+      );
+
+      // Deferred, idempotent, fail-safe token UPDATE keyed by the row id.
+      // Called once per call from the response path once tokens are known.
+      // Guards: skip if already written or no tokens captured; swallow every
+      // error (a failed token UPDATE leaves a valid NULL-token row — exactly
+      // today's behavior — and never affects serving).
+      let tokensWritten = false;
+      recordTokenUsage = (usage: TokenUsage | null) => {
+        if (tokensWritten || !hasAnyToken(usage)) return;
+        tokensWritten = true;
+        return usageLogIdP
+          .then((id) => {
+            if (!id) return;
+            return supabase
+              .from("instaclaw_usage_log")
+              .update({
+                input_tokens: usage!.input_tokens,
+                output_tokens: usage!.output_tokens,
+                cache_read_tokens: usage!.cache_read_tokens,
+                cache_creation_tokens: usage!.cache_creation_tokens,
+              })
+              .eq("id", id)
+              .then(({ error: updErr }) => {
+                if (updErr && !updErr.message.includes("does not exist")) {
+                  logger.error("Failed to update usage tokens", {
+                    route: "gateway/proxy",
+                    vmId: vm.id,
+                    error: String(updErr),
+                  });
+                }
+              });
+          })
+          .catch(() => {
+            // never disturb serving
+          });
+      };
+
+      // --- Guard 2: never bill an empty completion (refund + audit) ---------
+      // Assign the hoisted helpers (close over usageLogIdP / source / vm).
+      refundEmptyCharge = (weight: number) => {
+        if (!(weight > 0) || !source) return;
+        Promise.resolve(
+          supabase.rpc("instaclaw_refund_empty", {
+            p_vm_id: vm.id,
+            p_cost_weight: weight,
+            p_source: source,
+            p_timezone: userTz,
+          }).then(({ error }) => {
+            if (error) logger.error("Empty-refund RPC failed", { route: "gateway/proxy", vmId: vm.id, error: String(error) });
+          }),
+        ).catch(() => {});
+      };
+      flagServedRowRefunded = () => {
+        return usageLogIdP
+          .then((id) => {
+            if (!id) return;
+            return supabase
+              .from("instaclaw_usage_log")
+              .update({ billing_refunded: true })
+              .eq("id", id)
+              .then(({ error: flagErr }) => {
+                if (flagErr && !flagErr.message.includes("does not exist")) {
+                  logger.error("Failed to set billing_refunded", { route: "gateway/proxy", vmId: vm.id, error: String(flagErr) });
+                }
+              });
+          })
+          .catch(() => {});
+      };
+
+      // Forensic rows for empty attempts NOT captured by the served (1872) row
+      // (the orig empty when a fallback served; the sonnet empty on total-fail),
+      // so the output_tokens=0 empty-rate detector counts every empty. Refunded.
+      for (const att of forensicEmptyAttempts) {
+        supabase
+          .from("instaclaw_usage_log")
+          .insert({
+            vm_id: vm.id,
+            model: att.model,
+            cost_weight: att.weight,
+            call_type: callType,
+            is_tool_continuation: isToolContinuation,
+            routing_tier: logTier,
+            routing_reason: "empty-completion (forensic)",
+            prompt_hint: promptHint,
+            input_tokens: null,
+            output_tokens: 0,
+            billing_refunded: true,
+          })
+          .then(({ error: fe }) => {
+            if (fe && !fe.message.includes("does not exist")) {
+              logger.error("Failed to insert forensic empty row", { route: "gateway/proxy", vmId: vm.id, error: String(fe) });
+            }
+          });
+      }
+
+      // Non-streaming refund wiring (streaming fires from its tee, below).
+      //   served-fallback → partial refund (charged − sonnet); served row billed.
+      //   total-empty     → full refund + flag the served (orig-empty) row.
+      if (pendingRefundWeight > 0) refundEmptyCharge(pendingRefundWeight);
+      if (finalServedEmpty) flagServedRowRefunded();
     }
 
     // --- Increment tier usage (fire-and-forget) ---
@@ -1865,7 +2160,19 @@ export async function POST(req: NextRequest) {
     // their own per-day cap enforced earlier in the request, and they should
     // not count against the user's tier-2/tier-3 sonnet/opus call counters
     // that the routing layer reads.
-    if (routingDecision && !isHeartbeat && !isInfrastructureCall) {
+    //
+    // D1(B) Option Y (grant-only, no tier wall): Fable does NOT increment the
+    // opus tier-3 counter, so it never consumes the opus daily call-cap. The
+    // daily grant (instaclaw_check_and_increment, 38/msg) is Fable's sole
+    // governor. This leaves a credit user's opus auto-budget untouched by their
+    // Fable usage.
+    const servedFable = (routingDecision?.model ?? "").toLowerCase().includes("fable");
+    // A pinned model is grant-governed (the daily grant bills its true weight),
+    // NOT tier-budget-governed — so it must skip the tier-2/tier-3 call counter,
+    // exactly like Fable. Otherwise a pinned-Opus session would burn the user's
+    // Automatic opus call-budget and cross-contaminate later Automatic sessions.
+    const servedPinned = !!pinnedModel;
+    if (routingDecision && !isHeartbeat && !isInfrastructureCall && !servedFable && !servedPinned) {
       const baseCostWeight = routingDecision.tier === 1 ? 1 : routingDecision.tier === 2 ? 4 : 19;
       const costWeight = isToolContinuation ? baseCostWeight * 0.2 : baseCostWeight;
       supabase
@@ -1952,26 +2259,48 @@ export async function POST(req: NextRequest) {
     // Streaming responses are SSE text that can't be JSON-parsed, so we never
     // try to buffer/modify them — that was causing "request ended without sending
     // any chunks" when the buffered SSE was returned as a single JSON blob.
-    if (isStreaming || !usageWarning) {
+    if (isStreaming) {
       let outBody = finalProviderRes.body;
-      // Streaming user-turn response → tee it (passthrough, never disturbed) to
-      // detect the turn-ending stop_reason and write `complete`.
-      if (isStreaming && trackFloorComplete && outBody) {
+      if (outBody) {
+        // Floor completion tee (existing — only user turns that should
+        // celebrate). Passthrough, never disturbs the bytes.
         let completeP: Promise<void> | null = null;
-        outBody = attachCompletionScanner(outBody, (stopReason) => {
-          if (!completeP && isTurnEndStopReason(stopReason)) {
-            completeP = recordComplete({
-              vmId: floorCompleteVmId,
-              userId: floorCompleteUserId,
-              channel: "web",
-            }).catch(() => {});
+        if (trackFloorComplete) {
+          outBody = attachCompletionScanner(outBody, (stopReason) => {
+            if (!completeP && isTurnEndStopReason(stopReason)) {
+              completeP = recordComplete({
+                vmId: floorCompleteVmId,
+                userId: floorCompleteUserId,
+                channel: "web",
+              }).catch(() => {});
+            }
+          });
+        }
+        // Usage tee (EVERY streaming call — margin measurement). Same enqueue-
+        // first passthrough contract as the completion scanner; fires once on
+        // flush with the latched tokens, then the deferred id-keyed UPDATE
+        // fills the columns. Independent of trackFloorComplete so heartbeat /
+        // virtuals / infra calls are captured too (those rows already exist;
+        // this adds the token columns, not new rows).
+        let usageWriteP: Promise<void> | void;
+        let refundP: Promise<void> | void;
+        outBody = attachUsageScanner(outBody, (usage, sawContent) => {
+          usageWriteP = recordTokenUsage(usage);
+          // GUARD 2 (streaming): no content block ⇒ empty completion. Streaming
+          // can't retry transparently (deferred — see streaming-empty-retry-canary),
+          // but it must NOT bill: refund the full charge + flag the served row.
+          // The user already saw the empty stream; this stops the over-bill.
+          if (!sawContent && typeof limitResult?.cost_weight === "number") {
+            refundEmptyCharge(limitResult.cost_weight);
+            refundP = flagServedRowRefunded() || undefined;
           }
         });
-        // after() runs once the stream is fully flushed (the scanner has by then
-        // seen the terminal event and started the write, if any) — keep the
-        // function alive until that fire-and-forget write settles.
+        // after() runs once the stream is fully flushed (both scanners have by
+        // then fired) — keep the function alive until the deferred writes settle.
         after(async () => {
           if (completeP) await completeP;
+          if (usageWriteP) await usageWriteP;
+          if (refundP) await refundP;
         });
       }
       return new NextResponse(outBody, {
@@ -1989,8 +2318,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Non-streaming: append usage warning to the AI response
-    const resText = await finalProviderRes.text();
+    // Non-streaming: buffer + parse (a single JSON; safe to buffer). Captures
+    // token usage from the parsed body and appends the usage warning if any
+    // (appending "" is a no-op when there's no warning). The empty-completion
+    // guard above already consumed the body into nonStreamingBufferedText (and
+    // may have swapped it for the fallback's body) — reuse it; the `!== null`
+    // fallback covers the (unreached) case where the guard didn't run.
+    const resText = nonStreamingBufferedText !== null ? nonStreamingBufferedText : await finalProviderRes.text();
     // Same turn-end → `complete` detection, read straight from the JSON body
     // (extractStopReason matches "stop_reason"/"finish_reason" in JSON too).
     if (trackFloorComplete && isTurnEndStopReason(extractStopReason(resText))) {
@@ -2003,8 +2337,24 @@ export async function POST(req: NextRequest) {
         await completeP;
       });
     }
+    // Total-empty outcome (Guard 1 fallback exhausted, or down-only gate
+    // blocked the fallback): the charge was refunded + the served row flagged
+    // billing_refunded above. Record the empty's tokens (output 0) on that row,
+    // then surface a clean error instead of returning the empty body.
+    if (finalServedEmpty) {
+      try { recordTokenUsage(parseUsageFromJson(JSON.parse(resText))); } catch { recordTokenUsage(null); }
+      return friendlyAssistantResponse(
+        "I couldn't generate a response to that. Mind trying again?",
+        finalModel,
+        false,
+      );
+    }
+
     try {
       const resBody = JSON.parse(resText);
+      // Capture token usage from the parsed body (non-streaming = top-level
+      // usage block). Deferred UPDATE; fire-and-forget; null-safe.
+      recordTokenUsage(parseUsageFromJson(resBody));
       if (resBody.content && Array.isArray(resBody.content)) {
         // Find last text block and append warning
         for (let i = resBody.content.length - 1; i >= 0; i--) {

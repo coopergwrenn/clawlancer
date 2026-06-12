@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { stopGateway } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
+import { fetchBillingExempt } from "@/lib/billing-status";
 import type { VMRecord } from "@/lib/ssh";
 
 export const dynamic = "force-dynamic";
@@ -180,6 +181,29 @@ export async function GET(req: NextRequest) {
 
         // Skip if user has credits
         if ((vm.credit_balance ?? 0) > 0) {
+          results.skipped++;
+          continue;
+        }
+
+        // billing_exempt guard (Rule 67 / vm-1075 2026-06-10): comp-exempt
+        // users (founder / family / partner-comp) keep their VM running even
+        // with no sub + 0 credits. The exemption lives in billing-status; this
+        // is the second inline suspend path (alongside the webhook
+        // subscription.deleted handler) that must consult it directly.
+        // Only the small set of VMs that survive the grace/sub/credit gates
+        // reach this point, so the per-VM query is cheap.
+        const { exempt: passExempt, exemptReason: passExemptReason, verified: passVerified } =
+          await fetchBillingExempt(supabase, vm.assigned_to!);
+        // F1 fail-closed: skip hibernate on exempt OR unverifiable read.
+        if (passExempt || !passVerified) {
+          logger.info("Pass 2: hibernate SKIPPED — billing_exempt/unverifiable", {
+            route: "cron/suspend-check",
+            vmId: vm.id,
+            userId: vm.assigned_to,
+            exempt: passExempt,
+            verified: passVerified,
+            exemptReason: passExemptReason,
+          });
           results.skipped++;
           continue;
         }

@@ -790,6 +790,43 @@ function PostSubmitState({
         <div aria-hidden className="liquid-glass-signin-shadow" />
       </div>
 
+      {/* Second step, not an alternative. The framing is sequential: the
+          primary CTA above is step 1 (message your agent — the activation
+          moment, stays visually dominant), and this is step 2 ("now ...").
+          "or explore" read as a fork (do this INSTEAD); "now check out"
+          reads as the next move (do this NEXT). A user finishing signup on
+          a messaging channel otherwise has NO way to discover the dashboard
+          exists (skills, WorldID verification, credits, controls) and would
+          reasonably conclude the product is messaging-only. Rendered ONLY
+          when the primary CTA does not already go to the dashboard — web /
+          discord / slack primary IS the dashboard, so a second link there
+          would be redundant. The user is already authenticated (the
+          /onboarding/done page requires auth()), so /dashboard lands signed
+          in; if their VM is still provisioning, the dashboard layout routes
+          them to /deploying. */}
+      {ctaHref !== "/dashboard" && (
+        <Link
+          href="/dashboard"
+          className="inline-block transition-colors duration-150"
+          style={{
+            marginTop: 18,
+            color: MUTED_INK,
+            fontSize: 13,
+            letterSpacing: "-0.1px",
+            textDecoration: "underline",
+            textUnderlineOffset: 3,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = CARD_INK;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = MUTED_INK;
+          }}
+        >
+          now check out your dashboard →
+        </Link>
+      )}
+
       <style>{`
         /* "Ink appearing" — each memory-line fades in with a slight
            upward translate. Combined with the staggered animation-

@@ -49,7 +49,7 @@
  *     "counterparty_address":<string 0x…>,      // an external payee
  *     "endpoint":            <string url>,       // the external resource (Bazaar) URL
  *     // capability:
- *     "category": "data"|"search"|"inference"|"compute"|"market"|"media"|"agent"|"other",
+ *     "category": "data"|"search"|"inference"|"compute"|"market"|"media"|"travel"|"agent"|"other",
  *     "tags":     <string[]>,                    // mapped to a category if `category` omitted
  *     // context:
  *     "wallet_balance_usd":  <number>,          // IGNORED (P1-3) — balance is read server-side from bankr_evm_address; kept for backward-compat
@@ -68,13 +68,16 @@
  *
  * PRD: instaclaw/docs/PRD-frontier-economic-agency.md §2 (C-spend), §4 Phase 1 (W4)
  */
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { recordSpendEvent } from "@/lib/frontier-spend-log";
+import { sendPerVmAlertDeduped } from "@/lib/admin-alert";
 import { getSupabase } from "@/lib/supabase";
 import { lookupVMByGatewayToken } from "@/lib/gateway-auth";
 import {
   evaluateSpend,
   mapTagsToCategory,
   ALL_CATEGORIES,
+  isSessionRequiredCategory,
   type FrontierTier,
   type SpendCategory,
 } from "@/lib/frontier-policy";
@@ -83,8 +86,16 @@ import { loadVmStanding, LedgerReadError } from "@/lib/frontier-standing-db";
 import type { CreditStanding } from "@/lib/frontier-standing";
 import { HOLD_TTL_MS, SPEND_WINDOW_MS } from "@/lib/frontier-ledger-db";
 import { decideAuthorization } from "@/lib/frontier-authz";
-import { isFrontierSpendKilled } from "@/lib/frontier-kill-switch";
+import { frontierSpendKillState } from "@/lib/frontier-kill-switch";
 import { isFrontierSpendEnabled } from "@/lib/frontier-spend-optin";
+import { evaluateApproval } from "@/lib/frontier-approvals";
+import {
+  lookupApproval,
+  mintPendingApproval,
+  consumeApproval,
+  sendForgeableSpendNotification,
+  requireSessionApprovalAboveThreshold,
+} from "@/lib/frontier-approval-io";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30; // DB reads + one insert, no LLM (Rule 11 short tier)
@@ -323,10 +334,52 @@ export async function POST(req: NextRequest) {
 
   // ── Emergency stop (no deploy, instant, fleet-wide): if the spend kill switch is
   // engaged, deny EVERY spend — overrides human_approved (it's an emergency stop, not a
-  // policy band). Checked before the pipeline so it also short-circuits cheaply. ──
-  if (await isFrontierSpendKilled(supabase)) {
+  // policy band). Checked before the pipeline so it also short-circuits cheaply.
+  // FAIL-CLOSED (Tier-0 F): an unreadable switch denies too (reason *_unverifiable), so a
+  // transient blip can never bypass an engaged brake. Distinct reasons let an operator
+  // tell "stopped on purpose" from "went blind". ──
+  const killState = await frontierSpendKillState(supabase);
+  if (killState !== "clear") {
+    const killReason = killState === "engaged" ? "spend_kill_switch" : "spend_kill_switch_unverifiable";
+    // Tier-0 A: log the kill-switch denial (incl. the *_unverifiable "went blind"
+    // case — the one operator-visible signal that the DB is sick and the brake
+    // fail-closed). No budget snapshot here: standing isn't computed until after
+    // the opt-in gate. Best-effort, post-response (after()), never blocks.
+    after(() =>
+      recordSpendEvent(supabase, {
+        decision_point: "authorize", vm_id: vmId, owner_id: ownerId, verdict: "deny",
+        reason: killReason, request_id: v.request_id, amount_usd: v.amount_usd, category: v.category,
+        counterparty: v.counterparty_vm_id ?? v.counterparty_address ?? v.endpoint ?? null,
+      }),
+    );
+    // UNVERIFIABLE = the spend rail went blind (kill-switch state unreadable after
+    // retry) and is failing CLOSED — every spend on every VM is being denied until
+    // the DB recovers. That's the safe direction, but the operator must know NOW
+    // (IR runbook S4). FLEET-level key (not per-VM): during DB sickness every VM
+    // fires; one email/hour, not an inbox melt (Rule 67 pattern). The helper's
+    // dedup query fails-OPEN and the email goes to Resend, so this alert works
+    // even during the exact DB sickness it reports. Best-effort, post-response.
+    if (killState === "unverifiable") {
+      after(async () => {
+        try {
+          await sendPerVmAlertDeduped({
+            alertKey: "frontier_kill_switch_unverifiable",
+            subject: "[P1] Frontier spend rail BLIND — kill-switch state unreadable, all spends failing closed",
+            body:
+              `The spend kill-switch read failed (after retry) on /api/agent-economy/authorize. ` +
+              `Every autonomous spend fleet-wide is being DENIED with reason spend_kill_switch_unverifiable until the DB recovers — money is safe, the rail is down.\n\n` +
+              `First-seen VM: ${vmId} (owner ${ownerId}).\n` +
+              `Runbook: instaclaw/docs/runbooks/frontier-spend-ir.md — scenario S4 (unverifiable denials spiking).\n` +
+              `Detection: SELECT count(*) FROM frontier_spend_events WHERE reason='spend_kill_switch_unverifiable' AND created_at > now() - interval '15 minutes';`,
+            dedupHours: 1,
+          });
+        } catch {
+          // never let the alert path throw into after()
+        }
+      });
+    }
     return NextResponse.json(
-      { authorized: false, mode: null, outcome: "deny", reason: "spend_kill_switch" },
+      { authorized: false, mode: null, outcome: "deny", reason: killReason },
       { status: 200 },
     );
   }
@@ -337,6 +390,13 @@ export async function POST(req: NextRequest) {
   // unreadable ⇒ deny. Checked before the pipeline (no standing/budget logic runs until
   // the user has opted in). This is the §8.7 "mandate"; see lib/frontier-spend-optin.ts. ──
   if (!isFrontierSpendEnabled(vm)) {
+    after(() =>
+      recordSpendEvent(supabase, {
+        decision_point: "authorize", vm_id: vmId, owner_id: ownerId, verdict: "deny",
+        reason: "spend_not_enabled", request_id: v.request_id, amount_usd: v.amount_usd, category: v.category,
+        counterparty: v.counterparty_vm_id ?? v.counterparty_address ?? v.endpoint ?? null,
+      }),
+    );
     return NextResponse.json(
       { authorized: false, mode: null, outcome: "deny", reason: "spend_not_enabled" },
       { status: 200 },
@@ -398,12 +458,50 @@ export async function POST(req: NextRequest) {
     allowedCategories,
   });
 
+  // ── Human-approval tier (Model C): the session-rooted approval row (unforgeable)
+  //    vs the raw body bool (forgeable). Look up any approval the human minted for
+  //    THIS spend and bind it to the EXACT spend identity (anti-amount-swap: a $1
+  //    approval cannot authorize a $100 spend reusing the same request_id). ──
+  const counterpartyLabel = v.counterparty_vm_id ?? v.counterparty_address ?? v.endpoint ?? null;
+  const approvalRow = await lookupApproval(supabase, vmId, v.request_id);
+  const approvalVerdict = evaluateApproval(
+    approvalRow,
+    { amountUsd: v.amount_usd, category: v.category, counterparty: counterpartyLabel },
+    nowMs,
+  );
+  if (approvalVerdict === "identity_mismatch") {
+    after(() =>
+      recordSpendEvent(supabase, {
+        decision_point: "authorize", vm_id: vmId, owner_id: ownerId, verdict: "ask",
+        reason: "approval_identity_mismatch", request_id: v.request_id,
+        amount_usd: v.amount_usd, category: v.category, counterparty: counterpartyLabel, tier,
+        standing_score: standing.score, spent_today_usd: reserveAwareSpent,
+        wallet_balance_usd: walletBalanceUsd, just_do_it_per_tx_usd: evaluation.effectiveBands.justDoItPerTx,
+      }),
+    );
+    return NextResponse.json(
+      {
+        authorized: false, mode: null, outcome: "ask_first", reason: "approval_identity_mismatch",
+        standing: standingSummary(standing), spent_today_usd: reserveAwareSpent,
+        policy_bands: evaluation.effectiveBands, standing_truncated: standingTruncated,
+      },
+      { status: 200 },
+    );
+  }
+  const sessionApproved = approvalVerdict === "approved";
+
   const decision = decideAuthorization({
     evaluation,
     standing,
     reserveAwareSpentTodayUsd: reserveAwareSpent,
     amountUsd: v.amount_usd,
-    humanApproved: v.human_approved,
+    humanApprovedForgeable: v.human_approved,
+    sessionApproved,
+    justDoItPerTxUsd: evaluation.effectiveBands.justDoItPerTx,
+    requireSessionAboveThreshold: requireSessionApprovalAboveThreshold(),
+    // F2: travel (and any session-grade category) NEVER honors the forgeable bool --
+    // only a session approval authorizes it, independent of the global flip.
+    disallowForgeableApproval: isSessionRequiredCategory(v.category),
     categoryKnown: v.category !== null,
   });
 
@@ -418,15 +516,83 @@ export async function POST(req: NextRequest) {
     standing_truncated: standingTruncated,
   };
 
+  // Tier-0 A: build the full-snapshot spend-decision event (budget state at decision
+  // time + spend identity). Used for the deny/ask/race/allow returns below. Best-effort,
+  // logged post-response via after(); never blocks or throws into the hot path.
+  const spendEvent = (
+    verdict: "allow" | "deny" | "ask",
+    extra?: { transaction_id?: string | null; consent_grade?: string | null; reason?: string },
+  ) => ({
+    decision_point: "authorize" as const,
+    vm_id: vmId, owner_id: ownerId, verdict,
+    reason: extra?.reason ?? decision.reason,
+    request_id: v.request_id,
+    amount_usd: v.amount_usd, category: v.category, counterparty: counterpartyLabel,
+    mode: decision.mode, consent_grade: extra?.consent_grade ?? null,
+    transaction_id: extra?.transaction_id ?? null,
+    standing_score: standing.score,
+    earned_daily_budget_usd: decision.earnedDailyBudgetUsd,
+    spent_today_usd: reserveAwareSpent,
+    remaining_earned_after_usd: decision.remainingEarnedAfterUsd,
+    wallet_balance_usd: walletBalanceUsd,
+    just_do_it_per_tx_usd: evaluation.effectiveBands.justDoItPerTx,
+    tier,
+  });
+
   // ── Not authorized: a valid business answer (ask the human / hard no). No hold. ──
   if (!decision.authorized) {
-    return NextResponse.json({ authorized: false, mode: null, ...commonBody }, { status: 200 });
+    // On ask_first (human-resolvable — a session approval converts ANY ask_first to
+    // authorized at Gate 3), mint/reuse a pending approval capturing this exact spend
+    // and return the session-authed confirm URL for the agent to relay to its human.
+    // Hard denies (outcome "deny": ceiling / ban / drain / privacy) get NO URL — a
+    // human cannot per-spend-override a configured hard limit (Gate 1 is absolute).
+    let approval: { approvalId: string; approvalUrl: string } | null = null;
+    if (decision.outcome === "ask_first") {
+      approval = await mintPendingApproval(supabase, {
+        vmId, ownerId, requestId: v.request_id,
+        amountUsd: v.amount_usd, category: v.category, counterparty: counterpartyLabel, nowMs,
+      });
+    }
+    after(() => recordSpendEvent(supabase, spendEvent(decision.outcome === "deny" ? "deny" : "ask")));
+    return NextResponse.json(
+      {
+        authorized: false, mode: null, ...commonBody,
+        ...(approval ? { approval_url: approval.approvalUrl, approval_id: approval.approvalId } : {}),
+      },
+      { status: 200 },
+    );
   }
+
+  // Post-authorize side effects on a FRESH reserve (not idempotent retries — those
+  // already ran on the original authorize): consume a session approval (single-use)
+  // OR fire the out-of-band detection notification for a forgeable-honored spend.
+  // Both best-effort; neither blocks or reverses the authorized hold.
+  const afterFreshAuthorize = async (): Promise<void> => {
+    if (decision.reason === "human_approved_session") {
+      await consumeApproval(supabase, vmId, v.request_id);
+    } else if (decision.reason === "human_approved") {
+      await sendForgeableSpendNotification(
+        supabase,
+        { id: vmId, telegram_bot_token: vm.telegram_bot_token as string | null, telegram_chat_id: vm.telegram_chat_id as string | null },
+        { amountUsd: v.amount_usd, counterparty: counterpartyLabel, category: v.category, nowMs },
+      );
+    }
+  };
 
   // ── Authorized: atomically reserve the spend as a pending hold (P1-4). ──
   const holdMeta = {
     hold: true,
     mode: decision.mode,
+    // Consent grade (F5 anomaly): how this spend was authorized, so the spend-anomaly
+    // monitor can EXCLUDE genuinely human-consented spends (session) and alarm only on
+    // UNCONSENTED ones (autonomous = agent alone; forgeable = the raw human_approved bool,
+    // which a compromised agent can set). session = the human approved it in-browser.
+    consent_grade:
+      decision.mode === "autonomous"
+        ? "autonomous"
+        : decision.reason === "human_approved_session"
+          ? "session"
+          : "forgeable",
     endpoint: v.endpoint,
     category: v.category,
     tags: v.tags,
@@ -476,7 +642,10 @@ export async function POST(req: NextRequest) {
     p_metadata: holdMeta,
     p_cap_daily: evaluation.effectiveBands.neverPerDay,
     p_cap_earned: decision.earnedDailyBudgetUsd,
-    p_human_approved: v.human_approved,
+    // The earned-budget lift is tied to the DECISION (session OR forgeable), not the
+    // raw body bool — a session-approved spend has human_approved=false in the body
+    // yet must lift the earned ceiling. mode==="human_approved" iff either tier honored.
+    p_human_approved: decision.mode === "human_approved",
     p_window_start: new Date(nowMs - SPEND_WINDOW_MS).toISOString(),
     p_fresh_pending_cutoff: new Date(nowMs - HOLD_TTL_MS).toISOString(),
   });
@@ -489,13 +658,18 @@ export async function POST(req: NextRequest) {
 
   if (!rpcErr && rpcData) {
     const r = rpcData as { reserved?: boolean; id?: string; conflict?: boolean; reason?: string };
-    if (r.reserved && r.id) return authorizedResponse(r.id, false);
+    if (r.reserved && r.id) {
+      await afterFreshAuthorize();
+      after(() => recordSpendEvent(supabase, spendEvent("allow", { transaction_id: r.id, consent_grade: holdMeta.consent_grade })));
+      return authorizedResponse(r.id, false);
+    }
     if (r.conflict) return idempotentReplyForExisting();
     if (r.reason === "invalid_counterparty") {
       return NextResponse.json({ error: "counterparty_vm_id does not exist" }, { status: 400 });
     }
     // Lost the locked budget re-check — a concurrent reserve consumed the headroom
     // the non-locked decision saw. Bounce to the human rather than over-reserve.
+    after(() => recordSpendEvent(supabase, spendEvent("ask", { reason: r.reason ?? "budget_race_lost" })));
     return NextResponse.json(
       { authorized: false, mode: null, ...commonBody, outcome: "ask_first", reason: r.reason ?? "budget_race_lost" },
       { status: 200 },
@@ -518,7 +692,11 @@ export async function POST(req: NextRequest) {
   };
   const { data: inserted, error: insertErr } = await supabase
     .from("frontier_transactions").insert(holdRow).select("id").single();
-  if (!insertErr && inserted) return authorizedResponse(inserted.id, false);
+  if (!insertErr && inserted) {
+    await afterFreshAuthorize();
+    after(() => recordSpendEvent(supabase, spendEvent("allow", { transaction_id: inserted.id, consent_grade: holdMeta.consent_grade })));
+    return authorizedResponse(inserted.id, false);
+  }
   if (insertErr?.code === "23505") return idempotentReplyForExisting();
   if (insertErr?.code === "23503") return NextResponse.json({ error: "counterparty_vm_id does not exist" }, { status: 400 });
   if (insertErr?.code === "23514") return NextResponse.json({ error: "value failed a database constraint" }, { status: 400 });

@@ -1,0 +1,62 @@
+name: frontier-safety-suites
+
+# Why this exists (Finding D, 2026-06-09)
+# ---------------------------------------
+# The 6 PROVEN-pure Rule-31 suites prove the Frontier spend-gate's safety contracts
+# (clampOverrides tighten/raise, evaluateSpend bands, decideAuthorization gates incl.
+# the 2c earned-budget keystone + 2e velocity-anomaly ask, creditStanding earned
+# budget, headroom display-bound). Before this workflow they were MANUAL-ONLY — a
+# future gate edit could ship green with the safety suites silently un-run.
+#
+# Design (deliberate — see instaclaw/docs/prd/frontier-slice-b-spec-2026-06-08.md §11):
+#   - SEPARATE from the Vercel build. `instaclaw/package.json:build` and the
+#     vercel.json files are UNTOUCHED, so a red run here CANNOT block any deploy or
+#     any push. This repo deploys on push-to-main from multiple terminals; a
+#     build-gating test would block unrelated deploys (a billing hotfix can't ship
+#     because a frontier test is red) — the worse failure mode we are avoiding.
+#   - NON-blocking: this is NOT a required status check. It reports red/green; it does
+#     not gate merges or pushes. (Detection, not prevention — the correct ceiling for a
+#     push-to-main multi-terminal repo, where a required check would block pushes.)
+#   - PURE suites ONLY: no secrets, no Supabase/RPC/chain/network. Verified by running
+#     each with infra env scrubbed (174 assertions, all green). Infra-dependent suites
+#     (e.g. higgsfield video-credit, frontier-routes / -x402-server / -standing-db /
+#     -ledger / -spend-core / -feedback-loop, economy-readpath) MUST NOT be added here
+#     — they need live infra and would make this gate flaky.
+#
+# MAINTENANCE (load-bearing — this is the SAME gap class the workflow closes):
+#   A new Frontier gate file or gate SUITE is silently UN-ENFORCED unless it is added
+#   to BOTH (a) the `paths:` filter below AND (b) the `test:frontier` script in
+#   instaclaw/package.json. Only add suites PROVEN pure (they pass with infra env
+#   scrubbed); never an infra-dependent one.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "instaclaw/lib/frontier-*.ts"
+      - "instaclaw/scripts/_test-frontier-*.ts"
+  pull_request:
+    paths:
+      - "instaclaw/lib/frontier-*.ts"
+      - "instaclaw/scripts/_test-frontier-*.ts"
+  workflow_dispatch: {} # manual trigger (verification / on-demand)
+
+permissions:
+  contents: read # read-only — this workflow never writes to the repo
+
+jobs:
+  pure-gate-suites:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: instaclaw
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: instaclaw/package-lock.json
+      - run: npm ci
+      - run: npm run test:frontier

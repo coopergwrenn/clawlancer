@@ -6,7 +6,9 @@
     "dev": "next dev --port 3001",
     "build": "npx tsx scripts/verify-migrations.ts && npx tsx scripts/_generate-matchpool-content.ts && npx tsx scripts/_generate-gbrain-content.ts && rm -rf .next/cache/.tsbuildinfo && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:frontier": "npx tsx scripts/_test-frontier-authz.ts && npx tsx scripts/_test-frontier-policy.ts && npx tsx scripts/_test-frontier-standing.ts && npx tsx scripts/_test-frontier-headroom.ts && npx tsx scripts/_test-frontier-ceiling-reversal.ts && npx tsx scripts/_test-frontier-anomaly-ask.ts && npx tsx scripts/_test-frontier-floor-reversal.ts && npx tsx scripts/_test-frontier-settings-monotonic.ts && npx tsx scripts/_test-frontier-approvals.ts && npx tsx scripts/_test-frontier-categories.ts && npx tsx scripts/_test-frontier-spend-anomaly.ts && npx tsx scripts/_test-frontier-spend-lifecycle.ts",
+    "test:billing": "npx tsx scripts/_test-f1-failclosed.ts && npx tsx scripts/_test-sibling-failclosed.ts && npx tsx scripts/_test-finding-a-split.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1048.0",

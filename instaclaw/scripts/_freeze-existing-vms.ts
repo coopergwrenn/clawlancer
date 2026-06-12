@@ -20,15 +20,18 @@ import {
   MAX_FREEZE_PER_RUN,
 } from "../lib/vm-freeze-thaw";
 import {
-  userHasLiveSubscription,
   vmHasCredits,
   sshHasRecentActivity,
 } from "../lib/vm-lifecycle-helpers";
+import { classifyFreezeBilling } from "../lib/billing-status";
+import { getStripe } from "../lib/stripe";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
+// SoT billing gate (Rule 14 + Rule 82) — accurate WOULD_FREEZE classification.
+const stripe = getStripe();
 
 const PROTECTED_USER_IDS = new Set([
   "afb3ae69", "4e0213b3", "24b0b73a",
@@ -172,10 +175,18 @@ async function main() {
       }
     }
 
-    const liveSub = vm.assigned_to ? await userHasLiveSubscription(supabase, vm.assigned_to) : false;
-    if (liveSub) {
-      log(`  → SKIP_LIVE_SUB — user has active/trialing Stripe sub`);
-      report.push({ ...base, decision: "SKIP_LIVE_SUB", reason: "active Stripe subscription" });
+    // SoT billing (Rule 14 + Rule 82) — covers sub/grace/credits/partner/all-inclusive,
+    // Stripe-verified. "unverifiable" → report SKIP (never claim a VM is freezable when
+    // its non-paying signal couldn't be verified).
+    const billingVerdict = await classifyFreezeBilling(supabase, stripe, vm.id);
+    if (billingVerdict === "paying") {
+      log(`  → SKIP_LIVE_SUB — owner isPaying per SoT (Rule 14)`);
+      report.push({ ...base, decision: "SKIP_LIVE_SUB", reason: "owner isPaying per SoT" });
+      continue;
+    }
+    if (billingVerdict === "unverifiable") {
+      log(`  → SKIP_UNVERIFIABLE — SoT billing not Stripe-verified`);
+      report.push({ ...base, decision: "SKIP_LIVE_SUB", reason: "billing unverifiable (Stripe unreachable) — fail closed" });
       continue;
     }
 
