@@ -13,7 +13,25 @@ import { markThawPendingForV2User } from "@/lib/freeze-v2-thaw-entry";
 import { wakeIfHibernating } from "@/lib/wake-vm";
 import { clearStaleAuthCacheForUser } from "@/lib/auth-cache";
 import { fetchBillingExempt } from "@/lib/billing-status";
+import {
+  isVideoPlanSubscription,
+  isVideoPlanInvoice,
+  syncVideoPlanStatus,
+  grantVideoPlanAllowance,
+  VIDEO_PLAN_CHECKOUT_TYPE,
+  type SubLike,
+  type InvoiceLike,
+} from "@/lib/video-plan";
 import { randomUUID } from "node:crypto";
+
+// ── Video-plan discrimination gate plumbing (Finding 1, 2026-06-12). ──
+// The price id is read per-call (no module-load env coupling); the sub
+// retriever serves isVideoPlanInvoice's rare fallback path.
+const videoPlanPriceId = () => process.env.STRIPE_PRICE_VIDEO_PLAN_MONTHLY;
+const retrieveSubForGate = async (id: string): Promise<SubLike | null> => {
+  const sub = await getStripe().subscriptions.retrieve(id);
+  return sub as unknown as SubLike;
+};
 
 // Give the function enough time for background processing via after().
 // The response to Stripe is sent immediately (line 43) — maxDuration only
@@ -325,6 +343,17 @@ async function processEvent(event: any) {
       // Credit-pack purchases are handled synchronously in POST() above
       // (so RPC failures can return non-2xx and trigger Stripe retry).
       // They never reach this deferred path.
+
+      // ── VIDEO-PLAN checkout completion: identity/status arrive via
+      // subscription.created and the allowance via invoice.paid (the one
+      // grant mechanism) — nothing to provision here, and the tier check
+      // below would already skip it (no metadata.tier). Explicit for logs.
+      if (session.metadata?.type === VIDEO_PLAN_CHECKOUT_TYPE) {
+        logger.info("video-plan checkout completed (grant rides invoice.paid)", {
+          route: "billing/webhook", sessionId: session.id, subscriptionId: session.subscription,
+        });
+        break;
+      }
 
       // --- Handle subscription checkout ---
       const userId = session.metadata?.instaclaw_user_id;
@@ -812,6 +841,21 @@ async function processEvent(event: any) {
       // sub from a prior cycle).
       const subscription = event.data.object;
       const customerId = subscription.customer as string;
+
+      // ── VIDEO-PLAN GATE (Finding 1): a video-plan sub reaching the code
+      // below would UPSERT instaclaw_subscriptions ON CONFLICT user_id and
+      // CLOBBER the user's platform-sub row (a canceled-platform user buying
+      // the video plan would become "active" platform-wide). Route + return.
+      if (isVideoPlanSubscription(subscription as unknown as SubLike, videoPlanPriceId())) {
+        await syncVideoPlanStatus(supabase, customerId, subscription as unknown as {
+          id?: string; status?: string; current_period_end?: number;
+        });
+        logger.info("video-plan subscription.created routed to plan handler", {
+          route: "billing/webhook", subscriptionId: subscription.id,
+        });
+        break;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const periodEnd = (subscription as any).current_period_end as number | undefined;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -985,6 +1029,20 @@ async function processEvent(event: any) {
     case "customer.subscription.updated": {
       const subscription = event.data.object;
       const customerId = subscription.customer as string;
+
+      // ── VIDEO-PLAN GATE (Finding 1): the platform handler below updates
+      // instaclaw_subscriptions status/period BY CUSTOMER — a video-plan
+      // status change must never write platform state. Route + return.
+      if (isVideoPlanSubscription(subscription as unknown as SubLike, videoPlanPriceId())) {
+        await syncVideoPlanStatus(supabase, customerId, subscription as unknown as {
+          id?: string; status?: string; current_period_end?: number;
+        });
+        logger.info("video-plan subscription.updated routed to plan handler", {
+          route: "billing/webhook", subscriptionId: subscription.id, status: subscription.status,
+        });
+        break;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const periodEnd = (subscription as any).current_period_end as number | undefined;
       // Fallback: use event timestamp if Stripe didn't include period end
@@ -1200,6 +1258,25 @@ async function processEvent(event: any) {
     case "customer.subscription.deleted": {
       const subscription = event.data.object;
       const customerId = subscription.customer as string;
+
+      // ── VIDEO-PLAN GATE (Finding 1) — THE WORST collision ungated: a
+      // video-plan cancel read as a PLATFORM cancel marks the user's whole
+      // subscription canceled → the freeze machinery. Route + return.
+      // zeroAllowance: access-until-period-end already elapsed when Stripe
+      // fires deleted; zeroing is hygiene (no grant will ever top it again).
+      if (isVideoPlanSubscription(subscription as unknown as SubLike, videoPlanPriceId())) {
+        await syncVideoPlanStatus(
+          supabase,
+          customerId,
+          { id: subscription.id, status: "canceled" },
+          { zeroAllowance: true },
+        );
+        logger.info("video-plan subscription.deleted routed to plan handler", {
+          route: "billing/webhook", subscriptionId: subscription.id,
+        });
+        break;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const deletedPeriodEnd = (subscription as any).current_period_end as number | undefined;
 
@@ -1360,6 +1437,22 @@ async function processEvent(event: any) {
       const invoice = event.data.object as any;
       const customerId = invoice.customer as string;
 
+      // ── VIDEO-PLAN GATE (Finding 1): ungated, a VIDEO card failure would
+      // mark the PLATFORM sub past_due by customer id → the VM suspension /
+      // dunning machinery fires on a user whose platform sub is perfectly
+      // paid. Route to the plan's freeze (status write; the reserve RPC's
+      // status check IS the freeze — Divergence WHY #2 in lib/video-plan.ts).
+      if (await isVideoPlanInvoice(invoice as InvoiceLike, videoPlanPriceId(), retrieveSubForGate)) {
+        await syncVideoPlanStatus(supabase, customerId, {
+          id: (invoice.subscription as string) ?? undefined,
+          status: "past_due",
+        });
+        logger.info("video-plan invoice.payment_failed → plan frozen (past_due)", {
+          route: "billing/webhook", invoiceId: invoice.id,
+        });
+        break;
+      }
+
       // Update subscription payment status to past_due
       const { data: sub } = await supabase
         .from("instaclaw_subscriptions")
@@ -1402,6 +1495,29 @@ async function processEvent(event: any) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const invoice = event.data.object as any;
       const customerId = invoice.customer as string;
+
+      // ── VIDEO-PLAN GATE (Finding 1) + THE GRANT. Ungated, a video invoice
+      // paying would wrongly clear REAL platform dunning by customer id.
+      // Routed: this is the plan's ONE grant mechanism (Stripe's canonical
+      // provision-on-invoice.paid). Idempotency (invoice-id ≠ last AND
+      // period ≥ stored — Finding 3's ≥) lives inside the grant RPC under
+      // the same per-VM advisory lock the reserve takes, so a grant can
+      // never race a render. The service-period end comes from the LINE
+      // (lines[0].period.end == the new current_period_end on renewal
+      // invoices), not the invoice's own billing-run period.
+      if (await isVideoPlanInvoice(invoice as InvoiceLike, videoPlanPriceId(), retrieveSubForGate)) {
+        const linePeriodEnd =
+          (invoice.lines?.data?.[0]?.period?.end as number | undefined) ??
+          (invoice.period_end as number | undefined);
+        await grantVideoPlanAllowance(
+          supabase,
+          customerId,
+          { id: invoice.id, subscription: invoice.subscription ?? null },
+          "active", // a paying invoice = the sub is active (recovery included)
+          linePeriodEnd,
+        );
+        break;
+      }
 
       // Clear past_due status and timestamp on successful payment
       const { data: sub } = await supabase
@@ -1513,6 +1629,29 @@ async function processEvent(event: any) {
       const charge = event.data.object as any;
       const customerId = charge.customer as string;
 
+      // ── VIDEO-PLAN GATE (Finding 1): a refunded VIDEO-plan charge must not
+      // void the user's pending PLATFORM referral commission below. Only
+      // invoice-backed charges can be plan charges (pack purchases are
+      // payment-intent charges with no invoice — they keep today's behavior).
+      if (charge.invoice) {
+        try {
+          const inv = await getStripe().invoices.retrieve(charge.invoice as string);
+          if (await isVideoPlanInvoice(inv as unknown as InvoiceLike, videoPlanPriceId(), retrieveSubForGate)) {
+            logger.info("video-plan charge.refunded — platform commission void skipped", {
+              route: "billing/webhook", chargeId: charge.id, invoiceId: charge.invoice,
+            });
+            break;
+          }
+        } catch (err) {
+          // Retrieval failure → fall through to platform behavior (the
+          // fail-closed-for-the-platform direction, mirroring the invoice
+          // discriminator's own rationale).
+          logger.warn("charge.refunded invoice retrieve failed — platform path", {
+            route: "billing/webhook", chargeId: charge.id, error: String(err),
+          });
+        }
+      }
+
       if (customerId) {
         // Find the user via their subscription's stripe_customer_id
         const { data: sub } = await supabase
@@ -1574,6 +1713,15 @@ async function processEvent(event: any) {
     case "customer.subscription.trial_will_end": {
       const subscription = event.data.object;
       const customerId = subscription.customer as string;
+
+      // ── VIDEO-PLAN GATE (Finding 1): the plan has no trials configured;
+      // a video-plan event here must not trigger the platform trial email.
+      if (isVideoPlanSubscription(subscription as unknown as SubLike, videoPlanPriceId())) {
+        logger.info("video-plan trial_will_end ignored (plan has no trials)", {
+          route: "billing/webhook", subscriptionId: subscription.id,
+        });
+        break;
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const trialEnd = (subscription as any).trial_end as number | undefined;
       const daysLeft = trialEnd
