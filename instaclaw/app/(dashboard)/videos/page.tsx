@@ -106,10 +106,21 @@ function useVideos(filter: string, q: string, month: string | null) {
     } finally { setLoadingMore(false); }
   }, [data, moreCursor, params, loadingMore]);
 
-  const renders = useMemo(
-    () => [...(data?.renders ?? []), ...more],
-    [data, more],
-  );
+  // Dedupe by request_id (order-preserving): the 15s pending-poll reload can
+  // race an in-flight Show-more — load() resets the list, the stale page then
+  // appends, and if a new row shifted the boundaries the same request_id
+  // would land twice (duplicate React keys, visual dupes). Dedupe absorbs
+  // the whole class.
+  const renders = useMemo(() => {
+    const seen = new Set<string>();
+    const out: RenderItem[] = [];
+    for (const r of [...(data?.renders ?? []), ...more]) {
+      if (seen.has(r.request_id)) continue;
+      seen.add(r.request_id);
+      out.push(r);
+    }
+    return out;
+  }, [data, more]);
   const hasMore = moreCursor !== null ? true : !!data?.next_cursor && more.length === 0;
   return {
     quotas: data?.quotas ?? null,
@@ -1201,11 +1212,13 @@ export default function VideosPage() {
             </div>
           )}
 
-          {/* the end of the library — a natural buying moment */}
+          {/* the end of the library — a natural buying moment. Honest copy:
+              "that's everything" only when this IS everything (unfiltered);
+              a search/filter/month view ends with "end of results". */}
           {loaded && !hasMore && renders.length > 0 && (
             <div className="flex flex-col items-center gap-2 py-4">
               <p className="text-xs" style={{ color: "var(--muted)" }}>
-                that&apos;s everything
+                {viewIsFiltered ? "end of results" : "that's everything"}
               </p>
               <button
                 onClick={openSheet}
