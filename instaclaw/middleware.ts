@@ -157,6 +157,8 @@ export const config = {
     // sibling pages above). NOTE: when the PUBLIC share view at /floor/[handle]
     // ships, exclude it from `protectedPages` so it stays reachable logged-out.
     "/floor/:path*",
+    // /videos — protectedPages entry is inert unless the matcher runs here
+    "/videos/:path*",
     "/api/((?!auth|_next).*)",
   ],
 };
