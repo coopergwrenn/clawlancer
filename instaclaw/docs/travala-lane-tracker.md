@@ -63,3 +63,32 @@ bird's-eye audit (a silently-dropped item, now restored). Status: HELD.
 - double-failure pay edge (paid + Travala lost the booking + retry reverts on the
   consumed nonce) — monitor via `frontier_spend_events`; no code.
 - whoami/logout exposure — skipped with stated reasons in the Part-1 inventory.
+
+## 2026-06-12 PM — Trips discovery reversal: BUILT + APPROVED, push HELD, COUPLED to the fleet flip
+
+Cooper ruled (2026-06-12 PM): the Trips sidebar item shows for EVERYONE (presence
+gate removed) and the /trips zero-bookings state is a first-run discovery surface
+(hero + tappable example prompts that seed the composer + 4-step trust loop +
+demoted ghost receipt). Design APPROVED as-is; copy locked.
+
+**The change is committed LOCALLY ONLY** — worktree `wild-west-bots-travala`,
+branch `feat/travala-x402-booking`, commit `3c19f5d7` (pure code: sidebar-shell,
+trips-presence-link, trips/page, trips-first-run component, trips API comment,
+dev harness `/trips-first-run-preview`). It is DELIBERATELY NOT PUSHED.
+
+**COUPLING RULE (Cooper ruling, 2026-06-12 PM): `3c19f5d7` rides the Rule-64
+fleet-flip deploy — the manifest bump that ships the travel skill fleet-wide.
+The Trips link and the agent-side capability go live together or not at all.**
+Pushing it earlier creates the exact dead-promise the un-gate exists to avoid:
+a visible Trips link whose prompts reach an agent that doesn't have the skill
+yet (skill files are inert until the bump; `frontier_spend_enabled` is per-VM
+opt-in). Do NOT push this commit outside that deploy window.
+
+Fleet-flip deploy-day checklist (same window as the manifest bump):
+1. Rebase `3c19f5d7` onto current main (no tracker conflict — this entry lives
+   on main, the held commit is code-only). Rule-84 tsc gate, then push.
+2. **Prod-verify, mandatory before announce:** mint a zero-booking session →
+   the Trips sidebar item is visible; /trips renders the first-run surface
+   live (hero, chips, trust loop, ghost) on the real theme; 390px holds.
+   Capture the proof (screenshots), not just local renders.
+3. Update this entry to SHIPPED with the final SHA (Rule 72).
