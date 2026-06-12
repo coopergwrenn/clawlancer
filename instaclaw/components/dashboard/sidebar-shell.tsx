@@ -25,6 +25,7 @@ import {
   MapPin,
   Award,
   Sparkles,
+  Clapperboard,
   Mail,
   LogOut,
   ChevronDown,
@@ -59,8 +60,8 @@ import { useIsDesktop } from "@/components/dashboard/use-is-desktop";
  *   ⌂ Command Center  — permanent home anchor, NOT collapsible (one-tap home
  *                        always available regardless of any collapse state).
  *   ▾ WORKSPACE       — collapsible: The Floor · Heartbeat · Live View ·
- *                        (hairline) · Skills · Earn · Economy · Files ·
- *                        Scheduled · History
+ *                        (hairline) · Skills · Videos · Earn · Economy ·
+ *                        Files · Scheduled · History
  *   ▾ ACCOUNT & PLAN  — collapsible: Overview · Credits · Billing · Settings ·
  *                        API Keys
  *   PINNED            — Edge City (edge_city only) · Invite & earn · account row
@@ -104,6 +105,11 @@ const SECTIONS: NavSection[] = [
       { href: "/heartbeat", label: "Heartbeat", icon: Heart, tourKey: "nav-heartbeat", heartbeat: true },
       { href: "/live", label: "Live View", icon: Monitor, tourKey: "nav-live" },
       { href: "/skills", label: "Skills", icon: Puzzle, tourKey: "nav-skills", dividerBefore: true },
+      // Videos directly after Skills — the flagship creative output of the
+      // agent's capabilities (gallery + packs/plan), ahead of the money-ops
+      // rows, NOT buried in the records cluster. Mirrors the topnav placement
+      // (layout.tsx primaryNav) so both chromes agree. videos-page stage 1.
+      { href: "/videos", label: "Videos", icon: Clapperboard, tourKey: "nav-videos" },
       { href: "/earn", label: "Earn", icon: TrendingUp, tourKey: "nav-earn" },
       { href: "/economy", label: "Economy", icon: Coins, tourKey: "nav-economy" },
       { href: "/files", label: "Files", icon: FolderOpen, tourKey: "nav-files" },
