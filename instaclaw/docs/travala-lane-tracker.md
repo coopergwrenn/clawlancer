@@ -50,6 +50,13 @@ cancelled-body shape, extract any cancellation/confirmation reference and add it
 the cancelled narration ("cancellation ref X — keep it"). OTA-standard receipt
 behavior. Status: HELD (shape is canary-observed first).
 
+## #10 — per-VM quote rate cap (auto-on hardening)
+With the door open (Q2) any VM can fire book-quotes; volume abuse risks Travala
+rate-limiting our shared OAuth client fleet-wide. Cheap cap: per-VM counter on
+book-quote (N/hour) returning a calm 429. Found by the 2026-06-12 philosophy
+stress-test; was claimed "noted in the tracker" but never added — caught by the
+bird's-eye audit (a silently-dropped item, now restored). Status: HELD.
+
 ## Documented-only (ruled not-worth-building, 2026-06-11)
 - booking_id-squat griefing (needs the victim's live packageId+sessionId; Travala's
   OTP-to-booking-email backstop holds; degrade-to-ref-less already contains it).

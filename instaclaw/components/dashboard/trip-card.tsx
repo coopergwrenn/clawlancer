@@ -122,8 +122,9 @@ export function TripCard({ trip, agentName, ghost = false }: { trip: TripRow; ag
           example
         </span>
       )}
-      {/* header: orb · hotel · dates · status pill */}
-      <div className="flex items-start gap-3">
+      {/* header: orb · hotel · dates · status pill (ghost: pad right so the
+          absolute EXAMPLE pill never overlaps the title at narrow widths) */}
+      <div className={`flex items-start gap-3 ${ghost ? "pr-16" : ""}`}>
         <div
           className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
           style={{ background: `${TRAVALA_TEAL}1f`, border: `1px solid ${TRAVALA_TEAL}40` }}

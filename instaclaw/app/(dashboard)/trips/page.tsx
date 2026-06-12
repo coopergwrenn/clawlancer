@@ -87,12 +87,12 @@ export default function TripsPage() {
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-8">
       <div className="mb-6 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[#13B5C9]/10">
           <Luggage size={18} className="text-[#13B5C9]" />
         </div>
         <div>
-          <h1 className="text-xl font-semibold text-white">trips</h1>
-          <p className="text-xs text-white/45">
+          <h1 className="text-xl font-semibold text-[var(--foreground)]">trips</h1>
+          <p className="text-xs text-[var(--muted)]">
             what the system recorded · refs, deadlines, on-chain receipts
           </p>
         </div>
@@ -101,13 +101,13 @@ export default function TripsPage() {
       {trips === null && (
         <div className="space-y-4">
           {[0, 1].map((i) => (
-            <div key={i} className="h-56 w-full animate-pulse rounded-2xl border border-white/10 bg-[#161617]" />
+            <div key={i} className="h-56 w-full animate-pulse rounded-2xl border border-[var(--border)] bg-[var(--border)]" />
           ))}
         </div>
       )}
 
       {trips !== null && error && (
-        <div className="rounded-2xl border border-white/10 bg-[#161617] p-6 text-sm text-white/55">{error}</div>
+        <div className="rounded-2xl border border-[var(--border)] p-6 text-sm text-[var(--muted)]">{error}</div>
       )}
 
       {trips !== null && !error && trips.length === 0 && (
@@ -118,8 +118,8 @@ export default function TripsPage() {
         <div className="space-y-4">
           <TripCard trip={GHOST_TRIP} agentName={null} ghost />
           <div className="text-center">
-            <div className="text-sm text-white/60">no trips yet · your receipts will look like this</div>
-            <div className="mt-1 text-xs text-white/40">
+            <div className="text-sm text-[var(--foreground)] opacity-80">no trips yet · your receipts will look like this</div>
+            <div className="mt-1 text-xs text-[var(--muted)]">
               booked autonomously by your agent, paid in usdc on base, cancellable from chat
             </div>
             <Link

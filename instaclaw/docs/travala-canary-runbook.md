@@ -33,7 +33,17 @@ SB="https://qvrnuyzfqjrsjljcqbub.supabase.co/rest/v1"
    Nonce fix on main at `3c6bdaf6`.
 2. **Cooper's Travala-account email** is the email used as `customer.email` at book time —
    it is BOTH the cancellation-OTP destination AND where the refund credit lands. Use a
-   real inbox Cooper controls. **Decide the email now; it is not a runtime choice.**
+   real inbox Cooper controls (it is a FREE parameter — not tied to the owner account;
+   `coopgwrenn@gmail.com` works). **Decide the email now; it is not a runtime choice.**
+2b. **THE APPROVAL TAP NEEDS THE vm-1043 OWNER SESSION** (settled 2026-06-12): vm-1043
+   is owned by the TEST account, not Cooper's login — `/api/agent-economy/approve`
+   404s for any other session. Use the PROVEN session-mint route in
+   `docs/runbooks/frontier-canary-sitting-plan.md` (Stage-0): mint the test-account
+   session, import the cookie into a SEPARATE browser profile, tap from there.
+2c. **First dashboard visit may redirect to `/edge/intents`** (the test account is
+   edge_city; the intent gate intercepts every dashboard page including the approve
+   page). Tap "skip for now, i'll do this later" once — observed live 2026-06-12;
+   the gate clears for the session and the approve page is reachable after.
 3. **Wallet funded.** Send ~**$60 USDC on Base** to `0xd998…38c4` (covers a sub-$50 room +
    the few-cent x402 `maxAmountRequired` margin; EIP-3009 transfer is gasless for the wallet,
    the facilitator pays gas). Verify on Basescan before arming.

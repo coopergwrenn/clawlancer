@@ -63,7 +63,11 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     trips: (rows ?? []).map((r) => toTripRow(r as Record<string, unknown>)),
-    // same derivation as the approve surface (approve/route.ts:97)
-    agent_name: ((vm.telegram_bot_username as string | null) ?? (vm.name as string | null) ?? null),
+    // same derivation as the approve surface — but a bare machine name
+    // ("instaclaw-vm-NNNN") reads wrong on a receipt; fall to null → "your agent".
+    agent_name: (() => {
+      const n = (vm.telegram_bot_username as string | null) ?? (vm.name as string | null) ?? null;
+      return n && !/^instaclaw-vm-/i.test(n) ? n : null;
+    })(),
   });
 }
