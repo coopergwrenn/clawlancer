@@ -1,19 +1,19 @@
 # Changelog — generated 2026-06-12
 
-Window: `f5e5f55e79183c1c64205e47e8bd4698c6a6fd82` → `HEAD` (HEAD = `c4e555df`)
+Window: `c4e555df8ba030fa8e363c622f9adf2dfdebc20b` → `HEAD` (HEAD = `d87d1e1b`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: c4e555df8ba030fa8e363c622f9adf2dfdebc20b -->
+<!-- LAST_GENERATED_SHA: d87d1e1b394820f0e1df656f77e6d768a92b33ff -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 0
+- **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 2
-- AI-assisted commits (co-authored): 0
+- **Docs / PRD only:** 1
+- AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
 ## What changed for users
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `a47f75ed` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
-- `c4e555df` 2026-06-12 — docs(travala): record Trips un-gate coupling — held commit 3c19f5d7 rides the Rule-64 fleet flip [1 files]
+- `d87d1e1b` 2026-06-12 — feat(videos): scale re-architecture — seller decoupled from gallery, library navigable at 1,000 [3 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `9fcf60cd` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (0)
+### Infrastructure (1)
 
-_(none)_
+- `d87d1e1b` 2026-06-12 — feat(videos): scale re-architecture — seller decoupled from gallery, library navigable at 1,000 [3 files] _(multi: [infrastructure, feature]; ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -43,12 +43,23 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (2)
+### Docs / PRD only (1)
 
-- `a47f75ed` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
-- `c4e555df` 2026-06-12 — docs(travala): record Trips un-gate coupling — held commit 3c19f5d7 rides the Rule-64 fleet flip [1 files]
+- `9fcf60cd` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+
+## Multi-category commits (1)
+
+These touch more than one category root and are listed in every applicable section above.
+
+- `d87d1e1b` 2026-06-12 — [infrastructure, feature] — feat(videos): scale re-architecture — seller decoupled from gallery, library navigable at 1,000
+
+## AI-assisted commits (1)
+
+Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
+
+- `d87d1e1b` 2026-06-12 — feat(videos): scale re-architecture — seller decoupled from gallery, library navigable at 1,000
 
 ## Appendix — every commit (chronological)
 
-- `a47f75ed` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
-- `c4e555df` 2026-06-12 — docs(travala): record Trips un-gate coupling — held commit 3c19f5d7 rides the Rule-64 fleet flip [1 files]
+- `9fcf60cd` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `d87d1e1b` 2026-06-12 — feat(videos): scale re-architecture — seller decoupled from gallery, library navigable at 1,000 [3 files] _(multi: [infrastructure, feature]; ai-assisted)_
