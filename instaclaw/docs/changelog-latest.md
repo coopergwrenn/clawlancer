@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-12
 
-Window: `c4e555df8ba030fa8e363c622f9adf2dfdebc20b` → `HEAD` (HEAD = `d87d1e1b`)
-Total commits: 2
+Window: `d87d1e1b394820f0e1df656f77e6d768a92b33ff` → `HEAD` (HEAD = `a2b4c28f`)
+Total commits: 3
 
-<!-- LAST_GENERATED_SHA: d87d1e1b394820f0e1df656f77e6d768a92b33ff -->
+<!-- LAST_GENERATED_SHA: a2b4c28f341f6e34a4f4c51117e031bf680add0f -->
 
 ## Summary
 
@@ -12,8 +12,8 @@ Total commits: 2
 - **Infrastructure:** 1
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 1
+- **Docs / PRD only:** 2
+- AI-assisted commits (co-authored): 0
 - Merge commits: 0
 
 ## What changed for users
@@ -22,8 +22,9 @@ _None in this window._
 
 ## What changed under the hood
 
-- `d87d1e1b` 2026-06-12 — feat(videos): scale re-architecture — seller decoupled from gallery, library navigable at 1,000 [3 files] _(multi: [infrastructure, feature]; ai-assisted)_
-- `9fcf60cd` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `081f8955` 2026-06-12 — feat(frontier+travala): THE TRAVEL DECOUPLE — booking freed from frontier_spend_enabled [15 files] _(multi: [infrastructure, docs])_
+- `1fcd61f6` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `a2b4c28f` 2026-06-12 — docs(travala): held Trips commit SHA 3c19f5d7 → 84cfbf86 (rebased onto the decouple push; same tree, hold unchanged) [1 files]
 
 ## By category
 
@@ -33,7 +34,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `d87d1e1b` 2026-06-12 — feat(videos): scale re-architecture — seller decoupled from gallery, library navigable at 1,000 [3 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `081f8955` 2026-06-12 — feat(frontier+travala): THE TRAVEL DECOUPLE — booking freed from frontier_spend_enabled [15 files] _(multi: [infrastructure, docs])_
 
 ### Feature (user-facing) (0)
 
@@ -43,23 +44,19 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `9fcf60cd` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `1fcd61f6` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `a2b4c28f` 2026-06-12 — docs(travala): held Trips commit SHA 3c19f5d7 → 84cfbf86 (rebased onto the decouple push; same tree, hold unchanged) [1 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `d87d1e1b` 2026-06-12 — [infrastructure, feature] — feat(videos): scale re-architecture — seller decoupled from gallery, library navigable at 1,000
-
-## AI-assisted commits (1)
-
-Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
-
-- `d87d1e1b` 2026-06-12 — feat(videos): scale re-architecture — seller decoupled from gallery, library navigable at 1,000
+- `081f8955` 2026-06-12 — [infrastructure, docs] — feat(frontier+travala): THE TRAVEL DECOUPLE — booking freed from frontier_spend_enabled
 
 ## Appendix — every commit (chronological)
 
-- `9fcf60cd` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
-- `d87d1e1b` 2026-06-12 — feat(videos): scale re-architecture — seller decoupled from gallery, library navigable at 1,000 [3 files] _(multi: [infrastructure, feature]; ai-assisted)_
+- `1fcd61f6` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `081f8955` 2026-06-12 — feat(frontier+travala): THE TRAVEL DECOUPLE — booking freed from frontier_spend_enabled [15 files] _(multi: [infrastructure, docs])_
+- `a2b4c28f` 2026-06-12 — docs(travala): held Trips commit SHA 3c19f5d7 → 84cfbf86 (rebased onto the decouple push; same tree, hold unchanged) [1 files]
