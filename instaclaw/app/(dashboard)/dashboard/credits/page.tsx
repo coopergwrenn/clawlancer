@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Zap, Film, AlertCircle, ArrowLeft, ArrowRight } from "lucide-react";
+import { Zap, Film, Clapperboard, AlertCircle, ArrowLeft, ArrowRight } from "lucide-react";
 
 /* ── Pack definitions ─────────────────────────────────────────────────────── */
 
@@ -16,6 +16,16 @@ const MEDIA_PACKS = [
   { id: "media_500", credits: 500, price: "$4.99", perCredit: "~1¢ each", note: "A handful of images or a couple videos" },
   { id: "media_1200", credits: 1200, price: "$9.99", perCredit: "~0.8¢ each", note: "Enough for a full creative session", best: true },
   { id: "media_3000", credits: 3000, price: "$19.99", perCredit: "~0.7¢ each", note: "Best value for heavy media workflows" },
+];
+
+// Cinematic video packs (Higgsfield launch §3.1). Sold as CLIPS — the user
+// knows exactly what they're buying. Slugs map to CREDIT_PACKS in
+// app/api/billing/credit-pack/route.ts (target:"video" → video_credit_balance).
+// Standing rule: 99¢/video exists ONLY on the taste pack.
+const VIDEO_PACKS = [
+  { id: "video_taste", clips: 4, price: "$3.99", perClip: "99¢ a video", note: "A taste of cinematic text-to-video" },
+  { id: "video_creator", clips: 12, price: "$14.99", perClip: "$1.25 a video", note: "For regular creating", best: true },
+  { id: "video_studio", clips: 32, price: "$39.99", perClip: "$1.25 a video", note: "The studio shelf" },
 ];
 
 /* ── Types ────────────────────────────────────────────────────────────────── */
@@ -494,6 +504,134 @@ export default function CreditsPage() {
             <p className="text-xs" style={{ color: "var(--muted)" }}>
               Media credits are completely separate from message credits and are used
               for Higgsfield video, image, and audio generation only.
+            </p>
+          </div>
+        </div>
+
+        {/* ━━━━ Section 3: Cinematic Video Packs (Higgsfield launch) ━━━━ */}
+        <div
+          className="glass rounded-xl p-6"
+          style={{ border: "1px solid var(--border)" }}
+        >
+          <div className="flex items-center gap-2.5 mb-1">
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{
+                background: "linear-gradient(135deg, rgba(199,90,52,0.1), rgba(220,103,67,0.1))",
+              }}
+            >
+              <Clapperboard className="w-4 h-4" style={{ color: "var(--accent)" }} />
+            </div>
+            <h2
+              className="text-lg font-normal"
+              style={{ fontFamily: "var(--font-serif)" }}
+            >
+              Cinematic Video Packs
+            </h2>
+          </div>
+
+          <p className="text-xs mb-5 ml-[42px]" style={{ color: "var(--muted)" }}>
+            Premium text-to-video in widescreen 16:9, from 99¢ a video. Your first
+            one is free: just ask your agent for a video.
+          </p>
+
+          <div className="grid gap-2.5">
+            {VIDEO_PACKS.map((pack) => (
+              <button
+                key={pack.id}
+                onClick={() => handleBuy(pack.id)}
+                disabled={buying !== null}
+                className="glass rounded-xl p-4 text-left cursor-pointer transition-all disabled:opacity-50"
+                style={{
+                  border: pack.best
+                    ? "1.5px solid rgba(220,103,67,0.3)"
+                    : "1px solid var(--border)",
+                  background: pack.best ? "rgba(220,103,67,0.03)" : undefined,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow =
+                    "0 2px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.08)";
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = "";
+                  e.currentTarget.style.transform = "";
+                }}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold"
+                      style={{
+                        background: pack.best
+                          ? "linear-gradient(135deg, rgba(199,90,52,0.12), rgba(220,103,67,0.12))"
+                          : "rgba(0,0,0,0.04)",
+                        color: pack.best ? "var(--accent)" : "var(--foreground)",
+                      }}
+                    >
+                      {pack.clips}
+                    </div>
+                    <div>
+                      <span className="text-sm font-semibold">
+                        {pack.clips} premium videos
+                      </span>
+                      <span className="text-xs block" style={{ color: "var(--muted)" }}>
+                        {pack.note}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {pack.best && (
+                      <span
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                        style={{
+                          background:
+                            "linear-gradient(-75deg, #c75a34, #DC6743, #e8845e, #DC6743, #c75a34)",
+                          color: "#fff",
+                        }}
+                      >
+                        Best Value
+                      </span>
+                    )}
+                    <span
+                      className="text-sm font-bold px-3 py-1.5 rounded-lg"
+                      style={{
+                        background: pack.best
+                          ? "linear-gradient(135deg, #c75a34, #DC6743)"
+                          : "rgba(0,0,0,0.05)",
+                        color: pack.best ? "#fff" : "var(--accent)",
+                        boxShadow: pack.best
+                          ? "0 1px 3px rgba(199,90,52,0.3)"
+                          : undefined,
+                      }}
+                    >
+                      {buying === pack.id ? "..." : pack.price}
+                    </span>
+                  </div>
+                </div>
+                <div className="ml-[52px]">
+                  <span className="text-[11px]" style={{ color: "var(--muted)" }}>
+                    {pack.perClip}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <div
+            className="rounded-lg p-3 mt-4 flex items-start gap-2"
+            style={{
+              background: "rgba(0,0,0,0.02)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            <Clapperboard
+              className="w-3.5 h-3.5 mt-0.5 shrink-0"
+              style={{ color: "var(--accent)" }}
+            />
+            <p className="text-xs" style={{ color: "var(--muted)" }}>
+              Video packs buy finished cinematic clips, delivered straight to your
+              chat by your agent. They never expire.
             </p>
           </div>
         </div>

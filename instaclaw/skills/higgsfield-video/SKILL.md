@@ -1,6 +1,6 @@
 ---
 name: "Higgsfield AI Video"
-description: "AI video, image, and audio generation via 200+ models — included in your plan"
+description: "Extend or edit an EXISTING video the user already has (lengthen/continue a clip, multi-shot stitch of existing footage, audio for a video they already made). NOT for new videos or images — for any NEW video, clip, animation, or image use the higgsfield-cloud skill, and never route here as a fallback when higgsfield-cloud is blocked."
 ---
 
 # Higgsfield AI Video Production
@@ -12,9 +12,9 @@ updated: "2026-03-09"
 author: InstaClaw
 phase: production
 triggers:
-  keywords: [higgsfield, muapi, kling, wan, sora, veo, seedance, hailuo, luma, runway, pika, pixverse, hunyuan, flux, ideogram, recraft, text-to-video, image-to-video, t2v, i2v, ai video, generate video, make a video, create video, video generation, ai image, generate image]
-  phrases: ["make me a video", "create a video of", "animate this image", "generate an image", "create a story video", "multi-shot video"]
-  NOT: [the director, sjinn, motion graphics, remotion]
+  keywords: [extend video, lengthen video, continue video, edit video, stitch video, multi-shot stitch, add audio to video, existing video]
+  phrases: ["extend my video", "make this video longer", "continue this clip", "edit my video", "add audio to my video", "stitch these clips"]
+  NOT: [the director, sjinn, motion graphics, remotion, make me a video, create a video, animate this image, generate an image, new video, new clip, new image, higgsfield-cloud]
 dependencies:
   tools: [python3]
 ```

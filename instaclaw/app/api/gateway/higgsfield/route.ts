@@ -170,9 +170,47 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // --- ?action=upload: i2v source-image upload (build order §6). ---
+    // The agent POSTs the photo's RAW BYTES (the file is always on the VM
+    // disk — media://inbound/<id>.jpg); we validate by magic bytes, store to
+    // Supabase Storage (48h TTL), and return the public URL the agent passes
+    // back as image_url. Replaces the legacy Muapi-CDN uploader. Raw binary
+    // (not JSON/base64) keeps us inside Vercel's body limit without the +33%
+    // base64 inflation.
+    if (action === "upload") {
+      const raw = Buffer.from(await req.arrayBuffer());
+      const { uploadSourceImage, MAX_UPLOAD_BYTES } = await import("@/lib/higgsfield-upload");
+      const up = await uploadSourceImage(vm.id, raw);
+      if (!up.ok) {
+        if (up.error === "too_large") {
+          return NextResponse.json(
+            {
+              error: "too_large",
+              message: `That image is too large (max ${Math.floor(MAX_UPLOAD_BYTES / (1024 * 1024))}MB). Ask the user for a smaller photo.`,
+            },
+            { status: 413 },
+          );
+        }
+        if (up.error === "bad_type") {
+          return NextResponse.json(
+            { error: "bad_type", message: "That file isn't a JPEG, PNG, or WebP image." },
+            { status: 400 },
+          );
+        }
+        return NextResponse.json(
+          { error: "storage_unavailable", message: "Couldn't store the image right now. Please try again shortly." },
+          { status: 503 },
+        );
+      }
+      logger.info("higgsfield source image uploaded", {
+        route: "gateway/higgsfield", vmId: vm.id, bytes: up.bytes, type: up.type, object: up.objectName,
+      });
+      return NextResponse.json({ url: up.url });
+    }
+
     if (action !== "create") {
       return NextResponse.json(
-        { error: "invalid_action", message: "Only ?action=create and ?action=status are supported." },
+        { error: "invalid_action", message: "Only ?action=create, ?action=status, and ?action=upload are supported." },
         { status: 400 },
       );
     }
@@ -275,8 +313,69 @@ export async function POST(req: NextRequest) {
     // does NOT insert a row), fall through to a paid hold with the SAME id.
     let reserved: { reserved?: boolean; reason?: string; free?: boolean; [k: string]: unknown } | null = null;
     let usedFree = false;
+    let usedSeed = false;
 
-    if (model.freeEligible) {
+    // ── FIRST-VIDEO SEED (build order §4): one free premium text-to-video per
+    // VM, granted on the FIRST video request (not at signup — spend only on
+    // engaged users). Semantics, hostile-walked:
+    //   • Marker-based eligibility: no prior metadata.seed row in
+    //     pending/settled. metadata is GATE-constructed (the body has no
+    //     metadata passthrough), so a caller can't forge the marker.
+    //   • A FAILED seed render does NOT consume the gift — released rows are
+    //     excluded, so the user's first impression actually delivers
+    //     (mirrors the free-cap's "failed frees the slot" philosophy).
+    //   • Credited users get it too: one render, universally delightful,
+    //     and the eligibility check stays one indexed query.
+    //   • p_free_cap_daily is effectively unbounded for the seed call — the
+    //     route-level eligibility IS the gate; the daily soul/dop-lite cap
+    //     is a different mechanism (and the (C) migration excludes seed rows
+    //     from that count so the gift is additive, not a swap).
+    //   • Double-submit race ≈ the ms between check and insert; pending rows
+    //     count, so the second check sees the first's row once committed.
+    //     Worst case: two seeds, $0.81 each. Accepted + bounded.
+    //   • ANY seed-path failure falls through to the normal paid path — the
+    //     gift can never block a request.
+    if (!model.freeEligible && model.kind === "text2video") {
+      try {
+        const { data: priorSeed } = await supabase
+          .from("instaclaw_video_transactions")
+          .select("id")
+          .eq("vm_id", vm.id)
+          .eq("metadata->>seed", "true")
+          .in("status", ["pending", "settled"])
+          .limit(1);
+        if (!priorSeed || priorSeed.length === 0) {
+          const { data: seedRes, error: seedErr } = await supabase.rpc("instaclaw_video_reserve_spend", {
+            p_vm_id: vm.id,
+            p_request_id: internalRequestId,
+            p_endpoint: endpoint,
+            p_est_credits: est,
+            p_hf_cost_credits: model.hfCostCredits,
+            p_is_free: true,
+            p_free_cap_daily: 999999, // route-level eligibility is the real gate
+            p_cap_daily: VIDEO_DAILY_CREDIT_CEILING,
+            p_window_start: windowStart,
+            p_fresh_pending_cutoff: freshPendingCutoff,
+            p_metadata: { ...metadata, seed: true },
+          });
+          if (!seedErr && seedRes?.reserved) {
+            reserved = seedRes;
+            usedFree = true;
+            usedSeed = true;
+            logger.info("first-video seed granted", {
+              route: "gateway/higgsfield", vmId: vm.id, endpoint, internalRequestId,
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn("first-video seed check failed (falling through to paid)", {
+          route: "gateway/higgsfield", vmId: vm.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    if (!reserved?.reserved && model.freeEligible) {
       const { data, error } = await reserve(true);
       if (error) {
         logger.error("video reserve (free) RPC error", {
@@ -354,6 +453,54 @@ export async function POST(req: NextRequest) {
         errorName: err instanceof Error ? err.name : undefined,
         error: err instanceof Error ? err.message : String(err),
       });
+
+      // ── L1 central-balance detector (build order §5; Rule 67 pattern). ──
+      // The SDK throws a NAMED NotEnoughCreditsError (errors.js:41; thrown by
+      // the v2 client on 402) when OUR central account is dry — the one
+      // submit-failure that is OUR outage, not the user's quota and not HF
+      // capacity. Detect by name AND statusCode AND message (robust to SDK
+      // minification), P0-alert with a 1h dedup so the first failing render
+      // of an incident wakes the operator without melting the inbox (every
+      // render fails during the outage). Fire-and-forget: the alert never
+      // delays or breaks the user response. User copy stays the honest
+      // "temporarily at capacity" — they can't fix our billing, and the
+      // skill's rules forbid "the service is broken" messaging.
+      const isCentralBalanceDry =
+        err instanceof Error &&
+        (err.name === "NotEnoughCreditsError" ||
+          (err as { statusCode?: number }).statusCode === 402 ||
+          /not enough credits/i.test(err.message));
+      if (isCentralBalanceDry) {
+        (async () => {
+          const dedupKey = "higgsfield_balance_exhausted:central";
+          try {
+            const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+            const { data: recent } = await supabase
+              .from("instaclaw_admin_alert_log")
+              .select("id")
+              .eq("alert_key", dedupKey)
+              .gte("sent_at", cutoff)
+              .limit(1);
+            if (recent && recent.length > 0) return;
+            await supabase.from("instaclaw_admin_alert_log").insert({
+              alert_key: dedupKey,
+              vm_count: 1,
+              details: `vm=${vm.id} endpoint=${endpoint}`,
+            });
+            const { sendAdminAlertEmail } = await import("@/lib/email");
+            await sendAdminAlertEmail(
+              "[P0] Higgsfield central balance EXHAUSTED — renders failing NOW",
+              `A real render just failed with NotEnoughCredits: the central Higgsfield account is dry.\n\nvm=${vm.id}\nendpoint=${endpoint}\n\nEvery premium render is failing (users see "temporarily at capacity"; holds are auto-released, no one is charged).\n\nACT NOW: top up at platform.higgsfield.ai and verify auto-top-up (trigger 2000 → ceiling 8000) is enabled. The balance cron (/api/cron/higgsfield-balance-check) should have warned ahead of this — if it didn't, check its last run.`,
+            );
+          } catch (alertErr) {
+            logger.error("higgsfield L1 balance alert failed", {
+              route: "gateway/higgsfield",
+              error: alertErr instanceof Error ? alertErr.message : String(alertErr),
+            });
+          }
+        })().catch(() => {});
+      }
+
       return NextResponse.json(
         {
           error: "service_unavailable",
@@ -371,6 +518,7 @@ export async function POST(req: NextRequest) {
       endpoint,
       held: usedFree ? 0 : est,
       free: usedFree,
+      seed: usedSeed,
       delivery: chatId ? "webhook" : "agent_poll",
       chatIdSource, // "agent" (A1) | "vm_fallback" (A2) | "none" — proves the delivery leg
     });
@@ -380,6 +528,9 @@ export async function POST(req: NextRequest) {
       status: submit?.status ?? "queued",
       held: usedFree ? 0 : est,
       free: usedFree,
+      // The first-video gift fired — the skill keys its "this one's on us"
+      // moment (and the once-only post-delivery upsell guidance) on this.
+      seed: usedSeed,
       // "webhook" → the gate will deliver the finished clip itself (chat_id
       // resolved via A1 or A2); "agent_poll" → the agent delivers from its poll
       // loop. The skill keys its hands-off behavior on this.
