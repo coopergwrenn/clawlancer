@@ -10,9 +10,12 @@ import { useEffect, useState } from "react";
  *      choice persists across SPA navigation. Lets Cooper eyeball the sidebar
  *      on ANY deploy (incl. the preview URL) without touching env config.
  *   2. localStorage `instaclaw_nav_mode` — the persisted override from (1).
- *   3. `NEXT_PUBLIC_SIDEBAR_NAV === "true"` — the build-time default. Set this
- *      on the preview deployment to show the whole preview in sidebar mode;
- *      leave it UNSET in production so prod renders the top-nav.
+ *   3. `NEXT_PUBLIC_SIDEBAR_NAV === "true"` — the build-time default.
+ *      NOTE (2026-06-12): this is SET in Vercel Production, so the SIDEBAR is
+ *      the prod default chrome — nav changes MUST land in sidebar-shell.tsx's
+ *      SECTIONS (the topnav arrays in layout.tsx only reach opted-out users).
+ *      The /videos nav item shipped to the topnav array first and was
+ *      invisible fleet-wide for a deploy cycle because of exactly this split.
  *
  * Rollback contract (Phase 1 non-negotiable): when nothing opts in
  * (no param, no storage, env unset) the resolved mode is "topnav" during BOTH
