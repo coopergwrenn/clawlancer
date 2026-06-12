@@ -81,17 +81,26 @@ async function release(requestId: string) {
 }
 
 async function main() {
-  // Migration applied? (PGRST202 = function missing lives in error.CODE;
-  // 42703 = column missing — either means the held migration hasn't applied.)
-  const probe = await grant("vptest_probe_never_lands", P1, 0, "canceled");
-  const probeCode = (probe.error as { code?: string } | null)?.code;
-  if (probe.error && (probeCode === "PGRST202" || /does not exist|schema cache/i.test(probe.error.message))) {
-    console.log("⏸  plan RPC not applied yet — apply 20260612200000 then re-run. (held for review)");
-    process.exit(0);
-  }
+  // Migration applied? READ-ONLY probes (the first version's probe was a
+  // real grant() that errored cleanly pre-apply but MUTATED vm-050's plan
+  // columns post-apply, polluting the pre-test snapshot — caught in the
+  // 2026-06-12 first run's self-audit and cleaned by hand. Never probe with
+  // a write.)
   const colProbe = await sb.from("instaclaw_vms").select("video_plan_status").eq("id", VM).single();
   if (colProbe.error) {
     console.log("⏸  plan columns not applied yet — apply 20260612200000 then re-run. (held for review)");
+    process.exit(0);
+  }
+  const fnProbe = await sb.rpc("instaclaw_video_plan_grant", {
+    // vm_not_found path: a random uuid that cannot exist — exercises the
+    // function WITHOUT touching any real row.
+    p_vm_id: "00000000-0000-0000-0000-000000000000",
+    p_invoice_id: "probe", p_sub_id: null, p_status: "canceled",
+    p_period_end: P1, p_allowance: 0,
+  });
+  const probeCode = (fnProbe.error as { code?: string } | null)?.code;
+  if (fnProbe.error && (probeCode === "PGRST202" || /does not exist|schema cache/i.test(fnProbe.error.message))) {
+    console.log("⏸  plan RPC not applied yet — apply 20260612200000 then re-run. (held for review)");
     process.exit(0);
   }
 
