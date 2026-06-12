@@ -1,20 +1,20 @@
 # Changelog — generated 2026-06-12
 
-Window: `80f2c196c6910fe0f81d4bf7d982e1c3d6dee4e1` → `HEAD` (HEAD = `bb9e272d`)
-Total commits: 4
+Window: `bb9e272de290d96dfd7580c80c2b8898875201a4` → `HEAD` (HEAD = `a3bdac4b`)
+Total commits: 2
 
-<!-- LAST_GENERATED_SHA: bb9e272de290d96dfd7580c80c2b8898875201a4 -->
+<!-- LAST_GENERATED_SHA: a3bdac4b7fe92c0130975b3a829f920c766caa48 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
-- **Reconciler / manifest:** 0
-- **Infrastructure:** 3
+- **Reconciler / manifest:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
 - **Docs / PRD only:** 1
-- AI-assisted commits (co-authored): 3
-- Merge commits: 1
+- AI-assisted commits (co-authored): 1
+- Merge commits: 0
 
 ## What changed for users
 
@@ -22,22 +22,18 @@ _None in this window._
 
 ## What changed under the hood
 
-- `0f120bdd` 2026-06-12 — feat(video-plan B): allowance machinery + wipe fix + purchasability surface (POST-APPLY staging) [14 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
-- `a757b505` 2026-06-12 — chore(video-plan): promote migration pending->migrations (Rule 56) + read-only probe hardening [3 files] _(ai-assisted)_
-- `bb9e272d` 2026-06-12 — merge: video creator plan — full machinery live (migration applied, spread 18/18 x2) [0 files] _(ai-assisted; merge)_
-- `3023c818` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `a3bdac4b` 2026-06-12 — fix(trips): prod-audit findings — theme-aware chrome, ghost-pill overlap, agent-name; PRD rescued [6 files] _(multi: [reconciler, feature, docs]; ai-assisted)_
+- `c6de1c73` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
-### Reconciler / manifest (0)
+### Reconciler / manifest (1)
+
+- `a3bdac4b` 2026-06-12 — fix(trips): prod-audit findings — theme-aware chrome, ghost-pill overlap, agent-name; PRD rescued [6 files] _(multi: [reconciler, feature, docs]; ai-assisted)_
+
+### Infrastructure (0)
 
 _(none)_
-
-### Infrastructure (3)
-
-- `0f120bdd` 2026-06-12 — feat(video-plan B): allowance machinery + wipe fix + purchasability surface (POST-APPLY staging) [14 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
-- `a757b505` 2026-06-12 — chore(video-plan): promote migration pending->migrations (Rule 56) + read-only probe hardening [3 files] _(ai-assisted)_
-- `bb9e272d` 2026-06-12 — merge: video creator plan — full machinery live (migration applied, spread 18/18 x2) [0 files] _(ai-assisted; merge)_
 
 ### Feature (user-facing) (0)
 
@@ -49,25 +45,21 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `3023c818` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `c6de1c73` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## Multi-category commits (1)
 
 These touch more than one category root and are listed in every applicable section above.
 
-- `0f120bdd` 2026-06-12 — [infrastructure, feature, docs] — feat(video-plan B): allowance machinery + wipe fix + purchasability surface (POST-APPLY staging)
+- `a3bdac4b` 2026-06-12 — [reconciler, feature, docs] — fix(trips): prod-audit findings — theme-aware chrome, ghost-pill overlap, agent-name; PRD rescued
 
-## AI-assisted commits (3)
+## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `0f120bdd` 2026-06-12 — feat(video-plan B): allowance machinery + wipe fix + purchasability surface (POST-APPLY staging)
-- `a757b505` 2026-06-12 — chore(video-plan): promote migration pending->migrations (Rule 56) + read-only probe hardening
-- `bb9e272d` 2026-06-12 — merge: video creator plan — full machinery live (migration applied, spread 18/18 x2)
+- `a3bdac4b` 2026-06-12 — fix(trips): prod-audit findings — theme-aware chrome, ghost-pill overlap, agent-name; PRD rescued
 
 ## Appendix — every commit (chronological)
 
-- `0f120bdd` 2026-06-12 — feat(video-plan B): allowance machinery + wipe fix + purchasability surface (POST-APPLY staging) [14 files] _(multi: [infrastructure, feature, docs]; ai-assisted)_
-- `3023c818` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
-- `a757b505` 2026-06-12 — chore(video-plan): promote migration pending->migrations (Rule 56) + read-only probe hardening [3 files] _(ai-assisted)_
-- `bb9e272d` 2026-06-12 — merge: video creator plan — full machinery live (migration applied, spread 18/18 x2) [0 files] _(ai-assisted; merge)_
+- `c6de1c73` 2026-06-12 — chore(changelog): auto-update [skip ci] [2 files]
+- `a3bdac4b` 2026-06-12 — fix(trips): prod-audit findings — theme-aware chrome, ghost-pill overlap, agent-name; PRD rescued [6 files] _(multi: [reconciler, feature, docs]; ai-assisted)_
