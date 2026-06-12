@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import { toggleSkillDir, toggleMcpServer, installAgdpSkill, uninstallAgdpSkill, installSolanaDefiSkill, uninstallSolanaDefiSkill, installHiggsfieldSkill, uninstallHiggsfieldSkill } from "@/lib/ssh";
+import { toggleSkillDir, toggleMcpServer, installAgdpSkill, uninstallAgdpSkill, installSolanaDefiSkill, uninstallSolanaDefiSkill, installHiggsfieldSkill, uninstallHiggsfieldSkill, installMoltbankSkill, uninstallMoltbankSkill } from "@/lib/ssh";
 import { logger } from "@/lib/logger";
 
 // SSH + gateway restart + pip install can take up to 45s
@@ -210,6 +210,111 @@ export async function POST(req: NextRequest) {
         });
         return NextResponse.json(
           { error: `Solana DeFi toggle failed: ${String(solErr).slice(0, 200)}` },
+          { status: 500 }
+        );
+      }
+    }
+
+    // ── Special case: Moltbank pairs via OAuth device code, not a regular MCP toggle ──
+    if (skill.slug === "moltbank") {
+      try {
+        if (enabled) {
+          const result = await installMoltbankSkill(vm);
+
+          // Persist pairing state into instaclaw_vm_skills.config.
+          // UI polls /api/skills/moltbank/status to advance the modal.
+          const config: Record<string, unknown> = {
+            paired: !!result.alreadyPaired,
+          };
+          if (result.alreadyPaired) {
+            if (result.accountAddress) {
+              config.account_address = result.accountAddress;
+            }
+            if (result.accountName) {
+              config.account_name = result.accountName;
+            }
+            config.paired_at = Date.now();
+          } else if (result.pairing) {
+            config.pairing = {
+              session_id: result.pairing.sessionId,
+              user_code: result.pairing.userCode,
+              verification_uri: result.pairing.verificationUri,
+              expires_in: result.pairing.expiresIn,
+              started_at: Date.now(),
+            };
+          }
+
+          await supabase
+            .from("instaclaw_vm_skills")
+            .upsert(
+              {
+                vm_id: vm.id,
+                skill_id: skill.id,
+                enabled: true,
+                connected: !!result.alreadyPaired,
+                config,
+              },
+              { onConflict: "vm_id,skill_id" }
+            );
+
+          logger.info("Skill toggled (Moltbank install)", {
+            slug: skill.slug,
+            enabled,
+            alreadyPaired: !!result.alreadyPaired,
+            vmId: vm.id,
+            userId,
+            route: "api/skills/toggle",
+          });
+
+          return NextResponse.json({
+            success: true,
+            restarted: false,
+            alreadyPaired: !!result.alreadyPaired,
+            accountAddress: result.accountAddress,
+            accountName: result.accountName,
+            pairing: result.pairing
+              ? {
+                  userCode: result.pairing.userCode,
+                  verificationUri: result.pairing.verificationUri,
+                  expiresIn: result.pairing.expiresIn,
+                }
+              : undefined,
+          });
+        } else {
+          await uninstallMoltbankSkill(vm);
+
+          await supabase
+            .from("instaclaw_vm_skills")
+            .upsert(
+              {
+                vm_id: vm.id,
+                skill_id: skill.id,
+                enabled: false,
+                connected: false,
+                config: { paired: false },
+              },
+              { onConflict: "vm_id,skill_id" }
+            );
+
+          logger.info("Skill toggled (Moltbank uninstall)", {
+            slug: skill.slug,
+            enabled,
+            vmId: vm.id,
+            userId,
+            route: "api/skills/toggle",
+          });
+
+          return NextResponse.json({ success: true, restarted: false });
+        }
+      } catch (mbErr) {
+        logger.error("Moltbank toggle failed", {
+          vmId: vm.id,
+          enabled,
+          error: String(mbErr),
+          route: "api/skills/toggle",
+        });
+        return NextResponse.json(
+          { error: `Moltbank toggle failed: ${String(mbErr).slice(0, 200)}` },
           { status: 500 }
         );
       }
