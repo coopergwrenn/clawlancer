@@ -37,6 +37,8 @@ import { DesktopThumbnail } from "@/components/dashboard/desktop-thumbnail";
 import { EdgeCityCard } from "@/components/dashboard/edge-city-card";
 import { useSession } from "next-auth/react";
 import { MODEL_OPTIONS_WITH_VENDOR as MODEL_OPTIONS } from "@/lib/model-registry";
+import { useToast, ToastViewport } from "@/components/ui/toast";
+import { MESSAGE_PACKS, MEDIA_PACKS, VIDEO_PACKS, TOOLROUTER_PACKS } from "@/lib/billing-catalog";
 
 const CREDIT_PACKS = [
   { id: "50", credits: 50, price: "$5" },
@@ -123,7 +125,9 @@ export default function DashboardPage() {
   // personalization popup's "Connect ChatGPT" card. The popup closes itself
   // and calls onOpenChatGPT → this flips true → ChatGPTConnectModal renders.
   const [chatGptModalOpen, setChatGptModalOpen] = useState(false);
-  const [creditsPurchased, setCreditsPurchased] = useState(false);
+  // Purchase confirmation rides the overlay toast primitive (user test #1
+  // round two: the old inline banner shifted layout in AND out — banned).
+  const { toast, showToast, dismissToast } = useToast();
   // Welcome card is permanent (per Cooper: users can never fully dismiss it).
   // Collapse state persists in localStorage. Default = expanded (false).
   // Initial state is `true` to avoid a flash of expanded content on first
@@ -216,11 +220,39 @@ export default function DashboardPage() {
       }, 300);
     }
     if (params.get("credits") === "purchased") {
-      setCreditsPurchased(true);
+      const packId = params.get("pack");
       fetchUsage(); // Refresh to show new balance
-      setTimeout(() => setCreditsPurchased(false), 5000);
       // Clean URL without reload
       window.history.replaceState({}, "", "/dashboard");
+
+      // Pack-aware confirmation: the system knows what was bought (the pack
+      // id rides the checkout success_url) and shows the fresh balance for
+      // the class. Legacy sessions without ?pack get the generic line.
+      const allPacks = [...MESSAGE_PACKS, ...MEDIA_PACKS, ...VIDEO_PACKS, ...TOOLROUTER_PACKS];
+      const pack = packId ? allPacks.find((p) => p.id === packId) : undefined;
+      (async () => {
+        if (!pack) {
+          showToast({ message: "Credits added · ready to use now" });
+          return;
+        }
+        let suffix = "";
+        try {
+          if (pack.id.startsWith("video_")) {
+            const d = await fetch("/api/credits/video").then((r) => r.json());
+            if (typeof d.clips === "number") suffix = ` · balance: ${d.clips} clips`;
+          } else if (pack.id.startsWith("media_")) {
+            const d = await fetch("/api/credits/media").then((r) => r.json());
+            if (typeof d.balance === "number") suffix = ` · balance: ${d.balance.toLocaleString()} media credits`;
+          } else if (/^\d+$/.test(pack.id)) {
+            const d = await fetch("/api/vm/usage").then((r) => r.json());
+            if (typeof d.creditBalance === "number") suffix = ` · balance: ${d.creditBalance.toLocaleString()} units`;
+          }
+          // toolrouter: its balance API splits grant/topup — title-only is honest.
+        } catch {
+          // balance fetch is garnish; the confirmation never waits on failure
+        }
+        showToast({ message: `${pack.title} added${suffix}` });
+      })();
     }
   }, []);
 
@@ -562,23 +594,13 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Credits purchased success banner */}
-      {creditsPurchased && (
-        <div
-          className="rounded-xl p-4 flex items-center gap-3 transition-snappy"
-          style={{
-            background: "rgba(22,163,74,0.08)",
-            border: "1px solid rgba(22,163,74,0.2)",
-          }}
-        >
-          <Zap className="w-5 h-5 shrink-0" style={{ color: "var(--success)" }} />
-          <p className="text-sm font-medium" style={{ color: "var(--success)" }}>
-            Credits added! They&apos;re ready to use now.
-          </p>
-        </div>
-      )}
+      {/* Purchase confirmation: overlay toast (never inline — layout must not
+          move; see components/ui/toast.tsx). Mounted here, renders fixed. */}
+      <ToastViewport toast={toast} onDismiss={dismissToast} />
 
-      {/* Payment past_due banner */}
+      {/* Payment past_due banner — PERSISTENT STATE banner (not a transient
+          confirmation): it informs continuously until resolved, so it
+          legitimately occupies layout. Different class from the toast. */}
       {billing?.paymentStatus === "past_due" && (
         <div
           className="rounded-xl p-5 flex items-center gap-4 transition-snappy"
