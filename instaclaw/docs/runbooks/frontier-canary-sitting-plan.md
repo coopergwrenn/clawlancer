@@ -189,14 +189,29 @@ curl -s -X POST https://instaclaw.io/api/agent-economy/authorize \
 curl -s "$SB/frontier_transactions?request_id=eq.$REQ&select=id,status,amount_usdc" -H "apikey: $SRK" -H "Authorization: Bearer $SRK"
 #   EXPECT: [{"id":"<HOLD_UUID>","status":"pending","amount_usdc":0.01}]   ← record HOLD_UUID.
 
-# D2.2 — REVOKE via the real endpoint. Mint the HMAC token operator-side (signRevokeToken):
-cd /Users/cooperwrenn/wild-west-bots/instaclaw
-REVOKE_TOKEN=$(npx tsx -e '
-  import { readFileSync } from "fs";
-  for (const l of readFileSync(process.cwd()+"/.env.local","utf8").split("\n")){const m=l.match(/^([^#=]+)=(.*)$/);if(m&&!process.env[m[1].trim()])process.env[m[1].trim()]=m[2].trim().replace(/^["\x27]|["\x27]$/g,"");}
-  import("./lib/frontier-approvals").then(({signRevokeToken})=>{const r=signRevokeToken("'$VM1043'",Date.now());console.log(r.ok?r.token:"MINT_FAILED:"+r.error);});
-')
-echo "revoke token: ${REVOKE_TOKEN:0:16}..."
+# D2.2 — REVOKE via the real endpoint. Mint the HMAC token operator-side.
+#   PURE-NODE inline mint (no module import): worktree-independent, immune to the
+#   main checkout lacking frontier-approvals.ts and to the TLA-in-CJS tsx-eval trap.
+#   Byte-for-byte identical to signRevokeToken: same b64url, same {vm,jti,aud} payload,
+#   same `${pB64}.${exp}` HMAC-SHA256(NEXTAUTH_SECRET) input, same 24h TTL.
+#   Proven 2026-06-12 against the real verifyRevokeToken (sig+aud+expiry all pass).
+#   NOTE the absolute env path: the tier0 worktree has no .env.local of its own —
+#   NEXTAUTH_SECRET lives only in the MAIN checkout's .env.local.
+REVOKE_TOKEN=$(node -e '
+  const crypto=require("crypto"), fs=require("fs");
+  for (const l of fs.readFileSync("/Users/cooperwrenn/wild-west-bots/instaclaw/.env.local","utf8").split("\n")){
+    const m=l.match(/^([^#=]+)=(.*)$/); if(m&&!process.env[m[1].trim()]) process.env[m[1].trim()]=m[2].trim().replace(/^["\x27]|["\x27]$/g,"");
+  }
+  const s=process.env.NEXTAUTH_SECRET;
+  if(!s||s.length<16){console.log("MINT_FAILED:NEXTAUTH_SECRET unset/short");process.exit(0);}
+  const b64url=(x)=>Buffer.from(x,"utf-8").toString("base64").replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
+  const payload={vm:process.argv[1],jti:crypto.randomBytes(16).toString("hex"),aud:"frontier-revoke"};
+  const pB64=b64url(JSON.stringify(payload));
+  const exp=Math.floor(Date.now()/1000)+24*60*60;
+  const hmac=crypto.createHmac("sha256",s).update(pB64+"."+exp).digest("hex");
+  console.log(pB64+"."+exp+"."+hmac);
+' "$VM1043")
+echo "revoke token: ${REVOKE_TOKEN:0:16}...  (MINT_FAILED here ⇒ NEXTAUTH_SECRET not loaded; fix before curl)"
 curl -s "https://instaclaw.io/api/agent-economy/revoke-spend?token=$REVOKE_TOKEN" | grep -oE "Spending turned off|pending|cancelled|already off|not valid" | head -1
 #   EXPECT: an HTML page whose body says spending is off + "N pending payment(s) … cancelled" (N includes our hold).
 
@@ -342,6 +357,7 @@ won't test often enough.
 
 *Grounded against deployed code + a scratch DDL replica + live prod, 2026-06-12. vm-1043 IDs,
 the kill-switch SQL, the authorize/settle/revoke shapes, the anomaly thresholds, and the
-`signRevokeToken` mint are all quoted from shipped code. Anything marked "EXPECT" on a money/prod
+revoke-token mint (an inline pure-node replica of `signRevokeToken`, proven 2026-06-12 against
+the real `verifyRevokeToken`) are all matched to shipped code. Anything marked "EXPECT" on a money/prod
 path that hasn't run live is the predicted output from the deployed logic — verify it against
 reality during the run; a mismatch is a finding, not a typo.*
