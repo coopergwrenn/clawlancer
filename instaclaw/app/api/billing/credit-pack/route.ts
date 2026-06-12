@@ -99,7 +99,10 @@ export async function POST(req: NextRequest) {
       customer: customerId,
       mode: "payment",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/dashboard?credits=purchased`,
+      // pack id rides the success URL so the landing page's confirmation
+      // toast can say WHAT was bought + show the fresh balance (user test #1
+      // round two: "credits added" is generic; the system knows better).
+      success_url: `${origin}/dashboard?credits=purchased&pack=${encodeURIComponent(pack)}`,
       cancel_url: `${origin}/dashboard`,
       metadata: {
         type: "credit_pack",
