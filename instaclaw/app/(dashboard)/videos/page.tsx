@@ -45,6 +45,7 @@ interface VideosPayload {
   quotas: VideoQuotas;
   renders: RenderItem[];
   months: MonthEntry[];
+  unsearchable_count: number;
   next_cursor: string | null;
 }
 
@@ -137,6 +138,7 @@ function useVideos(filter: string, q: string, month: string | null) {
     renders,
     loaded: data !== null,
     loadError: loadError && data === null, // only the never-loaded case strands the page
+    unsearchableCount: data?.unsearchable_count ?? 0,
     loadMore,
     hasMore,
     loadingMore,
@@ -956,7 +958,7 @@ export default function VideosPage() {
   const [searchInput, setSearchInput] = useState("");
   const [q, setQ] = useState("");
   const [month, setMonth] = useState<string | null>(null);
-  const { quotas, months, renders, loaded, loadError, loadMore, hasMore, loadingMore, reload } = useVideos(filter, q, month);
+  const { quotas, months, renders, loaded, loadError, unsearchableCount, loadMore, hasMore, loadingMore, reload } = useVideos(filter, q, month);
   const [open, setOpen] = useState<RenderItem | null>(null);
   const [buying, setBuying] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -1210,7 +1212,17 @@ export default function VideosPage() {
           {loaded && renders.length === 0 && (
             <p className="text-sm py-6 text-center" style={{ color: "var(--muted)" }}>
               {q
-                ? <>Nothing matches &ldquo;{q}&rdquo; · try fewer words</>
+                ? (
+                  <>
+                    Nothing matches &ldquo;{q}&rdquo; · try fewer words
+                    {unsearchableCount > 0 && (
+                      <span className="block mt-1 text-xs" style={{ opacity: 0.75 }}>
+                        {unsearchableCount} of your older videos were made before prompts were
+                        saved, so search can&apos;t see them · browse by month instead
+                      </span>
+                    )}
+                  </>
+                )
                 : month
                   ? "No videos in this month for the current filter"
                   : filter === "premium"
