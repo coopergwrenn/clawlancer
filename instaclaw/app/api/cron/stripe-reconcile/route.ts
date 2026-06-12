@@ -3,6 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { getStripe, tierFromPriceId } from "@/lib/stripe";
 import { sendAdminAlertEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
+import { fetchAllOrThrow, IncompleteFetchError } from "@/lib/complete-set";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -78,27 +79,67 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Step 3: Get all users with stripe_customer_id
-    const { data: users } = await supabase
-      .from("instaclaw_users")
-      .select("id, email, stripe_customer_id")
-      .not("stripe_customer_id", "is", null);
-
-    const userByCustomerId = new Map<string, { id: string; email: string; stripe_customer_id: string }>();
-    for (const u of users ?? []) {
-      if (u.stripe_customer_id) {
-        userByCustomerId.set(u.stripe_customer_id, u);
+    // Step 3 + 4: ALL users (with a stripe_customer_id) and ALL DB subs.
+    //
+    // Rule 85 / INC-2026-06-12: these were bare `.select()` calls that
+    // silently cap at 1000 rows. A truncated `users` map means a paying
+    // Stripe customer beyond the cap never gets their sub synced → local DB
+    // shows no active sub → suspend-check / vm-freeze wrongly sleep them
+    // (indirect, but real — bounded by the wake-paid-hibernating SoT net, not
+    // eliminated). A truncated `dbSubs` map means Step 6 misses cancels AND
+    // the forward sync can INSERT a duplicate sub for a user whose row was
+    // capped out. BOTH maps must be complete. fetchAllOrThrow paginates and
+    // asserts `fetched.length === count(*)`; on any incompleteness we FAIL
+    // CLOSED — skip the entire reconcile, alert, retry next 6h cycle. A
+    // partial reconcile is strictly worse than a skipped one.
+    type RUser = { id: string; email: string; stripe_customer_id: string | null };
+    let users: RUser[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let dbSubs: any[];
+    try {
+      users = await fetchAllOrThrow<RUser>(supabase, {
+        table: "instaclaw_users",
+        columns: "id, email, stripe_customer_id",
+        applyFilters: (q) => q.not("stripe_customer_id", "is", null),
+        context: "stripe-reconcile users",
+      });
+      dbSubs = await fetchAllOrThrow(supabase, {
+        table: "instaclaw_subscriptions",
+        columns: "*",
+        context: "stripe-reconcile dbSubs",
+      });
+    } catch (fetchErr) {
+      if (fetchErr instanceof IncompleteFetchError) {
+        report.errors.push(`ABORTED (incomplete fetch): ${fetchErr.message}`);
+        logger.error(
+          "stripe-reconcile ABORT — users/subscriptions set provably incomplete; refusing to reconcile on a partial set (Rule 85 / INC-2026-06-12)",
+          {
+            route: "cron/stripe-reconcile",
+            table: fetchErr.table,
+            fetched: fetchErr.fetched,
+            expected: fetchErr.expected,
+          },
+        );
+        await sendAdminAlertEmail(
+          "[P0] stripe-reconcile ABORTED — incomplete DB set (reconciled nothing)",
+          `stripe-reconcile refused to run: ${fetchErr.table} could not be proven complete ` +
+            `(fetched ${fetchErr.fetched}, server count(*) = ${fetchErr.expected}). Nothing was synced or ` +
+            `marked canceled this run. A partial reconcile risks leaving a paying user unsynced (→ wrongful ` +
+            `hibernate downstream) or inserting a duplicate sub. Retries every 6h. Investigate the fetch (Rule 85).`,
+        ).catch(() => {});
+        return NextResponse.json({ ...report, aborted: true });
       }
+      throw fetchErr;
     }
 
-    // Step 4: Get all subscription records from DB
-    const { data: dbSubs } = await supabase
-      .from("instaclaw_subscriptions")
-      .select("*");
+    const userByCustomerId = new Map<string, RUser>();
+    for (const u of users) {
+      if (u.stripe_customer_id) userByCustomerId.set(u.stripe_customer_id, u);
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const dbSubByUserId = new Map<string, any>();
-    for (const s of dbSubs ?? []) {
+    for (const s of dbSubs) {
       dbSubByUserId.set(s.user_id, s);
     }
 
