@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
       if (expiredUserIds.length > 0) {
         const { data: vms } = await supabase
           .from("instaclaw_vms")
-          .select("id, ip_address, ssh_port, ssh_user, health_status, name, assigned_to")
+          .select("id, ip_address, ssh_port, ssh_user, health_status, name, assigned_to, credit_balance, partner")
           .in("assigned_to", expiredUserIds)
           .eq("status", "assigned")
           .neq("health_status", "suspended")
@@ -120,6 +120,19 @@ export async function GET(req: NextRequest) {
 
         for (const vm of vms ?? []) {
           try {
+            // Rule 14 credit guard (INC-2026-06-12): a past_due Stripe sub is
+            // NOT grounds to hibernate a user paying by WLD credits or partner.
+            // Pass 2 below already skips credit_balance > 0; Pass 1 didn't, so
+            // WLD-credit users with a lapsed Stripe sub were wrongly hibernated
+            // here. (Full getBillingStatusVerified SoT-ification is a tracked
+            // follow-up.)
+            if ((vm.credit_balance ?? 0) > 0 || vm.partner) {
+              results.skipped++;
+              logger.info("suspend-check Pass 1: hibernate SKIPPED — paying by credits/partner", {
+                route: "cron/suspend-check", vmId: vm.id, userId: vm.assigned_to,
+              });
+              continue;
+            }
             const sub = pastDueSubs.find(s => s.user_id === vm.assigned_to);
             const daysPastDue = sub
               ? Math.floor((Date.now() - new Date(sub.past_due_since).getTime()) / (1000 * 60 * 60 * 24))

@@ -1562,20 +1562,30 @@ else:
         // must consult billing_exempt like the webhook + suspend-check paths.
         const pastDueExempt = await fetchBillingExempt(supabase, sub.user_id);
 
-        // F1 fail-closed: skip suspend on exempt OR unverifiable read.
-        if (vm && vm.health_status !== "suspended" && (pastDueExempt.exempt || !pastDueExempt.verified)) {
-          logger.info("health-check past_due: suspend SKIPPED — billing_exempt/unverifiable", {
+        // Rule 14 credit guard (INC-2026-06-12): a past_due Stripe sub is NOT
+        // grounds to suspend a user who is paying by WLD credits or partner.
+        // This pass checked ONLY past_due + billing_exempt, so WLD-credit users
+        // (4900+ cr) with a lapsed Stripe sub were wrongly suspended every
+        // 2-min tick — confirmed on the 2026-06-12 restored VMs. Mirrors
+        // suspend-check Pass 2's existing `credit_balance > 0` skip. (Full
+        // getBillingStatusVerified SoT-ification is a tracked follow-up.)
+        const pastDuePaying = (vm?.credit_balance ?? 0) > 0 || !!vm?.partner;
+
+        // F1 fail-closed: skip suspend on exempt, unverifiable read, OR paying-by-credits/partner.
+        if (vm && vm.health_status !== "suspended" && (pastDueExempt.exempt || !pastDueExempt.verified || pastDuePaying)) {
+          logger.info("health-check past_due: suspend SKIPPED — exempt/unverifiable/paying", {
             route: "cron/health-check",
             vmId: vm.id,
             userId: sub.user_id,
             exempt: pastDueExempt.exempt,
             verified: pastDueExempt.verified,
             exemptReason: pastDueExempt.exemptReason,
+            payingCreditsOrPartner: pastDuePaying,
           });
         }
 
-        // Destroy only on a CONFIRMED not-exempt read.
-        if (vm && vm.health_status !== "suspended" && !pastDueExempt.exempt && pastDueExempt.verified) {
+        // Destroy only on a CONFIRMED not-exempt, not-paying-by-credits/partner read.
+        if (vm && vm.health_status !== "suspended" && !pastDueExempt.exempt && pastDueExempt.verified && !pastDuePaying) {
           try {
             // Stop the gateway
             await stopGateway(vm);
