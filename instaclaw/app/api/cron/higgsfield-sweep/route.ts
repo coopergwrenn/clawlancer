@@ -108,6 +108,58 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "find_failed" }, { status: 500 });
     }
 
+    // ── Failure-rate watch (launch-readiness pass, 2026-06-12) ─────────────
+    // The webhook's failed-render path refunds + notifies the USER but never
+    // the operator — a week of elevated provider failures would surface as
+    // support tickets. This rides the sweep tick (already every 15 min with
+    // alert plumbing): alert when the last hour shows ≥3 failures AND ≥30%
+    // of that hour's renders failed. Deduped 6h; best-effort, never blocks
+    // the sweep.
+    try {
+      const hourAgoIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const [{ count: failedHr }, { count: totalHr }] = await Promise.all([
+        supabase
+          .from("instaclaw_video_transactions")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "failed")
+          .gte("created_at", hourAgoIso),
+        supabase
+          .from("instaclaw_video_transactions")
+          .select("id", { count: "exact", head: true })
+          .gte("created_at", hourAgoIso),
+      ]);
+      const failed = failedHr ?? 0;
+      const total = totalHr ?? 0;
+      if (failed >= 3 && total > 0 && failed / total >= 0.3) {
+        // Same dedup mechanism as the orphan alert below (instaclaw_admin_alert_log).
+        const cooldownAgoIso = new Date(Date.now() - ALERT_COOLDOWN_HOURS * 3600e3).toISOString();
+        const { data: recent } = await supabase
+          .from("instaclaw_admin_alert_log")
+          .select("id")
+          .eq("alert_key", "higgsfield-failure-rate")
+          .gte("sent_at", cooldownAgoIso)
+          .limit(1);
+        if (!recent || recent.length === 0) {
+          await supabase.from("instaclaw_admin_alert_log").insert({
+            alert_key: "higgsfield-failure-rate",
+            details: `${failed}/${total} failed last hour`,
+          });
+          await sendAdminAlertEmail(
+            `[P1] Higgsfield render failure rate elevated`,
+            `${failed}/${total} renders failed in the last hour (${Math.round((failed / total) * 100)}%).\n\n` +
+              `Users are refunded + notified per-render; this alert exists so the OPERATOR hears about the trend ` +
+              `instead of learning from support tickets. Check Higgsfield status + the gate's Vercel logs.\n\n` +
+              `Threshold: >=3 failures AND >=30% of the hour's renders. Deduped ${ALERT_COOLDOWN_HOURS}h.`,
+          );
+        }
+      }
+    } catch (rateErr) {
+      logger.warn("higgsfield-sweep: failure-rate watch errored (non-blocking)", {
+        route: "cron/higgsfield-sweep",
+        error: rateErr instanceof Error ? rateErr.message : String(rateErr),
+      });
+    }
+
     const orphans = (holds ?? []) as PendingHold[];
     if (orphans.length === 0) {
       return NextResponse.json({ ok: true, swept: 0 });
