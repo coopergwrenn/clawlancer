@@ -1829,8 +1829,37 @@ export const VM_MANIFEST = {
    * No configSettings / cronJobs / systemdOverrides changes — pure
    * file-content bump. Propagation via file-drift (15-min) + reconcile-
    * fleet (3-min, picks up cv<124). No gateway restart required.
+   *
+   * v129 — 2026-06-13 (Higgsfield Cloud video — fleet flip, §8/Rule 64)
+   * Ships the `higgsfield-cloud` skill fleet-wide (the cinematic t2v rail
+   * the already-live /videos page promises). Three coupled changes, all
+   * pure file-content (NO configSettings / cronJobs / systemd / gateway
+   * restart):
+   *   1. skills/higgsfield-cloud/{SKILL.md, scripts/higgsfield-cloud.py}
+   *      land on main → stepSkills (skillsFromRepo) deploys SKILL.md to
+   *      ~/.openclaw/skills/higgsfield-cloud/ on every VM.
+   *   2. extraSkillFiles gains higgsfield-cloud/scripts/higgsfield-cloud.py
+   *      so the script lands at ~/.openclaw/skills/higgsfield-cloud/scripts/
+   *      — the EXACT path SKILL.md invokes (`python3 ~/.openclaw/skills/
+   *      higgsfield-cloud/scripts/higgsfield-cloud.py`). Without this entry
+   *      the generic ~/scripts/ deploy loop would put it where SKILL.md
+   *      doesn't look → dead promise on every fleet VM. Paired with adding
+   *      higgsfield-cloud to SKILLS_WITH_OWN_SCRIPT_DIR (vm-reconcile.ts) so
+   *      the generic loop skips it (no confusing duplicate; fleet VMs become
+   *      byte-identical to the proven vm-050 canary).
+   *   3. skills/higgsfield-video/SKILL.md narrows from broad
+   *      ("make me a video") to extend/edit-ONLY, with an explicit
+   *      "never route here as a fallback when higgsfield-cloud is blocked"
+   *      clause. FLIP-COUPLED: if the legacy rail stayed broad, both skills
+   *      would fire on "make me a video" and the agent could pick the old
+   *      muapi rail instead of the cloud rail the /videos page promises.
+   * Propagation via reconcile-fleet (3-min, picks up cv<129) → stepSkills.
+   * Snapshot bake at v129 is a FOLLOW-UP (drains to existing VMs via the
+   * reconciler; new provisions get it from the next bake). The gate
+   * (HIGGSFIELD_GATE_ENABLED=true, verified at runtime) + purchase path
+   * are already live on main.
    */
-  version: 128,
+  version: 129,
 
   // OpenClaw config settings (via `openclaw config set KEY VALUE`)
   // The reconciler pushes these on every health cycle — drift is auto-corrected.
@@ -2824,6 +2853,13 @@ export const VM_MANIFEST = {
     // DegenClaw trading competition — reference docs
     { skillName: "dgclaw", localPath: "references/api.md", remotePath: "references/api.md" },
     { skillName: "dgclaw", localPath: "references/strategy-playbook.md", remotePath: "references/strategy-playbook.md" },
+    // Higgsfield Cloud video (v129 fleet flip). The script MUST land in the
+    // skill dir, not ~/scripts/, because SKILL.md invokes it as
+    // `python3 ~/.openclaw/skills/higgsfield-cloud/scripts/higgsfield-cloud.py`.
+    // Self-contained (stdlib only). Paired with higgsfield-cloud in
+    // SKILLS_WITH_OWN_SCRIPT_DIR (vm-reconcile.ts) so the generic ~/scripts/
+    // loop skips it — fleet VMs match the proven vm-050 canary exactly.
+    { skillName: "higgsfield-cloud", localPath: "scripts/higgsfield-cloud.py", remotePath: "scripts/higgsfield-cloud.py" },
     // Frontier — the spend tool (W6) + supplier-rolodex core (W7). Self-contained
     // node ESM (built-ins only); frontier-spend.mjs imports frontier-spend-core.mjs
     // from the same dir on the VM. Fleet rollout is gated on a manifest version bump (Rule 64).

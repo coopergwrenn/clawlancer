@@ -45,6 +45,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const CRON_NAME = "file-drift";
+// nft cache-bust auto-touch (vm-manifest.ts changed): 2026-06-13 12:59 UTC
 // nft cache-bust auto-touch (vm-manifest.ts changed): 2026-06-12 11:22 UTC
 // nft cache-bust auto-touch (vm-manifest.ts changed): 2026-06-10 21:30 UTC
 // nft cache-bust manual-touch (2026-05-24 13:30 UTC): the v120 commit only
