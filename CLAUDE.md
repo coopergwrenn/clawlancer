@@ -4504,6 +4504,14 @@ When reviewing any cron/script that deletes/suspends/freezes: find the set it ch
 - **Rule 82** (fix the whole class, not the instance): the fix is a reusable invariant (`fetchAllOrThrow`) that makes the class impossible, not a `.limit(2000)` patch on one query.
 - **Rule 39** (distinguish critical-step failure from optional-sidecar): the abort is loud (P0 alert) but non-fatal — cost-cleanup is optional; deleting a paying customer is not.
 
+### Rule 86 — The structural-invariants build check is load-bearing; a violation is fixed or allowlisted-with-reason, NEVER disabled
+
+`instaclaw/scripts/_check-structural-invariants.ts` runs in `npm run build` (after `verify-migrations`) and **blocks the Vercel build** on either of two anti-patterns that have each caused a production incident: (1) **zero-caller cleanup** — an exported `delete…/cleanup…/remove…/prune…/purge…/teardown…/destroy…` fn with 0 callers in app+lib (the 2026-06-13 DNS zone-cap bug — `deleteVMDNSRecord` existed but was never wired, so records leaked on retire until the GoDaddy zone hit its 500 cap and ALL provisioning blocked); (2) **unbounded-destructive read** — a file that reads `instaclaw_vms` unbounded + builds a membership Set/Map + does a destructive op WITHOUT `fetchAllOrThrow` (Rule 85 — the 2026-06-10 reaper that deleted 13 paying VMs by truncating at the 1000-row PostgREST cap).
+
+**If your build hard-fails on this check: DO NOT delete or comment out the check.** The error message names the violation and points to `instaclaw/scripts/structural-invariants-allowlist.json`. Either (a) fix it — wire the cleanup into the retire lifecycle, or convert the read to `fetchAllOrThrow` (`lib/complete-set.ts`) — or (b) if a reviewer confirms it is genuinely NOT a bug (dead duplicate code; per-VM-state-driven destruction that is not absence-based), add an allowlist entry **with a written reason**. Every allowlist entry is a human acknowledgement. Ripping out the check to unblock a launch reintroduces the exact class it prevents.
+
+The check is pure-source (no network/env), green at introduction (542 files, 0 violations), and covered by a failure-mode test (`_test-structural-invariants.ts`, proves it flags both incident shapes and not safe code). Seeded allowlist: `deleteAllVmArchives` (dead duplicate — real R2 cleanup is `retentionSweep` + GDPR inline; see `docs/followups/per-vm-resource-cleanup-inventory.md`), `health-check` (per-VM-state-driven, not absence-based). This rule enforces **Rule 85** at build time and extends it to the create/destroy-asymmetry (orphaned-cleanup) half of the same disease.
+
 ### Operational runbook: monthly freeze pipeline health audit
 
 Run this checklist monthly (or on demand during incident triage) to confirm the freeze pipeline is still healthy after rules 50-52 ship.
