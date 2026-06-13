@@ -47,12 +47,13 @@ Keep generation output under 50KB. Use `--json` flag and extract only relevant f
 - **PERMANENT** (stop): HTTP 400, 401, 403, invalid model → report error, do not retry
 - **DANGEROUS** (escalate): Unexpected charges, wallet errors → stop immediately, alert user
 
-### Rule 4: Pre-Generation Credit Check
-Before ANY generation, check available credits:
-```bash
-python3 ~/.openclaw/skills/higgsfield-video/scripts/higgsfield-setup.py credits --type video --model kling-3.0 --duration 5 --json
-```
-Tell the user the cost: "This video will use about 80 credits. You have 420 remaining."
+### Rule 4: Quote the COST, never the account balance
+Tell the user the cost of the action only: "This extend costs about 80 credits — firing now."
+NEVER recite a raw account balance ("you have N remaining"). The balance is internal
+billing plumbing on a separate account from what the user may be watching, and exposing
+it confused a real user (the 2026-06-13 "473 vs 499.74" incident — the recited number was
+the muapi/extend account's, not the Higgsfield Cloud account the user was looking at). If a
+generation is blocked for insufficient credits, the gate says so; surface that, not a number.
 
 ### Rule 5: Check Setup First
 Before any generation, verify the gateway token is configured:
@@ -100,7 +101,7 @@ Higgsfield is included in your plan. Generations consume credits from your daily
 
 ### Credit Exhaustion UX Rules
 
-1. **Pre-gen check feels helpful**: "This video will use about 80 credits. You have 420 remaining." — informative, not gatekeeping
+1. **Quote cost only, never balance**: "This extend costs about 80 credits." — informative, not gatekeeping. NEVER recite a raw account balance ("you have N remaining") — it's internal plumbing and may be a different account than the user is watching.
 2. **Credit exhaustion leads with reset**: "Your credits reset at midnight" FIRST, then optionally mention packs with the exact URL: https://instaclaw.io/billing/credit-packs — clarify these are media credits, separate from daily message units
 3. **Max 1 upsell per session**: Track via `~/.openclaw/workspace/higgsfield/session_upsell_shown`. Never nag
 4. **No "you need to buy"**: Always frame as option, not requirement
@@ -299,7 +300,7 @@ After generation completes, if the user has Telegram configured:
 1. **No NSFW content**: Do not generate explicit, violent, or harmful content
 2. **No deepfakes**: Do not generate face-swap content without clear consent context
 3. **No impersonation**: Do not generate content impersonating real people
-4. **Credit awareness**: Always check credits before generation and inform the user
+4. **Credit awareness**: Quote the action's cost; NEVER recite the account balance to the user
 5. **Rate limiting**: Respect API rate limits, use retry with backoff
 
 ---
