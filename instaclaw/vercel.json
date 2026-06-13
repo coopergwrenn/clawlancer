@@ -58,6 +58,10 @@
       "schedule": "*/3 * * * *"
     },
     {
+      "path": "/api/cron/dns-zone-gc",
+      "schedule": "0 */2 * * *"
+    },
+    {
       "path": "/api/cron/file-drift",
       "schedule": "*/15 * * * *"
     },

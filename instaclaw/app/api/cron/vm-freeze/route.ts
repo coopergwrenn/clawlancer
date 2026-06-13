@@ -53,6 +53,7 @@ import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { classifyFreezeBilling } from "@/lib/billing-status";
 import { getStripe } from "@/lib/stripe";
 import { sendAdminAlertEmail } from "@/lib/email";
+import { deleteVMDNSRecord } from "@/lib/godaddy";
 import { randomUUID } from "node:crypto";
 
 export const dynamic = "force-dynamic";
@@ -527,6 +528,11 @@ async function freezeOne(
         detail: `Linode deleted but DB terminal write failed: ${termErr.message}; P0 alert sent`,
       };
     }
+
+    // Instance deleted + DB terminal write committed → the <vm.id>.vm DNS
+    // record is now stale. Clean it up so the zone doesn't refill to its
+    // cap. Best-effort; never throws. Re-created on thaw via configureOpenClaw.
+    await deleteVMDNSRecord(fresh.id);
 
     // Lifecycle log — operator visibility.
     await logLifecycle(supabase, fresh, "frozen", `archive=${fresh.frozen_archive_path}`, runId);

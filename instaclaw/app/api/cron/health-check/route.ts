@@ -11,6 +11,7 @@ import { tryAcquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { isUserBillableForVmAssignment, fetchBillingExempt, getBillingStatusVerified } from "@/lib/billing-status";
 import { getStripe } from "@/lib/stripe";
 import { deleteLinodeInstance } from "@/lib/vm-lifecycle-helpers";
+import { deleteVMDNSRecord } from "@/lib/godaddy";
 import { VIDEO_BILLING_WIPE_FIELDS } from "@/lib/vm-billing-wipe";
 
 // Prevent Vercel CDN from caching per-user responses
@@ -1055,6 +1056,9 @@ else:
                   ip_address: null,
                 })
                 .eq("id", g.id);
+              // Linode-ghost (instance deleted out of band) → its DNS record
+              // is stale. Clean it up so the zone doesn't refill. Best-effort.
+              await deleteVMDNSRecord(g.id);
               if (g.assigned_to) {
                 const { error: stampErr } = await supabase.from("instaclaw_vms")
                   .update({ last_assigned_to: g.assigned_to })
@@ -1912,6 +1916,11 @@ else:
                 suspended_at: null,
               })
               .eq("id", vm.id);
+
+            // Instance gone → clean up the stale <vm.id>.vm DNS record so the
+            // zone doesn't refill to its cap. Best-effort; never throws.
+            // dns-zone-gc is the backstop.
+            await deleteVMDNSRecord(vm.id);
 
             // Lifecycle log — keeps the same forensic trail as the
             // _terminate-zombie-vms.ts script.

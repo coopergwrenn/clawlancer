@@ -6,6 +6,7 @@ import { resetAgentMemory, restartGateway, checkDuplicateIP, wipeVMForNextUser }
 import { logger } from "@/lib/logger";
 import { bankrWalletLifecycle } from "@/lib/bankr-wallet-lifecycle";
 import { VIDEO_BILLING_WIPE_FIELDS } from "@/lib/vm-billing-wipe";
+import { deleteVMDNSRecord } from "@/lib/godaddy";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -33,6 +34,12 @@ export async function POST(req: NextRequest) {
         .from("instaclaw_vms")
         .update({ status: "terminated", health_status: "unhealthy" })
         .eq("id", vmId);
+      // Clean up the <vm.id>.vm DNS record BEFORE deleting the DB row.
+      // Once the row is gone there's no record left to drive a retroactive
+      // cleanup, so a missed delete here becomes a permanent "no-db-row"
+      // orphan that only the dns-zone-gc sweep can reclaim. Best-effort;
+      // never throws.
+      await deleteVMDNSRecord(vmId);
       // Delete VM record (Hetzner deletion is separate)
       await supabase.from("instaclaw_vms").delete().eq("id", vmId);
       return NextResponse.json({ success: true });

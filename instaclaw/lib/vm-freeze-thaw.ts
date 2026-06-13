@@ -30,6 +30,7 @@ import { sendAdminAlertEmail } from "./email";
 import { connectSSH, type VMRecord } from "./ssh";
 import { userHasRecentActivity } from "./vm-lifecycle-helpers";
 import { classifyFreezeBilling } from "./billing-status";
+import { deleteVMDNSRecord } from "./godaddy";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 
@@ -820,6 +821,14 @@ export async function freezeVM(
         imageSizeMb: finalImage.size,
       };
     }
+
+    // Instance deleted → its <vm.id>.vm DNS A record is now stale. Clean it
+    // up so the GoDaddy zone doesn't refill to its 500-record cap (the
+    // 2026-06-13 provisioning-blocker). Best-effort: deleteVMDNSRecord never
+    // throws and 404s are idempotent successes. On thaw, configureOpenClaw
+    // re-creates the record. The dns-zone-gc cron is the backstop if this is
+    // ever skipped (e.g., the deferred-delete branch above).
+    await deleteVMDNSRecord(vm.id);
 
     log("info", "freeze complete", { imageId: finalImage.id, sizeMb: finalImage.size });
     return {

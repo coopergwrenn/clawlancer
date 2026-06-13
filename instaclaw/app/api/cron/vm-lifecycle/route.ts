@@ -35,6 +35,7 @@ import {
   FREEZE_BILLING_UNVERIFIABLE_PREFIX,
   type FreezeCandidate,
 } from "@/lib/vm-freeze-thaw";
+import { deleteVMDNSRecord } from "@/lib/godaddy";
 import { randomUUID } from "node:crypto";
 import { fetchAllOrThrow, IncompleteFetchError } from "@/lib/complete-set";
 
@@ -546,6 +547,11 @@ export async function GET(req: NextRequest) {
         if (!dryRun) {
           try {
             await deleteLinodeInstance(l.id);
+            // Clean up the <vm.id>.vm DNS record for db-dead orphans so the
+            // zone doesn't refill to its cap. No-db orphans have no UUID to
+            // key a record by, so the dns-zone-gc sweep (no-db-row pass) is
+            // their cleaner. Best-effort; never throws.
+            if (dbRow) await deleteVMDNSRecord(dbRow.id);
             // Mirror DB state for db-dead rows. (No DB row to update for
             // not-in-db case — the entire point is there isn't one.)
             if (dbRow) {
@@ -1289,6 +1295,9 @@ export async function GET(req: NextRequest) {
         try {
           const provider = getProvider(vm.provider);
           await provider.deleteServer(vm.provider_server_id);
+          // Instance gone → clean up its <vm.id>.vm DNS record (best-effort,
+          // never throws). dns-zone-gc is the backstop.
+          await deleteVMDNSRecord(vm.id);
         } catch (deleteErr) {
           const errMsg = String(deleteErr);
           // 404 = already deleted — mark as terminated anyway
@@ -1422,6 +1431,9 @@ export async function GET(req: NextRequest) {
         try {
           const provider = getProvider(vm.provider);
           await provider.deleteServer(vm.provider_server_id);
+          // Pool-trim delete → clean up any <vm.id>.vm DNS record (best-effort,
+          // idempotent; pool VMs may not have one, 404 is a success).
+          await deleteVMDNSRecord(vm.id);
           await supabase
             .from("instaclaw_vms")
             .update({
