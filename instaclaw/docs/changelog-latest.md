@@ -1,9 +1,9 @@
 # Changelog — generated 2026-06-13
 
-Window: `174dd56e4a173453f21cc5e5d881d49064c8dbfa` → `HEAD` (HEAD = `26994620`)
+Window: `2699462076727470e12810bb3e76dc81fc4df31a` → `HEAD` (HEAD = `44898df3`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 2699462076727470e12810bb3e76dc81fc4df31a -->
+<!-- LAST_GENERATED_SHA: 44898df303d5d2ebe21cae78212ad83e4257d8fd -->
 
 ## Summary
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `26994620` 2026-06-13 — fix(dns): clean up VM DNS records on retire + GC sweep (zone-cap fix) [8 files] _(ai-assisted)_
-- `e9d4206f` 2026-06-13 — chore(changelog): auto-update [skip ci] [2 files]
+- `44898df3` 2026-06-13 — feat(ci): build-blocking structural-invariants guardrail (closes the class) [4 files] _(ai-assisted)_
+- `49f7d066` 2026-06-13 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## By category
 
@@ -33,7 +33,7 @@ _(none)_
 
 ### Infrastructure (1)
 
-- `26994620` 2026-06-13 — fix(dns): clean up VM DNS records on retire + GC sweep (zone-cap fix) [8 files] _(ai-assisted)_
+- `44898df3` 2026-06-13 — feat(ci): build-blocking structural-invariants guardrail (closes the class) [4 files] _(ai-assisted)_
 
 ### Feature (user-facing) (0)
 
@@ -45,15 +45,15 @@ _(none)_
 
 ### Docs / PRD only (1)
 
-- `e9d4206f` 2026-06-13 — chore(changelog): auto-update [skip ci] [2 files]
+- `49f7d066` 2026-06-13 — chore(changelog): auto-update [skip ci] [2 files]
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `26994620` 2026-06-13 — fix(dns): clean up VM DNS records on retire + GC sweep (zone-cap fix)
+- `44898df3` 2026-06-13 — feat(ci): build-blocking structural-invariants guardrail (closes the class)
 
 ## Appendix — every commit (chronological)
 
-- `e9d4206f` 2026-06-13 — chore(changelog): auto-update [skip ci] [2 files]
-- `26994620` 2026-06-13 — fix(dns): clean up VM DNS records on retire + GC sweep (zone-cap fix) [8 files] _(ai-assisted)_
+- `49f7d066` 2026-06-13 — chore(changelog): auto-update [skip ci] [2 files]
+- `44898df3` 2026-06-13 — feat(ci): build-blocking structural-invariants guardrail (closes the class) [4 files] _(ai-assisted)_
