@@ -1,0 +1,17 @@
+{
+  "_doc": "Allowlist for scripts/_check-structural-invariants.ts (wired into `npm run build`). Each entry suppresses a known, human-VERIFIED instance of a structural anti-pattern. Adding an entry is an explicit acknowledgement that a reviewer checked it and it is NOT a bug. See the two incident classes the check guards against: (1) cleanup fn with zero callers that leaks a per-VM resource on retire (the 2026-06-13 DNS zone-cap bug — deleteVMDNSRecord had zero callers); (2) unbounded instaclaw_vms read driving absence-based destruction on a table past the 1000-row PostgREST cap (the 2026-06-10 orphan-reaper deleted 13 paying VMs).",
+
+  "zeroCallerCleanup": [
+    {
+      "name": "deleteAllVmArchives",
+      "reason": "Dead DUPLICATE, not a leak. R2 archive cleanup is actually done by retentionSweep() in cron/vm-archive-snapshot (keeps last 3/VM) and by inline deleteObject() in admin/delete-user-archives. This lib wrapper was never wired. Verified 2026-06-13: 0 VMs have frozen_archive_path, so nothing is leaking. Tracked for deletion or DRY-consolidation (use it from retentionSweep) — not a runtime risk."
+    }
+  ],
+
+  "unboundedDestructiveRead": [
+    {
+      "path": "app/api/cron/health-check/route.ts",
+      "reason": "VERIFIED NOT reaper-class 2026-06-13. health-check's status->terminated flips are keyed on EACH VM's OWN state (Linode-404 ghost-fix; 30-day-suspended reclaim), never on a VM's ABSENCE from a fetched set. Its unbounded reads iterate VMs to act on each (coverage-gap risk if truncated, NOT wrong-destruction). The membership Sets (.has) are billing-exempt / duplicate-IP lookups, not absence-based VM destruction."
+    }
+  ]
+}
