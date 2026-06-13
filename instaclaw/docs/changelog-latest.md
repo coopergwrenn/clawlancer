@@ -1,18 +1,18 @@
 # Changelog — generated 2026-06-13
 
-Window: `2699462076727470e12810bb3e76dc81fc4df31a` → `HEAD` (HEAD = `44898df3`)
+Window: `44898df303d5d2ebe21cae78212ad83e4257d8fd` → `HEAD` (HEAD = `5d6db812`)
 Total commits: 2
 
-<!-- LAST_GENERATED_SHA: 44898df303d5d2ebe21cae78212ad83e4257d8fd -->
+<!-- LAST_GENERATED_SHA: 5d6db8126bac11ba4fdb4e8255c8243212c00e37 -->
 
 ## Summary
 
 - **Manifest version bumps:** 0
 - **Reconciler / manifest:** 0
-- **Infrastructure:** 1
+- **Infrastructure:** 0
 - **Feature (user-facing):** 0
 - **Edge City partner:** 0
-- **Docs / PRD only:** 1
+- **Docs / PRD only:** 2
 - AI-assisted commits (co-authored): 1
 - Merge commits: 0
 
@@ -22,8 +22,8 @@ _None in this window._
 
 ## What changed under the hood
 
-- `44898df3` 2026-06-13 — feat(ci): build-blocking structural-invariants guardrail (closes the class) [4 files] _(ai-assisted)_
-- `49f7d066` 2026-06-13 — chore(changelog): auto-update [skip ci] [2 files]
+- `3062e7b3` 2026-06-13 — chore(changelog): auto-update [skip ci] [2 files]
+- `5d6db812` 2026-06-13 — docs: Rule 86 (structural-invariants check is load-bearing) + per-VM cleanup inventory [2 files] _(ai-assisted)_
 
 ## By category
 
@@ -31,9 +31,9 @@ _None in this window._
 
 _(none)_
 
-### Infrastructure (1)
+### Infrastructure (0)
 
-- `44898df3` 2026-06-13 — feat(ci): build-blocking structural-invariants guardrail (closes the class) [4 files] _(ai-assisted)_
+_(none)_
 
 ### Feature (user-facing) (0)
 
@@ -43,17 +43,18 @@ _(none)_
 
 _(none)_
 
-### Docs / PRD only (1)
+### Docs / PRD only (2)
 
-- `49f7d066` 2026-06-13 — chore(changelog): auto-update [skip ci] [2 files]
+- `3062e7b3` 2026-06-13 — chore(changelog): auto-update [skip ci] [2 files]
+- `5d6db812` 2026-06-13 — docs: Rule 86 (structural-invariants check is load-bearing) + per-VM cleanup inventory [2 files] _(ai-assisted)_
 
 ## AI-assisted commits (1)
 
 Commits with `Co-Authored-By` trailer or Claude attribution. Worth a second look for manual review.
 
-- `44898df3` 2026-06-13 — feat(ci): build-blocking structural-invariants guardrail (closes the class)
+- `5d6db812` 2026-06-13 — docs: Rule 86 (structural-invariants check is load-bearing) + per-VM cleanup inventory
 
 ## Appendix — every commit (chronological)
 
-- `49f7d066` 2026-06-13 — chore(changelog): auto-update [skip ci] [2 files]
-- `44898df3` 2026-06-13 — feat(ci): build-blocking structural-invariants guardrail (closes the class) [4 files] _(ai-assisted)_
+- `3062e7b3` 2026-06-13 — chore(changelog): auto-update [skip ci] [2 files]
+- `5d6db812` 2026-06-13 — docs: Rule 86 (structural-invariants check is load-bearing) + per-VM cleanup inventory [2 files] _(ai-assisted)_
