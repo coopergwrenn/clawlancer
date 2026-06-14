@@ -5870,7 +5870,10 @@ async function stepSkills(
     // This auto-heals missing scripts (e.g., polymarket-*.py, solana-*.py, kalshi-*.py)
     // Note: higgsfield-video scripts go to ~/.openclaw/skills/higgsfield-video/scripts/
     // (handled by installHiggsfield()), not ~/scripts/, so we skip it here.
-    const SKILLS_WITH_OWN_SCRIPT_DIR = new Set(["higgsfield-video"]);
+    // higgsfield-cloud (v129): its script lands in its OWN skill dir via
+    // extraSkillFiles (the path SKILL.md invokes); skip the generic ~/scripts/
+    // loop so there's no stray duplicate — fleet VMs match the vm-050 canary.
+    const SKILLS_WITH_OWN_SCRIPT_DIR = new Set(["higgsfield-video", "higgsfield-cloud"]);
     let scriptFileCount = 0;
     deployLines.push('mkdir -p "$HOME/scripts"');
     for (const skillName of skillDirs) {
