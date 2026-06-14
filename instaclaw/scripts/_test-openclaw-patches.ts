@@ -15,8 +15,9 @@
  *      is detected by the sentinel (the engine skips, so we just confirm the
  *      sentinel is present).
  *
- * It also asserts registry invariants (unique ids, sentinels non-empty, the
- * queue stub has captureInstructions + no transform, etc.).
+ * It also asserts registry invariants (unique ids, sentinels non-empty, each
+ * patch has >= 1 anchor, and any transform-less descriptor documents
+ * captureInstructions).
  *
  * Failure modes deliberately exercised:
  *   - transform matched zero anchor sites → sentinel count stays 0 (caught).

@@ -322,17 +322,35 @@ function typingDetectNativeFix(src: string): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PATCH 3 — queue-collect-batch  (UNMANAGED → CANARY stub).
+// RETIRED — queue-collect-batch  (was sentinel INSTACLAW_PATCH_QCB_V1).
+// Removed from PATCHES 2026-06-14 per the runbook §7 deletion convention
+// ("remove its descriptor from PATCHES, remove its fixture, note the deletion
+// + obsoleting version in git history / CLAUDE.md"). This comment IS that note.
 //
-// CRITICAL: as of this writing the patch body exists ONLY on vm-1028 and
-// vm-1043 via manual SSH. It is in NO source file. It will be silently wiped
-// the moment either VM reconciles to 2026.5.22 (stepNpmPinDrift reinstalls
-// openclaw → dist wiped). This descriptor is a STUB: it captures everything we
-// know (sentinel, target, the described change) but has NO transform yet, so
-// the engine REFUSES to apply it and tells you exactly how to capture the body.
+// What it was: removed an over-broad `currentInboundContext` check in
+// hasRuntimeOnlyFollowupMetadata (the queue-*.js chunk) so collect-mode batched
+// Telegram DMs correctly. Applied ONLY on vm-1028/vm-1043 via manual SSH; never
+// committed to git.
+//
+// Why retired — all three proven 2026-06-14 (read-only investigation):
+//   1. WIPED: a routine reinstall to OpenClaw 2026.5.22 (vm-1028's manual
+//      `.pre-qcb-v1` backup is dated 2026-05-29) restored pristine
+//      queue-DskPlua9.js on BOTH vm-1028 and vm-1043 — sentinel absent.
+//   2. UNRECOVERABLE: the body was never in source control (only the stub
+//      descriptor was, commit d3c0d9fc). The surviving `.bak` is the PRE-patch
+//      pristine, not the patch. No copy of the patched body exists anywhere.
+//   3. MOOT: the paired collect-mode config (messages.queue.mode/debounceMs/
+//      byChannel.telegram) is UNSET on vm-1028 — collect-mode isn't active, so
+//      the patch had nothing to do. The "landmine" already detonated, harmlessly.
+//
+// NOT reconstructed on purpose: re-deriving a fleet-bound behavior change from a
+// one-line description, for a feature that isn't even enabled, is inventing code
+// on a guess (Rule 71 + prove-don't-invent). If collect-mode is ever re-enabled,
+// re-derive deliberately from pristine source + the original intent (ideally the
+// original author / upstream PR), add a transform + sentinel + a
+// _test-openclaw-patches.ts fixture, and re-register it THEN — not before.
+// See CLAUDE.md Rule 71.
 // ═══════════════════════════════════════════════════════════════════════════
-
-const QUEUE_COLLECT_BATCH_SENTINEL = "INSTACLAW_PATCH_QCB_V1";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // THE REGISTRY
@@ -399,57 +417,6 @@ export const PATCHES: OpenClawPatch[] = [
       "obsolete on 2026.5.x where upstream event-loop fixes make the native " +
       "createTypingKeepaliveLoop fire on schedule — run verify --native to confirm.",
     ref: "CLAUDE.md Rule 63 (PARKED), Rule 64; commit 554cc581 (reverted in v119)",
-  },
-  {
-    id: "queue-collect-batch",
-    sentinel: QUEUE_COLLECT_BATCH_SENTINEL,
-    minSentinelCount: 1,
-    kind: "bugfix",
-    rollout: "canary",
-    managedBy: "engine",
-    discovery: {
-      mode: "contentGlob",
-      searchDirRel: "dist",
-      // The function the patch edits; unique enough to find the chunk.
-      discriminator: "hasRuntimeOnlyFollowupMetadata",
-    },
-    anchors: [
-      // Best-known anchor for the over-broad check the patch removes. MUST be
-      // confirmed byte-for-byte against the real file when the body is captured.
-      "currentInboundContext",
-      "hasRuntimeOnlyFollowupMetadata",
-    ],
-    // NO transform — body not captured into the repo yet. The engine refuses
-    // to apply and surfaces captureInstructions.
-    transform: undefined,
-    // We don't yet know the upstream shape well enough to detect a native fix;
-    // capture the body first, then add a detector keyed on the absence of the
-    // currentInboundContext check.
-    detectNativeFix: undefined,
-    restartNeeded: true,
-    why:
-      "Removes the over-broad currentInboundContext check from " +
-      "hasRuntimeOnlyFollowupMetadata so collect-mode batches Telegram DMs " +
-      "correctly. Currently exists ONLY on vm-1028/vm-1043 via manual SSH — " +
-      "uncommitted, with no fleet deployment path. Will be wiped on the next " +
-      "reconcile of those VMs to 2026.5.22.",
-    ref: "CLAUDE.md Rule 71; pairs with messages.queue.* config overrides",
-    captureInstructions: [
-      "This patch body is NOT in source control. To capture it:",
-      "  1. SSH vm-1028 (or vm-1043).",
-      "  2. ROOT=$(npm root -g)/openclaw; find the queue chunk:",
-      "     grep -rl 'hasRuntimeOnlyFollowupMetadata' \"$ROOT/dist\" | head",
-      "  3. Locate the pre-patch backup the manual edit left (likely a sibling",
-      "     .bak / .pre-* file). If none exists, install pristine openclaw of",
-      "     the same version into a scratch dir and diff against it.",
-      "  4. `diff -u <pristine> <patched>` → that diff IS the transform.",
-      "  5. Hand the diff to Claude / write a transform() that reproduces it,",
-      "     embedding INSTACLAW_PATCH_QCB_V1 as the sentinel, and add a local",
-      "     fixture to scripts/_test-openclaw-patches.ts (Rule 31).",
-      "  6. Also capture the paired config overrides (messages.queue.mode,",
-      "     messages.queue.debounceMs, messages.queue.byChannel.telegram) into",
-      "     the manifest configSettings — see the runbook 'Config overrides'.",
-    ].join("\n"),
   },
 ];
 

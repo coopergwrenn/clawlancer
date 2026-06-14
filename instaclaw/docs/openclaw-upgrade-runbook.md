@@ -33,16 +33,14 @@ live picture. As of this writing:
 |---|---|---|---|---|
 | `pi-ai-reasoning-router` | feature | fleet | `stepPiAiReasoningPatch` (reconciler, runs right after `stepNpmPinDrift`) | ✅ — re-applied every reconcile, adjacent to the wipe |
 | `typing-keepalive` | bugfix | **parked** | nobody (suspended per Rule 63/64; likely native-fixed in 2026.5.x) | n/a |
-| `queue-collect-batch` | bugfix | **canary** | **nobody — body not in repo; lives only on vm-1028/vm-1043 via manual SSH** | ❌ until captured |
-| config: `messages.queue.mode=collect`, `messages.queue.debounceMs=3000`, `messages.queue.byChannel.telegram=collect` | config override | unmanaged | nobody — not in manifest | config survives npm -g (lives in `~/.openclaw`) but is **not reproducible / not enforced** |
+| ~~`queue-collect-batch`~~ (+ its `messages.queue.*` config) | — | **RETIRED 2026-06-14** | — | removed from the registry: body wiped by the 2026.5.22 reinstall + never committed (unrecoverable) + collect-mode config unset (moot). See the RETIRED marker in `lib/openclaw-patches.ts` and §6. |
 
-### ⚠ Two standing hazards to clear (do these independently of any upgrade)
+### ⚠ Standing hazards to clear (do these independently of any upgrade)
 
-1. **The queue patch + its config overrides exist only on vm-1028/vm-1043.**
-   They are uncommitted. They will be **silently wiped** the moment either VM
-   reconciles to 2026.5.22 (`stepNpmPinDrift` reinstalls openclaw → dist wiped),
-   and the config will then describe "collect mode" with no patch to make it
-   batch correctly. **Capture them** — see §6.
+1. **RESOLVED 2026-06-14 — queue-collect-batch RETIRED.** (It was already wiped
+   from both vm-1028/1043 by the 2026.5.22 reinstall, never committed so
+   unrecoverable, and its collect-mode config is unset so it was moot. Removed
+   from the registry — see §6. Nothing to capture.)
 2. **The reasoning-router patch's anchors were written for an older pi-ai.**
    The 4.26→5.22 bump may have changed pi-ai's source. If the anchors no longer
    match, `stepPiAiReasoningPatch` pushes a *warning* (not an error) and the
@@ -92,7 +90,7 @@ Statuses and what to do:
 | `anchor-drift` | anchors gone — upstream changed the file | **RE-ANCHOR** (§4.1) — the patch is silently off |
 | `native-fixed` | upstream now does this itself | delete the patch (§7) |
 | `target-missing` | file not found (version/layout change) | investigate; re-anchor discovery |
-| `no-transform` | registry stub (queue) — body not captured | §6 |
+| `no-transform` | a descriptor with no captured transform body (none in the registry today) | apply refuses; capture the body before registering |
 | `ssh-fail` | VM unreachable | retry / exclude |
 
 Exit code is non-zero if any **fleet-rollout** patch is missing/drifted on any
@@ -106,7 +104,7 @@ reachable VM — wire it into CI / patrol if you like.
 # fleet patches to one VM (idempotent, backs up, node --check, rollback on fail):
 npx tsx scripts/_apply-openclaw-patches.ts --vm=instaclaw-vm-1019
 npx tsx scripts/_apply-openclaw-patches.ts --vm=instaclaw-vm-1019 --dry-run
-# include canary patches (e.g. queue, once its body is captured):
+# include canary patches (rollout: "canary") alongside fleet:
 npx tsx scripts/_apply-openclaw-patches.ts --vm=instaclaw-vm-1019 --include-canary
 # a bake VM that isn't in the DB:
 npx tsx scripts/_apply-openclaw-patches.ts --ip=<bake-vm-ip>
@@ -150,35 +148,24 @@ correct from first boot (not just after the first reconcile).
 
 ---
 
-## 6. Capturing the queue-collect-batch patch (DO THIS SOON)
+## 6. queue-collect-batch — RETIRED (2026-06-14)
 
-The body is not in source control. To rescue it before vm-1028/1043 reconcile
-and wipe it:
+This patch is retired, not pending. Do NOT capture or re-derive it blindly.
 
-```bash
-ssh -i /tmp/ic_ssh_key openclaw@<vm-1028-ip>
-ROOT=$(npm root -g)/openclaw
-grep -rlF 'hasRuntimeOnlyFollowupMetadata' "$ROOT/dist"     # find the chunk
-# look for a sibling backup the manual edit left (.bak / .pre-*):
-ls -la "$(grep -rlF 'hasRuntimeOnlyFollowupMetadata' "$ROOT/dist" | head -1)"*
-```
+Proven 2026-06-14 (read-only): it was already **wiped from BOTH vm-1028 and
+vm-1043** by a routine reinstall to OpenClaw 2026.5.22 (vm-1028's `.pre-qcb-v1`
+backup is dated 2026-05-29); both run pristine `queue-DskPlua9.js` with the
+sentinel absent. The body was **never committed to git** (only the stub
+descriptor was), so it is **unrecoverable** — the surviving `.bak` is the
+PRE-patch pristine, not the patch. And the paired collect-mode config
+(`messages.queue.*`) is **unset** on vm-1028, so the patch was inactive/moot.
 
-Then either diff against the left-behind backup, or install pristine
-`openclaw@2026.5.22` into a scratch dir and `diff -u pristine patched`. That diff
-IS the transform. Hand it to Claude (or write it):
-
-1. Fill in `transform` on the `queue-collect-batch` descriptor in
-   `lib/openclaw-patches.ts`, embedding `INSTACLAW_PATCH_QCB_V1`.
-2. Tighten `anchors` to the byte-exact pre-patch text.
-3. Add a fixture to `scripts/_test-openclaw-patches.ts`; run it.
-4. Capture the **config overrides** into the manifest (see §8) — the patch and
-   the config are a pair; one without the other is broken.
-5. Test on vm-1019 per Rule 64; get Cooper's approval to promote `rollout` to
-   `fleet`; then bump the manifest so the reconciler applies it.
-
-Until then the descriptor is a `no-transform` stub: the engine refuses to apply
-it and prints these instructions, and verify shows `no-transform` so it's never
-mistaken for "fine".
+It has been **removed from the `lib/openclaw-patches.ts` registry** (see the
+RETIRED marker there, per the §7 deletion convention). If collect-mode is ever
+re-enabled, re-derive the patch **deliberately** from pristine source + the
+original intent (ideally the original author / upstream PR), add a transform +
+sentinel + a `_test-openclaw-patches.ts` fixture, and re-register it THEN — not
+on a guess (Rule 71).
 
 ---
 
@@ -202,23 +189,21 @@ native-fix grounds (upstream won't ship our features) — only by product choice
 
 ## 8. Config overrides (separate from patches)
 
-`messages.queue.mode=collect`, `messages.queue.debounceMs=3000`,
-`messages.queue.byChannel.telegram=collect` are **config**, not dist patches.
-They live in `~/.openclaw/openclaw.json`, which `npm install -g` does NOT touch —
-so they survive upgrades. Their problem is different: they are currently set
-**manually on vm-1028/1043 only**, so they're neither reproducible nor enforced.
+Some behavior is controlled by **config** (`~/.openclaw/openclaw.json`), not by
+dist patches. Config is a different problem from patches: `npm install -g` does
+NOT touch `~/.openclaw`, so config **survives** upgrades — but a value set
+**manually on a VM** is neither reproducible nor enforced, and drifts.
 
-The correct home is `VM_MANIFEST.configSettings` (`lib/vm-manifest.ts`), which
-`stepConfigSettings` enforces fleet-wide and re-applies on drift.
-`messages.*` is already in `RESTART_REQUIRED_CONFIG_PREFIXES`, so the reconciler
-will restart the gateway when these change (Rule 32). When you promote
-collect-mode from canary to fleet (Rule 64), add the three keys to
-`configSettings` in the same change as the queue patch.
+The correct home for any override we depend on is `VM_MANIFEST.configSettings`
+(`lib/vm-manifest.ts`), which `stepConfigSettings` enforces fleet-wide and
+re-applies on drift. Keys under `messages.*` and `agents.defaults.*` are in
+`RESTART_REQUIRED_CONFIG_PREFIXES`, so the reconciler restarts the gateway when
+they change (Rule 32). Never leave a depended-on setting as a manual per-VM edit.
 
-When an upgrade changes an upstream **default** (e.g. queue.mode default
-steer→collect), our explicit setting protects us — but per Rule 2, diff the
-config *schema* between versions: a renamed/removed key makes our setting a
-silent no-op.
+When an upgrade changes an upstream **default**, an explicit `configSettings`
+value protects us — but per Rule 2, diff the config *schema* between versions: a
+renamed or removed key turns our setting into a silent no-op (the
+config-schema-survival risk the canary in this runbook tests).
 
 ---
 
