@@ -8247,6 +8247,62 @@ export async function configureOpenClaw(
       });
     }
 
+    // ── Deploy Higgsfield Cloud skill (v129 fleet flip) ──
+    // The DEFAULT path for ANY new video or image (Higgsfield Cloud cinematic
+    // text-to-video / image-to-video). Ships ALONGSIDE the narrowed
+    // higgsfield-video (extend/edit-only) block below, so a fresh pool VM
+    // never lands narrowed-legacy-pointing-at-an-uninstalled-cloud-skill.
+    // configureOpenClaw runs at assignment; reconcile-fleet's stepSkills is
+    // batch=1 and would otherwise leave the cloud skill missing for hours
+    // (the "make me a video dead-ends" gap). Placed BEFORE the higgsfield-video
+    // block: the configure script has no `set -e` so both run regardless, but
+    // cloud-first preserves the fail-safe ordering. The script lands in the
+    // skill's OWN scripts/ dir (the exact path SKILL.md invokes,
+    // ~/.openclaw/skills/higgsfield-cloud/scripts/higgsfield-cloud.py), NOT
+    // ~/scripts/ (matches stepSkills' SKILLS_WITH_OWN_SCRIPT_DIR handling, so
+    // a configure-provisioned VM is byte-identical to a reconcile-provisioned
+    // one). ENABLED by default (presence = active; no dashboard toggle).
+    try {
+      const hfCloudSkillDir = path.join(process.cwd(), "skills", "higgsfield-cloud");
+      const hfCloudFiles: Array<{ name: string; subdir?: string }> = [
+        { name: "SKILL.md" },
+        { name: "higgsfield-cloud.py", subdir: "scripts" },
+      ];
+
+      scriptParts.push(
+        '# Deploy Higgsfield Cloud skill (v129) — ENABLED by default; default path for new video/image',
+        '# Remove stale .disabled version if present',
+        'rm -rf "$HOME/.openclaw/skills/higgsfield-cloud.disabled" 2>/dev/null || true',
+        'HF_CLOUD_SKILL_DIR="$HOME/.openclaw/skills/higgsfield-cloud"',
+        'mkdir -p "$HF_CLOUD_SKILL_DIR/scripts"',
+      );
+
+      for (const f of hfCloudFiles) {
+        const localPath = f.subdir
+          ? path.join(hfCloudSkillDir, f.subdir, f.name)
+          : path.join(hfCloudSkillDir, f.name);
+        const content = fs.readFileSync(localPath, "utf-8");
+        const b64 = Buffer.from(content, "utf-8").toString("base64");
+        const remotePath = f.subdir
+          ? `$HF_CLOUD_SKILL_DIR/${f.subdir}/${f.name}`
+          : `$HF_CLOUD_SKILL_DIR/${f.name}`;
+        scriptParts.push(`echo '${b64}' | base64 -d > "${remotePath}"`);
+      }
+
+      scriptParts.push(
+        'chmod +x "$HF_CLOUD_SKILL_DIR/scripts/"*.py',
+        ''
+      );
+
+      logger.info("Higgsfield Cloud skill deployment prepared (v129)", { route: "lib/ssh" });
+    } catch (hfCloudSkillErr) {
+      recordFailure("skill_higgsfield_cloud", hfCloudSkillErr, false);
+      logger.warn("Higgsfield Cloud skill files not found, skipping deployment", {
+        route: "lib/ssh",
+        error: String(hfCloudSkillErr),
+      });
+    }
+
     // ── Deploy Higgsfield AI Video skill (Skill 16) ──
     // BYOK video/image/audio generation via 200+ models (Muapi.ai).
     // Skill starts disabled — user opts in via dashboard toggle.
